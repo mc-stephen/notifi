@@ -1,0 +1,66 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --color-background: oklch(0.07 0 0);
+  --color-foreground: oklch(0.97 0 0);
+  --color-card: oklch(0.095 0 0);
+  --color-card-foreground: oklch(0.97 0 0);
+  --color-card-hover: oklch(0.11 0 0);
+  --color-popover: oklch(0.1 0 0);
+  --color-popover-foreground: oklch(0.97 0 0);
+  --color-primary: oklch(0.62 0.22 260);
+  --color-primary-foreground: oklch(1 0 0);
+  --color-secondary: oklch(0.12 0 0);
+  --color-secondary-foreground: oklch(0.97 0 0);
+  --color-muted: oklch(0.12 0 0);
+  --color-muted-foreground: oklch(0.45 0 0);
+  --color-accent: oklch(0.62 0.22 260 / 0.12);
+  --color-accent-foreground: oklch(0.62 0.22 260);
+  --color-destructive: oklch(0.65 0.24 25);
+  --color-destructive-foreground: oklch(1 0 0);
+  --color-border: oklch(1 0 0 / 0.06);
+  --color-input: oklch(1 0 0 / 0.08);
+  --color-ring: oklch(0.62 0.22 260);
+  --radius: 0.5rem;
+
+  --color-sidebar: oklch(0.055 0 0);
+  --color-sidebar-foreground: oklch(0.6 0 0);
+  --color-sidebar-hover: oklch(0.09 0 0);
+  --color-sidebar-accent: oklch(0.62 0.22 260 / 0.1);
+
+  --color-glass: oklch(0.08 0 0 / 0.7);
+  --color-glass-border: oklch(1 0 0 / 0.06);
+  --blur-glass: 12px;
+
+  --color-chart-1: oklch(0.62 0.22 260);
+  --color-chart-2: oklch(0.7 0.2 160);
+  --color-chart-3: oklch(0.75 0.15 80);
+  --color-chart-4: oklch(0.65 0.18 310);
+  --color-chart-5: oklch(0.65 0.24 25);
+
+  --color-env-production: oklch(0.65 0.24 25);
+  --color-env-development: oklch(0.7 0.2 160);
+}
+
+@utility card-lift {
+  @apply transition-all duration-200 ease-out;
+  &:hover {
+    @apply -translate-y-0.5;
+    box-shadow: 0 8px 24px oklch(0 0 0 / 0.4);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
