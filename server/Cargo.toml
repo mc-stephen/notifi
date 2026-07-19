@@ -1,9 +1,18 @@
 [workspace]
 resolver = "2"
 members = [
-    "main",
-    "notification_core",
-    "channels/sms_channel",
-    "channels/email_channel",
-    "channels/slack_channel", "channels/android_channel", "channels/ios_channel", "channels/macos_channel", "channels/linux_channel", "channels/window_channel", "channels/web_channel", "channels/whatsapp_channel", "channels/telegram_channel", "channels/webhook_channel",
+  "main",
+  "notification/core",
+  "notification/channels/android_channel",
+  "notification/channels/email_channel",
+  "notification/channels/ios_channel",
+  "notification/channels/linux_channel",
+  "notification/channels/macos_channel",
+  "notification/channels/slack_channel",
+  "notification/channels/sms_channel",
+  "notification/channels/telegram_channel",
+  "notification/channels/web_channel",
+  "notification/channels/webhook_channel",
+  "notification/channels/whatsapp_channel",
+  "notification/channels/window_channel",
 ]
