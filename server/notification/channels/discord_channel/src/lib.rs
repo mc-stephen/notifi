@@ -1,42 +1,37 @@
 mod config;
 
-pub use config::SlackConfig;
+pub use config::DiscordConfig;
 
 use reqwest::Client;
 use serde::Serialize;
 
-pub struct SlackMessage {
+pub struct DiscordMessage {
     pub text: String,
 }
 
 #[derive(Serialize)]
-struct WebhookPayload {
-    text: String,
+struct DiscordPayload {
+    content: String,
 }
 
-#[derive(Serialize)]
-struct BotPayload {
-    channel: String,
-    text: String,
-}
-
-pub struct SlackProvider {
-    config: SlackConfig,
+pub struct DiscordProvider {
+    config: DiscordConfig,
     client: Client,
 }
 
-impl SlackProvider {
-    pub fn new(config: SlackConfig) -> Self {
+impl DiscordProvider {
+    pub fn new(config: DiscordConfig) -> Self {
         Self {
             config,
             client: Client::new(),
         }
     }
 
-    pub async fn send_message(&self, msg: &SlackMessage) -> Result<(), String> {
+    pub async fn send_message(&self, msg: &DiscordMessage) -> Result<(), String> {
+        let payload = DiscordPayload { content: msg.text.clone() };
+
         match &self.config {
-            SlackConfig::Webhook { webhook_url } => {
-                let payload = WebhookPayload { text: msg.text.clone() };
+            DiscordConfig::Webhook { webhook_url } => {
                 let response = self.client.post(webhook_url)
                     .json(&payload)
                     .send()
@@ -50,13 +45,10 @@ impl SlackProvider {
                     Err(format!("Webhook error: {err}"))
                 }
             }
-            SlackConfig::BotApi { bot_token, channel_id } => {
-                let payload = BotPayload {
-                    channel: channel_id.clone(),
-                    text: msg.text.clone(),
-                };
-                let response = self.client.post("https://slack.com/api/chat.postMessage")
-                    .header("Authorization", format!("Bearer {}", bot_token))
+            DiscordConfig::BotApi { bot_token, channel_id } => {
+                let url = format!("https://discord.com/api/v10/channels/{}/messages", channel_id);
+                let response = self.client.post(&url)
+                    .header("Authorization", format!("Bot {}", bot_token))
                     .json(&payload)
                     .send()
                     .await

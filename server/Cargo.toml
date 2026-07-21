@@ -2,8 +2,8 @@
 resolver = "2"
 members = [
   "main",
-  "notification/core",
   "notification/channels/android_channel",
+  "notification/channels/discord_channel",
   "notification/channels/email_channel",
   "notification/channels/ios_channel",
   "notification/channels/linux_channel",
@@ -15,4 +15,5 @@ members = [
   "notification/channels/webhook_channel",
   "notification/channels/whatsapp_channel",
   "notification/channels/window_channel",
+  "notification/core",
 ]
