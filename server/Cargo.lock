@@ -3013,6 +3013,14 @@ dependencies = [
 [[package]]
 name = "window_channel"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "windows-core"

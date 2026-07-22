@@ -1,14 +1,33 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+pub mod config;
+pub mod providers;
+
+pub use config::WindowConfig;
+use providers::{webhook::WebhookProvider, wns::WnsProvider, WindowSender};
+
+pub struct WindowMessage {
+    pub target: String, // Webhook URL or WNS URI
+    pub title: String,
+    pub body: String,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub struct WindowProvider {
+    sender: Box<dyn WindowSender>,
+}
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+impl WindowProvider {
+    pub fn new(config: WindowConfig) -> Self {
+        let sender: Box<dyn WindowSender> = match config {
+            WindowConfig::Webhook {} => {
+                Box::new(WebhookProvider::new())
+            }
+            WindowConfig::Wns { client_id, client_secret, package_sid } => {
+                Box::new(WnsProvider::new(client_id, client_secret, package_sid))
+            }
+        };
+        Self { sender }
+    }
+
+    pub async fn send_notification(&self, msg: &WindowMessage) -> Result<(), String> {
+        self.sender.send(&msg.target, &msg.title, &msg.body).await
     }
 }
