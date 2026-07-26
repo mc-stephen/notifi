@@ -1,0 +1,239 @@
+import type {
+  NotificationChannel,
+  NotificationStatus,
+  NotificationPriority,
+  Role,
+  Environment,
+  Plan,
+  HealthStatus,
+  DevicePlatform,
+} from "./types";
+import {
+  LayoutDashboard,
+  Bell,
+  Users,
+  FileText,
+  Megaphone,
+  Clock,
+  Radio,
+  Plug,
+  BarChart3,
+  Zap,
+  Webhook,
+  KeyRound,
+  Package,
+  Code2,
+  ScrollText,
+  UserCog,
+  FolderOpen,
+  CreditCard,
+  Link,
+  Settings,
+  HelpCircle,
+  type LucideIcon,
+} from "lucide-react";
+
+export type NavItem = {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  badge?: string;
+};
+
+export type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+export const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Core",
+    items: [
+      { label: "Dashboard", href: "/", icon: LayoutDashboard },
+      { label: "Notifications", href: "/notifications", icon: Bell },
+      { label: "Recipients", href: "/recipients", icon: Users },
+      { label: "Templates", href: "/templates", icon: FileText },
+    ],
+  },
+  {
+    label: "Campaigns",
+    items: [
+      { label: "Campaigns", href: "/campaigns", icon: Megaphone },
+      { label: "Schedules", href: "/schedules", icon: Clock },
+    ],
+  },
+  {
+    label: "Channels",
+    items: [
+      { label: "Channels", href: "/channels", icon: Radio },
+      { label: "Providers", href: "/providers", icon: Plug },
+    ],
+  },
+  {
+    label: "Insights",
+    items: [
+      { label: "Analytics", href: "/analytics", icon: BarChart3 },
+      { label: "Events", href: "/events", icon: Zap },
+      { label: "Logs", href: "/logs", icon: ScrollText },
+    ],
+  },
+  {
+    label: "Connect",
+    items: [
+      { label: "Webhooks", href: "/webhooks", icon: Webhook },
+      { label: "API Keys", href: "/api-keys", icon: KeyRound },
+      { label: "SDKs", href: "/sdk", icon: Package },
+      { label: "Developers", href: "/developers", icon: Code2 },
+      { label: "Integrations", href: "/integrations", icon: Link },
+    ],
+  },
+  {
+    label: "Workspace",
+    items: [
+      { label: "Team", href: "/team", icon: UserCog },
+      { label: "Projects", href: "/projects", icon: FolderOpen },
+      { label: "Billing", href: "/billing", icon: CreditCard },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { label: "Settings", href: "/settings", icon: Settings },
+      { label: "Support", href: "/support", icon: HelpCircle },
+    ],
+  },
+];
+
+export const CHANNEL_LABELS: Record<NotificationChannel, string> = {
+  email: "Email",
+  sms: "SMS",
+  "push-android": "Android Push",
+  "push-ios": "Apple Push",
+  "web-push": "Web Push",
+  linux: "Linux",
+  macos: "macOS",
+  rcs: "RCS",
+  whatsapp: "WhatsApp",
+  slack: "Slack",
+  discord: "Discord",
+  teams: "Microsoft Teams",
+  telegram: "Telegram",
+  webhook: "Webhook",
+};
+
+export const CHANNEL_ICONS: Record<NotificationChannel, string> = {
+  email: "Mail",
+  sms: "MessageSquare",
+  "push-android": "Smartphone",
+  "push-ios": "Smartphone",
+  "web-push": "Globe",
+  linux: "Monitor",
+  macos: "Apple",
+  rcs: "MessageCircle",
+  whatsapp: "Phone",
+  slack: "Hash",
+  discord: "Gamepad2",
+  teams: "Users",
+  telegram: "Send",
+  webhook: "Webhook",
+};
+
+export const STATUS_LABELS: Record<NotificationStatus, string> = {
+  queued: "Queued",
+  processing: "Processing",
+  sent: "Sent",
+  delivered: "Delivered",
+  opened: "Opened",
+  clicked: "Clicked",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  retrying: "Retrying",
+};
+
+export const STATUS_COLORS: Record<NotificationStatus, string> = {
+  queued: "bg-info/15 text-info border-info/20",
+  processing: "bg-warning/15 text-warning border-warning/20",
+  sent: "bg-info/15 text-info border-info/20",
+  delivered: "bg-success/15 text-success border-success/20",
+  opened: "bg-success/15 text-success border-success/20",
+  clicked: "bg-success/15 text-success border-success/20",
+  failed: "bg-destructive/15 text-destructive border-destructive/20",
+  cancelled: "bg-muted text-muted-foreground border-border",
+  retrying: "bg-warning/15 text-warning border-warning/20",
+};
+
+export const PRIORITY_LABELS: Record<NotificationPriority, string> = {
+  low: "Low",
+  normal: "Normal",
+  high: "High",
+  urgent: "Urgent",
+};
+
+export const PRIORITY_COLORS: Record<NotificationPriority, string> = {
+  low: "bg-muted text-muted-foreground border-border",
+  normal: "bg-info/15 text-info border-info/20",
+  high: "bg-warning/15 text-warning border-warning/20",
+  urgent: "bg-destructive/15 text-destructive border-destructive/20",
+};
+
+export const ROLE_LABELS: Record<Role, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  developer: "Developer",
+  viewer: "Viewer",
+  billing: "Billing",
+};
+
+export const ROLE_COLORS: Record<Role, string> = {
+  owner: "bg-primary/15 text-primary border-primary/20",
+  admin: "bg-info/15 text-info border-info/20",
+  developer: "bg-success/15 text-success border-success/20",
+  viewer: "bg-muted text-muted-foreground border-border",
+  billing: "bg-warning/15 text-warning border-warning/20",
+};
+
+export const ENVIRONMENT_LABELS: Record<Environment, string> = {
+  development: "Development",
+  staging: "Staging",
+  production: "Production",
+};
+
+export const ENVIRONMENT_COLORS: Record<Environment, string> = {
+  development: "bg-info/15 text-info",
+  staging: "bg-warning/15 text-warning",
+  production: "bg-success/15 text-success",
+};
+
+export const PLAN_LABELS: Record<Plan, string> = {
+  free: "Free",
+  starter: "Starter",
+  pro: "Pro",
+  enterprise: "Enterprise",
+};
+
+export const HEALTH_LABELS: Record<HealthStatus, string> = {
+  healthy: "Healthy",
+  degraded: "Degraded",
+  down: "Down",
+  unknown: "Unknown",
+};
+
+export const HEALTH_COLORS: Record<HealthStatus, string> = {
+  healthy: "bg-success",
+  degraded: "bg-warning",
+  down: "bg-destructive",
+  unknown: "bg-muted-foreground",
+};
+
+export const DEVICE_PLATFORM_LABELS: Record<DevicePlatform, string> = {
+  android: "Android",
+  ios: "iOS",
+  ipados: "iPadOS",
+  macos: "macOS",
+  linux: "Linux",
+  windows: "Windows",
+  browser: "Browser",
+};
+
+export const TABLE_PAGE_SIZES = [10, 20, 50, 100] as const;
+export const DEFAULT_PAGE_SIZE = 20;
