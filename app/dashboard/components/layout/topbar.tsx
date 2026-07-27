@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, Suspense } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/auth-store";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -161,6 +163,25 @@ function SearchButton() {
 }
 
 function UserMenu() {
+  const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+
+  const initials = user?.name
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : "?";
+
+  const handleLogout = () => {
+    logout();
+    document.cookie = "session_token=; path=/; max-age=0";
+    router.push("/auth/login");
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -169,27 +190,27 @@ function UserMenu() {
         }
       >
         <Avatar className="size-7">
-          <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">JD</AvatarFallback>
+          <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">{initials}</AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuLabel>
           <div className="flex flex-col">
-            <span className="text-sm">John Doe</span>
-            <span className="text-xs text-muted-foreground font-normal">john@example.com</span>
+            <span className="text-sm">{user?.name ?? "Unknown"}</span>
+            <span className="text-xs text-muted-foreground font-normal">{user?.email ?? ""}</span>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
+        <DropdownMenuItem onClick={() => router.push("/profile")}>
           <User className="size-4" />
           Profile
         </DropdownMenuItem>
-        <DropdownMenuItem>
+        <DropdownMenuItem onClick={() => router.push("/settings")}>
           <Settings className="size-4" />
           Settings
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem className="text-destructive">
+        <DropdownMenuItem className="text-destructive" onClick={handleLogout}>
           <LogOut className="size-4" />
           Sign out
         </DropdownMenuItem>
