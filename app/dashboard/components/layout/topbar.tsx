@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +17,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetTrigger, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Sidebar } from "./sidebar";
+import { NavigationProgress } from "@/components/custom/navigation-progress";
 import { useOrgStore } from "@/store/org-store";
 import { useProjectStore } from "@/store/project-store";
 import { useEnvironmentStore } from "@/store/environment-store";
@@ -223,7 +224,7 @@ export function Topbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 lg:px-6">
+      <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 lg:px-6 relative">
         {/* Mobile menu */}
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger
@@ -260,6 +261,11 @@ export function Topbar() {
           <ThemeToggle />
           <UserMenu />
         </div>
+
+        {/* Navigation progress indicator */}
+        <Suspense fallback={null}>
+          <NavigationProgress className="absolute bottom-0 left-0 right-0 z-50" />
+        </Suspense>
       </header>
     </>
   );

@@ -122,7 +122,7 @@ export default function BillingPage() {
               { name: "Free", price: "$0", features: ["1,000 notifications/mo", "1 channel", "1 team member"] },
               { name: "Starter", price: "$19", features: ["10,000 notifications/mo", "3 channels", "3 team members"] },
               { name: "Pro", price: "$49", features: ["100,000 notifications/mo", "All channels", "5 team members"], current: true },
-              { name: "Enterprise", price: "Custom", features: ["Unlimited", "All channels", "Unlimited", "SLA", "Dedicated support"] },
+              { name: "Enterprise", price: "Custom", features: ["Unlimited notifications", "All channels", "Unlimited team members", "SLA", "Dedicated support"] },
             ].map((plan) => (
               <div
                 key={plan.name}
@@ -137,8 +137,8 @@ export default function BillingPage() {
                 <div className="text-2xl font-bold">{plan.price}<span className="text-sm font-normal text-muted-foreground">/mo</span></div>
                 <Separator />
                 <ul className="space-y-2">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-center gap-2 text-xs">
+                  {plan.features.map((f, i) => (
+                    <li key={`${f}-${i}`} className="flex items-center gap-2 text-xs">
                       <CheckCircle2 className="size-3 text-success shrink-0" />
                       <span>{f}</span>
                     </li>
