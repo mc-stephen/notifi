@@ -127,7 +127,7 @@ export function NavigationProgress({ className }: { className?: string }) {
           transition={{ duration: 0.3 }}
         >
           <motion.div
-            className="h-full bg-primary rounded-full shadow-[0_2px_10px_var(--primary)]"
+            className="h-full bg-primary rounded-full"
             initial={{ width: "0%", opacity: 1 }}
             animate={{ width: `${progress}%`, opacity: 1 }}
             transition={{
