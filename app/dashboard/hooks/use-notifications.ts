@@ -1,30 +1,33 @@
 import { useMemo } from "react";
 import type { Notification, NotificationChannel, NotificationStatus, NotificationPriority } from "@/lib/types";
+import { createRng } from "@/lib/random";
 
 const CHANNELS: NotificationChannel[] = ["email", "sms", "push-android", "push-ios", "web-push", "webhook"];
 const STATUSES: NotificationStatus[] = ["queued", "processing", "sent", "delivered", "opened", "clicked", "failed", "cancelled", "retrying"];
 const PRIORITIES: NotificationPriority[] = ["low", "normal", "high", "urgent"];
+const REFERENCE_DATE = new Date("2026-07-27T12:00:00.000Z");
 
 function generateNotifications(count: number): Notification[] {
+  const rng = createRng(42);
   return Array.from({ length: count }, (_, i) => {
-    const status = STATUSES[Math.floor(Math.random() * STATUSES.length)];
-    const channel = CHANNELS[Math.floor(Math.random() * CHANNELS.length)];
-    const priority = PRIORITIES[Math.floor(Math.random() * PRIORITIES.length)];
-    const createdAt = new Date();
-    createdAt.setMinutes(createdAt.getMinutes() - Math.floor(Math.random() * 1440));
+    const status = STATUSES[Math.floor(rng() * STATUSES.length)];
+    const channel = CHANNELS[Math.floor(rng() * CHANNELS.length)];
+    const priority = PRIORITIES[Math.floor(rng() * PRIORITIES.length)];
+    const createdAt = new Date(REFERENCE_DATE);
+    createdAt.setMinutes(createdAt.getMinutes() - Math.floor(rng() * 1440));
 
     return {
       id: `ntf_${String(i + 1).padStart(4, "0")}`,
       projectId: "proj_1",
-      templateId: Math.random() > 0.3 ? `tpl_${Math.floor(Math.random() * 10) + 1}` : undefined,
-      recipientId: `rcp_${String(Math.floor(Math.random() * 500) + 1).padStart(4, "0")}`,
+      templateId: rng() > 0.3 ? `tpl_${Math.floor(rng() * 10) + 1}` : undefined,
+      recipientId: `rcp_${String(Math.floor(rng() * 500) + 1).padStart(4, "0")}`,
       channel,
       status,
       priority,
       subject: channel === "email" ? `Notification ${i + 1}` : undefined,
       body: `This is notification body ${i + 1}. It contains important information for the recipient.`,
-      retryCount: status === "retrying" ? Math.floor(Math.random() * 3) + 1 : 0,
-      providerId: Math.random() > 0.2 ? `prv_${Math.floor(Math.random() * 5) + 1}` : undefined,
+      retryCount: status === "retrying" ? Math.floor(rng() * 3) + 1 : 0,
+      providerId: rng() > 0.2 ? `prv_${Math.floor(rng() * 5) + 1}` : undefined,
       sentAt: ["sent", "delivered", "opened", "clicked", "failed"].includes(status) ? createdAt.toISOString() : undefined,
       deliveredAt: ["delivered", "opened", "clicked"].includes(status) ? createdAt.toISOString() : undefined,
       failedAt: status === "failed" ? createdAt.toISOString() : undefined,

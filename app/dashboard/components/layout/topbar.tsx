@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
@@ -223,10 +223,7 @@ function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  // Avoid hydration mismatch
-  if (typeof window !== "undefined" && !mounted) {
-    setMounted(true);
-  }
+  useEffect(() => { setMounted(true); }, []);
 
   return (
     <Button
@@ -235,7 +232,9 @@ function ThemeToggle() {
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
       aria-label="Toggle theme"
     >
-      {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+      {mounted
+        ? (theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />)
+        : <Sun className="size-4" />}
     </Button>
   );
 }

@@ -1,4 +1,5 @@
 import type { MetricCard, ChartDataPoint } from "@/lib/types";
+import { createRng } from "@/lib/random";
 import {
   Bell,
   CheckCircle2,
@@ -71,17 +72,24 @@ export function useMetrics(): MetricCard[] {
   ];
 }
 
-export function useNotificationTimeline(): ChartDataPoint[] {
-  const now = new Date();
+const TIMELINE_REFERENCE_HOUR = 12;
+
+function buildTimelineData(): ChartDataPoint[] {
+  const rng = createRng(789);
   return Array.from({ length: 24 }, (_, i) => {
-    const d = new Date(now);
-    d.setHours(d.getHours() - (23 - i));
+    const hour = (TIMELINE_REFERENCE_HOUR - (23 - i) + 24) % 24;
     return {
-      date: d.toISOString(),
-      value: Math.floor(300 + Math.random() * 700),
-      label: `${String(d.getHours()).padStart(2, "0")}:00`,
+      date: `2026-01-15T${String(hour).padStart(2, "0")}:00:00.000Z`,
+      value: Math.floor(300 + rng() * 700),
+      label: `${String(hour).padStart(2, "0")}:00`,
     };
   });
+}
+
+const TIMELINE_DATA = buildTimelineData();
+
+export function useNotificationTimeline(): ChartDataPoint[] {
+  return TIMELINE_DATA;
 }
 
 export function useChannelDistribution() {

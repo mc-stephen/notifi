@@ -1,7 +1,10 @@
 import { useMemo } from "react";
 import type { Recipient, Device } from "@/lib/types";
+import { createRng } from "@/lib/random";
 
-function generateDevices(recipientId: string, count: number): Device[] {
+const REFERENCE_DATE = new Date("2026-07-27T12:00:00.000Z");
+
+function generateDevices(recipientId: string, count: number, rng: () => number): Device[] {
   const platforms: Device["platform"][] = ["android", "ios", "ipados", "macos", "linux", "windows", "browser"];
   const providers: Record<Device["platform"], string> = {
     android: "FCM",
@@ -15,26 +18,27 @@ function generateDevices(recipientId: string, count: number): Device[] {
 
   return Array.from({ length: count }, (_, i) => {
     const platform = platforms[i % platforms.length];
-    const status: Device["status"] = i === 0 ? "active" : Math.random() > 0.3 ? "active" : Math.random() > 0.5 ? "inactive" : "expired";
-    const createdAt = new Date();
-    createdAt.setDate(createdAt.getDate() - Math.floor(Math.random() * 180));
+    const status: Device["status"] = i === 0 ? "active" : rng() > 0.3 ? "active" : rng() > 0.5 ? "inactive" : "expired";
+    const createdAt = new Date(REFERENCE_DATE);
+    createdAt.setDate(createdAt.getDate() - Math.floor(rng() * 180));
 
     return {
       id: `dev_${recipientId.slice(4)}_${String(i + 1).padStart(2, "0")}`,
       recipientId,
       platform,
-      token: `tok_${Math.random().toString(36).slice(2, 14)}`,
+      token: `tok_${rng().toString(36).slice(2, 14)}`,
       provider: providers[platform],
-      appVersion: `${Math.floor(Math.random() * 3) + 1}.${Math.floor(Math.random() * 10)}.${Math.floor(Math.random() * 20)}`,
-      platformVersion: `${Math.floor(Math.random() * 5) + 14}.0`,
+      appVersion: `${Math.floor(rng() * 3) + 1}.${Math.floor(rng() * 10)}.${Math.floor(rng() * 20)}`,
+      platformVersion: `${Math.floor(rng() * 5) + 14}.0`,
       status,
-      lastActiveAt: status === "active" ? new Date().toISOString() : undefined,
-      expiresAt: status === "expired" ? new Date(Date.now() - 86400000).toISOString() : undefined,
+      lastActiveAt: status === "active" ? REFERENCE_DATE.toISOString() : undefined,
+      expiresAt: status === "expired" ? new Date(REFERENCE_DATE.getTime() - 86400000).toISOString() : undefined,
     };
   });
 }
 
 function generateRecipients(count: number): Recipient[] {
+  const rng = createRng(456);
   const firstNames = ["James", "Mary", "John", "Patricia", "Robert", "Jennifer", "Michael", "Linda", "David", "Elizabeth", "William", "Barbara", "Richard", "Susan", "Joseph"];
   const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson"];
   const domains = ["gmail.com", "yahoo.com", "outlook.com", "hey.com", "fastmail.com"];
@@ -44,25 +48,25 @@ function generateRecipients(count: number): Recipient[] {
   return Array.from({ length: count }, (_, i) => {
     const first = firstNames[i % firstNames.length];
     const last = lastNames[i % lastNames.length];
-    const createdAt = new Date();
-    createdAt.setDate(createdAt.getDate() - Math.floor(Math.random() * 365));
+    const createdAt = new Date(REFERENCE_DATE);
+    createdAt.setDate(createdAt.getDate() - Math.floor(rng() * 365));
 
-    const deviceCount = Math.floor(Math.random() * 3) + 1;
+    const deviceCount = Math.floor(rng() * 3) + 1;
 
     return {
       id: `rcp_${String(i + 1).padStart(4, "0")}`,
       projectId: "proj_1",
       email: `${first.toLowerCase()}.${last.toLowerCase()}${i}@${domains[i % domains.length]}`,
-      phone: Math.random() > 0.3 ? `+1${String(Math.floor(Math.random() * 9000000000) + 1000000000)}` : undefined,
+      phone: rng() > 0.3 ? `+1${String(Math.floor(rng() * 9000000000) + 1000000000)}` : undefined,
       name: `${first} ${last}`,
       attributes: { company: `Company ${i % 50}`, plan: ["free", "pro", "enterprise"][i % 3] },
-      tags: tags.filter(() => Math.random() > 0.6),
-      segments: segments.filter(() => Math.random() > 0.7),
+      tags: tags.filter(() => rng() > 0.6),
+      segments: segments.filter(() => rng() > 0.7),
       language: ["en", "es", "fr", "de", "ja"][i % 5],
       timezone: ["America/New_York", "America/Chicago", "Europe/London", "Europe/Berlin", "Asia/Tokyo"][i % 5],
       createdAt: createdAt.toISOString(),
-      lastActiveAt: Math.random() > 0.2 ? new Date().toISOString() : undefined,
-      devices: generateDevices(`rcp_${String(i + 1).padStart(4, "0")}`, deviceCount),
+      lastActiveAt: rng() > 0.2 ? REFERENCE_DATE.toISOString() : undefined,
+      devices: generateDevices(`rcp_${String(i + 1).padStart(4, "0")}`, deviceCount, rng),
     };
   });
 }
@@ -124,7 +128,7 @@ export function useRecipientNotifications(recipientId: string) {
     return Array.from({ length: count }, (_, i) => {
       const status = (["delivered", "opened", "clicked", "failed"] as const)[i % 4];
       const channel = (["email", "sms", "push-ios", "web-push"] as const)[i % 4];
-      const createdAt = new Date();
+      const createdAt = new Date(REFERENCE_DATE);
       createdAt.setMinutes(createdAt.getMinutes() - i * 30 - ((seed + i) % 30));
 
       return {
