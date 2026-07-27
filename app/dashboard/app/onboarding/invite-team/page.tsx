@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { X, UserPlus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ const ROLES = [
 type Invite = { email: string; role: string };
 
 export default function InviteTeamPage() {
+  const router = useRouter();
   const { teamEmails, updateData } = useOnboardingStore();
   const [invites, setInvites] = useState<Invite[]>(
     teamEmails.length > 0
@@ -47,9 +49,11 @@ export default function InviteTeamPage() {
   const handleContinue = () => {
     updateData({ teamEmails: invites.map((i) => i.email) });
     useOnboardingStore.getState().nextStep();
-    window.location.href = useOnboardingStore
-      .getState()
-      .getStepRoute(useOnboardingStore.getState().currentStep);
+    router.push(
+      useOnboardingStore
+        .getState()
+        .getStepRoute(useOnboardingStore.getState().currentStep)
+    );
   };
 
   return (

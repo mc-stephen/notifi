@@ -35,7 +35,7 @@ export function Stepper({ currentStep, totalSteps, labels }: StepperProps) {
               {labels && labels[i] && (
                 <span
                   className={cn(
-                    "mt-2 text-xs font-medium hidden sm:block",
+                    "mt-2 text-xs font-medium hidden sm:block whitespace-nowrap",
                     i <= currentStep ? "text-foreground" : "text-muted-foreground"
                   )}
                 >

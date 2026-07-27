@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   Mail,
@@ -52,6 +53,7 @@ const CHANNELS = [
 ];
 
 export default function ChannelsPage() {
+  const router = useRouter();
   const { selectedChannels, updateData } = useOnboardingStore();
   const [selected, setSelected] = useState<string[]>(selectedChannels);
 
@@ -64,9 +66,11 @@ export default function ChannelsPage() {
   const handleContinue = () => {
     updateData({ selectedChannels: selected });
     useOnboardingStore.getState().nextStep();
-    window.location.href = useOnboardingStore
-      .getState()
-      .getStepRoute(useOnboardingStore.getState().currentStep);
+    router.push(
+      useOnboardingStore
+        .getState()
+        .getStepRoute(useOnboardingStore.getState().currentStep)
+    );
   };
 
   return (

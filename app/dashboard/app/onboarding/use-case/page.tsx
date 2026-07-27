@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Building2,
   ShoppingBag,
@@ -53,6 +54,7 @@ const USE_CASES = [
 ];
 
 export default function UseCasePage() {
+  const router = useRouter();
   const { useCase, updateData, nextStep, getStepRoute } = useOnboardingStore();
   const [selected, setSelected] = useState<string | null>(useCase);
 
@@ -60,9 +62,8 @@ export default function UseCasePage() {
     if (selected) {
       updateData({ useCase: selected });
       nextStep();
-      // Navigate is handled by layout sync, but we push manually too
-      window.location.href = getStepRoute(
-        useOnboardingStore.getState().currentStep
+      router.push(
+        getStepRoute(useOnboardingStore.getState().currentStep)
       );
     }
   };

@@ -90,7 +90,7 @@ function VerifyEmailForm() {
               Email verified!
             </h1>
             <p className="mt-2 text-muted-foreground">
-              Your account has been verified. Redirecting to dashboard...
+              Your account has been verified. Redirecting to onboarding...
             </p>
           </div>
         )}

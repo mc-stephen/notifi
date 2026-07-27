@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Bell } from "lucide-react";
 import { Stepper } from "@/components/custom/onboarding/stepper";
 import { useOnboardingStore, STEP_ROUTES } from "@/store/onboarding-store";
@@ -23,6 +23,7 @@ export default function OnboardingLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { currentStep, isCompleted } = useOnboardingStore();
 
   // Redirect to dashboard if onboarding is completed
@@ -34,14 +35,13 @@ export default function OnboardingLayout({
 
   // Sync current step with URL
   useEffect(() => {
-    const currentPath = window.location.pathname;
     const stepIndex = STEP_ROUTES.indexOf(
-      currentPath as (typeof STEP_ROUTES)[number]
+      pathname as (typeof STEP_ROUTES)[number]
     );
-    if (stepIndex !== -1 && stepIndex !== currentStep) {
+    if (stepIndex !== -1) {
       useOnboardingStore.getState().setStep(stepIndex);
     }
-  }, [currentStep]);
+  }, [pathname]);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">

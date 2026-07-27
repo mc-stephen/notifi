@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Building2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ const TIMEZONES = [
 ];
 
 export default function OrganizationPage() {
+  const router = useRouter();
   const { orgName, orgLogo, region, timezone, updateData } = useOnboardingStore();
   const [name, setName] = useState(orgName);
   const [selectedRegion, setSelectedRegion] = useState(region);
@@ -51,9 +53,11 @@ export default function OrganizationPage() {
       timezone: selectedTimezone,
     });
     useOnboardingStore.getState().nextStep();
-    window.location.href = useOnboardingStore
-      .getState()
-      .getStepRoute(useOnboardingStore.getState().currentStep);
+    router.push(
+      useOnboardingStore
+        .getState()
+        .getStepRoute(useOnboardingStore.getState().currentStep)
+    );
   };
 
   return (

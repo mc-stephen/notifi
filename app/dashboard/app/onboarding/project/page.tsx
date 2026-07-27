@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Code2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ import { OnboardingNav } from "@/components/custom/onboarding/onboarding-nav";
 import { useOnboardingStore } from "@/store/onboarding-store";
 
 export default function ProjectPage() {
+  const router = useRouter();
   const {
     projectName,
     projectDescription,
@@ -35,9 +37,11 @@ export default function ProjectPage() {
       projectEnvironment: environment,
     });
     useOnboardingStore.getState().nextStep();
-    window.location.href = useOnboardingStore
-      .getState()
-      .getStepRoute(useOnboardingStore.getState().currentStep);
+    router.push(
+      useOnboardingStore
+        .getState()
+        .getStepRoute(useOnboardingStore.getState().currentStep)
+    );
   };
 
   return (

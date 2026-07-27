@@ -80,6 +80,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     const { password: _, ...user } = mockUser;
     const session = createSession(user);
 
+    if (typeof window !== "undefined") {
+      document.cookie = "session_token=mock_session_token; path=/; max-age=604800";
+    }
+
     set({
       user,
       session,
@@ -115,6 +119,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     const session = createSession(newUser);
 
+    if (typeof window !== "undefined") {
+      document.cookie = "session_token=mock_session_token; path=/; max-age=604800";
+    }
+
     set({
       user: newUser,
       session,
@@ -141,6 +149,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     const session = createSession(oauthUser);
 
+    if (typeof window !== "undefined") {
+      document.cookie = "session_token=mock_session_token; path=/; max-age=604800";
+    }
+
     set({
       user: oauthUser,
       session,
@@ -150,6 +162,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
+    if (typeof window !== "undefined") {
+      document.cookie = "session_token=; path=/; max-age=0";
+    }
+
     set({
       user: null,
       session: null,
