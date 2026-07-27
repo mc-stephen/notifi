@@ -1,71 +1,68 @@
-# AGENTS — Notifi
+# AGENTS.md — Notifi
 
-## Layout
+Dual-workspace repository containing an enterprise notification platform dashboard and Rust backend services.
 
-Two independent workspaces — no monorepo tooling:
+## Repository Layout
 
-| Directory | Stack | Purpose |
-|-----------|-------|---------|
-| `app/dashboard/` | Next.js 15, TypeScript, Tailwind v4, shadcn/v4 (Base UI) | NaaS Dashboard |
-| `server/` | Rust, Cargo workspace (13 member crates) | Backend services |
+| Workspace | Directory | Tech Stack |
+|-----------|-----------|------------|
+| **Dashboard** | `app/dashboard/` | Next.js 16 (App Router), React 19, Tailwind CSS v4, shadcn/v4 (Base UI) |
+| **Server** | `server/` | Rust (Cargo workspace, 15 member crates) |
+
+*Note: Workspaces are independent — run commands from their respective directories.*
 
 ---
 
 ## Dashboard (`app/dashboard/`)
 
-- **Framework:** Next.js 15 App Router, React 19
-- **Styling:** Tailwind CSS v4 — all theme values live in `src/app/globals.css` via `@theme inline`. No `tailwind.config.ts`.
-- **UI kit:** shadcn/v4 with Base UI primitives (not Radix)
-- **State:** Zustand stores in `src/store/`
-- **Forms:** React Hook Form + Zod (resolver via `@hookform/resolvers`)
-- **Charts:** Recharts
-- **Virtual list:** `@tanstack/react-virtual`
-
-### Commands (run from `app/dashboard/`)
-
+### Commands
 ```shell
-npm run dev        # dev server (port 3000)
-npm run build      # production build + typecheck
-npm run lint       # ESLint via next lint
+npm run dev      # Dev server (port 3000)
+npm run build    # Production build & TypeScript check
+npm run lint     # ESLint checks
 ```
 
-### Key files
-- `src/app/globals.css` — Tailwind v4 palette, `@theme inline`, glass/card-lift utilities
-- `src/app/(dashboard)/layout.tsx` — sidebar + topbar layout shell
-- `src/store/` — Zustand stores (`tenant-store`, `environment-store`)
-- `src/hooks/` — mock-data hooks (swap for real API later)
-- `src/lib/types.ts` — all shared TS types
-- `src/lib/constants.ts` — tenants, nav items, channel/status labels
+### File Structure & Paths
+- **No `src/` directory**: All code lives directly under `app/dashboard/`.
+  - Global CSS: `app/globals.css` (Tailwind v4 with `@theme inline`)
+  - App Router: `app/(dashboard)/` and `app/layout.tsx`
+  - Components: `components/ui/` (shadcn/v4 Base UI) and `components/custom/`
+  - Hooks: `hooks/`
+  - State: `store/` (Zustand)
+  - Types & Constants: `lib/types.ts`, `lib/constants.ts`
+
+### Framework & Library Conventions
+- **Route Params**: Route `params` in Next.js 16 are Promises. Use `use(params)` in Client Components (`"use client"`) or `await params` in Server Components.
+- **Base UI Primitives**: shadcn/v4 components use `@base-ui/react` primitives. Use `render` prop instead of Radix `asChild` (e.g. `<DropdownMenuTrigger render={<Button ... />} />`).
+- **React 19 & Hydration Rules**:
+  - Do NOT call impure functions (`Math.random()`, `Date.now()`) directly inside component render functions.
+  - Do NOT invoke synchronous `setState` inside `useEffect` (triggers React Compiler errors).
+  - Use `useSyncExternalStore` or client mount checks to defer theme providers and prevent SSR hydration mismatch warnings.
 
 ---
 
-## Server (`server/`)
+## Backend Server (`server/`)
 
-Cargo workspace with `resolver = "2"` and 13 member crates:
-
-| Crate | Role |
-|-------|------|
-| `main` | HTTP server entrypoint |
-| `notification_core` | Shared traits/types (avoids circular deps) |
-| `notification_channels/*` | Per-channel delivery implementations (email, sms, push, slack, telegram, webhook, etc.) |
-
-### Commands (run from `server/`)
+### Commands
 ```shell
-cargo build            # builds all workspace members
-cargo test             # tests all workspace members
-cargo run -p main      # start the HTTP server
+cargo check                     # Check workspace
+cargo test                      # Run unit/integration tests
+cargo run -p server             # Run main HTTP server executable
+cargo test -p email_channel     # Test a specific member crate
 ```
 
-### Config Architecture
-Tenant configs are loaded at runtime from `server/configs/{brand}/{channel_name}/`. Each channel owns its config parsing via the `ChannelConfigLoader` trait in `notification_core`. Files are never compiled in — they're created at runtime (e.g. when a user registers a tenant).
+### Workspace Structure & Package Names
+- Main executable package name is **`server`** (located in `server/main/`). Run with `cargo run -p server` (not `main`).
+- Shared traits: `notification_core` (`server/notification/core`).
+- Channel implementations: `notification/channels/*` (`email_channel`, `sms_channel`, `slack_channel`, etc.).
 
-Example layout:
-```
-server/configs/acme/email/config.json
-server/configs/acme/fcm/service-account.json
-server/configs/acme/slack/config.env
-```
+### Build & Test Quirk
+- `web_channel` currently has `web-push` API mismatch compile errors. To check or test the rest of the workspace:
+  ```shell
+  cargo check --workspace --exclude web_channel
+  cargo test --workspace --exclude web_channel
+  ```
 
-### Gotchas
-- **Cyclic dependencies** between `main` and channel crates will fail. Define shared traits in `notification_core`, never import `main` from a channel crate.
-- **Config parsing** lives in the channel crate, not in `notification_core`. The core only provides `ConfigResolver` for path resolution and `ConfigError` for error handling.
+### Architecture & Config Gotchas
+- **No Cyclic Dependencies**: Channel crates depend on `notification_core`, never on `server` or each other.
+- **Runtime Tenant Config**: Configs are loaded at runtime from `server/configs/{brand}/{channel_name}/`. Each channel crate parses its own config via `ChannelConfigLoader`.

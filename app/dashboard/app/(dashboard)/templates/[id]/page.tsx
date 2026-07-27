@@ -24,7 +24,117 @@ import {
   Variable,
   Clock,
   CheckCircle2,
+  FileText,
 } from "lucide-react";
+
+function NewTemplateForm() {
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [channel, setChannel] = useState("email");
+  const [body, setBody] = useState("");
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Create Template"
+        description="Design a new notification template"
+        breadcrumbs={[
+          { label: "Dashboard", href: "/" },
+          { label: "Templates", href: "/templates" },
+          { label: "New" },
+        ]}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => router.push("/templates")}>
+              <ArrowLeft className="size-3.5 mr-1" /> Cancel
+            </Button>
+            <Button size="sm" className="gap-1.5" onClick={() => router.push("/templates")}>
+              <Save className="size-3.5" /> Create template
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="size-4" /> Template Details
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Template name</label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Welcome Email"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Channel</label>
+              <select
+                value={channel}
+                onChange={(e) => setChannel(e.target.value)}
+                className="w-full rounded-md border bg-transparent px-3 py-2 text-sm"
+              >
+                <option value="email">Email</option>
+                <option value="sms">SMS</option>
+                <option value="push-android">Android Push</option>
+                <option value="push-ios">Apple Push</option>
+                <option value="web-push">Web Push</option>
+                <option value="slack">Slack</option>
+                <option value="discord">Discord</option>
+                <option value="webhook">Webhook</option>
+              </select>
+            </div>
+            {channel === "email" && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Subject</label>
+                <Input placeholder="Email subject line" />
+              </div>
+            )}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Body</label>
+              <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Write your template body here. Use {{variable_name}} for dynamic values."
+                className="w-full min-h-[300px] rounded-md border bg-transparent px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Variables</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">
+                Variables are detected automatically when you use {"{{variable_name}}"} syntax in the body.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Preview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">
+                Preview will be available after creating the template.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function TemplateEditor({ template }: { template: NonNullable<ReturnType<typeof useTemplate>> }) {
   const [body, setBody] = useState(template.body);
@@ -173,6 +283,10 @@ function VersionHistory({ template }: { template: NonNullable<ReturnType<typeof 
 function TemplateDetail({ id }: { id: string }) {
   const template = useTemplate(id);
   const router = useRouter();
+
+  if (id === "new") {
+    return <NewTemplateForm />;
+  }
 
   if (!template) {
     return (

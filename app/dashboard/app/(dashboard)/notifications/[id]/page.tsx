@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo } from "react";
+import { use, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useNotification } from "@/hooks";
 import { PageHeader } from "@/components/custom/page-header";
@@ -11,6 +11,7 @@ import { JsonViewer } from "@/components/custom/json-viewer";
 import { CodeBlock } from "@/components/custom/code-block";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
@@ -26,6 +27,143 @@ import {
   Globe,
 } from "lucide-react";
 import Link from "next/link";
+
+function NewNotificationForm() {
+  const router = useRouter();
+  const [channel, setChannel] = useState("email");
+  const [recipientId, setRecipientId] = useState("");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [priority, setPriority] = useState("normal");
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Send Notification"
+        description="Manually dispatch a notification to a recipient"
+        breadcrumbs={[
+          { label: "Dashboard", href: "/" },
+          { label: "Notifications", href: "/notifications" },
+          { label: "New" },
+        ]}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => router.push("/notifications")}>
+              <ArrowLeft className="size-3.5 mr-1" /> Cancel
+            </Button>
+            <Button size="sm" className="gap-1.5" onClick={() => router.push("/notifications")}>
+              <Send className="size-3.5" /> Send notification
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Notification Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Channel</label>
+                <select
+                  value={channel}
+                  onChange={(e) => setChannel(e.target.value)}
+                  className="w-full rounded-md border bg-transparent px-3 py-2 text-sm"
+                >
+                  <option value="email">Email</option>
+                  <option value="sms">SMS</option>
+                  <option value="push-android">Android Push</option>
+                  <option value="push-ios">Apple Push</option>
+                  <option value="web-push">Web Push</option>
+                  <option value="slack">Slack</option>
+                  <option value="discord">Discord</option>
+                  <option value="webhook">Webhook</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Priority</label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="w-full rounded-md border bg-transparent px-3 py-2 text-sm"
+                >
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Recipient ID</label>
+              <Input
+                value={recipientId}
+                onChange={(e) => setRecipientId(e.target.value)}
+                placeholder="e.g. rcp_0001"
+              />
+            </div>
+            {channel === "email" && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Subject</label>
+                <Input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Email subject line"
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Body</label>
+              <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Notification body content..."
+                className="w-full min-h-[200px] rounded-md border bg-transparent px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Preview</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-1">
+                <span className="text-xs text-muted-foreground">Channel</span>
+                <p className="text-sm font-medium capitalize">{channel.replace(/-/g, " ")}</p>
+              </div>
+              <div className="space-y-1">
+                <span className="text-xs text-muted-foreground">Priority</span>
+                <p className="text-sm font-medium capitalize">{priority}</p>
+              </div>
+              <div className="space-y-1">
+                <span className="text-xs text-muted-foreground">Recipient</span>
+                <p className="text-sm font-mono text-xs">{recipientId || "—"}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Zap className="size-3.5" /> Quick Tips
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-xs text-muted-foreground">
+              <p>Use a valid recipient ID that exists in your project.</p>
+              <p>The notification will be dispatched immediately through the configured channel.</p>
+              <p>You can track delivery status from the notifications list.</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Timeline() {
   const steps = useMemo(() => {
@@ -75,6 +213,10 @@ function Timeline() {
 function NotificationDetail({ id }: { id: string }) {
   const notification = useNotification(id);
   const router = useRouter();
+
+  if (id === "new") {
+    return <NewNotificationForm />;
+  }
 
   if (!notification) {
     return (
