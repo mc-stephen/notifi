@@ -7,7 +7,7 @@ const PUBLIC_PATHS = ["/auth", "/onboarding"];
 // Paths that should always be accessible
 const EXEMPT_PATHS = ["/api", "/_next", "/favicon.ico"];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Skip middleware for exempt paths
