@@ -5,4 +5,5 @@
 5. The dashboard looks good, but the component box aint arrange well, i mean those after/below the system health component. we either make them bento grid like or we make them of equal height.
 6. The notification icon on the header section does notting, so we will have to implement it logic, which will show a small floating notitcation dialog.
 7. in the "Channel" section, the "provider" page will be for adding providers like adding 3 provider for emailing, and then the "channel" page will be for configuring a channel (eg email) and then selecting one of the pre-config providers
-8. 
+8. On Dashboard, the side bar is not sized well, cause on a small screen the sidebar header shrink and the link list doesn't scroll vertically when needed.
+9. 
