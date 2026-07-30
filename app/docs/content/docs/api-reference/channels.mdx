@@ -1,0 +1,40 @@
+---
+title: Channels
+description: Configure and list delivery channels.
+---
+
+## List Channels
+
+<GetMethod />
+
+```http
+GET /channels
+Authorization: Bearer YOUR_API_KEY
+```
+
+## Configure a Channel
+
+<PostMethod />
+
+```http
+POST /channels
+Authorization: Bearer YOUR_API_KEY
+Content-Type: application/json
+
+{
+  "type": "email",
+  "name": "Production Email",
+  "config": {
+    "provider": "sendgrid",
+    "api_key": "SG.xxxxx"
+  }
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `type` | string | ✅ | email, sms, push, webhook |
+| `name` | string | ✅ | Channel display name |
+| `config` | object | ✅ | Provider configuration |

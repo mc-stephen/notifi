@@ -1,0 +1,16 @@
+{
+  "title": "API Reference",
+  "root": true,
+  "pages": [
+    "index",
+    "sendNotification",
+    "listNotifications",
+    "getNotification",
+    "createTemplate",
+    "listTemplates",
+    "configureChannel",
+    "listChannels",
+    "createEvent",
+    "listEvents"
+  ]
+}

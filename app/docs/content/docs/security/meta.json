@@ -1,0 +1,10 @@
+{
+  "title": "Security",
+  "root": true,
+  "pages": [
+    "index",
+    "authentication",
+    "encryption",
+    "compliance"
+  ]
+}

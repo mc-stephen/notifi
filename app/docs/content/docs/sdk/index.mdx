@@ -1,0 +1,80 @@
+---
+title: SDKs & Libraries
+description: Official client libraries for the Notifi API.
+---
+
+Notifi provides first-party SDKs for the most popular languages and platforms. All SDKs are open source and available on GitHub.
+
+<SDKBadge sdk="typescript" /> <SDKBadge sdk="javascript" /> <SDKBadge sdk="python" /> <SDKBadge sdk="go" /> <SDKBadge sdk="rust" /> <SDKBadge sdk="java" />
+
+## Available SDKs
+
+| Language | Package | Status |
+|----------|---------|--------|
+| TypeScript | `@notifi/sdk` | Stable |
+| JavaScript | `@notifi/sdk` | Stable |
+| Python | `notifi-sdk` | Beta |
+| Go | `github.com/notifi/notifi-go` | Beta |
+| Rust | `notifi-sdk` | Alpha |
+| Java | `com.notifi:sdk` | Alpha |
+
+## Installation
+
+### TypeScript / JavaScript
+
+```bash
+npm install @notifi/sdk
+```
+
+### Python
+
+```bash
+pip install notifi-sdk
+```
+
+### Go
+
+```bash
+go get github.com/notifi/notifi-go
+```
+
+### Rust
+
+```toml
+[dependencies]
+notifi-sdk = "0.1"
+```
+
+### Java
+
+```xml
+<dependency>
+  <groupId>com.notifi</groupId>
+  <artifactId>sdk</artifactId>
+  <version>0.1.0</version>
+</dependency>
+```
+
+## Usage Example
+
+All SDKs follow the same pattern:
+
+1. Initialize the client with your API key
+2. Use the client to send notifications, manage templates, etc.
+
+```typescript
+import { NotifiClient } from '@notifi/sdk';
+
+const client = new NotifiClient({
+  apiKey: 'nf_key_xxx',
+});
+
+const notification = await client.notifications.send({
+  channel: 'email',
+  to: 'user@example.com',
+  template: 'welcome-email',
+  data: { name: 'Alice' },
+});
+```
+
+See the individual SDK pages for detailed documentation and examples.

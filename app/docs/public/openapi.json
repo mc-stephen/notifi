@@ -1,0 +1,337 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Notifi API",
+    "version": "1.0.0",
+    "description": "REST API for the Notifi notification platform"
+  },
+  "servers": [
+    {
+      "url": "https://api.notifi.io/v1",
+      "description": "Production"
+    }
+  ],
+  "paths": {
+    "/notifications": {
+      "get": {
+        "summary": "List all notifications",
+        "description": "Returns a paginated list of notifications for your project.",
+        "operationId": "listNotifications",
+        "tags": ["Notifications"],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 }, "description": "Number of notifications to return" },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 }, "description": "Offset for pagination" },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["queued", "delivered", "failed"] }, "description": "Filter by status" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of notifications",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NotificationList" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Send a notification",
+        "description": "Send a notification to a recipient through the specified channel.",
+        "operationId": "sendNotification",
+        "tags": ["Notifications"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SendNotificationRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Notification created successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Notification" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/{id}": {
+      "get": {
+        "summary": "Get a notification",
+        "description": "Retrieve details of a specific notification by ID.",
+        "operationId": "getNotification",
+        "tags": ["Notifications"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Notification ID" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notification details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Notification" }
+              }
+            }
+          },
+          "404": { "description": "Notification not found" }
+        }
+      }
+    },
+    "/templates": {
+      "get": {
+        "summary": "List templates",
+        "operationId": "listTemplates",
+        "tags": ["Templates"],
+        "responses": {
+          "200": {
+            "description": "List of templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/Template" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a template",
+        "operationId": "createTemplate",
+        "tags": ["Templates"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateTemplateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Template created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Template" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/channels": {
+      "get": {
+        "summary": "List channels",
+        "operationId": "listChannels",
+        "tags": ["Channels"],
+        "responses": {
+          "200": {
+            "description": "List of configured channels",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/Channel" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Configure a channel",
+        "operationId": "configureChannel",
+        "tags": ["Channels"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ConfigureChannelRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Channel configured",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Channel" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "summary": "List event rules",
+        "operationId": "listEvents",
+        "tags": ["Events"],
+        "responses": {
+          "200": {
+            "description": "List of event rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/Event" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create an event rule",
+        "operationId": "createEvent",
+        "tags": ["Events"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateEventRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Event rule created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Event" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Notification": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "Unique notification identifier" },
+          "status": { "type": "string", "enum": ["queued", "delivered", "failed", "pending"], "description": "Delivery status" },
+          "channel": { "type": "string", "description": "Delivery channel used" },
+          "to": { "type": "string", "description": "Recipient address or identifier" },
+          "template": { "type": "string", "description": "Template ID used" },
+          "data": { "type": "object", "description": "Template variables" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "status", "channel", "to", "created_at"]
+      },
+      "NotificationList": {
+        "type": "object",
+        "properties": {
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/Notification" } },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "limit": { "type": "integer" },
+              "offset": { "type": "integer" },
+              "total": { "type": "integer" }
+            }
+          }
+        }
+      },
+      "SendNotificationRequest": {
+        "type": "object",
+        "properties": {
+          "channel": { "type": "string", "description": "Delivery channel (email, sms, push, webhook)" },
+          "to": { "type": "string", "description": "Recipient address or device token" },
+          "template": { "type": "string", "description": "Template ID" },
+          "data": { "type": "object", "description": "Template variable values" }
+        },
+        "required": ["channel", "to"]
+      },
+      "Template": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "channel": { "type": "string" },
+          "subject": { "type": "string" },
+          "body": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "name", "channel"]
+      },
+      "CreateTemplateRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "channel": { "type": "string" },
+          "subject": { "type": "string" },
+          "body": { "type": "string" }
+        },
+        "required": ["name", "channel", "body"]
+      },
+      "Channel": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string", "enum": ["email", "sms", "push", "webhook"] },
+          "name": { "type": "string" },
+          "config": { "type": "object" },
+          "enabled": { "type": "boolean" },
+          "created_at": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "type", "name", "enabled"]
+      },
+      "ConfigureChannelRequest": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["email", "sms", "push", "webhook"] },
+          "name": { "type": "string" },
+          "config": { "type": "object" }
+        },
+        "required": ["type", "name", "config"]
+      },
+      "Event": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "trigger": { "type": "string" },
+          "template": { "type": "string" },
+          "channel": { "type": "string" },
+          "conditions": { "type": "object" },
+          "enabled": { "type": "boolean" },
+          "created_at": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "name", "trigger", "enabled"]
+      },
+      "CreateEventRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "trigger": { "type": "string" },
+          "template": { "type": "string" },
+          "channel": { "type": "string" },
+          "conditions": { "type": "object" }
+        },
+        "required": ["name", "trigger", "template", "channel"]
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "API Key"
+      }
+    }
+  }
+}

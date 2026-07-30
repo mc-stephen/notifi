@@ -1,0 +1,12 @@
+{
+  "title": "Getting Started",
+  "pages": [
+    "index",
+    "create-account",
+    "create-organization",
+    "create-project",
+    "generate-api-key",
+    "install-sdk",
+    "send-first-notification"
+  ]
+}

@@ -1,0 +1,43 @@
+---
+title: Events
+description: Create and list event-driven notification rules.
+---
+
+## List Event Rules
+
+<GetMethod />
+
+```http
+GET /events
+Authorization: Bearer YOUR_API_KEY
+```
+
+## Create an Event Rule
+
+<PostMethod />
+
+```http
+POST /events
+Authorization: Bearer YOUR_API_KEY
+Content-Type: application/json
+
+{
+  "name": "User Signed Up",
+  "trigger": "user.created",
+  "template": "welcome-email",
+  "channel": "email",
+  "conditions": {
+    "tenant": "acme-corp"
+  }
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | ✅ | Event rule name |
+| `trigger` | string | ✅ | Event trigger identifier |
+| `template` | string | ✅ | Template to use |
+| `channel` | string | ✅ | Delivery channel |
+| `conditions` | object | ❌ | Filter conditions |

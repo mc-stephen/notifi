@@ -1,0 +1,5 @@
+.next/
+out/
+.source/
+node_modules/
+public/search-index.json

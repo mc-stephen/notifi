@@ -1,0 +1,11 @@
+{
+  "title": "Examples",
+  "pages": [
+    "index",
+    "password-reset",
+    "welcome-email",
+    "order-confirmation",
+    "two-factor-auth",
+    "batch-notifications"
+  ]
+}

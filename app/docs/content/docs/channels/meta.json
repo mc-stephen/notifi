@@ -1,0 +1,10 @@
+{
+  "title": "Channels",
+  "pages": [
+    "index",
+    "email",
+    "sms",
+    "push",
+    "webhooks"
+  ]
+}

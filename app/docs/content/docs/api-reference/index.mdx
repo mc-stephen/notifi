@@ -1,0 +1,40 @@
+---
+title: API Reference
+description: Complete reference for the Notifi REST API.
+---
+
+Base URL: `https://api.notifi.dev/v1`
+
+All API requests require authentication via a Bearer token in the `Authorization` header.
+
+## Notifications
+
+<EndpointCard method="POST" path="/notifications" description="Send a notification" />
+<EndpointCard method="GET" path="/notifications" description="List notifications" />
+<EndpointCard method="GET" path="/notifications/{id}" description="Get a notification" />
+
+## Templates
+
+<EndpointCard method="POST" path="/templates" description="Create a template" />
+<EndpointCard method="GET" path="/templates" description="List templates" />
+
+## Channels
+
+<EndpointCard method="POST" path="/channels" description="Configure a channel" />
+<EndpointCard method="GET" path="/channels" description="List channels" />
+
+## Events
+
+<EndpointCard method="POST" path="/events" description="Create an event rule" />
+<EndpointCard method="GET" path="/events" description="List event rules" />
+
+## Rate Limiting
+
+API requests are rate limited. See the [Rate Limits](/docs/rate-limits) page for details.
+
+## Status Codes
+
+<StatusLabel code={200} label="OK" /> <StatusLabel code={201} label="Created" />
+<StatusLabel code={400} label="Bad Request" /> <StatusLabel code={401} label="Unauthorized" />
+<StatusLabel code={404} label="Not Found" /> <StatusLabel code={429} label="Too Many Requests" />
+<StatusLabel code={500} label="Internal Server Error" />

@@ -1,0 +1,39 @@
+---
+title: Templates
+description: Create and list notification templates.
+---
+
+## List Templates
+
+<GetMethod />
+
+```http
+GET /templates
+Authorization: Bearer YOUR_API_KEY
+```
+
+## Create a Template
+
+<PostMethod />
+
+```http
+POST /templates
+Authorization: Bearer YOUR_API_KEY
+Content-Type: application/json
+
+{
+  "name": "Welcome Email",
+  "channel": "email",
+  "subject": "Welcome {{name}}!",
+  "body": "<h1>Hi {{name}}</h1><p>Thanks for joining.</p>"
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | ✅ | Template display name |
+| `channel` | string | ✅ | Target delivery channel |
+| `subject` | string | ❌ | Email subject line |
+| `body` | string | ✅ | Template body (supports variables) |

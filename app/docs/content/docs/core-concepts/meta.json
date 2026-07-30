@@ -1,0 +1,11 @@
+{
+  "title": "Core Concepts",
+  "pages": [
+    "index",
+    "notifications",
+    "recipients",
+    "templates",
+    "events",
+    "scheduling"
+  ]
+}

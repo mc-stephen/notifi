@@ -1,0 +1,14 @@
+{
+  "title": "Guides",
+  "pages": [
+    "index",
+    "building-a-notification-service",
+    "transactional-emails",
+    "push-notifications",
+    "scheduling-notifications",
+    "retry-strategies",
+    "webhook-security",
+    "scaling-notifications",
+    "multi-tenant-organizations"
+  ]
+}
