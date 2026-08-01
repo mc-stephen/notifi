@@ -95,7 +95,7 @@ export function SocialButtons({
             key={provider}
             type="button"
             variant="outline"
-            className="gap-2"
+            className="h-10 gap-2"
             onClick={handlers[config.handler]}
             disabled={isLoading || disabled}
           >

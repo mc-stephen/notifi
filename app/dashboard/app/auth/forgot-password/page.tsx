@@ -82,7 +82,7 @@ export default function ForgotPasswordPage() {
           </div>
 
           <Link href="/auth/login">
-            <Button variant="ghost" className="w-full gap-2">
+            <Button variant="ghost" className="h-10 w-full gap-2">
               <ArrowLeft className="size-4" />
               Back to sign in
             </Button>
@@ -125,7 +125,7 @@ export default function ForgotPasswordPage() {
             />
           </div>
 
-          <Button type="submit" className="w-full" disabled={isLoading}>
+          <Button type="submit" className="h-10 w-full" disabled={isLoading}>
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />
@@ -138,7 +138,7 @@ export default function ForgotPasswordPage() {
         </form>
 
         <Link href="/auth/login">
-          <Button variant="ghost" className="w-full gap-2">
+          <Button variant="ghost" className="h-10 w-full gap-2">
             <ArrowLeft className="size-4" />
             Back to sign in
           </Button>

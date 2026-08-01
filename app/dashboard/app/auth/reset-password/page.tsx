@@ -159,7 +159,7 @@ function ResetPasswordForm() {
             )}
           </div>
 
-          <Button type="submit" className="w-full" disabled={isLoading}>
+          <Button type="submit" className="h-10 w-full" disabled={isLoading}>
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />
@@ -172,7 +172,7 @@ function ResetPasswordForm() {
         </form>
 
         <Link href="/auth/login">
-          <Button variant="ghost" className="w-full gap-2">
+          <Button variant="ghost" className="h-10 w-full gap-2">
             <ArrowLeft className="size-4" />
             Back to sign in
           </Button>

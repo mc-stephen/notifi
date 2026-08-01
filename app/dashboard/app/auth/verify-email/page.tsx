@@ -105,7 +105,7 @@ function VerifyEmailForm() {
             {error && <ErrorBanner message={error} className="mt-4" />}
 
             <div className="mt-6 flex flex-col gap-3">
-              <Button onClick={handleResend} disabled={isLoading}>
+              <Button className="h-10" onClick={handleResend} disabled={isLoading}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 size-4 animate-spin" />
@@ -118,7 +118,7 @@ function VerifyEmailForm() {
                   </>
                 )}
               </Button>
-              <Button variant="ghost" onClick={handleBackToLogin}>
+              <Button variant="ghost" className="h-10" onClick={handleBackToLogin}>
                 Back to sign in
               </Button>
             </div>
@@ -138,7 +138,7 @@ function VerifyEmailForm() {
             {error && <ErrorBanner message={error} className="mt-4" />}
 
             <div className="mt-6 flex flex-col gap-3">
-              <Button onClick={handleResend} disabled={isLoading}>
+              <Button className="h-10" onClick={handleResend} disabled={isLoading}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 size-4 animate-spin" />
@@ -151,7 +151,7 @@ function VerifyEmailForm() {
                   </>
                 )}
               </Button>
-              <Button variant="ghost" onClick={handleBackToLogin}>
+              <Button variant="ghost" className="h-10" onClick={handleBackToLogin}>
                 Back to sign in
               </Button>
             </div>
@@ -171,7 +171,7 @@ function VerifyEmailForm() {
             </p>
 
             <div className="mt-6 flex flex-col gap-3">
-              <Button onClick={handleResend} disabled={isLoading}>
+              <Button className="h-10" onClick={handleResend} disabled={isLoading}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 size-4 animate-spin" />
@@ -184,7 +184,7 @@ function VerifyEmailForm() {
                   </>
                 )}
               </Button>
-              <Button variant="ghost" onClick={handleBackToLogin}>
+              <Button variant="ghost" className="h-10" onClick={handleBackToLogin}>
                 Back to sign in
               </Button>
             </div>
