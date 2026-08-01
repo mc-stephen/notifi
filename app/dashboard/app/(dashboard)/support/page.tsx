@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { env } from "@/lib/env";
 import {
   Dialog,
   DialogContent,
@@ -69,7 +70,7 @@ export default function SupportPage() {
               <span className="text-sm text-muted-foreground">Documentation</span>
               <BookOpen className="size-4 text-muted-foreground" />
             </div>
-            <a href="https://docs.notifi.dev" target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline mt-1 block">
+            <a href={env.docs()} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline mt-1 block">
               Browse docs →
             </a>
           </CardContent>
@@ -80,7 +81,7 @@ export default function SupportPage() {
               <span className="text-sm text-muted-foreground">API Reference</span>
               <Zap className="size-4 text-muted-foreground" />
             </div>
-            <a href="https://docs.notifi.dev/api" target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline mt-1 block">
+            <a href={env.docs("/api")} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline mt-1 block">
               View API docs →
             </a>
           </CardContent>
@@ -146,11 +147,11 @@ export default function SupportPage() {
             </CardHeader>
             <CardContent className="space-y-2">
               {[
-                { label: "Getting Started Guide", href: "https://docs.notifi.dev/getting-started", icon: BookOpen },
-                { label: "API Reference", href: "https://docs.notifi.dev/api", icon: Zap },
-                { label: "SDK Documentation", href: "https://docs.notifi.dev/sdks", icon: FileText },
-                { label: "Changelog", href: "https://docs.notifi.dev/changelog", icon: FileText },
-                { label: "Status Page", href: "https://status.notifi.dev", icon: CheckCircle2 },
+                { label: "Getting Started Guide", href: env.docs("/getting-started"), icon: BookOpen },
+                { label: "API Reference", href: env.docs("/api"), icon: Zap },
+                { label: "SDK Documentation", href: env.docs("/sdks"), icon: FileText },
+                { label: "Changelog", href: env.docs("/changelog"), icon: FileText },
+                { label: "Status Page", href: env.status, icon: CheckCircle2 },
               ].map((link) => (
                 <a
                   key={link.label}

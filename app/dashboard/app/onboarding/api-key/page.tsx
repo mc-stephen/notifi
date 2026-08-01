@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { OnboardingNav } from "@/components/custom/onboarding/onboarding-nav";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { createRng } from "@/lib/random";
+import { env } from "@/lib/env";
 
 function generateMockKey(): string {
   const rng = createRng(2026);
@@ -115,7 +116,7 @@ export default function ApiKeyPage() {
           <div className="overflow-x-auto rounded-xl border bg-muted/30 p-4">
             <pre className="text-xs">
               <code>
-                {`curl -X POST https://api.notifi.dev/v1/notifications \\
+                {`curl -X POST ${env.apiBase}/v1/notifications \\
   -H "Authorization: Bearer ${revealed ? key : "nft_live_••••••••••••••••"}" \\
   -H "Content-Type: application/json" \\
   -d '{"recipient": "user@example.com", "template": "welcome"}'`}

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { PartyPopper, ArrowRight, BookOpen, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { env } from "@/lib/env";
 import { useOnboardingStore } from "@/store/onboarding-store";
 
 export default function SuccessPage() {
@@ -75,7 +76,7 @@ export default function SuccessPage() {
         </Button>
         <Button
           variant="outline"
-          onClick={() => window.open("https://docs.notifi.dev", "_blank")}
+          onClick={() => window.open(env.docs(), "_blank")}
           className="w-full"
         >
           <BookOpen className="mr-2 size-4" />

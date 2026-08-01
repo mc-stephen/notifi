@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { env } from "@/lib/env";
 import {
   Package,
   Copy,
@@ -47,7 +48,7 @@ await client.sendNotification({
   body: "Thank you for signing up.",
   priority: "normal",
 });`,
-    docs: "https://docs.notifi.dev/sdks/node",
+    docs: env.docs("/sdks/node"),
     status: "stable",
   },
   {
@@ -67,7 +68,7 @@ client.send_notification(
     body="Thank you for signing up.",
     priority="normal",
 )`,
-    docs: "https://docs.notifi.dev/sdks/python",
+    docs: env.docs("/sdks/python"),
     status: "stable",
   },
   {
@@ -98,7 +99,7 @@ func main() {
     }
     fmt.Println("Sent:", result.ID)
 }`,
-    docs: "https://docs.notifi.dev/sdks/go",
+    docs: env.docs("/sdks/go"),
     status: "stable",
   },
   {
@@ -127,7 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Sent: {}", result.id);
     Ok(())
 }`,
-    docs: "https://docs.notifi.dev/sdks/rust",
+    docs: env.docs("/sdks/rust"),
     status: "beta",
   },
   {
@@ -152,7 +153,7 @@ await notifi.sendNotification({
   channel: "push-ios",
   body: "New message received",
 });`,
-    docs: "https://docs.notifi.dev/sdks/react-native",
+    docs: env.docs("/sdks/react-native"),
     status: "stable",
   },
   {
@@ -173,7 +174,7 @@ await client.sendNotification(
   body: 'New message received',
   priority: 'normal',
 );`,
-    docs: "https://docs.notifi.dev/sdks/flutter",
+    docs: env.docs("/sdks/flutter"),
     status: "beta",
   },
   {
@@ -194,7 +195,7 @@ let result = try await client.sendNotification(
 )
 
 print("Sent: \\(result.id)")`,
-    docs: "https://docs.notifi.dev/sdks/swift",
+    docs: env.docs("/sdks/swift"),
     status: "alpha",
   },
   {
@@ -215,7 +216,7 @@ val result = client.sendNotification(
 )
 
 println("Sent: \${result.id}")`,
-    docs: "https://docs.notifi.dev/sdks/kotlin",
+    docs: env.docs("/sdks/kotlin"),
     status: "alpha",
   },
   {
@@ -224,7 +225,7 @@ println("Sent: \${result.id}")`,
     language: "Shell / Bash",
     version: "API v1",
     install: "No installation required",
-    code: `curl -X POST https://api.notifi.dev/v1/notifications \\
+    code: `curl -X POST ${env.apiBase}/v1/notifications \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -234,7 +235,7 @@ println("Sent: \${result.id}")`,
     "body": "Thank you for signing up.",
     "priority": "normal"
   }'`,
-    docs: "https://docs.notifi.dev/api",
+    docs: env.docs("/api"),
     status: "stable",
   },
 ];
@@ -271,7 +272,7 @@ export default function SdkPage() {
         description="Client libraries for every platform"
         breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "SDKs" }]}
         actions={
-          <Button size="sm" variant="outline" className="gap-1.5" render={<a href="https://docs.notifi.dev" target="_blank" rel="noopener noreferrer" />}>
+          <Button size="sm" variant="outline" className="gap-1.5" render={<a href={env.docs()} target="_blank" rel="noopener noreferrer" />}>
             <BookOpen className="size-3.5" /> API docs <ExternalLink className="size-3 ml-1" />
           </Button>
         }
@@ -398,7 +399,7 @@ export default function SdkPage() {
                       <BookOpen className="size-3.5" /> Documentation
                     </a>
                     <a
-                      href="https://github.com/notifi"
+                      href={env.github}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { env } from "@/lib/env";
 import {
   Dialog,
   DialogContent,
@@ -35,15 +36,15 @@ type Integration = {
 };
 
 const INTEGRATIONS: Integration[] = [
-  { id: "segment", name: "Segment", category: "Analytics", description: "Send notification events to Segment for analytics and audience building.", icon: "S", connected: true, eventsSupported: 12, docs: "https://docs.notifi.dev/integrations/segment" },
-  { id: "posthog", name: "PostHog", category: "Analytics", description: "Track notification events in PostHog for product analytics.", icon: "P", connected: false, eventsSupported: 8, docs: "https://docs.notifi.dev/integrations/posthog" },
-  { id: "datadog", name: "Datadog", category: "Monitoring", description: "Forward notification metrics and logs to Datadog.", icon: "D", connected: true, eventsSupported: 15, docs: "https://docs.notifi.dev/integrations/datadog" },
-  { id: "sentry", name: "Sentry", category: "Error Tracking", description: "Capture notification delivery errors in Sentry.", icon: "S", connected: false, eventsSupported: 6, docs: "https://docs.notifi.dev/integrations/sentry" },
-  { id: "zapier", name: "Zapier", category: "Automation", description: "Trigger Zaps from notification events for workflow automation.", icon: "Z", connected: false, eventsSupported: 20, docs: "https://docs.notifi.dev/integrations/zapier" },
-  { id: "mixpanel", name: "Mixpanel", category: "Analytics", description: "Track notification engagement in Mixpanel funnels.", icon: "M", connected: false, eventsSupported: 10, docs: "https://docs.notifi.dev/integrations/mixpanel" },
-  { id: "slack", name: "Slack", category: "Communication", description: "Send notification alerts to Slack channels.", icon: "S", connected: true, eventsSupported: 5, docs: "https://docs.notifi.dev/integrations/slack" },
-  { id: "pagerduty", name: "PagerDuty", category: "Incident Management", description: "Create PagerDuty incidents from critical notification failures.", icon: "P", connected: false, eventsSupported: 4, docs: "https://docs.notifi.dev/integrations/pagerduty" },
-  { id: "opentelemetry", name: "OpenTelemetry", category: "Observability", description: "Export notification traces and metrics via OTLP.", icon: "O", connected: false, eventsSupported: 18, docs: "https://docs.notifi.dev/integrations/opentelemetry" },
+  { id: "segment", name: "Segment", category: "Analytics", description: "Send notification events to Segment for analytics and audience building.", icon: "S", connected: true, eventsSupported: 12, docs: env.docs("/integrations/segment") },
+  { id: "posthog", name: "PostHog", category: "Analytics", description: "Track notification events in PostHog for product analytics.", icon: "P", connected: false, eventsSupported: 8, docs: env.docs("/integrations/posthog") },
+  { id: "datadog", name: "Datadog", category: "Monitoring", description: "Forward notification metrics and logs to Datadog.", icon: "D", connected: true, eventsSupported: 15, docs: env.docs("/integrations/datadog") },
+  { id: "sentry", name: "Sentry", category: "Error Tracking", description: "Capture notification delivery errors in Sentry.", icon: "S", connected: false, eventsSupported: 6, docs: env.docs("/integrations/sentry") },
+  { id: "zapier", name: "Zapier", category: "Automation", description: "Trigger Zaps from notification events for workflow automation.", icon: "Z", connected: false, eventsSupported: 20, docs: env.docs("/integrations/zapier") },
+  { id: "mixpanel", name: "Mixpanel", category: "Analytics", description: "Track notification engagement in Mixpanel funnels.", icon: "M", connected: false, eventsSupported: 10, docs: env.docs("/integrations/mixpanel") },
+  { id: "slack", name: "Slack", category: "Communication", description: "Send notification alerts to Slack channels.", icon: "S", connected: true, eventsSupported: 5, docs: env.docs("/integrations/slack") },
+  { id: "pagerduty", name: "PagerDuty", category: "Incident Management", description: "Create PagerDuty incidents from critical notification failures.", icon: "P", connected: false, eventsSupported: 4, docs: env.docs("/integrations/pagerduty") },
+  { id: "opentelemetry", name: "OpenTelemetry", category: "Observability", description: "Export notification traces and metrics via OTLP.", icon: "O", connected: false, eventsSupported: 18, docs: env.docs("/integrations/opentelemetry") },
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
