@@ -22,14 +22,11 @@ function VerifyEmailForm() {
   const token = searchParams.get("token") || "";
   const { verifyEmail, isLoading } = useAuth();
 
-  const [state, setState] = useState<VerificationState>("loading");
+  const [state, setState] = useState<VerificationState>(token ? "loading" : "resent");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) {
-      setState("resent");
-      return;
-    }
+    if (!token) return;
 
     const verify = async () => {
       const result = await verifyEmail(token);

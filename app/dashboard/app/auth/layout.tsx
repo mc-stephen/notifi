@@ -13,10 +13,10 @@ export default function AuthLayout({
 }) {
   return (
     <div className="flex min-h-screen">
-      <AuthHeader />
       <div className="flex flex-1 flex-col items-center justify-center p-6 lg:w-1/2">
         <div className="w-full max-w-sm">{children}</div>
       </div>
+      <AuthHeader />
     </div>
   );
 }

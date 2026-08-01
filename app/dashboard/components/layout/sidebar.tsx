@@ -116,7 +116,7 @@ export function Sidebar({ className, mobile = false, onNavigate }: { className?:
       </div>
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 px-2 py-3">
+      <ScrollArea className="flex-1 min-h-0 px-2 py-3">
         <nav className="space-y-4">
           {NAV_GROUPS.map((group) => (
             <SidebarGroup key={group.label} group={group} collapsed={collapsed} />

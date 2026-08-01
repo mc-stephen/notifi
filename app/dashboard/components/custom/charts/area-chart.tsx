@@ -15,15 +15,15 @@ import type { ChartDataPoint } from "@/lib/types";
 type AreaChartProps = {
   data: ChartDataPoint[];
   className?: string;
-  height?: number;
+  height?: number | "fill";
   color?: string;
   showGrid?: boolean;
 };
 
 export function AreaChart({ data, className, height = 300, color = "var(--chart-1)", showGrid = true }: AreaChartProps) {
   return (
-    <div className={cn("w-full", className)}>
-      <ResponsiveContainer width="100%" height={height}>
+    <div className={cn("w-full", height === "fill" && "h-full", className)}>
+      <ResponsiveContainer width="100%" height={height === "fill" ? "100%" : height}>
         <RechartsAreaChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
           {showGrid && (
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />

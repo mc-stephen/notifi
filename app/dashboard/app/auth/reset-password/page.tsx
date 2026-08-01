@@ -108,7 +108,7 @@ function ResetPasswordForm() {
             <Label htmlFor="password">New password</Label>
             <PasswordInput
               id="password"
-              placeholder="••••••••"
+              placeholder="Enter your new password"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
@@ -132,7 +132,7 @@ function ResetPasswordForm() {
             <Label htmlFor="confirmPassword">Confirm new password</Label>
             <PasswordInput
               id="confirmPassword"
-              placeholder="••••••••"
+              placeholder="Confirm your new password"
               value={confirmPassword}
               onChange={(e) => {
                 setConfirmPassword(e.target.value);

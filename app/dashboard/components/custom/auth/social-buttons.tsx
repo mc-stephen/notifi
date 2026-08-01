@@ -85,7 +85,7 @@ export function SocialButtons({
   const handlers = { onGitHub, onGoogle };
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 gap-3">
       {(["google", "github"] as const).map((provider) => {
         const config = PROVIDER_CONFIG[provider];
         const Icon = config.icon;
@@ -100,10 +100,7 @@ export function SocialButtons({
             disabled={isLoading || disabled}
           >
             <Icon className="size-4" />
-            <span className="hidden sm:inline">{config.label}</span>
-            <span className="sm:hidden">
-              {provider === "google" ? "Google" : "GitHub"}
-            </span>
+            {config.label}
           </Button>
         );
       })}

@@ -1,27 +1,20 @@
 "use client";
 
-import { useMetrics, useNotificationTimeline, useChannelDistribution, useCountryDistribution, usePlatformDistribution, useNotifications } from "@/hooks";
+import { useMetrics, useNotificationTimeline, useNotifications } from "@/hooks";
 import { MetricCard } from "@/components/custom/metric-card";
 import { StatusBadge } from "@/components/custom/status-badge";
 import { ChannelBadge } from "@/components/custom/channel-badge";
+import { PriorityBadge } from "@/components/custom/priority-badge";
 import { HealthIndicator } from "@/components/custom/health-indicator";
+import { DataTable } from "@/components/custom/data-table";
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { AreaChart } from "@/components/custom/charts/area-chart";
-import { DonutChart } from "@/components/custom/charts/donut-chart";
-import { BarChart } from "@/components/custom/charts/bar-chart";
-import {
-  ArrowRight,
-  Plus,
-  FileText,
-  UserPlus,
-  KeyRound,
-  Plug,
-  Activity,
-  XCircle,
-  Webhook,
-} from "lucide-react";
+import { type ColumnDef } from "@tanstack/react-table";
+import type { Notification } from "@/lib/types";
+import { format } from "date-fns";
+import { ArrowRight, Activity } from "lucide-react";
 import Link from "next/link";
 
 function MetricCards() {
@@ -40,7 +33,7 @@ function NotificationTimeline() {
   const data = useNotificationTimeline();
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
         <CardTitle>Notification Timeline</CardTitle>
         <CardAction>
@@ -49,159 +42,8 @@ function NotificationTimeline() {
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent>
-        <AreaChart data={data} height={250} />
-      </CardContent>
-    </Card>
-  );
-}
-
-function ChannelDistribution() {
-  const data = useChannelDistribution();
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Channel Distribution</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <DonutChart data={data} height={260} innerRadius={55} />
-      </CardContent>
-    </Card>
-  );
-}
-
-function CountryDistribution() {
-  const data = useCountryDistribution();
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Top Countries</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {data.slice(0, 8).map((country) => {
-            const maxVal = data[0].value;
-            const pct = (country.value / maxVal) * 100;
-            return (
-              <div key={country.code} className="flex items-center gap-3">
-                <span className="text-xs font-mono text-muted-foreground w-7">{country.code}</span>
-                <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary/60 rounded-full"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <span className="text-xs font-medium tabular-nums w-14 text-right">{country.value.toLocaleString()}</span>
-              </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function PlatformDistribution() {
-  const data = usePlatformDistribution();
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Platforms</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <BarChart data={data} height={200} showGrid={false} />
-      </CardContent>
-    </Card>
-  );
-}
-
-function RecentNotifications() {
-  const { items } = useNotifications(undefined, undefined, 1, 8);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Recent Notifications</CardTitle>
-        <CardAction>
-          <Button variant="ghost" size="sm" render={<Link href="/notifications" />}>
-              View all <ArrowRight className="size-3.5 ml-1" />
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-1">
-          {items.map((n) => (
-            <div key={n.id} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/50 transition-colors">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-mono text-muted-foreground">{n.id}</span>
-                  <ChannelBadge channel={n.channel} showIcon={false} className="h-4 text-[10px] px-1.5" />
-                </div>
-                <p className="text-xs text-muted-foreground truncate mt-0.5">{n.subject ?? n.body}</p>
-              </div>
-              <StatusBadge status={n.status} className="h-5 text-[10px] px-1.5" />
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function RecentFailures() {
-  const { items } = useNotifications({ status: ["failed"] }, undefined, 1, 5);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <XCircle className="size-4 text-destructive" />
-          Recent Failures
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          {items.map((n) => (
-            <div key={n.id} className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-mono">{n.id}</span>
-                <ChannelBadge channel={n.channel} showIcon={false} className="h-4 text-[10px] px-1.5" />
-              </div>
-              <p className="text-xs text-destructive mt-1">{n.failureReason}</p>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function QuickActions() {
-  const actions = [
-    { label: "Create Notification", icon: Plus, href: "/notifications/new" },
-    { label: "Create Template", icon: FileText, href: "/templates/new" },
-    { label: "Invite Member", icon: UserPlus, href: "/team" },
-    { label: "Generate API Key", icon: KeyRound, href: "/api-keys" },
-    { label: "Add Provider", icon: Plug, href: "/providers" },
-  ];
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Quick Actions</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-2">
-          {actions.map((a) => (
-            <Button key={a.href} variant="outline" size="sm" className="justify-start gap-2" render={<Link href={a.href} />}>
-                <a.icon className="size-3.5" />
-                {a.label}
-            </Button>
-          ))}
-        </div>
+      <CardContent className="flex-1">
+        <AreaChart data={data} height="fill" />
       </CardContent>
     </Card>
   );
@@ -225,7 +67,7 @@ function HealthStatus() {
   ];
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Activity className="size-4" />
@@ -263,49 +105,77 @@ function HealthStatus() {
   );
 }
 
-function RecentWebhooks() {
-  const webhooks = [
-    { id: "wh_1", url: "api.example.com/webhooks/notif", event: "notification.delivered", status: "success", time: "2m ago" },
-    { id: "wh_2", url: "hooks.slack.com/T0XXX", event: "notification.failed", status: "success", time: "5m ago" },
-    { id: "wh_3", url: "api.example.com/webhooks/billing", event: "notification.sent", status: "failed", time: "8m ago" },
-    { id: "wh_4", url: "zapier.com/hooks/catch/123", event: "notification.opened", status: "success", time: "12m ago" },
+function RecentNotificationsTable() {
+  const { items } = useNotifications(undefined, undefined, 1, 50);
+
+  const columns: ColumnDef<Notification, unknown>[] = [
+    {
+      accessorKey: "id",
+      header: "ID",
+      cell: ({ row }) => (
+        <span className="font-mono text-xs">{row.original.id}</span>
+      ),
+    },
+    {
+      accessorKey: "channel",
+      header: "Channel",
+      cell: ({ row }) => <ChannelBadge channel={row.original.channel} showIcon />,
+    },
+    {
+      accessorKey: "subject",
+      header: "Subject",
+      cell: ({ row }) => (
+        <span className="truncate max-w-[240px] text-sm">
+          {row.original.subject ?? row.original.body}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => <StatusBadge status={row.original.status} />,
+    },
+    {
+      accessorKey: "priority",
+      header: "Priority",
+      cell: ({ row }) => <PriorityBadge priority={row.original.priority} />,
+    },
+    {
+      accessorKey: "recipientId",
+      header: "Recipient",
+      cell: ({ row }) => (
+        <span className="font-mono text-xs">{row.original.recipientId}</span>
+      ),
+    },
+    {
+      accessorKey: "createdAt",
+      header: "Created",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground whitespace-nowrap">
+          {format(new Date(row.original.createdAt), "MMM d, HH:mm")}
+        </span>
+      ),
+    },
   ];
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Webhook className="size-4" />
-          Recent Webhooks
-        </CardTitle>
+        <CardTitle>Recent Notifications</CardTitle>
         <CardAction>
-          <Button variant="ghost" size="sm" render={<Link href="/webhooks" />}>
+          <Button variant="ghost" size="sm" render={<Link href="/notifications" />}>
               View all <ArrowRight className="size-3.5 ml-1" />
           </Button>
         </CardAction>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
-          {webhooks.map((w) => (
-            <div key={w.id} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/50 transition-colors">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-mono truncate">{w.url}</span>
-                  {w.status === "success" ? (
-                    <span className="size-1.5 rounded-full bg-success shrink-0" />
-                  ) : (
-                    <span className="size-1.5 rounded-full bg-destructive shrink-0" />
-                  )}
-                </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs text-muted-foreground">{w.event}</span>
-                  <span className="text-xs text-muted-foreground">·</span>
-                  <span className="text-xs text-muted-foreground">{w.time}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+        <DataTable
+          columns={columns}
+          data={items}
+          searchKey="subject"
+          searchPlaceholder="Search by subject..."
+          pageSize={10}
+        />
       </CardContent>
     </Card>
   );
@@ -330,31 +200,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div>
-          <ChannelDistribution />
-        </div>
-        <div>
-          <CountryDistribution />
-        </div>
-        <div>
-          <PlatformDistribution />
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <RecentNotifications />
-        </div>
-        <div className="space-y-6">
-          <QuickActions />
-          <RecentFailures />
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <RecentWebhooks />
-      </div>
+      <RecentNotificationsTable />
     </div>
   );
 }

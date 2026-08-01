@@ -1,0 +1,5 @@
+<svg width="120" height="32" viewBox="0 0 120 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M10 18h-6l4.5-12 4.5 12H10zm1.5-6L16 4l4.5 8h-9zm8 2h6l-4.5 12-4.5-12h3zm8-12L28 4h4l-4.5 8h-4L27.5 2z" fill="oklch(0.515 0.235 280)" fill-opacity="0.2"/>
+  <path d="M22 12h-4l-3 9L9 3l-3 9H2" stroke="oklch(0.515 0.235 280)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="36" y="21" font-family="Geist, system-ui, sans-serif" font-size="15" font-weight="600" fill="oklch(0.145 0 0)">Notifi</text>
+</svg>

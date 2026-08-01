@@ -3,9 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { Loader2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
@@ -13,6 +12,7 @@ import { AuthHeaderMobile } from "@/components/custom/auth/auth-header";
 import { AuthFooter } from "@/components/custom/auth/auth-footer";
 import { SocialButtons } from "@/components/custom/auth/social-buttons";
 import { PasswordInput } from "@/components/custom/auth/password-input";
+import { AuthInput } from "@/components/custom/auth/auth-input";
 import { ErrorBanner } from "@/components/custom/auth/error-banner";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -79,9 +79,10 @@ export default function LoginPage() {
 
       <div className="space-y-6">
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold tracking-tight">Welcome back</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Welcome Back!</h1>
           <p className="text-muted-foreground">
-            Sign in to your account
+            Sign in to access your dashboard and continue optimizing your
+            notification workflow.
           </p>
         </div>
 
@@ -90,10 +91,11 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input
+            <AuthInput
               id="email"
               type="email"
-              placeholder="you@example.com"
+              icon={Mail}
+              placeholder="Enter your email"
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value);
@@ -121,7 +123,7 @@ export default function LoginPage() {
             </div>
             <PasswordInput
               id="password"
-              placeholder="••••••••"
+              placeholder="Enter your password"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);

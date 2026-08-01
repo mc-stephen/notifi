@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, Mail, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
@@ -13,6 +12,7 @@ import { AuthFooter } from "@/components/custom/auth/auth-footer";
 import { SocialButtons } from "@/components/custom/auth/social-buttons";
 import { PasswordInput } from "@/components/custom/auth/password-input";
 import { PasswordStrength } from "@/components/custom/auth/password-strength";
+import { AuthInput } from "@/components/custom/auth/auth-input";
 import { ErrorBanner } from "@/components/custom/auth/error-banner";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -115,9 +115,10 @@ export default function SignupPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Full name</Label>
-            <Input
+            <AuthInput
               id="name"
               type="text"
+              icon={User}
               placeholder="John Doe"
               value={name}
               onChange={(e) => {
@@ -136,9 +137,10 @@ export default function SignupPage() {
 
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input
+            <AuthInput
               id="email"
               type="email"
+              icon={Mail}
               placeholder="you@example.com"
               value={email}
               onChange={(e) => {
@@ -159,7 +161,7 @@ export default function SignupPage() {
             <Label htmlFor="password">Password</Label>
             <PasswordInput
               id="password"
-              placeholder="••••••••"
+              placeholder="Enter your password"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
@@ -183,7 +185,7 @@ export default function SignupPage() {
             <Label htmlFor="confirmPassword">Confirm password</Label>
             <PasswordInput
               id="confirmPassword"
-              placeholder="••••••••"
+              placeholder="Confirm your password"
               value={confirmPassword}
               onChange={(e) => {
                 setConfirmPassword(e.target.value);

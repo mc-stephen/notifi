@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useSyncExternalStore, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
@@ -221,9 +221,11 @@ function UserMenu() {
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => { setMounted(true); }, []);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   return (
     <Button
@@ -255,7 +257,7 @@ export function Topbar() {
             <Menu className="size-5" />
             <span className="sr-only">Toggle menu</span>
           </SheetTrigger>
-          <SheetContent side="left" className="w-60 p-0" showCloseButton={false}>
+          <SheetContent side="left" className="w-60 p-0 gap-0" showCloseButton={false}>
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             <Sidebar mobile onNavigate={() => setMobileOpen(false)} />
           </SheetContent>

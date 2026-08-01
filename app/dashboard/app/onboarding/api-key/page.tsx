@@ -5,29 +5,29 @@ import { Copy, Check, Eye, EyeOff, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OnboardingNav } from "@/components/custom/onboarding/onboarding-nav";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { createRng } from "@/lib/random";
 
 function generateMockKey(): string {
+  const rng = createRng(2026);
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let key = "nft_live_";
   for (let i = 0; i < 48; i++) {
-    key += chars.charAt(Math.floor(Math.random() * chars.length));
+    key += chars.charAt(Math.floor(rng() * chars.length));
   }
   return key;
 }
 
 export default function ApiKeyPage() {
   const { apiKey, apiKeyGenerated, updateData } = useOnboardingStore();
-  const [key, setKey] = useState(apiKey || "");
+  const key = apiKeyGenerated ? apiKey : generateMockKey();
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!apiKeyGenerated) {
-      const mockKey = generateMockKey();
-      setKey(mockKey);
-      updateData({ apiKey: mockKey, apiKeyGenerated: true });
+      updateData({ apiKey: key, apiKeyGenerated: true });
     }
-  }, [apiKeyGenerated, updateData, apiKey]);
+  }, [apiKeyGenerated, key, updateData]);
 
   const maskedKey = key
     ? key.substring(0, 12) + "••••••••••••••••••••" + key.slice(-4)
