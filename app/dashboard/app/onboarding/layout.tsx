@@ -70,8 +70,12 @@ export default function OnboardingLayout({
       </div>
 
       {/* Content */}
-      <main className="flex-1 overflow-y-auto px-6 py-8">
-        <div className="mx-auto max-w-2xl">{children}</div>
+      <main className="relative flex flex-1 flex-col overflow-y-auto px-6 pt-8 pb-24">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle,var(--border)_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_at_center,transparent_10%,black_70%)] opacity-60"
+        />
+        <div className="relative mx-auto my-auto w-full max-w-2xl">{children}</div>
       </main>
     </div>
   );

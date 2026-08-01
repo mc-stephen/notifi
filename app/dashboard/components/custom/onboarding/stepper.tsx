@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,10 +13,10 @@ type StepperProps = {
 export function Stepper({ currentStep, totalSteps, labels }: StepperProps) {
   return (
     <div className="w-full">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-center">
         {Array.from({ length: totalSteps }).map((_, i) => (
-          <div key={i} className="flex items-center">
-            <div className="flex flex-col items-center">
+          <Fragment key={i}>
+            <div className="flex flex-1 flex-col items-center">
               <div
                 className={cn(
                   "flex size-8 items-center justify-center rounded-full border-2 text-xs font-medium transition-colors",
@@ -46,12 +47,12 @@ export function Stepper({ currentStep, totalSteps, labels }: StepperProps) {
             {i < totalSteps - 1 && (
               <div
                 className={cn(
-                  "mx-2 h-0.5 w-8 sm:w-12 md:w-16",
+                  "mx-2 h-0.5 w-8 shrink-0 sm:w-12 md:w-16",
                   i < currentStep ? "bg-primary" : "bg-muted-foreground/30"
                 )}
               />
             )}
-          </div>
+          </Fragment>
         ))}
       </div>
     </div>

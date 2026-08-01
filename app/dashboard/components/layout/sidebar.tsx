@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
@@ -116,13 +115,13 @@ export function Sidebar({ className, mobile = false, onNavigate }: { className?:
       </div>
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 min-h-0 px-2 py-3">
+      <div className="flex-1 min-h-0 overflow-y-auto px-2 py-3">
         <nav className="space-y-4">
           {NAV_GROUPS.map((group) => (
             <SidebarGroup key={group.label} group={group} collapsed={collapsed} />
           ))}
         </nav>
-      </ScrollArea>
+      </div>
 
       {/* Collapse toggle (desktop only) */}
       {!mobile && (
