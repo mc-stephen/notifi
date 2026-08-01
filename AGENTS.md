@@ -7,9 +7,9 @@ Dual-workspace repository containing an enterprise notification platform dashboa
 | Workspace | Directory | Tech Stack |
 |-----------|-----------|------------|
 | **Dashboard** | `app/dashboard/` | Next.js 16 (App Router), React 19, Tailwind CSS v4, shadcn/v4 (Base UI) |
-| **Server** | `server/` | Rust (Cargo workspace, 15 member crates) |
+| **Server** | `infrastructure/` | Rust (Cargo workspace, 18 member crates) |
 
-*Run commands from workspace subdirectories (`app/dashboard/` or `server/`).*
+*Run commands from workspace subdirectories (`app/dashboard/` or `infrastructure/`).*
 
 ---
 
@@ -50,17 +50,20 @@ npm run lint     # ESLint checks
 
 ---
 
-## Backend Server (`server/`)
+## Backend Server (`infrastructure/`)
 
 ### Commands
 ```shell
 cargo check --workspace --exclude web_channel     # Check workspace
+cargo clippy --workspace --exclude web_channel --all-targets -- -D warnings
 cargo test --workspace --exclude web_channel      # Run unit/integration tests
-cargo run -p server                                # Run main HTTP server executable
+cargo run -p api                                  # Run main API executable
 ```
 
 ### Architecture & Workspace Quirks
-- **Main Executable**: Package name is **`server`** (in `server/main/`). Run with `cargo run -p server` (not `main`).
-- **Crate Architecture**: 15 member crates. Channel crates depend on `notification_core` (`server/notification/core`), never on `server` or each other.
-- **Known Build Issue**: `web_channel` currently has `web-push` API mismatch errors. Always include `--exclude web_channel` when running workspace commands.
-- **Runtime Tenant Config**: Configs load dynamically at runtime from `server/configs/{brand}/{channel_name}/`. Each channel crate parses its own config via `ChannelConfigLoader`.
+- **Design Doc**: See `infrastructure/ARCHITECTURE.md` — the authoritative architecture (layers, domain template, conventions, M0–M8 roadmap).
+- **Main Executable**: Package name is **`api`** (in `crates/api/`). Run with `cargo run -p api` (M1 adds the axum server; M0 is a bootstrap + SMTP smoke test).
+- **Crate Architecture**: Workspace members are `crates/` (core, domain-ports, infra, api) plus 13 channel crates under `notification/channels/`. Channel crates must never depend on each other or on domains; they will adopt the `notifi_domain_ports::DeliveryProvider` trait in M3.
+- **Framework-free Kernel**: `crates/core` (errors, ULID ids, events, outbox) and `crates/domain-ports` (traits) have no axum/sqlx/redis deps — keep it that way.
+- **Known Build Issue**: `web_channel` currently has `web-push` API mismatch errors. Always include `--exclude web_channel` when running workspace commands (until M3 fixes it).
+- **Runtime Tenant Config**: Configs load dynamically at runtime from `{NOTIFI_CONFIG_ROOT}/brands/{brand}/config/{channel_name}/` (root defaults to `configs`; local dev sets it to `assets` via `infrastructure/.cargo/config.toml`). Channels parse their own config; use `notifi_core::config::ConfigResolver::load_json` for new code. Brand templates live at `{NOTIFI_CONFIG_ROOT}/brands/{brand}/templates/{name}/`.

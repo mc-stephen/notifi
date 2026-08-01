@@ -1,0 +1,36 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/api",
+  "crates/core",
+  "crates/domain-ports",
+  "crates/infra/config",
+  "crates/infra/telemetry",
+  "notification/channels/android_channel",
+  "notification/channels/discord_channel",
+  "notification/channels/email_channel",
+  "notification/channels/ios_channel",
+  "notification/channels/linux_channel",
+  "notification/channels/macos_channel",
+  "notification/channels/slack_channel",
+  "notification/channels/sms_channel",
+  "notification/channels/telegram_channel",
+  "notification/channels/web_channel",
+  "notification/channels/webhook_channel",
+  "notification/channels/whatsapp_channel",
+  "notification/channels/window_channel",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ulid = { version = "1", features = ["serde"] }

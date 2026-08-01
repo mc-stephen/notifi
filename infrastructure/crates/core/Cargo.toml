@@ -1,0 +1,11 @@
+[package]
+name = "notifi_core"
+version.workspace = true
+edition.workspace = true
+description = "Framework-free kernel for Notifi: errors, identifiers, domain events, config resolution"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+ulid = { workspace = true }

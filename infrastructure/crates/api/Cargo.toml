@@ -1,0 +1,13 @@
+[package]
+name = "api"
+version.workspace = true
+edition.workspace = true
+description = "Notifi HTTP API — composition root for the modular monolith"
+
+[dependencies]
+email_channel = { path = "../../notification/channels/email_channel" }
+notifi_core = { path = "../core" }
+notifi_infra_config = { path = "../infra/config" }
+notifi_infra_telemetry = { path = "../infra/telemetry" }
+tokio = { workspace = true }
+tracing = { workspace = true }

@@ -1,0 +1,9 @@
+[package]
+name = "notifi_infra_telemetry"
+version.workspace = true
+edition.workspace = true
+description = "Tracing/logging bootstrap for Notifi binaries"
+
+[dependencies]
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

@@ -1,0 +1,11 @@
+[package]
+name = "notifi_domain_ports"
+version.workspace = true
+edition.workspace = true
+description = "Trait-only contracts between domains, infrastructure, and channel adapters"
+
+[dependencies]
+notifi_core = { path = "../core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
