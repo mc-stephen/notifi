@@ -1,0 +1,119 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import PageLayout from "../layouts/PageLayout.astro";
+import { getComponents, getIncidents, getMaintenance } from "../lib/data";
+import { resolveGlobalHealth } from "../lib/status";
+import { formatPercent } from "../lib/format";
+
+const [components, incidents, maintenance] = await Promise.all([getComponents(), getIncidents(), getMaintenance()]);
+const global = resolveGlobalHealth(components, incidents, maintenance);
+
+const title = "About Status — Notifi Status";
+const description = "How the Notifi status page measures uptime, latency, and availability — the methodology behind every number.";
+---
+
+<BaseLayout title={title} description={description} path="/about">
+  <PageLayout currentPath="/about">
+    <section class="container page-head">
+      <h1>About this status page</h1>
+      <p>Every number on this page is computed from real data. This page explains exactly how.</p>
+    </section>
+
+    <section class="container article">
+      <h2>Measurement methodology</h2>
+
+      <h3>Probes</h3>
+      <p>Synthetic probes run every 60 seconds from three regions. They exercise the public API, the notification API, and each delivery channel's health endpoint. Latency percentiles (p50, p95) are computed over five-minute buckets.</p>
+
+      <h3>Availability</h3>
+      <p>Availability = (window − downtime) / window, where downtime is time spent in partial or major outage for that component. Degraded performance counts as 100% availability but is visible in performance metrics. Scheduled maintenance windows are excluded from availability entirely — planned work is not an outage.</p>
+
+      <h3>Component state</h3>
+      <p>Each component's state is resolved in priority order: open incident severity (critical → major outage, major → partial outage, minor → degraded), then in-progress maintenance, then probe health. Every non-operational badge links to the incident or maintenance that caused it — nothing is hidden.</p>
+
+      <h3>Global state</h3>
+      <p>The global indicator is the worst state across subsystems, with one exception: provider components (email, SMS, push) cap the global indicator at degraded, because an upstream carrier event is not a Notifi platform outage.</p>
+
+      <h3>Ranges</h3>
+      <p>Availability is shown per range (24h, 7d, 30d, 90d, 1y, all time). The all-time figure is computed from each component's inception date, so it can differ slightly per component.</p>
+
+      <h3>Incident severity</h3>
+      <ul>
+        <li><strong>Minor</strong> — limited impact to a subset of users or functions.</li>
+        <li><strong>Major</strong> — significant impact to availability or latency.</li>
+        <li><strong>Critical</strong> — widespread, sustained outage, or a security event.</li>
+      </ul>
+      <p>Severity can be raised (never lowered retroactively) as more information arrives.</p>
+
+      <h3>Timelines</h3>
+      <p>Incident updates are append-only. A state change must produce a timeline entry with timestamp, author, details, and affected components. If an entry is corrected, it is amended with an explicit edit marker — never silently rewritten.</p>
+    </section>
+
+    <section class="container article">
+      <h2>Current platform composition</h2>
+      <p>
+        {components.length} tracked components across {global.subsystems.length} subsystems,{" "}
+        {incidents.filter((i) => i.status !== "resolved").length} open incident(s), and{" "}
+        {maintenance.filter((m) => m.status !== "completed").length} scheduled maintenance window(s).
+      </p>
+      <p>
+        Global availability over the last 90 days: <strong>{formatPercent(components.length ? Math.round(components.reduce((a, c) => a + c.probe.availability["90d"], 0) / components.length * 100) / 100 : 100)}</strong> (component average).
+      </p>
+    </section>
+
+    <section class="container article">
+      <h2>Contact</h2>
+      <p>For questions about this page: <a href="mailto:status@notifi.dev">status@notifi.dev</a>. For platform support: <a href="mailto:support@notifi.dev">support@notifi.dev</a>.</p>
+    </section>
+  </PageLayout>
+</BaseLayout>
+
+<style>
+  .page-head {
+    padding-block: 2.5rem 1.5rem;
+  }
+
+  .page-head h1 {
+    margin: 0 0 0.5rem;
+  }
+
+  .page-head p {
+    margin: 0 0 2rem;
+    color: var(--fg-muted);
+    max-width: 60ch;
+  }
+
+  .article {
+    padding-bottom: 2.5rem;
+    max-width: 68ch;
+  }
+
+  .article h2 {
+    font-size: var(--text-xl);
+    margin: 0 0 1rem;
+  }
+
+  .article h3 {
+    font-size: var(--text-base);
+    margin: 1.5rem 0 0.375rem;
+  }
+
+  .article p {
+    margin: 0;
+    color: var(--fg-muted);
+  }
+
+  .article p + p {
+    margin-top: 0.875rem;
+  }
+
+  .article ul {
+    margin: 0.5rem 0 0;
+    padding-left: 1.25rem;
+    color: var(--fg-muted);
+  }
+
+  .article li + li {
+    margin-top: 0.25rem;
+  }
+</style>

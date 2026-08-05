@@ -1,0 +1,18 @@
+{
+  "slug": "redis-cache-node-replacement",
+  "title": "Redis Cache Node Replacement",
+  "purpose": "Replace two cache nodes whose disk is nearing end-of-life. Caches will be rebuilt from the primary data source after rejoin; no data loss.",
+  "expectedImpact": "Slightly elevated API latency (up to 100ms) while caches warm. No downtime expected; read fallback to PostgreSQL remains in place.",
+  "affectedComponents": ["redis", "queues", "workers", "authentication"],
+  "startTime": "2026-08-08T03:00:00Z",
+  "endTime": "2026-08-08T05:00:00Z",
+  "status": "scheduled",
+  "updates": [
+    {
+      "timestamp": "2026-08-01T12:00:00Z",
+      "author": "Sarah Kim, SRE",
+      "state": "scheduled",
+      "details": "Maintenance scheduled. All times UTC."
+    }
+  ]
+}

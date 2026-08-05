@@ -1,0 +1,33 @@
+{
+  "slug": "notification-queue-backlog",
+  "title": "Notification Queue Backlog Causing Processing Delays",
+  "severity": "major",
+  "status": "monitoring",
+  "startedAt": "2026-07-31T16:02:00Z",
+  "affectedComponents": ["queues", "workers", "notification-api", "postgresql"],
+  "customerImpact": "Up to 25 minutes of additional processing time for notifications enqueued between 16:02 and 17:30 UTC. No notifications were dropped; the backlog is draining.",
+  "updates": [
+    {
+      "timestamp": "2026-07-31T16:02:00Z",
+      "author": "Danilo Okafor, SRE",
+      "state": "investigating",
+      "details": "We detected a growing backlog in the notification delivery queues. Workers are consuming at a lower rate than expected.",
+      "affectedComponents": ["queues", "workers"]
+    },
+    {
+      "timestamp": "2026-07-31T16:38:00Z",
+      "author": "Danilo Okafor, SRE",
+      "state": "identified",
+      "details": "A PostgreSQL primary replica fell behind on checkpoint I/O, increasing query latency for the worker fleet. No data loss; replication is catching up.",
+      "affectedComponents": ["postgresql", "workers"]
+    },
+    {
+      "timestamp": "2026-07-31T17:05:00Z",
+      "author": "Amina Yusuf, SRE",
+      "state": "monitoring",
+      "details": "Checkpoint tuning applied and the replica has caught up. Queue depth is falling steadily. We are monitoring until the backlog fully drains.",
+      "affectedComponents": ["queues", "workers", "postgresql"],
+      "customerImpact": "Backlog estimated to drain within 30 minutes. Affected notifications will deliver in enqueue order."
+    }
+  ]
+}

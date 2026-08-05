@@ -1,0 +1,14 @@
+{
+  "generatedAt": "2026-08-01T14:00:00Z",
+  "metrics": {
+    "apiResponseTimeP95Ms": 210,
+    "webhookLatencyP95Ms": 320,
+    "notificationProcessingP95Ms": 96,
+    "queueDepth": 1240,
+    "workerThroughputPerSec": 42.5,
+    "databaseHealth": "healthy",
+    "cacheHitRatePct": 98.2,
+    "deliverySuccessRate30d": 99.92,
+    "regionalAvailabilityPct": 100
+  }
+}

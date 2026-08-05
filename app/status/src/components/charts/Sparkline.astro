@@ -1,0 +1,44 @@
+---
+interface Props {
+  /** Oldest → newest, one number per bar. */
+  values: number[];
+  width?: number;
+  height?: number;
+  label?: string;
+}
+
+const { values, width = 120, height = 36, label } = Astro.props;
+
+const barGap = 2;
+const barWidth = width / values.length - barGap;
+
+function barColor(v: number): string {
+  if (v >= 99.9) return "var(--operational)";
+  if (v >= 99) return "var(--degraded)";
+  if (v >= 95) return "var(--partial)";
+  return "var(--major)";
+}
+---
+
+<svg
+  class="sparkline"
+  viewBox={`0 0 ${width} ${height}`}
+  width={width}
+  height={height}
+  role="img"
+  aria-label={label ?? "Historical availability"}
+>
+  {values.map((v, i) => {
+    const h = Math.max(2, Math.round((v / 100) * (height - 4)));
+    return (
+      <rect
+        x={i * (barWidth + barGap)}
+        y={height - 2 - h}
+        width={barWidth}
+        height={h}
+        rx={Math.min(1.5, barWidth / 3)}
+        fill={barColor(v)}
+      />
+    );
+  })}
+</svg>

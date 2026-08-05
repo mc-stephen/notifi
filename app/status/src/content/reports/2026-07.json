@@ -1,0 +1,15 @@
+{
+  "slug": "2026-07",
+  "month": "2026-07",
+  "summary": "July was a stable month. One minor incident (email delivery delay, US East) and one major incident (webhook timeouts) with full postmortems published. Scheduled maintenance completed on time.",
+  "availability": { "platform": 99.97, "data": 99.99, "providers": 99.9, "web": 100 },
+  "globalAvailability": 99.97,
+  "incidents": 2,
+  "criticalIncidents": 0,
+  "meanTimeToResolve": "2h 53m",
+  "highlights": [
+    "Third edge POP added on July 10 with zero downtime",
+    "Webhook delivery client hardened with per-request timeouts",
+    "P95 API latency improved 12% after edge expansion"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "slug": "auth-token-issuance-errors",
+  "title": "Intermittent Token Issuance Errors",
+  "severity": "minor",
+  "status": "resolved",
+  "startedAt": "2026-06-28T08:10:00Z",
+  "resolvedAt": "2026-06-28T09:22:00Z",
+  "affectedComponents": ["authentication", "public-api"],
+  "customerImpact": "A small percentage of new API key and OAuth token requests failed with 500 errors between 08:10 and 09:22 UTC. Existing sessions unaffected.",
+  "investigation": "Error rate correlated with a Redis cluster node restart cycle.",
+  "rootCause": "A Redis node was restarting after a memory fragmentation event; the token cache read path returned errors instead of falling back to PostgreSQL.",
+  "mitigation": "Deployed read fallback to PostgreSQL for token cache misses.",
+  "monitoring": "Error rate monitored for 45 minutes.",
+  "resolution": "Error rate returned to 0%. No tokens lost; failed requests retried successfully.",
+  "updates": [
+    {
+      "timestamp": "2026-06-28T08:10:00Z",
+      "author": "Sarah Kim, SRE",
+      "state": "investigating",
+      "details": "Investigating intermittent 500 errors on token issuance.",
+      "affectedComponents": ["authentication"]
+    },
+    {
+      "timestamp": "2026-06-28T08:44:00Z",
+      "author": "Sarah Kim, SRE",
+      "state": "identified",
+      "details": "Redis cache node restart; token cache reads failing without fallback.",
+      "affectedComponents": ["authentication", "redis"]
+    },
+    {
+      "timestamp": "2026-06-28T09:22:00Z",
+      "author": "Sarah Kim, SRE",
+      "state": "resolved",
+      "details": "Fallback deployed; error rate at 0%. Incident resolved.",
+      "affectedComponents": ["authentication"]
+    }
+  ]
+}

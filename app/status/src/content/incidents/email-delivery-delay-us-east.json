@@ -1,0 +1,45 @@
+{
+  "slug": "email-delivery-delay-us-east",
+  "title": "Email Delivery Delay for US East Recipients",
+  "severity": "minor",
+  "status": "resolved",
+  "startedAt": "2026-07-18T13:20:00Z",
+  "resolvedAt": "2026-07-18T15:05:00Z",
+  "affectedComponents": ["email-providers", "workers"],
+  "customerImpact": "Email delivery to a subset of US East recipients delayed by up to 20 minutes. No bounces or lost messages.",
+  "investigation": "Increased queue dwell time for emails routed to a single US East provider endpoint.",
+  "rootCause": "The provider's US East endpoint returned intermittent 429 (rate limit) responses after their regional capacity event.",
+  "mitigation": "Automatic retry backoff handled most traffic; we shifted 30% of US East email volume to the secondary provider.",
+  "monitoring": "Dwell time monitored for 45 minutes after the provider recovered.",
+  "resolution": "Provider recovery confirmed; delivery times returned to normal. No customer action required.",
+  "updates": [
+    {
+      "timestamp": "2026-07-18T13:20:00Z",
+      "author": "Tomás Rivera, SRE",
+      "state": "investigating",
+      "details": "Investigating elevated email delivery times for US East recipients.",
+      "affectedComponents": ["email-providers"]
+    },
+    {
+      "timestamp": "2026-07-18T13:47:00Z",
+      "author": "Tomás Rivera, SRE",
+      "state": "identified",
+      "details": "A provider endpoint is intermittently rate-limiting. Failover shifting traffic to the secondary provider.",
+      "affectedComponents": ["email-providers", "workers"]
+    },
+    {
+      "timestamp": "2026-07-18T14:30:00Z",
+      "author": "Tomás Rivera, SRE",
+      "state": "monitoring",
+      "details": "Provider recovery detected. Monitoring dwell time before confirming resolution.",
+      "affectedComponents": ["email-providers"]
+    },
+    {
+      "timestamp": "2026-07-18T15:05:00Z",
+      "author": "Tomás Rivera, SRE",
+      "state": "resolved",
+      "details": "All delayed email has been delivered. Delivery times back to normal.",
+      "affectedComponents": ["email-providers"]
+    }
+  ]
+}

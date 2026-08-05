@@ -1,0 +1,13 @@
+{
+  "slug": "postgresql",
+  "name": "PostgreSQL",
+  "subsystem": "data",
+  "group": "Data",
+  "dependencies": [],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 8, "p95": 22 },
+    "availability": { "7d": 100, "30d": 99.99, "90d": 99.95 }
+  },
+  "lastUpdated": "2026-08-01T14:00:00Z"
+}

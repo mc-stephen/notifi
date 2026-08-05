@@ -1,0 +1,71 @@
+---
+interface Props {
+  /** { label, count }, oldest → newest. */
+  series: { label: string; count: number }[];
+  width?: number;
+  height?: number;
+}
+
+const { series, width = 720, height = 160 } = Astro.props;
+
+const pad = { top: 8, right: 8, bottom: 8, left: 8 };
+const innerWidth = width - pad.left - pad.right;
+const innerHeight = height - pad.top - pad.bottom;
+const max = Math.max(...series.map((s) => s.count), 1);
+const barGap = Math.max(2, innerWidth / series.length * 0.3);
+const barWidth = Math.max(3, innerWidth / series.length - barGap);
+---
+
+<figure class="freq-chart">
+  <svg
+    viewBox={`0 0 ${width} ${height}`}
+    width="100%"
+    role="img"
+    aria-label="Incidents per month"
+  >
+    {series.map((s, i) => {
+      const h = (s.count / max) * innerHeight;
+      return (
+        <g>
+          <rect
+            x={pad.left + i * ((innerWidth / series.length) + barGap)}
+            y={pad.top + innerHeight - h}
+            width={barWidth}
+            height={Math.max(2, h)}
+            rx={Math.min(3, barWidth / 3)}
+            fill="var(--accent)"
+            opacity={s.count === 0 ? 0.25 : 0.85}
+          >
+            <title>{`${s.label}: ${s.count} incident${s.count === 1 ? "" : "s"}`}</title>
+          </rect>
+          <text class="count" x={pad.left + i * ((innerWidth / series.length) + barGap) + barWidth / 2} y={pad.top + innerHeight - h - 4} text-anchor="middle" font-size="10">
+            {s.count > 0 ? s.count : ""}
+          </text>
+          <text class="label" x={pad.left + i * ((innerWidth / series.length) + barGap) + barWidth / 2} y={height - 4} text-anchor="middle" font-size="10">
+            {s.label}
+          </text>
+        </g>
+      );
+    })}
+  </svg>
+</figure>
+
+<style>
+  .freq-chart {
+    margin: 0;
+  }
+
+  .freq-chart svg {
+    display: block;
+    height: auto;
+  }
+
+  .count {
+    fill: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .label {
+    fill: var(--fg-faint);
+  }
+</style>

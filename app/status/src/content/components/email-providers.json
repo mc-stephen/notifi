@@ -1,0 +1,13 @@
+{
+  "slug": "email-providers",
+  "name": "Email Providers",
+  "subsystem": "providers",
+  "group": "Delivery Providers",
+  "dependencies": ["workers", "storage"],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 120, "p95": 480 },
+    "availability": { "7d": 100, "30d": 99.96, "90d": 99.94 }
+  },
+  "lastUpdated": "2026-08-01T13:50:00Z"
+}

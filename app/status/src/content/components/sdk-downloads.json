@@ -1,0 +1,13 @@
+{
+  "slug": "sdk-downloads",
+  "name": "SDK Downloads",
+  "subsystem": "web",
+  "group": "Web Properties",
+  "dependencies": ["storage"],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 30, "p95": 110 },
+    "availability": { "7d": 100, "30d": 100, "90d": 99.98 }
+  },
+  "lastUpdated": "2026-08-01T14:00:00Z"
+}

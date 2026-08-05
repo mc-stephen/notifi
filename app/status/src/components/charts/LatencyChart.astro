@@ -1,0 +1,81 @@
+---
+import { formatNumber } from "../../lib/format";
+import type { Component } from "../../lib/types";
+
+interface Props {
+  /** Components sorted by p95 descending — caller decides. */
+  components: Component[];
+  width?: number;
+  height?: number;
+}
+
+const { components, width = 720, height = 420 } = Astro.props;
+
+const pad = { top: 8, right: 56, bottom: 8, left: 8 };
+const innerWidth = width - pad.left - pad.right;
+const innerHeight = height - pad.top - pad.bottom;
+
+const maxLatency = Math.max(...components.map((c) => c.probe.latency.p95), 1);
+const rowHeight = innerHeight / components.length;
+const barHeight = Math.max(8, rowHeight * 0.45);
+const fontSize = Math.min(12, Math.max(9, rowHeight * 0.35));
+const labelWidth = pad.right - 8;
+const labelOffset = innerWidth + 6;
+---
+
+<figure class="latency-chart">
+  <svg
+    viewBox={`0 0 ${width} ${height}`}
+    width="100%"
+    role="img"
+    aria-label="p95 latency by component"
+  >
+    <g class="bars">
+      {components.map((c, i) => {
+        const y = pad.top + i * rowHeight + (rowHeight - barHeight) / 2;
+        const w = (c.probe.latency.p95 / maxLatency) * innerWidth;
+        return (
+          <g>
+            <rect x={pad.left} y={y} width={Math.max(2, w)} height={barHeight} rx={Math.min(3, barHeight / 3)} fill="var(--accent)" opacity={0.85}>
+              <title>{`${c.name} p95: ${c.probe.latency.p95}ms`}</title>
+            </rect>
+            <text class="value" x={pad.left + w + 4} y={y + barHeight / 2 + fontSize / 3} font-size={fontSize}>
+              {c.probe.latency.p95}ms
+            </text>
+            <text class="label" x={width - labelWidth} y={y + barHeight / 2 + fontSize / 3} font-size={fontSize} text-anchor="end">
+              {c.name}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  </svg>
+  <figcaption>p95 response time, last hour · {formatNumber(maxLatency)}ms max</figcaption>
+</figure>
+
+<style>
+  .latency-chart {
+    margin: 0;
+  }
+
+  .latency-chart svg {
+    display: block;
+    height: auto;
+  }
+
+  .value {
+    fill: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .label {
+    fill: var(--fg-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .latency-chart figcaption {
+    margin-top: 0.5rem;
+    font-size: var(--text-xs);
+    color: var(--fg-faint);
+  }
+</style>

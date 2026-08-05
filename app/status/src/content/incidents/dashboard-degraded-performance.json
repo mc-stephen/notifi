@@ -1,0 +1,38 @@
+{
+  "slug": "dashboard-degraded-performance",
+  "title": "Dashboard Slow Page Loads",
+  "severity": "minor",
+  "status": "resolved",
+  "startedAt": "2026-05-22T14:00:00Z",
+  "resolvedAt": "2026-05-22T16:18:00Z",
+  "affectedComponents": ["dashboard", "public-api", "analytics"],
+  "customerImpact": "Dashboard page loads took up to 8 seconds during peak. API and notification delivery unaffected.",
+  "investigation": "Slow queries on the analytics aggregate endpoint.",
+  "rootCause": "A new analytics aggregate query missed an index, scanning the events table per dashboard load.",
+  "mitigation": "Added the missing index and warmed the cache.",
+  "monitoring": "P95 dashboard load time monitored for 2 hours.",
+  "resolution": "Dashboard load times normalized. No data loss.",
+  "updates": [
+    {
+      "timestamp": "2026-05-22T14:00:00Z",
+      "author": "Tomás Rivera, SRE",
+      "state": "investigating",
+      "details": "Investigating slow dashboard page loads.",
+      "affectedComponents": ["dashboard"]
+    },
+    {
+      "timestamp": "2026-05-22T14:32:00Z",
+      "author": "Tomás Rivera, SRE",
+      "state": "identified",
+      "details": "Analytics aggregate query missing an index.",
+      "affectedComponents": ["dashboard", "analytics"]
+    },
+    {
+      "timestamp": "2026-05-22T16:18:00Z",
+      "author": "Tomás Rivera, SRE",
+      "state": "resolved",
+      "details": "Index added; load times normal.",
+      "affectedComponents": ["dashboard"]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import PageLayout from "../layouts/PageLayout.astro";
+
+const title = "Page not found — Notifi Status";
+const description = "The page you are looking for does not exist. View current platform status.";
+---
+
+<BaseLayout title={title} description={description} path="/404">
+  <PageLayout>
+    <section class="container notfound">
+      <p class="eyebrow">404</p>
+      <h1>This page does not exist.</h1>
+      <p>The status platform is fine — the URL is not.</p>
+      <p>
+        <a class="btn-primary-link" href="/">View current status →</a>
+      </p>
+    </section>
+  </PageLayout>
+</BaseLayout>
+
+<style>
+  .notfound {
+    padding-block: 5rem;
+    text-align: center;
+  }
+
+  .btn-primary-link {
+    display: inline-block;
+    margin-top: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--fg);
+    color: var(--bg);
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-size: var(--text-sm);
+  }
+</style>

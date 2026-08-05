@@ -85,12 +85,12 @@ infrastructure/
         └── channels/             # existing channel crates (email, sms, ...)
 ```
 
-**Migration from the current tree:** keep the existing 13 channel crates in place
-at `notification/channels/` initially; they become `adapters/channels/` when the
-delivery port lands (M3). Channel crates add a `notifi-domain-ports` dependency
-and implement `DeliveryProvider`; `notification_core` is absorbed into
-`notifi-core` + `notifi-domain-ports` (it already defines the seeds: `ConfigError`,
-`ConfigResolver`, `ChannelConfigLoader`).
+**Migration from the current tree:** the 13 channel crates already live at
+`crates/adapters/channels/`. What remains is the trait adoption (M3): channel
+crates add a `notifi-domain-ports` dependency and implement `DeliveryProvider`;
+`notification_core` is absorbed into `notifi-core` + `notifi-domain-ports` (it
+already defines the seeds: `ConfigError`, `ConfigResolver`,
+`ChannelConfigLoader`).
 
 ---
 
@@ -415,8 +415,8 @@ No rewrites: the ports are already the network boundaries.
 
 | # | Milestone | Scope | Exit criteria |
 |---|---|---|---|
-| M0 | Foundations | Restructure workspace into `crates/`; `core` (errors, ULID, event trait, outbox writer, ConfigResolver); `infra/telemetry`; health/liveness; CI (check + clippy -D warnings + test) | Full workspace compiles & lints (with `--exclude web_channel`); `/healthz`, `/readyz`, `/metrics` |
-| M1 | API Core | axum app core in `api`: middleware (trace id, request id, logging, CORS, problem-details mapping); Postgres pool + migrations runner; Redis client | A sample router mounts; error responses are RFC 9457; graceful shutdown |
+| M0 ✅ | Foundations | Restructure workspace into `crates/`; `core` (errors, ULID, event trait, outbox writer, ConfigResolver); `infra/telemetry`; health/liveness; CI (check + clippy -D warnings + test) | Full workspace compiles & lints (with `--exclude web_channel`); `/healthz`, `/readyz`, `/metrics` |
+| M1 ✅ | API Core | axum app core in `api`: middleware (trace id, request id, logging, CORS, problem-details mapping); Postgres pool + migrations runner; Redis client | A sample router mounts; error responses are RFC 9457; graceful shutdown |
 | M2 | Notifications slice | `notifications` domain: aggregate + state machine (`created→queued`), repository_pg, service, `POST /v1/notifications`; outbox dispatcher + first worker | Create notification persists with outbox row; worker consumes `notification.created`; API tests green |
 | M3 | Delivery | `domain-ports::DeliveryProvider`; convert all 13 channel crates (email, sms, android/fcm, ios, macos, web, webhook, whatsapp, telegram, slack, discord, window, linux) to implement it; **fix web_channel against web-push 0.9**; provider registry, attempt records, retry policy, DLQ; `delivered/failed/retried` events | Entire workspace compiles; one end-to-end send through an adapter; retries + DLQ tested |
 | M4 | Providers + Templates | `providers` domain (accounts, channel configs CRUD, secrets); `templates` (render, publish) | Configure SMTP provider + template via API; render verified |

@@ -1,0 +1,265 @@
+---
+import UptimeChart from "../charts/UptimeChart.astro";
+import HistoryCalendar from "../charts/HistoryCalendar.astro";
+import FrequencyChart from "../charts/FrequencyChart.astro";
+import IncidentCard from "../ui/IncidentCard.astro";
+import EmptyState from "../ui/EmptyState.astro";
+import {
+  UPTIME_RANGES,
+  downtimeMinutes,
+  incidentFrequency,
+  rangeAvailability,
+  uptimeSeries,
+  uptimeSummary,
+  type UptimeRange,
+} from "../../lib/uptime";
+import { formatNumber, formatPercent } from "../../lib/format";
+import type { Incident, Maintenance } from "../../lib/types";
+
+interface Props {
+  range: UptimeRange;
+  incidents: Incident[];
+  maintenance: Maintenance[];
+  now?: Date;
+}
+
+const { range, incidents, maintenance, now = new Date() } = Astro.props;
+
+const points = uptimeSeries(range, incidents, now);
+const availability = rangeAvailability(range, incidents, now);
+const downtime = downtimeMinutes(range, incidents, now);
+const summary = uptimeSummary(incidents, now);
+const frequency = incidentFrequency(incidents, 12, now);
+
+const incidentsInRange = incidents
+  .filter((inc) => new Date(inc.startedAt).getTime() >= now.getTime() - rangeMs(range, now))
+  .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+
+const maintenanceInRange = maintenance
+  .filter((m) => new Date(m.endTime).getTime() >= now.getTime() - rangeMs(range, now));
+
+function rangeMs(r: UptimeRange, n: Date): number {
+  const DAY = 86_400_000;
+  switch (r) {
+    case "24h": return DAY;
+    case "7d": return 7 * DAY;
+    case "30d": return 30 * DAY;
+    case "90d": return 90 * DAY;
+    case "1y": return 365 * DAY;
+    case "all": return n.getTime();
+  }
+}
+
+const RANGE_LABELS: Record<UptimeRange, string> = {
+  "24h": "24 hours",
+  "7d": "7 days",
+  "30d": "30 days",
+  "90d": "90 days",
+  "1y": "1 year",
+  all: "All time",
+};
+---
+
+<section class="uptime-view">
+  <nav class="range-tabs" aria-label="Uptime range">
+    {UPTIME_RANGES.map((r) => (
+      <a
+        href={r === "30d" ? "/uptime" : `/uptime/${r}`}
+        aria-current={r === range ? "page" : undefined}
+      >
+        {RANGE_LABELS[r]}
+      </a>
+    ))}
+  </nav>
+
+  <div class="stat-grid">
+    <div class="stat card">
+      <span class="stat-label">Availability</span>
+      <span class="stat-value mono">{formatPercent(availability)}</span>
+    </div>
+    <div class="stat card">
+      <span class="stat-label">Downtime</span>
+      <span class="stat-value mono">{downtime > 0 ? `${formatNumber(downtime)} min` : "0 min"}</span>
+    </div>
+    <div class="stat card">
+      <span class="stat-label">Incidents</span>
+      <span class="stat-value mono">{incidentsInRange.length}</span>
+    </div>
+    <div class="stat card">
+      <span class="stat-label">Maintenance windows</span>
+      <span class="stat-value mono">{maintenanceInRange.length}</span>
+    </div>
+  </div>
+
+  <div class="all-ranges card">
+    <h2>Availability by range</h2>
+    <table>
+      <thead>
+        <tr>
+          {UPTIME_RANGES.map((r) => <th scope="col">{RANGE_LABELS[r]}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          {UPTIME_RANGES.map((r) => (
+            <td class:list={["mono", { current: r === range }]}>{formatPercent(summary[r])}</td>
+          ))}
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card chart-card">
+    <h2>Uptime — {RANGE_LABELS[range]}</h2>
+    <UptimeChart points={points} />
+  </div>
+
+  <div class="grid-2">
+    <div class="card chart-card">
+      <h2>Last 90 days</h2>
+      <HistoryCalendar points={uptimeSeries("90d", incidents, now)} />
+    </div>
+    <div class="card chart-card">
+      <h2>Incident frequency</h2>
+      <FrequencyChart series={frequency} />
+      <p class="chart-note">Incidents per month, last 12 months. Scheduled maintenance is excluded from all uptime figures.</p>
+    </div>
+  </div>
+
+  <section>
+    <h2>Incidents in this range</h2>
+    {incidentsInRange.length > 0 ? (
+      <div class="card-list">
+        {incidentsInRange.map((inc) => <IncidentCard incident={inc} now={now} />)}
+      </div>
+    ) : (
+      <EmptyState title={`No incidents in the last ${RANGE_LABELS[range]}`} description="This range is clean. We will record any future incident here." />
+    )}
+  </section>
+</section>
+
+<style>
+  .uptime-view {
+    display: grid;
+    gap: 1.5rem;
+  }
+
+  .range-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    width: fit-content;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .range-tabs a {
+    padding: 0.375rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: 550;
+    color: var(--fg-muted);
+    white-space: nowrap;
+  }
+
+  .range-tabs a:hover {
+    text-decoration: none;
+    color: var(--fg);
+  }
+
+  .range-tabs a[aria-current="page"] {
+    background: var(--surface);
+    color: var(--fg);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+
+  @media (min-width: 48rem) {
+    .stat-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.875rem 1rem;
+  }
+
+  .stat-label {
+    font-size: var(--text-xs);
+    color: var(--fg-faint);
+  }
+
+  .stat-value {
+    font-size: var(--text-xl);
+    font-weight: 650;
+  }
+
+  .all-ranges,
+  .chart-card {
+    padding: 1.25rem;
+  }
+
+  .all-ranges h2,
+  .chart-card h2 {
+    margin: 0 0 0.875rem;
+    font-size: var(--text-base);
+  }
+
+  .all-ranges table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+  }
+
+  .all-ranges th {
+    text-align: left;
+    font-weight: 550;
+    color: var(--fg-faint);
+    font-size: var(--text-xs);
+    padding-bottom: 0.5rem;
+  }
+
+  .all-ranges td {
+    padding-block: 0.375rem;
+    color: var(--fg-muted);
+  }
+
+  .all-ranges td.current {
+    color: var(--fg);
+    font-weight: 650;
+  }
+
+  .grid-2 {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  @media (min-width: 64rem) {
+    .grid-2 {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .chart-note {
+    margin: 0.75rem 0 0;
+    font-size: var(--text-xs);
+    color: var(--fg-faint);
+  }
+
+  .card-list {
+    display: grid;
+    gap: 0.75rem;
+  }
+</style>

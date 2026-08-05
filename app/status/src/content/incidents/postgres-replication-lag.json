@@ -1,0 +1,45 @@
+{
+  "slug": "postgres-replication-lag",
+  "title": "PostgreSQL Replication Lag Causing Notification Delays",
+  "severity": "major",
+  "status": "resolved",
+  "startedAt": "2026-06-12T09:14:00Z",
+  "resolvedAt": "2026-06-12T11:28:00Z",
+  "affectedComponents": ["queues", "workers", "notification-api", "postgresql"],
+  "customerImpact": "Up to 8 minutes of delivery delay on SMS and push notifications. 0.4% of queued notifications were delayed more than 5 minutes. No messages lost.",
+  "investigation": "Workers observed increasing write latency to the primary database. Investigation found replication lag growing past 90 seconds on the primary follower, causing the primary to prioritize replication WAL writes over application queries.",
+  "rootCause": "A bulk campaign (about 1.2M notifications) generated an unusual write amplification spike. The storage layer autotuning over-provisioned checkpoint throughput headroom, starving application queries during peak writes.",
+  "mitigation": "Tuned checkpoint settings, throttled the bulk campaign queue, and rebalanced read replicas. Failover not required.",
+  "monitoring": "Replication lag tracked for 45 minutes post-resolution; returned to sub-second levels before marking resolved.",
+  "resolution": "Replication lag stable at < 500ms for 45 minutes. All queued notifications delivered.",
+  "updates": [
+    {
+      "timestamp": "2026-06-12T09:14:00Z",
+      "author": "Sarah Kim, SRE",
+      "state": "investigating",
+      "details": "We are investigating elevated delivery delays affecting SMS and push notifications. API ingest is unaffected.",
+      "affectedComponents": ["queues", "workers"]
+    },
+    {
+      "timestamp": "2026-06-12T09:41:00Z",
+      "author": "Sarah Kim, SRE",
+      "state": "identified",
+      "details": "Root cause identified as PostgreSQL replication lag exceeding 90 seconds during a bulk campaign write spike. Workers are temporarily throttled to protect the primary.",
+      "affectedComponents": ["postgresql", "workers"]
+    },
+    {
+      "timestamp": "2026-06-12T11:02:00Z",
+      "author": "Tomás Rivera, SRE",
+      "state": "monitoring",
+      "details": "Checkpoint tuning applied and the bulk campaign throttled. Replication lag is below 2 seconds and falling. Monitoring until stable.",
+      "affectedComponents": ["queues", "workers", "postgresql"]
+    },
+    {
+      "timestamp": "2026-06-12T11:28:00Z",
+      "author": "Sarah Kim, SRE",
+      "state": "resolved",
+      "details": "Replication lag stable below 500ms for 45 minutes. All queued notifications have been delivered. A postmortem is being prepared.",
+      "affectedComponents": ["queues", "workers", "notification-api", "postgresql"]
+    }
+  ]
+}

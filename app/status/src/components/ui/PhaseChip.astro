@@ -1,0 +1,42 @@
+---
+import { PHASE_LABELS, type IncidentPhase } from "../../lib/types";
+
+interface Props {
+  phase: IncidentPhase;
+}
+
+const { phase } = Astro.props;
+---
+
+<span class:list={["phase-chip", `phase-${phase}`]}>{PHASE_LABELS[phase]}</span>
+
+<style>
+  .phase-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--fg-muted);
+    white-space: nowrap;
+  }
+
+  .phase-investigating {
+    border-color: var(--partial);
+    color: var(--partial);
+  }
+  .phase-identified {
+    border-color: var(--degraded);
+    color: var(--degraded);
+  }
+  .phase-monitoring {
+    border-color: var(--maintenance);
+    color: var(--maintenance);
+  }
+  .phase-resolved {
+    border-color: var(--operational);
+    color: var(--operational);
+  }
+</style>

@@ -1,0 +1,68 @@
+---
+import { formatDate, formatPercent } from "../../lib/format";
+import type { UptimePoint } from "../../lib/uptime";
+
+interface Props {
+  /** Daily points, oldest → newest. */
+  points: UptimePoint[];
+  cols?: number;
+  dotSize?: number;
+}
+
+const { points, cols = 15, dotSize = 14 } = Astro.props;
+const gap = 4;
+const cell = dotSize + gap;
+const rows = Math.ceil(points.length / cols);
+
+function dotColor(v: number): string {
+  if (v >= 99.9) return "var(--operational)";
+  if (v >= 99) return "var(--degraded)";
+  if (v >= 95) return "var(--partial)";
+  return "var(--major)";
+}
+---
+
+<figure class="calendar">
+  <svg
+    viewBox={`0 0 ${cols * cell} ${rows * cell}`}
+    width="100%"
+    role="img"
+    aria-label={`${points.length} day uptime history`}
+  >
+    {points.map((p, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      return (
+        <rect
+          x={col * cell + gap / 2}
+          y={row * cell + gap / 2}
+          width={dotSize}
+          height={dotSize}
+          rx={Math.min(3, dotSize / 4)}
+          fill={dotColor(p.availability)}
+        >
+          <title>{`${formatDate(p.t)}: ${formatPercent(p.availability)}`}</title>
+        </rect>
+      );
+    })}
+  </svg>
+  <figcaption>Last {points.length} days · <a href="/uptime">full history →</a></figcaption>
+</figure>
+
+<style>
+  .calendar {
+    margin: 0;
+  }
+
+  .calendar svg {
+    display: block;
+    height: auto;
+    max-width: 100%;
+  }
+
+  .calendar figcaption {
+    margin-top: 0.5rem;
+    font-size: var(--text-xs);
+    color: var(--fg-faint);
+  }
+</style>

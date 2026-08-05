@@ -1,0 +1,31 @@
+{
+  "slug": "network-edge-maintenance",
+  "title": "Edge Network Capacity Upgrade",
+  "purpose": "Expand edge network capacity to support increasing API traffic and add a third regional point of presence.",
+  "expectedImpact": "Brief connection resets for in-flight long-poll requests. API retries handled automatically by SDKs.",
+  "affectedComponents": ["public-api", "webhooks", "documentation", "landing-website"],
+  "startTime": "2026-07-10T01:00:00Z",
+  "endTime": "2026-07-10T02:30:00Z",
+  "status": "completed",
+  "updates": [
+    {
+      "timestamp": "2026-07-01T10:00:00Z",
+      "author": "Danilo Okafor, SRE",
+      "state": "scheduled",
+      "details": "Maintenance scheduled. All times UTC."
+    },
+    {
+      "timestamp": "2026-07-10T01:05:00Z",
+      "author": "Danilo Okafor, SRE",
+      "state": "in_progress",
+      "details": "Maintenance started. Traffic shifted to the two existing POPs."
+    },
+    {
+      "timestamp": "2026-07-10T02:20:00Z",
+      "author": "Danilo Okafor, SRE",
+      "state": "completed",
+      "details": "Maintenance completed on time. New POP serving traffic; error rates and latency within normal range."
+    }
+  ],
+  "completionSummary": "Third regional point of presence added with zero downtime. P95 API latency improved by 12% across regions."
+}

@@ -1,0 +1,263 @@
+---
+import ThemeToggle from "../components/ui/ThemeToggle.astro";
+
+const nav = [
+  { href: "/", label: "Overview" },
+  { href: "/components", label: "Components" },
+  { href: "/incidents", label: "Incidents" },
+  { href: "/maintenance", label: "Maintenance" },
+  { href: "/uptime", label: "Uptime" },
+  { href: "/performance", label: "Performance" },
+];
+
+const footerGroups = [
+  {
+    heading: "Status",
+    links: [
+      { href: "/", label: "Overview" },
+      { href: "/components", label: "Components" },
+      { href: "/incidents", label: "Incidents" },
+      { href: "/maintenance", label: "Scheduled Maintenance" },
+      { href: "/uptime", label: "Uptime History" },
+      { href: "/performance", label: "Performance" },
+    ],
+  },
+  {
+    heading: "Resources",
+    links: [
+      { href: "/reports", label: "Reports" },
+      { href: "/faq", label: "FAQ" },
+      { href: "/about", label: "About Status" },
+      { href: "/api/status.json", label: "Status API" },
+      { href: "/api-docs", label: "Status API Docs" },
+    ],
+  },
+  {
+    heading: "Feeds",
+    links: [
+      { href: "/rss.xml", label: "RSS" },
+      { href: "/atom.xml", label: "Atom" },
+      { href: "/api/status.json", label: "JSON" },
+      { href: "/subscribe", label: "Email Subscription" },
+    ],
+  },
+];
+
+const { currentPath = "/" } = Astro.props;
+
+function isCurrent(href: string) {
+  return href === "/" ? currentPath === "/" : currentPath.startsWith(href);
+}
+---
+
+<header class="site-header">
+  <div class="container site-header-inner">
+    <a href="/" class="brand" aria-label="Notifi Status — home">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" fill="var(--operational)" />
+        <circle cx="12" cy="12" r="13" fill="none" stroke="var(--operational)" stroke-width="1.5" stroke-opacity="0.35" />
+      </svg>
+      <span class="brand-name">Notifi <span class="brand-status">Status</span></span>
+    </a>
+
+    <nav class="site-nav" aria-label="Primary">
+      <ul>
+        {nav.map((item) => (
+          <li>
+            <a href={item.href} aria-current={isCurrent(item.href) ? "page" : undefined}>
+              {item.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+
+    <div class="site-actions">
+      <ThemeToggle />
+      <a class="btn btn-primary" href="/subscribe">Subscribe</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <slot />
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      {footerGroups.map((group) => (
+        <nav aria-label={group.heading}>
+          <h2>{group.heading}</h2>
+          <ul>
+            {group.links.map((link) => (
+              <li>
+                <a href={link.href}>{link.label}</a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ))}
+    </div>
+    <div class="footer-bottom">
+      <p>© 2026 Notifi · <a href="https://notifi.dev">notifi.dev</a> · <a href="https://docs.notifi.dev">docs</a> · <a href="https://dashboard.notifi.dev">dashboard</a></p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .site-header-inner {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    height: var(--header-h);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 700;
+    font-size: var(--text-base);
+    color: var(--fg);
+    white-space: nowrap;
+  }
+
+  .brand:hover {
+    text-decoration: none;
+  }
+
+  .brand-status {
+    color: var(--fg-faint);
+    font-weight: 600;
+  }
+
+  .site-nav {
+    display: none;
+  }
+
+  .site-nav ul {
+    display: flex;
+    gap: 0.25rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .site-nav a {
+    display: block;
+    padding: 0.375rem 0.625rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--fg-muted);
+  }
+
+  .site-nav a:hover {
+    color: var(--fg);
+    background: var(--surface-muted);
+    text-decoration: none;
+  }
+
+  .site-nav a[aria-current="page"] {
+    color: var(--fg);
+    background: var(--surface-muted);
+  }
+
+  .site-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding: 0.4375rem 0.875rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    border: 1px solid transparent;
+    cursor: pointer;
+  }
+
+  .btn-primary {
+    background: var(--fg);
+    color: var(--bg);
+  }
+
+  .btn-primary:hover {
+    text-decoration: none;
+    opacity: 0.9;
+  }
+
+  @media (min-width: 64rem) {
+    .site-nav {
+      display: block;
+    }
+  }
+
+  .site-footer {
+    margin-top: 4rem;
+    border-top: 1px solid var(--border);
+    background: var(--surface-muted);
+  }
+
+  .footer-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    padding-block: 3rem 2rem;
+  }
+
+  @media (min-width: 48rem) {
+    .footer-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  .footer-grid h2 {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-faint);
+    margin: 0 0 0.75rem;
+  }
+
+  .footer-grid ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .footer-grid a {
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
+  .footer-bottom {
+    border-top: 1px solid var(--border);
+    padding-block: 1.25rem;
+  }
+
+  .footer-bottom p {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--fg-faint);
+  }
+</style>

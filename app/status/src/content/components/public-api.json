@@ -1,0 +1,13 @@
+{
+  "slug": "public-api",
+  "name": "Public API",
+  "subsystem": "platform",
+  "group": "Platform",
+  "dependencies": ["authentication", "postgresql", "redis"],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 22, "p95": 210 },
+    "availability": { "7d": 100, "30d": 99.99, "90d": 99.99 }
+  },
+  "lastUpdated": "2026-08-01T14:00:00Z"
+}

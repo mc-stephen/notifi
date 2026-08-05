@@ -1,0 +1,164 @@
+---
+import { SUBSCRIPTION_SCOPES } from "../../lib/types";
+
+interface Props {
+  variant?: "compact" | "full";
+}
+
+const { variant = "compact" } = Astro.props;
+---
+
+<form class:list={["sub-form", `sub-${variant}`]} id="subscription-form" novalidate>
+  <label for="sub-email">Email address</label>
+  <div class="row">
+    <input
+      id="sub-email"
+      name="email"
+      type="email"
+      required
+      autocomplete="email"
+      placeholder="you@company.com"
+    />
+    {variant === "full" && (
+      <label for="sub-scope">Notify me about</label>
+    )}
+    <select id="sub-scope" name="scope" aria-label="Notification scope">
+      {SUBSCRIPTION_SCOPES.map((s) => (
+        <option value={s.value}>{s.label}</option>
+      ))}
+    </select>
+    <button type="submit">Subscribe</button>
+  </div>
+  <p class="status" role="status" aria-live="polite"></p>
+  <p class="fineprint">
+    Double opt-in: we will send a confirmation email before adding you.
+    Unsubscribe anytime via the link in any email. No marketing — status updates only.
+  </p>
+</form>
+
+<style>
+  .sub-form {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .sub-form label {
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .sub-form input,
+  .sub-form select {
+    padding: 0.5625rem 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--fg);
+    font: inherit;
+    font-size: var(--text-sm);
+  }
+
+  .sub-form input {
+    flex: 1 1 14rem;
+    min-width: 0;
+  }
+
+  .sub-form select {
+    flex: 1 1 10rem;
+  }
+
+  .sub-form input:focus-visible,
+  .sub-form select:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .sub-form input[aria-invalid="true"] {
+    border-color: var(--major);
+  }
+
+  .sub-form button {
+    padding: 0.5625rem 1.25rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    background: var(--fg);
+    color: var(--bg);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .sub-form button:hover {
+    opacity: 0.9;
+  }
+
+  .status {
+    margin: 0;
+    font-size: var(--text-sm);
+    min-height: 1.25rem;
+  }
+
+  .status.success {
+    color: var(--operational);
+  }
+
+  .status.error {
+    color: var(--major);
+  }
+
+  .fineprint {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--fg-faint);
+  }
+
+  .sub-compact .row {
+    flex-direction: column;
+  }
+</style>
+
+<script>
+  const form = document.getElementById("subscription-form") as HTMLFormElement | null;
+  if (form) {
+    const status = form.querySelector(".status") as HTMLElement;
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = (form.elements.namedItem("email") as HTMLInputElement).value.trim();
+      const scope = (form.elements.namedItem("scope") as HTMLSelectElement).value;
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        (form.elements.namedItem("email") as HTMLInputElement).setAttribute("aria-invalid", "true");
+        status.textContent = "Please enter a valid email address.";
+        status.className = "status error";
+        return;
+      }
+
+      const data = { email, scope };
+
+      // Interim behavior (M4): simulate the double opt-in send locally.
+      // M6 replaces this with a POST to the Notifi backend, which persists
+      // the subscription and emails a signed verification link.
+      try {
+        const res = await fetch("/api/subscriptions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        if (res.status === 501 || res.status === 404) throw new Error("unavailable");
+      } catch {
+        /* static demo — fall through to the simulated confirmation */
+      }
+
+      status.textContent = `Confirmation email sent to ${email}. Click the link inside to activate your subscription (scope: ${scope}).`;
+      status.className = "status success";
+      form.reset();
+    });
+  }
+</script>

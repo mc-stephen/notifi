@@ -1,0 +1,13 @@
+{
+  "slug": "workers",
+  "name": "Workers",
+  "subsystem": "platform",
+  "group": "Platform",
+  "dependencies": ["queues", "postgresql", "redis"],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 12, "p95": 45 },
+    "availability": { "7d": 100, "30d": 99.9, "90d": 99.87 }
+  },
+  "lastUpdated": "2026-08-01T13:55:00Z"
+}

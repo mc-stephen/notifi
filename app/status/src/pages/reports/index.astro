@@ -1,0 +1,121 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import PageLayout from "../../layouts/PageLayout.astro";
+import { getReports } from "../../lib/data";
+import { formatPercent } from "../../lib/format";
+import { SUBSYSTEM_LABELS } from "../../lib/types";
+
+const reports = await getReports().then((r) => [...r].sort((a, b) => b.month.localeCompare(a.month)));
+
+const title = "Reports — Notifi Status";
+const description = "Monthly reliability reports for the Notifi platform: availability, incidents, and operational highlights.";
+---
+
+<BaseLayout title={title} description={description} path="/reports">
+  <PageLayout currentPath="/reports">
+    <section class="container page-head">
+      <h1>Historical reports</h1>
+      <p>Monthly reliability reports — availability by subsystem, incident counts, and operational highlights.</p>
+    </section>
+
+    <section class="container report-list">
+      {reports.map((report) => (
+        <article class="card report-card">
+          <a href={`/reports/${report.slug}`} class="report-link">
+            <h2>{report.month}</h2>
+          </a>
+          <p class="report-summary">{report.summary}</p>
+          <dl class="report-stats">
+            <div>
+              <dt>Global availability</dt>
+              <dd class="mono">{formatPercent(report.globalAvailability)}</dd>
+            </div>
+            <div>
+              <dt>Incidents</dt>
+              <dd class="mono">{report.incidents}</dd>
+            </div>
+            <div>
+              <dt>Critical</dt>
+              <dd class="mono">{report.criticalIncidents}</dd>
+            </div>
+            <div>
+              <dt>MTTR</dt>
+              <dd class="mono">{report.meanTimeToResolve}</dd>
+            </div>
+          </dl>
+        </article>
+      ))}
+    </section>
+  </PageLayout>
+</BaseLayout>
+
+<style>
+  .page-head {
+    padding-block: 2.5rem 1.5rem;
+  }
+
+  .page-head h1 {
+    margin: 0 0 0.5rem;
+  }
+
+  .page-head p {
+    margin: 0 0 2rem;
+    color: var(--fg-muted);
+    max-width: 60ch;
+  }
+
+  .report-list {
+    display: grid;
+    gap: 1rem;
+    padding-bottom: 3rem;
+  }
+
+  @media (min-width: 64rem) {
+    .report-list {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  .report-card {
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+
+  .report-link h2 {
+    margin: 0;
+    font-size: var(--text-lg);
+    color: var(--fg);
+  }
+
+  .report-link:hover h2 {
+    color: var(--accent);
+  }
+
+  .report-summary {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--fg-muted);
+  }
+
+  .report-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+    margin: 0.25rem 0 0;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .report-stats dt {
+    font-size: var(--text-xs);
+    color: var(--fg-faint);
+  }
+
+  .report-stats dd {
+    margin: 0.125rem 0 0;
+    font-size: var(--text-base);
+    font-weight: 650;
+  }
+</style>

@@ -1,0 +1,131 @@
+---
+import StatusBadge from "./StatusBadge.astro";
+import { formatPercent } from "../../lib/format";
+import type { ComponentHealth } from "../../lib/status";
+
+interface Props {
+  component: ComponentHealth;
+  showDetails?: boolean;
+}
+
+const { component, showDetails = false } = Astro.props;
+const inc = component.incident;
+const maint = component.maintenance;
+---
+
+<li class:list={["health-card", { "health-card-degraded": component.state !== "operational" && component.state !== "maintenance" }]}>
+  <div class="health-main">
+    <div class="health-name">
+      <StatusBadge state={component.state} />
+      <a href={inc ? `/incidents/${inc.slug}` : maint ? `/maintenance/${maint.slug}` : "/components"} class="name-link">
+        {component.name}
+      </a>
+    </div>
+    <div class="health-stats">
+      {showDetails && (
+        <>
+          <span class="stat">
+            <span class="stat-label">p50</span>
+            {component.probe.latency.p50}ms
+          </span>
+          <span class="stat">
+            <span class="stat-label">p95</span>
+            {component.probe.latency.p95}ms
+          </span>
+        </>
+      )}
+      <span class="stat">
+        <span class="stat-label">30d</span>
+        {formatPercent(component.probe.availability["30d"])}
+      </span>
+      {showDetails && component.dependencies.length > 0 && (
+        <span class="stat">
+          <span class="stat-label">depends on</span>
+          {component.dependencies.join(", ")}
+        </span>
+      )}
+    </div>
+  </div>
+
+  {showDetails && (
+    <p class="health-note">
+      {inc
+        ? `Open incident: ${inc.title}`
+        : maint
+          ? `Maintenance in progress: ${maint.title}`
+          : component.maintenanceScheduled
+            ? "Scheduled maintenance upcoming"
+            : "Receiving and processing traffic normally."}
+    </p>
+  )}
+</li>
+
+<style>
+  .health-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 0.875rem;
+    border-radius: var(--radius);
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+
+  .health-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .health-name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .name-link {
+    color: var(--fg);
+    font-weight: 550;
+    font-size: var(--text-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .name-link:hover {
+    text-decoration: none;
+    color: var(--accent);
+  }
+
+  .health-stats {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: var(--text-xs);
+    color: var(--fg-muted);
+    white-space: nowrap;
+  }
+
+  .stat {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.25rem;
+  }
+
+  .stat-label {
+    color: var(--fg-faint);
+    font-size: 0.6875rem;
+  }
+
+  .health-note {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--fg-faint);
+  }
+
+  .health-card-degraded {
+    border-color: color-mix(in srgb, var(--degraded) 40%, var(--border));
+  }
+</style>

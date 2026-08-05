@@ -23,6 +23,24 @@ pub struct LogConfig {
     pub level: String,
 }
 
+/// Postgres connection settings. Optional: when unset, the API boots without
+/// a database (readiness reports 503) and migrations are not run.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+pub struct DatabaseConfig {
+    /// e.g. `postgres://user:pass@localhost:5432/notifi`.
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
+/// Redis connection settings. Optional: when unset, the API boots without
+/// Redis (readiness reports 503).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+pub struct RedisConfig {
+    /// e.g. `redis://:password@localhost:6379`.
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
 /// Root application configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
 pub struct AppConfig {
@@ -30,6 +48,10 @@ pub struct AppConfig {
     pub server: ServerConfig,
     #[serde(default)]
     pub log: LogConfig,
+    #[serde(default)]
+    pub database: DatabaseConfig,
+    #[serde(default)]
+    pub redis: RedisConfig,
 }
 
 fn default_host() -> String {
@@ -66,7 +88,8 @@ impl AppConfig {
     ///
     /// 1. Starts from compiled defaults.
     /// 2. Overlays `NOTIFI_CONFIG_FILE` (JSON, optional).
-    /// 3. Overlays `NOTIFI_HOST`, `NOTIFI_PORT`, `NOTIFI_LOG`.
+    /// 3. Overlays `NOTIFI_HOST`, `NOTIFI_PORT`, `NOTIFI_LOG`,
+    ///    `NOTIFI_DATABASE_URL`, `NOTIFI_REDIS_URL`.
     pub fn from_env() -> Result<Self, String> {
         let mut config = Self::default();
 
@@ -88,6 +111,12 @@ impl AppConfig {
         if let Ok(level) = std::env::var("NOTIFI_LOG") {
             config.log.level = level;
         }
+        if let Ok(url) = std::env::var("NOTIFI_DATABASE_URL") {
+            config.database.url = Some(url);
+        }
+        if let Ok(url) = std::env::var("NOTIFI_REDIS_URL") {
+            config.redis.url = Some(url);
+        }
 
         Ok(config)
     }
@@ -98,6 +127,12 @@ impl AppConfig {
         }
         if other.log != LogConfig::default() {
             self.log = other.log;
+        }
+        if other.database != DatabaseConfig::default() {
+            self.database = other.database;
+        }
+        if other.redis != RedisConfig::default() {
+            self.redis = other.redis;
         }
     }
 }
@@ -133,15 +168,31 @@ mod tests {
         set_env("NOTIFI_HOST", "0.0.0.0");
         set_env("NOTIFI_PORT", "9000");
         set_env("NOTIFI_LOG", "debug");
+        set_env("NOTIFI_DATABASE_URL", "postgres://u:p@h:5432/notifi");
+        set_env("NOTIFI_REDIS_URL", "redis://h:6379");
 
         let config = AppConfig::from_env().unwrap();
         assert_eq!(config.server.host, "0.0.0.0");
         assert_eq!(config.server.port, 9000);
         assert_eq!(config.log.level, "debug");
+        assert_eq!(
+            config.database.url.as_deref(),
+            Some("postgres://u:p@h:5432/notifi")
+        );
+        assert_eq!(config.redis.url.as_deref(), Some("redis://h:6379"));
 
         clear_env("NOTIFI_HOST");
         clear_env("NOTIFI_PORT");
         clear_env("NOTIFI_LOG");
+        clear_env("NOTIFI_DATABASE_URL");
+        clear_env("NOTIFI_REDIS_URL");
+    }
+
+    #[test]
+    fn db_and_redis_are_optional_by_default() {
+        let config = AppConfig::default();
+        assert_eq!(config.database.url, None);
+        assert_eq!(config.redis.url, None);
     }
 
     #[test]

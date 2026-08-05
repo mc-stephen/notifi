@@ -1,0 +1,15 @@
+{
+  "slug": "2026-06",
+  "month": "2026-06",
+  "summary": "June included one major incident: PostgreSQL replication lag caused notification delivery delays on June 12. Root cause and mitigation documented in the incident postmortem. Availability remained above target.",
+  "availability": { "platform": 99.96, "data": 99.95, "providers": 99.97, "web": 99.99 },
+  "globalAvailability": 99.96,
+  "incidents": 2,
+  "criticalIncidents": 0,
+  "meanTimeToResolve": "2h 11m",
+  "highlights": [
+    "Replication lag incident postmortem published (June 12)",
+    "Checkpoint tuning deployed to prevent recurrence",
+    "Token cache read fallback shipped after auth incident"
+  ]
+}

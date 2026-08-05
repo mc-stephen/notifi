@@ -1,0 +1,40 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import PageLayout from "../../layouts/PageLayout.astro";
+import UptimeView from "../../components/uptime/UptimeView.astro";
+import { getIncidents, getMaintenance } from "../../lib/data";
+
+const [incidents, maintenance] = await Promise.all([getIncidents(), getMaintenance()]);
+const now = new Date();
+
+const title = "Uptime History — Notifi Status";
+const description = "Historical availability of the Notifi platform: 24 hours to all-time, with downtime and incident frequency.";
+---
+
+<BaseLayout title={title} description={description} path="/uptime">
+  <PageLayout currentPath="/uptime">
+    <section class="container page-head">
+      <h1>Uptime history</h1>
+      <p>Availability is computed from incident timelines. Scheduled maintenance windows are excluded. All times UTC.</p>
+    </section>
+    <section class="container">
+      <UptimeView range="30d" incidents={incidents} maintenance={maintenance} now={now} />
+    </section>
+  </PageLayout>
+</BaseLayout>
+
+<style>
+  .page-head {
+    padding-block: 2.5rem 1.5rem;
+  }
+
+  .page-head h1 {
+    margin: 0 0 0.5rem;
+  }
+
+  .page-head p {
+    margin: 0 0 2rem;
+    color: var(--fg-muted);
+    max-width: 60ch;
+  }
+</style>

@@ -1,0 +1,82 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import PageLayout from "../layouts/PageLayout.astro";
+import StatusBadge from "../components/ui/StatusBadge.astro";
+import ComponentGrid from "../components/ui/ComponentGrid.astro";
+import { getComponents, getIncidents, getMaintenance } from "../lib/data";
+import { resolveGlobalHealth, openIncidents } from "../lib/status";
+
+const [components, incidents, maintenance] = await Promise.all([
+  getComponents(),
+  getIncidents(),
+  getMaintenance(),
+]);
+
+const now = new Date();
+const global = resolveGlobalHealth(components, incidents, maintenance, now);
+const open = openIncidents(incidents, now);
+
+const title = "Components — Notifi Status";
+const description = "Health of every Notifi component: API, dashboard, queues, workers, providers, and more.";
+---
+
+<BaseLayout title={title} description={description} path="/components">
+  <PageLayout currentPath="/components">
+    <section class="container page-head">
+      <h1>Components</h1>
+      <p>Current state, latency, and availability for every part of the Notifi platform. Component states update automatically from incidents and synthetic probes.</p>
+      <div class="legend">
+        <StatusBadge state="operational" />
+        <StatusBadge state="degraded" />
+        <StatusBadge state="partial_outage" />
+        <StatusBadge state="major_outage" />
+        <StatusBadge state="maintenance" />
+      </div>
+    </section>
+
+    {open.length > 0 && (
+      <section class="container note">
+        <p>
+          {open.length} open incident{open.length === 1 ? "" : "s"} affect one or more components below.{" "}
+          <a href="/incidents">View incidents →</a>
+        </p>
+      </section>
+    )}
+
+    <section class="container">
+      <ComponentGrid components={global.components} showDetails />
+    </section>
+  </PageLayout>
+</BaseLayout>
+
+<style>
+  .page-head {
+    padding-block: 2.5rem 1.5rem;
+  }
+
+  .page-head h1 {
+    margin: 0 0 0.5rem;
+  }
+
+  .page-head p {
+    margin: 0 0 1rem;
+    color: var(--fg-muted);
+    max-width: 60ch;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .note {
+    margin-bottom: 1.5rem;
+  }
+
+  .note p {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--fg-muted);
+  }
+</style>

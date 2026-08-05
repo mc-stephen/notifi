@@ -1,0 +1,13 @@
+{
+  "slug": "authentication",
+  "name": "Authentication",
+  "subsystem": "platform",
+  "group": "Platform",
+  "dependencies": ["postgresql", "redis"],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 34, "p95": 150 },
+    "availability": { "7d": 100, "30d": 99.99, "90d": 99.98 }
+  },
+  "lastUpdated": "2026-08-01T14:00:00Z"
+}

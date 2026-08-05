@@ -1,0 +1,73 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import PageLayout from "../../layouts/PageLayout.astro";
+import IncidentCard from "../../components/ui/IncidentCard.astro";
+import EmptyState from "../../components/ui/EmptyState.astro";
+import { getIncidents } from "../../lib/data";
+import { openIncidents, resolvedIncidents } from "../../lib/status";
+
+const incidents = await getIncidents();
+const now = new Date();
+const open = openIncidents(incidents, now);
+const resolved = resolvedIncidents(incidents, now);
+
+const title = "Incidents — Notifi Status";
+const description = "Current and past incidents affecting the Notifi platform, with full timelines and postmortems.";
+---
+
+<BaseLayout title={title} description={description} path="/incidents">
+  <PageLayout currentPath="/incidents">
+    <section class="container page-head">
+      <h1>Incidents</h1>
+      <p>Every incident is documented with a public timeline, affected components, and customer impact. Nothing is edited after the fact — updates are append-only.</p>
+    </section>
+
+    <section class="container section">
+      <h2>Active incidents</h2>
+      {open.length > 0 ? (
+        <div class="card-list">
+          {open.map((inc) => <IncidentCard incident={inc} now={now} />)}
+        </div>
+      ) : (
+        <EmptyState title="No active incidents" description="All systems are operational right now." />
+      )}
+    </section>
+
+    <section class="container section">
+      <h2>Resolved incidents</h2>
+      {resolved.length > 0 ? (
+        <div class="card-list">
+          {resolved.map((inc) => <IncidentCard incident={inc} now={now} />)}
+        </div>
+      ) : (
+        <EmptyState title="No resolved incidents recorded" />
+      )}
+    </section>
+  </PageLayout>
+</BaseLayout>
+
+<style>
+  .page-head {
+    padding-block: 2.5rem 1.5rem;
+  }
+
+  .page-head h1 {
+    margin: 0 0 0.5rem;
+  }
+
+  .page-head p {
+    margin: 0;
+    color: var(--fg-muted);
+    max-width: 60ch;
+  }
+
+  .section h2 {
+    margin: 0 0 1rem;
+    font-size: var(--text-xl);
+  }
+
+  .card-list {
+    display: grid;
+    gap: 0.75rem;
+  }
+</style>

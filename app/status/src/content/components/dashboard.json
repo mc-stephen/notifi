@@ -1,0 +1,13 @@
+{
+  "slug": "dashboard",
+  "name": "Dashboard",
+  "subsystem": "platform",
+  "group": "Platform",
+  "dependencies": ["public-api", "analytics", "billing"],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 180, "p95": 640 },
+    "availability": { "7d": 100, "30d": 99.98, "90d": 99.97 }
+  },
+  "lastUpdated": "2026-08-01T14:00:00Z"
+}

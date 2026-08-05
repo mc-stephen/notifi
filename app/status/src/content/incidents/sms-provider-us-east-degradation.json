@@ -1,0 +1,26 @@
+{
+  "slug": "sms-provider-us-east-degradation",
+  "title": "SMS Delivery Delays in US East",
+  "severity": "minor",
+  "status": "identified",
+  "startedAt": "2026-08-01T09:04:00Z",
+  "affectedComponents": ["sms-providers"],
+  "customerImpact": "Up to 3 minutes of additional delivery time for SMS sent to US East destinations. No messages lost.",
+  "updates": [
+    {
+      "timestamp": "2026-08-01T09:04:00Z",
+      "author": "Ruth Chen, SRE",
+      "state": "investigating",
+      "details": "We are investigating an increase in SMS delivery latency for US East destinations. Inbound API traffic is unaffected.",
+      "affectedComponents": ["sms-providers"]
+    },
+    {
+      "timestamp": "2026-08-01T09:41:00Z",
+      "author": "Ruth Chen, SRE",
+      "state": "identified",
+      "details": "The delay originates from a carrier-side routing change announced by one of our US providers. We have failed over a portion of US East traffic to the secondary provider and are monitoring delivery times.",
+      "affectedComponents": ["sms-providers"],
+      "customerImpact": "Latency has been reduced from 3 minutes to under 60 seconds for failed-over traffic."
+    }
+  ]
+}

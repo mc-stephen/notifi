@@ -1,0 +1,66 @@
+---
+import PhaseChip from "./PhaseChip.astro";
+import SeverityChip from "./SeverityChip.astro";
+import { formatDateTime, incidentDuration } from "../../lib/format";
+import type { Incident } from "../../lib/types";
+
+interface Props {
+  incident: Incident;
+  now?: Date;
+}
+
+const { incident, now = new Date() } = Astro.props;
+const duration = incident.status === "resolved" ? incidentDuration(incident, now) : "ongoing";
+---
+
+<article class="incident-card card">
+  <a href={`/incidents/${incident.slug}`} class="incident-title">
+    <h3>{incident.title}</h3>
+  </a>
+  <div class="incident-meta">
+    <PhaseChip phase={incident.status} />
+    <SeverityChip severity={incident.severity} />
+    <span class="meta-item">{formatDateTime(incident.startedAt)}</span>
+    <span class="meta-item">{incident.status === "resolved" ? `Duration ${duration}` : duration}</span>
+  </div>
+  {incident.customerImpact && <p class="impact">Impact: {incident.customerImpact}</p>}
+</article>
+
+<style>
+  .incident-card {
+    padding: 1rem 1.125rem;
+  }
+
+  .incident-title {
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  .incident-title h3 {
+    margin: 0;
+    font-size: var(--text-base);
+    color: var(--fg);
+  }
+
+  .incident-title:hover h3 {
+    color: var(--accent);
+  }
+
+  .incident-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .meta-item {
+    font-size: var(--text-xs);
+    color: var(--fg-faint);
+  }
+
+  .impact {
+    margin: 0.625rem 0 0;
+    font-size: var(--text-sm);
+    color: var(--fg-muted);
+  }
+</style>

@@ -1,0 +1,236 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import PageLayout from "../../layouts/PageLayout.astro";
+import Breadcrumbs from "../../components/ui/Breadcrumbs.astro";
+import PhaseChip from "../../components/ui/PhaseChip.astro";
+import SeverityChip from "../../components/ui/SeverityChip.astro";
+import StatusBadge from "../../components/ui/StatusBadge.astro";
+import IncidentTimeline from "../../components/ui/IncidentTimeline.astro";
+import { getIncidents, getComponents } from "../../lib/data";
+import { formatDateTime, incidentDuration } from "../../lib/format";
+import { SEVERITY_TO_STATE, type ComponentState, type Incident as IncidentType } from "../../lib/types";
+
+export async function getStaticPaths() {
+  const incidents = await getIncidents();
+  return incidents.map((incident) => ({
+    params: { slug: incident.slug },
+    props: { incident },
+  }));
+}
+
+interface Props {
+  incident: IncidentType;
+}
+
+const { incident } = Astro.props;
+const now = new Date();
+
+if (!incident) {
+  return new Response(null, { status: 404 });
+}
+
+const affectedStates = new Map<string, ComponentState>();
+if (incident.status !== "resolved") {
+  const components = await getComponents();
+  for (const c of components) {
+    if (!incident.affectedComponents.includes(c.slug)) continue;
+    affectedStates.set(c.slug, SEVERITY_TO_STATE[incident.severity]);
+  }
+}
+
+const title = `${incident.title} — Notifi Status`;
+const description = `${incident.status === "resolved" ? "Resolved" : "Ongoing"}: ${incident.customerImpact ?? "Affecting " + incident.affectedComponents.join(", ")}`;
+---
+
+<BaseLayout title={title} description={description} path={`/incidents/${incident.slug}`}>
+  <PageLayout currentPath="/incidents">
+    <article class="container incident-page">
+      <Breadcrumbs items={[{ href: "/incidents", label: "Incidents" }, { href: `#`, label: incident.title }]} />
+
+      <header class="incident-head">
+        <div class="incident-chips">
+          <SeverityChip severity={incident.severity} />
+          <PhaseChip phase={incident.status} />
+        </div>
+        <h1>{incident.title}</h1>
+        <p class="incident-meta">
+          {formatDateTime(incident.startedAt)}
+          {incident.resolvedAt && <span> → {formatDateTime(incident.resolvedAt)}</span>}
+          <span class="duration">· {incidentDuration(incident, now)}</span>
+        </p>
+        {incident.customerImpact && (
+          <p class="impact">
+            <strong>Customer impact:</strong> {incident.customerImpact}
+          </p>
+        )}
+        {incident.affectedComponents.length > 0 && (
+          <div class="affected">
+            <span class="affected-label">Affected components:</span>
+            <div class="affected-list">
+              {incident.affectedComponents.map((slug) => (
+                <StatusBadge
+                  state={affectedStates.get(slug) ?? (incident.status === "resolved" ? "operational" : "degraded")}
+                  label={slug}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        <p class="share">
+          <a href={`/rss.xml?incident=${incident.slug}`}>RSS</a> · <a href={`/atom.xml?incident=${incident.slug}`}>Atom</a>
+        </p>
+      </header>
+
+      <section class="timeline-section">
+        <h2>Timeline</h2>
+        <IncidentTimeline updates={incident.updates} />
+      </section>
+
+      {incident.status === "resolved" && (
+        <section class="rca card">
+          <h2>Root cause analysis</h2>
+          {incident.investigation && (
+            <div class="rca-block">
+              <h3>Investigation</h3>
+              <p>{incident.investigation}</p>
+            </div>
+          )}
+          {incident.rootCause && (
+            <div class="rca-block">
+              <h3>Root cause</h3>
+              <p>{incident.rootCause}</p>
+            </div>
+          )}
+          {incident.mitigation && (
+            <div class="rca-block">
+              <h3>Mitigation</h3>
+              <p>{incident.mitigation}</p>
+            </div>
+          )}
+          {incident.monitoring && (
+            <div class="rca-block">
+              <h3>Monitoring</h3>
+              <p>{incident.monitoring}</p>
+            </div>
+          )}
+          {incident.resolution && (
+            <div class="rca-block">
+              <h3>Resolution</h3>
+              <p>{incident.resolution}</p>
+            </div>
+          )}
+          {incident.postmortemSlug && (
+            <p class="postmortem-link">
+              <a href={`/reports/${incident.postmortemSlug}`}>Read the postmortem →</a>
+            </p>
+          )}
+        </section>
+      )}
+    </article>
+  </PageLayout>
+</BaseLayout>
+
+<style>
+  .incident-page {
+    padding-block: 2rem 3rem;
+  }
+
+  .incident-head {
+    margin-block: 1.25rem 2rem;
+  }
+
+  .incident-chips {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .incident-head h1 {
+    margin: 0 0 0.5rem;
+    font-size: var(--text-3xl);
+  }
+
+  .incident-meta {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--fg-faint);
+  }
+
+  .duration {
+    color: var(--fg-muted);
+  }
+
+  .impact {
+    margin: 1rem 0 0;
+    padding: 0.75rem 1rem;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: var(--text-sm);
+    color: var(--fg-muted);
+  }
+
+  .affected {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .affected-label {
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .affected-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .share {
+    margin: 1rem 0 0;
+    font-size: var(--text-sm);
+  }
+
+  .timeline-section {
+    margin-bottom: 2.5rem;
+  }
+
+  .timeline-section h2 {
+    margin: 0 0 1.25rem;
+    font-size: var(--text-xl);
+  }
+
+  .rca {
+    padding: 1.5rem;
+  }
+
+  .rca h2 {
+    margin: 0 0 1rem;
+    font-size: var(--text-xl);
+  }
+
+  .rca-block {
+    margin-bottom: 1.25rem;
+  }
+
+  .rca-block h3 {
+    margin: 0 0 0.375rem;
+    font-size: var(--text-sm);
+    color: var(--fg-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .rca-block p {
+    margin: 0;
+    color: var(--fg-muted);
+  }
+
+  .postmortem-link {
+    margin: 1.25rem 0 0;
+    font-size: var(--text-sm);
+  }
+</style>

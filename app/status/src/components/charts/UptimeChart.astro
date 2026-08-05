@@ -1,0 +1,87 @@
+---
+import { formatPercent } from "../../lib/format";
+import type { UptimePoint } from "../../lib/uptime";
+
+interface Props {
+  points: UptimePoint[];
+  width?: number;
+  height?: number;
+  ariaLabel?: string;
+}
+
+const { points, width = 720, height = 200, ariaLabel } = Astro.props;
+
+const pad = { top: 8, right: 8, bottom: 24, left: 8 };
+const innerWidth = width - pad.left - pad.right;
+const innerHeight = height - pad.top - pad.bottom;
+const barGap = points.length > 120 ? 1 : 2;
+const barWidth = Math.max(1, innerWidth / points.length - barGap);
+
+const step = Math.max(1, Math.ceil(points.length / 24));
+const ticks = points.map((p, i) => ({ ...p, i })).filter((_, i) => i % step === 0);
+
+function barColor(v: number): string {
+  if (v >= 99.9) return "var(--operational)";
+  if (v >= 99) return "var(--degraded)";
+  if (v >= 95) return "var(--partial)";
+  return "var(--major)";
+}
+---
+
+<figure class="uptime-chart">
+  <svg
+    viewBox={`0 0 ${width} ${height}`}
+    width="100%"
+    role="img"
+    aria-label={ariaLabel ?? `Uptime chart with ${points.length} points`}
+  >
+    <g>
+      {points.map((p, i) => {
+        const h = Math.max(2, (p.availability / 100) * innerHeight);
+        return (
+          <rect
+            x={pad.left + i * (barWidth + barGap)}
+            y={pad.top + innerHeight - h}
+            width={barWidth}
+            height={h}
+            rx={Math.min(1.5, barWidth / 3)}
+            fill={barColor(p.availability)}
+          >
+            <title>{`${p.label}: ${formatPercent(p.availability)}`}</title>
+          </rect>
+        );
+      })}
+    </g>
+    <g class="axis">
+      {ticks.map((t) => (
+        <text x={pad.left + t.i * (barWidth + barGap) + barWidth / 2} y={height - 8} text-anchor="middle">
+          {t.label}
+        </text>
+      ))}
+    </g>
+  </svg>
+  <figcaption>Green bars ≥ 99.9% availability · amber ≥ 99% · orange ≥ 95% · red below.</figcaption>
+</figure>
+
+<style>
+  .uptime-chart {
+    margin: 0;
+  }
+
+  .uptime-chart svg {
+    display: block;
+    height: auto;
+  }
+
+  .axis text {
+    font-size: 10px;
+    fill: var(--fg-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .uptime-chart figcaption {
+    margin-top: 0.5rem;
+    font-size: var(--text-xs);
+    color: var(--fg-faint);
+  }
+</style>

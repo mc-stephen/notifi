@@ -1,0 +1,176 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import PageLayout from "../../layouts/PageLayout.astro";
+
+const title = "Status API — Notifi Status";
+const description = "Machine-readable status endpoints for the Notifi platform: current status, components, incidents, uptime, and performance as static JSON.";
+
+const endpoints = [
+  {
+    method: "GET",
+    path: "/api/status.json",
+    description: "Global state, per-subsystem state, 90-day uptime, and summary counts.",
+    example: `{
+  "state": "partial_outage",
+  "uptime_90d": 99.19,
+  "subsystems": [
+    { "subsystem": "platform", "state": "partial_outage", "component_count": 11 }
+  ]
+}`,
+  },
+  {
+    method: "GET",
+    path: "/api/components.json",
+    description: "All components with computed state, latency, availability, and dependencies.",
+    example: `[
+  {
+    "id": "queues",
+    "name": "Queues",
+    "state": "partial_outage",
+    "latency": { "p50_ms": 4, "p95_ms": 12 },
+    "availability": { "7d": 100, "30d": 98.1, "90d": 99.02 }
+  }
+]`,
+  },
+  {
+    method: "GET",
+    path: "/api/incidents.json",
+    description: "All incidents (open and resolved), summary fields only.",
+  },
+  {
+    method: "GET",
+    path: "/api/incidents/{id}.json",
+    description: "Full incident: timeline updates, investigation, root cause, mitigation, monitoring, resolution.",
+  },
+  {
+    method: "GET",
+    path: "/api/maintenance.json",
+    description: "All scheduled, in-progress, and completed maintenance with windows and progress updates.",
+  },
+  {
+    method: "GET",
+    path: "/api/uptime.json",
+    description: "90-day availability series plus summary for every range (24h…all time).",
+  },
+  {
+    method: "GET",
+    path: "/api/uptime/{range}.json",
+    description: "Availability series for a specific range: 24h, 7d, 30d, 90d, 1y, all.",
+  },
+  {
+    method: "GET",
+    path: "/api/performance.json",
+    description: "Latest operational metrics: latency, throughput, queue depth, delivery success, database and cache health.",
+  },
+];
+---
+
+<BaseLayout title={title} description={description} path="/api-docs">
+  <PageLayout currentPath="/api-docs">
+    <section class="container page-head">
+      <h1>Status API</h1>
+      <p>Machine-readable status for tools, dashboards, and integrations. Every endpoint is a static JSON file — no auth, no rate limits, no origin requests on read.</p>
+    </section>
+
+    <section class="container note">
+      <p>
+        Caching: <code class="mono">Cache-Control: public, max-age=60, stale-while-revalidate=300</code>.
+        Errors: <code class="mono">{`{ "error": "not_found", "detail": "..." }`}</code> with HTTP 404.
+      </p>
+    </section>
+
+    <section class="container endpoint-list">
+      {endpoints.map((endpoint) => (
+        <article class="card endpoint">
+          <header>
+            <code class="method">{endpoint.method}</code>
+            <code class="path">{endpoint.path}</code>
+          </header>
+          <p>{endpoint.description}</p>
+          {endpoint.example && (
+            <pre><code>{endpoint.example}</code></pre>
+          )}
+        </article>
+      ))}
+    </section>
+
+    <section class="container page-head">
+      <h2>Future</h2>
+      <p>GraphQL support (<code class="mono">/graphql</code>) is planned, exposing the same resources. Webhook subscriptions will POST incident and maintenance events with HMAC signatures.</p>
+    </section>
+  </PageLayout>
+</BaseLayout>
+
+<style>
+  .page-head {
+    padding-block: 2.5rem 1.5rem;
+  }
+
+  .page-head h1 {
+    margin: 0 0 0.5rem;
+  }
+
+  .page-head p {
+    margin: 0;
+    color: var(--fg-muted);
+    max-width: 68ch;
+  }
+
+  .note {
+    margin-bottom: 1.5rem;
+  }
+
+  .note p {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--fg-muted);
+  }
+
+  .endpoint-list {
+    display: grid;
+    gap: 1rem;
+    padding-bottom: 3rem;
+  }
+
+  .endpoint {
+    padding: 1.25rem;
+  }
+
+  .endpoint header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .method {
+    font-size: var(--text-xs);
+    font-weight: 700;
+    padding: 0.1875rem 0.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--operational-bg);
+    color: var(--operational);
+  }
+
+  .path {
+    font-size: var(--text-sm);
+    color: var(--fg);
+  }
+
+  .endpoint p {
+    margin: 0 0 0.75rem;
+    font-size: var(--text-sm);
+    color: var(--fg-muted);
+  }
+
+  .endpoint pre {
+    margin: 0;
+    padding: 0.875rem 1rem;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    font-size: var(--text-xs);
+    line-height: 1.6;
+  }
+</style>

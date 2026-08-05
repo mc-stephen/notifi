@@ -1,0 +1,45 @@
+{
+  "slug": "webhook-timeouts",
+  "title": "Webhook Delivery Timeouts for Slow Endpoints",
+  "severity": "major",
+  "status": "resolved",
+  "startedAt": "2026-07-05T10:30:00Z",
+  "resolvedAt": "2026-07-05T13:52:00Z",
+  "affectedComponents": ["webhooks", "workers", "public-api"],
+  "customerImpact": "Webhook deliveries to endpoints responding slower than 10 seconds were dropped after retry exhaustion. 0.02% of webhook deliveries affected. No API ingest impact.",
+  "investigation": "Webhook retry queue grew as the delivery worker pool stalled on long-running HTTP connections.",
+  "rootCause": "The webhook delivery client had no per-request timeout, so a handful of slow endpoints occupied worker threads indefinitely.",
+  "mitigation": "Deployed a per-request timeout of 15s, connection pooling limits, and faster failure classification. Released stalled workers immediately.",
+  "monitoring": "Delivery latency and retry queue depth monitored for 90 minutes.",
+  "resolution": "Webhook delivery latency normalized. All retryable webhooks were re-delivered.",
+  "updates": [
+    {
+      "timestamp": "2026-07-05T10:30:00Z",
+      "author": "Amina Yusuf, SRE",
+      "state": "investigating",
+      "details": "We are investigating webhook delivery failures. Retry queue depth is elevated.",
+      "affectedComponents": ["webhooks"]
+    },
+    {
+      "timestamp": "2026-07-05T11:12:00Z",
+      "author": "Amina Yusuf, SRE",
+      "state": "identified",
+      "details": "Worker threads are stuck on connections to slow customer endpoints; the delivery client lacks a request timeout.",
+      "affectedComponents": ["webhooks", "workers"]
+    },
+    {
+      "timestamp": "2026-07-05T12:05:00Z",
+      "author": "Danilo Okafor, SRE",
+      "state": "monitoring",
+      "details": "Timeout fix deployed. Stalled workers released; retry queue draining.",
+      "affectedComponents": ["webhooks", "workers"]
+    },
+    {
+      "timestamp": "2026-07-05T13:52:00Z",
+      "author": "Amina Yusuf, SRE",
+      "state": "resolved",
+      "details": "All retryable webhooks delivered. Delivery latency back to normal.",
+      "affectedComponents": ["webhooks"]
+    }
+  ]
+}

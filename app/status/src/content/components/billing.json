@@ -1,0 +1,13 @@
+{
+  "slug": "billing",
+  "name": "Billing",
+  "subsystem": "platform",
+  "group": "Platform",
+  "dependencies": ["public-api", "postgresql"],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 55, "p95": 190 },
+    "availability": { "7d": 100, "30d": 99.95, "90d": 99.9 }
+  },
+  "lastUpdated": "2026-08-01T14:00:00Z"
+}

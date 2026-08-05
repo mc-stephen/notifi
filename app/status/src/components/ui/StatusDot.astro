@@ -1,0 +1,100 @@
+---
+import type { ComponentState } from "../../lib/types";
+
+interface Props {
+  state: ComponentState;
+  size?: "sm" | "md" | "lg";
+}
+
+const { state, size = "sm" } = Astro.props;
+
+/** ARIA label always present — status is never conveyed by color alone. */
+const labels: Record<ComponentState, string> = {
+  operational: "Operational",
+  degraded: "Degraded performance",
+  partial_outage: "Partial outage",
+  major_outage: "Major outage",
+  maintenance: "Under maintenance",
+};
+---
+
+<svg
+  class:list={["status-dot", `status-dot-${size}`, `dot-${state}`]}
+  viewBox="0 0 20 20"
+  role="img"
+  aria-label={labels[state]}
+>
+  <circle class="dot-core" cx="10" cy="10" r="5.5" />
+  <circle class="dot-ring" cx="10" cy="10" r="8.5" fill="none" />
+</svg>
+
+<style>
+  .status-dot {
+    flex-shrink: 0;
+  }
+
+  .status-dot-sm {
+    width: 0.625rem;
+    height: 0.625rem;
+  }
+
+  .status-dot-md {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .status-dot-lg {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .dot-core {
+    fill: var(--fg-faint);
+  }
+
+  .dot-ring {
+    stroke: var(--fg-faint);
+    stroke-opacity: 0.3;
+    stroke-width: 1.5;
+  }
+
+  .dot-operational .dot-core {
+    fill: var(--operational);
+  }
+  .dot-operational .dot-ring {
+    stroke: var(--operational);
+  }
+
+  .dot-degraded .dot-core {
+    fill: var(--degraded);
+  }
+  .dot-degraded .dot-ring {
+    stroke: var(--degraded);
+  }
+
+  .dot-partial_outage .dot-core {
+    fill: var(--partial);
+  }
+  .dot-partial_outage .dot-ring {
+    stroke: var(--partial);
+  }
+
+  .dot-major_outage .dot-core {
+    fill: none;
+    stroke: var(--major);
+    stroke-width: 3;
+  }
+  .dot-major_outage .dot-ring {
+    stroke: var(--major);
+  }
+
+  .dot-maintenance .dot-core {
+    fill: none;
+    stroke: var(--maintenance);
+    stroke-width: 2.5;
+    stroke-dasharray: 4 3;
+  }
+  .dot-maintenance .dot-ring {
+    stroke: var(--maintenance);
+  }
+</style>

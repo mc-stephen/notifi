@@ -1,0 +1,155 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import PageLayout from "../../layouts/PageLayout.astro";
+import Breadcrumbs from "../../components/ui/Breadcrumbs.astro";
+import { getReports, getReportBySlug } from "../../lib/data";
+import { formatPercent } from "../../lib/format";
+import { SUBSYSTEM_LABELS, type Report as ReportType } from "../../lib/types";
+
+export async function getStaticPaths() {
+  const reports = await getReports();
+  return reports.map((report) => ({
+    params: { slug: report.slug },
+    props: { report },
+  }));
+}
+
+interface Props {
+  report: ReportType;
+}
+
+const { report } = Astro.props;
+const monthLabel = report.month.replace("-", " · ");
+
+const title = `Reliability Report ${report.month} — Notifi Status`;
+const description = report.summary;
+---
+
+<BaseLayout title={title} description={description} path={`/reports/${report.slug}`}>
+  <PageLayout currentPath="/reports">
+    <article class="container report-page">
+      <Breadcrumbs items={[{ href: "/reports", label: "Reports" }, { href: `#`, label: report.month }]} />
+
+      <header class="report-head">
+        <h1>Reliability report — {monthLabel}</h1>
+        <p class="summary">{report.summary}</p>
+      </header>
+
+      <section class="card stats-card">
+        <h2>Month at a glance</h2>
+        <dl>
+          <div>
+            <dt>Global availability</dt>
+            <dd class="mono">{formatPercent(report.globalAvailability)}</dd>
+          </div>
+          <div>
+            <dt>Incidents</dt>
+            <dd class="mono">{report.incidents}</dd>
+          </div>
+          <div>
+            <dt>Critical incidents</dt>
+            <dd class="mono">{report.criticalIncidents}</dd>
+          </div>
+          <div>
+            <dt>Mean time to resolve</dt>
+            <dd class="mono">{report.meanTimeToResolve}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="card stats-card">
+        <h2>Availability by subsystem</h2>
+        <dl>
+          {(Object.keys(report.availability) as (keyof typeof report.availability)[]).map((sub) => (
+            <div>
+              <dt>{SUBSYSTEM_LABELS[sub] ?? sub}</dt>
+              <dd class="mono">{formatPercent(report.availability[sub] ?? 0)}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      {report.highlights.length > 0 && (
+        <section class="card highlights">
+          <h2>Highlights</h2>
+          <ul>
+            {report.highlights.map((h) => <li>{h}</li>)}
+          </ul>
+        </section>
+      )}
+    </article>
+  </PageLayout>
+</BaseLayout>
+
+<style>
+  .report-page {
+    padding-block: 2rem 3rem;
+  }
+
+  .report-head {
+    margin-block: 1.25rem 1.5rem;
+  }
+
+  .report-head h1 {
+    margin: 0 0 0.5rem;
+  }
+
+  .summary {
+    margin: 0;
+    color: var(--fg-muted);
+    max-width: 68ch;
+  }
+
+  .stats-card {
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+
+  .stats-card h2 {
+    margin: 0 0 0.875rem;
+    font-size: var(--text-base);
+  }
+
+  .stats-card dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+
+  @media (min-width: 48rem) {
+    .stats-card dl {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+
+  .stats-card dt {
+    font-size: var(--text-xs);
+    color: var(--fg-faint);
+  }
+
+  .stats-card dd {
+    margin: 0.125rem 0 0;
+    font-size: var(--text-lg);
+    font-weight: 650;
+  }
+
+  .highlights {
+    padding: 1.25rem;
+  }
+
+  .highlights h2 {
+    margin: 0 0 0.625rem;
+    font-size: var(--text-base);
+  }
+
+  .highlights ul {
+    margin: 0;
+    padding-left: 1.25rem;
+    color: var(--fg-muted);
+  }
+
+  .highlights li + li {
+    margin-top: 0.375rem;
+  }
+</style>

@@ -1,0 +1,13 @@
+{
+  "slug": "analytics",
+  "name": "Analytics",
+  "subsystem": "platform",
+  "group": "Platform",
+  "dependencies": ["public-api", "workers"],
+  "probe": {
+    "state": "degraded",
+    "latency": { "p50": 320, "p95": 890 },
+    "availability": { "7d": 100, "30d": 99.9, "90d": 99.9 }
+  },
+  "lastUpdated": "2026-08-01T13:40:00Z"
+}

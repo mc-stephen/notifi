@@ -1,0 +1,145 @@
+---
+import { formatDateTime } from "../../lib/format";
+import { PHASE_LABELS } from "../../lib/types";
+
+export interface TimelineUpdate {
+  timestamp: string;
+  author: string;
+  state: string;
+  details: string;
+  customerImpact?: string;
+  affectedComponents?: string[];
+}
+
+interface Props {
+  updates: TimelineUpdate[];
+  /** state → display label; defaults to incident phases. */
+  stateLabels?: Record<string, string>;
+}
+
+const { updates, stateLabels = PHASE_LABELS as Record<string, string> } = Astro.props;
+---
+
+<ol class="timeline">
+  {updates.map((update, i) => {
+    const isLast = i === updates.length - 1;
+    return (
+      <li class:list={["timeline-item", { "timeline-last": isLast }]}>
+        <div class="rail" aria-hidden="true">
+          <span class:list={["marker", `marker-${update.state}`, { "marker-new": isLast }]}></span>
+          {!isLast && <span class="line"></span>}
+        </div>
+        <div class="content">
+          <header class="content-head">
+            <span class="phase">{stateLabels[update.state] ?? update.state}</span>
+            <time datetime={update.timestamp}>{formatDateTime(update.timestamp)}</time>
+            <span class="author">{update.author}</span>
+          </header>
+          <p class="details">{update.details}</p>
+          {update.customerImpact && <p class="impact">Impact: {update.customerImpact}</p>}
+          {update.affectedComponents && update.affectedComponents.length > 0 && (
+            <p class="affected">Affected: {update.affectedComponents.join(", ")}</p>
+          )}
+        </div>
+      </li>
+    );
+  })}
+</ol>
+
+<style>
+  .timeline {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0;
+  }
+
+  .timeline-item {
+    display: grid;
+    grid-template-columns: 1.75rem 1fr;
+    gap: 0.875rem;
+  }
+
+  .rail {
+    position: relative;
+    display: flex;
+    justify-content: center;
+  }
+
+  .marker {
+    position: relative;
+    z-index: 1;
+    width: 0.625rem;
+    height: 0.625rem;
+    margin-top: 0.3125rem;
+    border-radius: 999px;
+    background: var(--fg-faint);
+  }
+
+  .marker-investigating { background: var(--partial); }
+  .marker-identified { background: var(--degraded); }
+  .marker-monitoring,
+  .marker-scheduled { background: var(--maintenance); }
+  .marker-resolved,
+  .marker-completed { background: var(--operational); }
+  .marker-in_progress { background: var(--degraded); }
+
+  .marker-new {
+    box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 20%, transparent);
+    outline: 2px solid var(--bg);
+  }
+
+  .line {
+    position: absolute;
+    top: 0.875rem;
+    bottom: -0.5rem;
+    width: 1px;
+    background: var(--border);
+  }
+
+  .timeline-last .line {
+    display: none;
+  }
+
+  .content {
+    padding-bottom: 1.5rem;
+  }
+
+  .timeline-last .content {
+    padding-bottom: 0;
+  }
+
+  .content-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.375rem;
+  }
+
+  .phase {
+    font-weight: 650;
+    font-size: var(--text-sm);
+    color: var(--fg);
+  }
+
+  .content-head time,
+  .author {
+    font-size: var(--text-xs);
+    color: var(--fg-faint);
+  }
+
+  .details {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--fg-muted);
+  }
+
+  .impact,
+  .affected {
+    margin: 0.375rem 0 0;
+    font-size: var(--text-xs);
+    color: var(--fg-faint);
+  }
+</style>

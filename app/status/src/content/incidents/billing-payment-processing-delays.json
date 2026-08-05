@@ -1,0 +1,38 @@
+{
+  "slug": "billing-payment-processing-delays",
+  "title": "Billing Payment Processing Delays",
+  "severity": "major",
+  "status": "resolved",
+  "startedAt": "2026-04-30T19:05:00Z",
+  "resolvedAt": "2026-04-30T21:40:00Z",
+  "affectedComponents": ["billing", "public-api", "postgresql"],
+  "customerImpact": "Payment attempts took up to 6 minutes to confirm. No charges were duplicated; invoices continued to generate correctly.",
+  "investigation": "Payment confirmation webhooks from the processor were being delayed, stalling the billing reconcile loop.",
+  "rootCause": "The payment processor experienced a regional webhook backlog. Our reconcile loop serialized on the delayed webhook queue.",
+  "mitigation": "Switched reconcile to poll the processor API directly until webhooks caught up.",
+  "monitoring": "Payment latency monitored for 90 minutes.",
+  "resolution": "Webhook backlog cleared; reconcile back on webhooks. No financial impact.",
+  "updates": [
+    {
+      "timestamp": "2026-04-30T19:05:00Z",
+      "author": "Danilo Okafor, SRE",
+      "state": "investigating",
+      "details": "Investigating billing payment confirmation delays.",
+      "affectedComponents": ["billing"]
+    },
+    {
+      "timestamp": "2026-04-30T19:40:00Z",
+      "author": "Danilo Okafor, SRE",
+      "state": "identified",
+      "details": "Processor webhook backlog stalling the reconcile loop. Switching to polling fallback.",
+      "affectedComponents": ["billing"]
+    },
+    {
+      "timestamp": "2026-04-30T21:40:00Z",
+      "author": "Danilo Okafor, SRE",
+      "state": "resolved",
+      "details": "Payments confirmed, no duplicated charges, reconcile restored.",
+      "affectedComponents": ["billing"]
+    }
+  ]
+}

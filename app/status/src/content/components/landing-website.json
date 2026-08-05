@@ -1,0 +1,13 @@
+{
+  "slug": "landing-website",
+  "name": "Landing Website",
+  "subsystem": "web",
+  "group": "Web Properties",
+  "dependencies": [],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 45, "p95": 140 },
+    "availability": { "7d": 100, "30d": 100, "90d": 100 }
+  },
+  "lastUpdated": "2026-08-01T14:00:00Z"
+}

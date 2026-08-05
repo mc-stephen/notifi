@@ -1,0 +1,13 @@
+{
+  "slug": "templates",
+  "name": "Templates",
+  "subsystem": "platform",
+  "group": "Platform",
+  "dependencies": ["public-api", "postgresql"],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 15, "p95": 48 },
+    "availability": { "7d": 100, "30d": 100, "90d": 99.99 }
+  },
+  "lastUpdated": "2026-08-01T14:00:00Z"
+}

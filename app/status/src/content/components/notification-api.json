@@ -1,0 +1,13 @@
+{
+  "slug": "notification-api",
+  "name": "Notification API",
+  "subsystem": "platform",
+  "group": "Platform",
+  "dependencies": ["public-api", "queues", "postgresql", "redis"],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 18, "p95": 96 },
+    "availability": { "7d": 100, "30d": 99.95, "90d": 99.93 }
+  },
+  "lastUpdated": "2026-08-01T14:00:00Z"
+}

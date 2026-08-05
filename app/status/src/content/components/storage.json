@@ -1,0 +1,13 @@
+{
+  "slug": "storage",
+  "name": "Storage",
+  "subsystem": "platform",
+  "group": "Platform",
+  "dependencies": [],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 40, "p95": 130 },
+    "availability": { "7d": 100, "30d": 100, "90d": 99.99 }
+  },
+  "lastUpdated": "2026-08-01T14:00:00Z"
+}

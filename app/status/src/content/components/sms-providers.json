@@ -1,0 +1,13 @@
+{
+  "slug": "sms-providers",
+  "name": "SMS Providers",
+  "subsystem": "providers",
+  "group": "Delivery Providers",
+  "dependencies": ["workers"],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 240, "p95": 760 },
+    "availability": { "7d": 99.5, "30d": 99.4, "90d": 99.55 }
+  },
+  "lastUpdated": "2026-08-01T13:30:00Z"
+}

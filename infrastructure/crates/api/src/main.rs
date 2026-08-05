@@ -1,15 +1,20 @@
 //! Notifi HTTP API — composition root.
 //!
-//! M0: bootstraps telemetry and configuration. M1 replaces the SMTP smoke
-//! test below with the axum application core (routing, middleware, health).
+//! M1: axum application core — routing, middleware (trace/request-id/logging/
+//! CORS), RFC 9457 problem-details errors, Postgres pool + migrations runner,
+//! Redis client, graceful shutdown.
+//!
+//! Bootstrap order: telemetry → config → database → redis → router → serve.
 
-use email_channel::{EmailConfig, EmailMessage, EmailProvider};
-use notifi_infra_config::AppConfig;
-use notifi_infra_telemetry as telemetry;
+mod http;
+mod infra;
+mod state;
+
+use state::AppState;
 
 #[tokio::main]
 async fn main() {
-    let _guard = match telemetry::init() {
+    let _guard = match notifi_infra_telemetry::init() {
         Ok(guard) => guard,
         Err(e) => {
             eprintln!("failed to initialize telemetry: {e}");
@@ -17,7 +22,7 @@ async fn main() {
         }
     };
 
-    let config = match AppConfig::from_env() {
+    let config = match notifi_infra_config::AppConfig::from_env() {
         Ok(config) => config,
         Err(e) => {
             tracing::error!("invalid configuration: {e}");
@@ -31,27 +36,72 @@ async fn main() {
         "api bootstrap complete"
     );
 
-    // M0 smoke test: send an email through the SMTP channel when a tenant
-    // config exists at `{NOTIFI_CONFIG_ROOT}/brands/{brand}/config/email/`
-    // (channel standardization on ConfigResolver arrives in M3).
-    let Ok(email_config) = EmailConfig::load("acme") else {
-        tracing::warn!("email config not found; skipping SMTP smoke test (see README)");
-        return;
-    };
-    let provider = EmailProvider::new(email_config);
+    let db = infra::db::connect(&config).await;
+    let redis = infra::redis::connect(&config);
 
-    let msg = EmailMessage {
-        to: vec!["user@example.com".to_string()],
-        cc: vec!["manager@acme.com".to_string()],
-        bcc: vec!["audit@acme.com".to_string()],
-        reply_to: Some("support@acme.com".to_string()),
-        subject: "Hello from Notifi".to_string(),
-        body_text: "This is a test notification.".to_string(),
-        body_html: Some("<h1>Test</h1><p>This is a test notification.</p>".to_string()),
-    };
-
-    match provider.send_mail(&msg).await {
-        Ok(()) => tracing::info!("email sent successfully"),
-        Err(e) => tracing::error!("email send failed: {e}"),
+    if db.is_none() {
+        tracing::warn!("database unavailable/disabled; readiness will report 503");
     }
+    if redis.is_none() {
+        tracing::warn!("redis unavailable/disabled; readiness will report 503");
+    }
+
+    let app = http::build_router(AppState { db, redis });
+
+    let listener = match tokio::net::TcpListener::bind((
+        config.server.host.as_str(),
+        config.server.port,
+    ))
+    .await
+    {
+        Ok(listener) => listener,
+        Err(e) => {
+            tracing::error!(
+                host = %config.server.host,
+                port = config.server.port,
+                error = %e,
+                "failed to bind listener"
+            );
+            return;
+        }
+    };
+
+    tracing::info!(
+        host = %config.server.host,
+        port = config.server.port,
+        "api listening"
+    );
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .unwrap_or_else(|e| tracing::error!("server error: {e}"));
+
+    tracing::info!("api shutdown complete");
+}
+
+/// Resolves on SIGINT (Ctrl-C) or SIGTERM; triggers graceful shutdown.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install ctrl-c handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    tracing::info!("shutdown signal received");
 }

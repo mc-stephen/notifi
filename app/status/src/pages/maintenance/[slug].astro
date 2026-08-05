@@ -1,0 +1,165 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import PageLayout from "../../layouts/PageLayout.astro";
+import Breadcrumbs from "../../components/ui/Breadcrumbs.astro";
+import StatusBadge from "../../components/ui/StatusBadge.astro";
+import IncidentTimeline from "../../components/ui/IncidentTimeline.astro";
+import { getMaintenance } from "../../lib/data";
+import { formatDateTime, timeUntil } from "../../lib/format";
+import { MAINTENANCE_LABELS, type Maintenance as MaintenanceType } from "../../lib/types";
+
+export async function getStaticPaths() {
+  const maintenance = await getMaintenance();
+  return maintenance.map((m) => ({
+    params: { slug: m.slug },
+    props: { maintenance: m },
+  }));
+}
+
+interface Props {
+  maintenance: MaintenanceType;
+}
+
+const { maintenance } = Astro.props;
+const now = new Date();
+const state = maintenance.status;
+
+const title = `${maintenance.title} — Notifi Status`;
+const description = `${MAINTENANCE_LABELS[state]} maintenance: ${maintenance.purpose}`;
+---
+
+<BaseLayout title={title} description={description} path={`/maintenance/${maintenance.slug}`}>
+  <PageLayout currentPath="/maintenance">
+    <article class="container maintenance-page">
+      <Breadcrumbs items={[{ href: "/maintenance", label: "Maintenance" }, { href: `#`, label: maintenance.title }]} />
+
+      <header class="maintenance-head">
+        <div class="maintenance-state">
+          <StatusBadge state={state === "completed" ? "operational" : "maintenance"} label={MAINTENANCE_LABELS[state]} />
+        </div>
+        <h1>{maintenance.title}</h1>
+        <p class="maintenance-window">
+          <time datetime={maintenance.startTime}>{formatDateTime(maintenance.startTime)}</time>
+          {" → "}
+          <time datetime={maintenance.endTime}>{formatDateTime(maintenance.endTime)}</time>
+          {state !== "completed" && <span class="until">({timeUntil(maintenance.startTime, now)})</span>}
+        </p>
+
+        <div class="card purpose-card">
+          <h2>Purpose</h2>
+          <p>{maintenance.purpose}</p>
+        </div>
+        <div class="card purpose-card">
+          <h2>Expected impact</h2>
+          <p>{maintenance.expectedImpact}</p>
+        </div>
+
+        {maintenance.affectedComponents.length > 0 && (
+          <div class="affected">
+            <span class="affected-label">Affected components:</span>
+            <div class="affected-list">
+              {maintenance.affectedComponents.map((slug) => (
+                <StatusBadge state="maintenance" label={slug} />
+              ))}
+            </div>
+          </div>
+        )}
+      </header>
+
+      {maintenance.updates.length > 0 && (
+        <section class="timeline-section">
+          <h2>Progress updates</h2>
+          <IncidentTimeline updates={maintenance.updates} stateLabels={MAINTENANCE_LABELS} />
+        </section>
+      )}
+
+      {maintenance.completionSummary && (
+        <section class="card completion">
+          <h2>Completion summary</h2>
+          <p>{maintenance.completionSummary}</p>
+        </section>
+      )}
+    </article>
+  </PageLayout>
+</BaseLayout>
+
+<style>
+  .maintenance-page {
+    padding-block: 2rem 3rem;
+  }
+
+  .maintenance-head {
+    margin-block: 1.25rem 2rem;
+  }
+
+  .maintenance-state {
+    margin-bottom: 0.75rem;
+  }
+
+  .maintenance-head h1 {
+    margin: 0 0 0.5rem;
+    font-size: var(--text-3xl);
+  }
+
+  .maintenance-window {
+    margin: 0 0 1.25rem;
+    font-size: var(--text-sm);
+    color: var(--fg-faint);
+  }
+
+  .until {
+    color: var(--fg-muted);
+  }
+
+  .purpose-card {
+    padding: 1rem 1.125rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .purpose-card h2 {
+    margin: 0 0 0.375rem;
+    font-size: var(--text-sm);
+    color: var(--fg-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .purpose-card p {
+    margin: 0;
+    color: var(--fg-muted);
+  }
+
+  .affected {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .affected-label {
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .affected-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .timeline-section h2,
+  .completion h2 {
+    margin: 0 0 1.25rem;
+    font-size: var(--text-xl);
+  }
+
+  .completion {
+    padding: 1.5rem;
+  }
+
+  .completion p {
+    margin: 0;
+    color: var(--fg-muted);
+  }
+</style>

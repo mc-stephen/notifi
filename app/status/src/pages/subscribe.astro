@@ -1,0 +1,117 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import PageLayout from "../layouts/PageLayout.astro";
+import SubscriptionForm from "../components/ui/SubscriptionForm.astro";
+
+const title = "Subscribe — Notifi Status";
+const description = "Get notified when Notifi has an incident, resolves one, or schedules maintenance. Email, RSS, and Atom options.";
+---
+
+<BaseLayout title={title} description={description} path="/subscribe">
+  <PageLayout currentPath="/subscribe">
+    <section class="container page-head">
+      <h1>Subscribe to status updates</h1>
+      <p>Choose how you want to hear about incidents and maintenance. No spam, unsubscribe anytime.</p>
+    </section>
+
+    <section class="container grid">
+      <div class="card panel">
+        <h2>Email</h2>
+        <p>Double opt-in by design. Scope the updates to what matters to you.</p>
+        <SubscriptionForm variant="full" />
+      </div>
+
+      <div class="card panel">
+        <h2>Feeds</h2>
+        <p>Poll or subscribe with any feed reader. Every incident update and maintenance announcement is one entry.</p>
+        <ul class="feed-list">
+          <li>
+            <a href="/rss.xml">RSS</a>
+            <span class="mono">/rss.xml</span>
+          </li>
+          <li>
+            <a href="/atom.xml">Atom</a>
+            <span class="mono">/atom.xml</span>
+          </li>
+        </ul>
+        <p class="note">Tip: per-incident feeds keep you to a single incident — link at the bottom of each incident page.</p>
+      </div>
+
+      <div class="card panel">
+        <h2>Webhooks & chat</h2>
+        <p>Programmatic delivery is on the roadmap: webhook delivery with HMAC signatures, plus Slack and Discord bots that push incident updates to a channel of your choice.</p>
+        <p class="note">Not available yet — follow <a href="/rss.xml">RSS</a> until then.</p>
+      </div>
+    </section>
+  </PageLayout>
+</BaseLayout>
+
+<style>
+  .page-head {
+    padding-block: 2.5rem 1.5rem;
+  }
+
+  .page-head h1 {
+    margin: 0 0 0.5rem;
+  }
+
+  .page-head p {
+    margin: 0 0 2rem;
+    color: var(--fg-muted);
+    max-width: 60ch;
+  }
+
+  .grid {
+    display: grid;
+    gap: 1.25rem;
+    padding-bottom: 3rem;
+  }
+
+  @media (min-width: 64rem) {
+    .grid {
+      grid-template-columns: 1.4fr 1fr;
+    }
+  }
+
+  .panel {
+    padding: 1.5rem;
+  }
+
+  .panel h2 {
+    margin: 0 0 0.5rem;
+    font-size: var(--text-lg);
+  }
+
+  .panel > p {
+    margin: 0 0 1rem;
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+
+  .feed-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .feed-list li {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    font-size: var(--text-sm);
+  }
+
+  .feed-list .mono {
+    color: var(--fg-faint);
+  }
+
+  .note {
+    margin-top: 1rem;
+    font-size: var(--text-xs);
+    color: var(--fg-faint);
+  }
+</style>

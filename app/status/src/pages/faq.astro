@@ -1,0 +1,141 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import PageLayout from "../layouts/PageLayout.astro";
+
+const title = "FAQ — Notifi Status";
+const description = "Frequently asked questions about the Notifi status page: uptime calculations, incident severity, and how we communicate outages.";
+
+const faqs = [
+  {
+    q: "What does each status mean?",
+    a: "Operational — receiving and processing traffic normally. Degraded — available with elevated latency or errors. Partial outage — some functions or regions are unavailable. Major outage — substantially unavailable. Under maintenance — temporarily offline for planned work. States are always shown as a word and glyph, never by color alone.",
+  },
+  {
+    q: "How is uptime calculated?",
+    a: "Availability is computed from incident timelines. Downtime counts only time spent in partial or major outage. Degraded performance counts as 100% availability but is reported in performance metrics. Scheduled maintenance windows are excluded. All times are UTC.",
+  },
+  {
+    q: "How do you measure latency and availability?",
+    a: "Synthetic probes run every 60 seconds from three regions. Latency percentiles are computed over five-minute buckets. Component state is resolved from open incidents, in-progress maintenance, and probe health — in that priority order.",
+  },
+  {
+    q: "How quickly do incidents get posted?",
+    a: "We publish a timeline entry within 15 minutes of detection, and every subsequent update is published as the state changes: investigating, identified, monitoring, resolved. Updates are append-only and never silently edited.",
+  },
+  {
+    q: "What is the difference between minor, major, and critical?",
+    a: "Minor — limited impact to a subset of users or functions. Major — significant impact to availability or latency. Critical — widespread, sustained outage or a security event. Severity is reassessed as information arrives and can be raised.",
+  },
+  {
+    q: "Why don't you show a single all-time uptime number?",
+    a: "A single number hides bad months. We show availability per range (24h, 7d, 30d, 90d, 1y, all time) so you can see both current and historical reliability honestly.",
+  },
+  {
+    q: "How do I get notified about incidents?",
+    a: "Subscribe by email, or use the RSS or Atom feeds. Webhook and Slack/Discord delivery are on the roadmap.",
+  },
+  {
+    q: "Are provider incidents counted against Notifi uptime?",
+    a: "Provider outages (email, SMS, push carriers) are reported as incidents and affect the affected component's availability, but they cap the global indicator at 'Degraded' — an upstream provider event is not a platform outage.",
+  },
+  {
+    q: "Where do you publish postmortems?",
+    a: "Critical incidents and major incidents include a root cause analysis section on the incident page. Monthly reliability reports summarizing all incidents are published under Reports.",
+  },
+];
+---
+
+<BaseLayout
+  title={title}
+  description={description}
+  path="/faq"
+  jsonLd={{
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map((f) => ({
+      "@type": "Question",
+      name: f.q,
+      acceptedAnswer: { "@type": "Answer", text: f.a },
+    })),
+  }}
+>
+  <PageLayout currentPath="/faq">
+    <section class="container page-head">
+      <h1>FAQ</h1>
+      <p>How we measure, how we communicate, and what the colors mean.</p>
+    </section>
+
+    <section class="container faq-list">
+      {faqs.map((faq, i) => (
+        <details class="card faq-item" open={i === 0}>
+          <summary>
+            <h2>{faq.q}</h2>
+          </summary>
+          <p>{faq.a}</p>
+        </details>
+      ))}
+    </section>
+  </PageLayout>
+</BaseLayout>
+
+<style>
+  .page-head {
+    padding-block: 2.5rem 1.5rem;
+  }
+
+  .page-head h1 {
+    margin: 0 0 0.5rem;
+  }
+
+  .page-head p {
+    margin: 0 0 2rem;
+    color: var(--fg-muted);
+  }
+
+  .faq-list {
+    display: grid;
+    gap: 0.75rem;
+    padding-bottom: 3rem;
+  }
+
+  .faq-item {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .faq-item summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 1rem 1.125rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .faq-item summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .faq-item summary::after {
+    content: "+";
+    font-size: 1.25rem;
+    color: var(--fg-faint);
+  }
+
+  .faq-item[open] summary::after {
+    content: "−";
+  }
+
+  .faq-item summary h2 {
+    margin: 0;
+    font-size: var(--text-base);
+    font-weight: 600;
+  }
+
+  .faq-item p {
+    margin: 0;
+    padding: 0 1.125rem 1.125rem;
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
+  }
+</style>

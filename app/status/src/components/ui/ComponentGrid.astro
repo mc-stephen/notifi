@@ -1,0 +1,64 @@
+---
+import HealthCard from "./HealthCard.astro";
+import type { ComponentHealth } from "../../lib/status";
+
+interface Props {
+  components: ComponentHealth[];
+  showDetails?: boolean;
+}
+
+const { components, showDetails = false } = Astro.props;
+
+/** Group by `group`, preserving declared order. */
+const groups = new Map<string, ComponentHealth[]>();
+for (const c of components) {
+  const list = groups.get(c.group) ?? [];
+  list.push(c);
+  groups.set(c.group, list);
+}
+---
+
+<div class="component-grid">
+  {[...groups.entries()].map(([group, members]) => (
+    <section class="group" aria-labelledby={`group-${group}`}>
+      <h2 class="eyebrow group-title" id={`group-${group}`}>{group}</h2>
+      <ul>
+        {members.map((c) => (
+          <HealthCard component={c} showDetails={showDetails} />
+        ))}
+      </ul>
+    </section>
+  ))}
+</div>
+
+<style>
+  .component-grid {
+    display: grid;
+    gap: 2rem;
+  }
+
+  .group-title {
+    margin: 0 0 0.75rem;
+  }
+
+  .group ul {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  @media (min-width: 48rem) {
+    .group ul {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (min-width: 72rem) {
+    .group ul {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+</style>

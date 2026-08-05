@@ -1,0 +1,18 @@
+{
+  "slug": "postgres-minor-version-upgrade",
+  "title": "PostgreSQL Minor Version Upgrade",
+  "purpose": "Apply the latest PostgreSQL minor release, which includes performance fixes for checkpoint I/O under bulk writes (see the June 12 replication lag incident).",
+  "expectedImpact": "Up to 2 minutes of API 5xx during a rolling primary switchover. Notification ingest will be paused and queued automatically; queues will drain after the switchover completes.",
+  "affectedComponents": ["postgresql", "public-api", "notification-api", "queues", "workers"],
+  "startTime": "2026-08-05T02:00:00Z",
+  "endTime": "2026-08-05T04:00:00Z",
+  "status": "scheduled",
+  "updates": [
+    {
+      "timestamp": "2026-08-01T12:00:00Z",
+      "author": "Amina Yusuf, SRE",
+      "state": "scheduled",
+      "details": "Maintenance scheduled. All times UTC. We will publish progress updates here during the window."
+    }
+  ]
+}

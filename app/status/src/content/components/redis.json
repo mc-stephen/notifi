@@ -1,0 +1,13 @@
+{
+  "slug": "redis",
+  "name": "Redis",
+  "subsystem": "data",
+  "group": "Data",
+  "dependencies": [],
+  "probe": {
+    "state": "operational",
+    "latency": { "p50": 1, "p95": 3 },
+    "availability": { "7d": 100, "30d": 100, "90d": 99.99 }
+  },
+  "lastUpdated": "2026-08-01T14:00:00Z"
+}

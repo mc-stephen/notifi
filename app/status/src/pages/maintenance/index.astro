@@ -1,0 +1,83 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import PageLayout from "../../layouts/PageLayout.astro";
+import MaintenanceCard from "../../components/ui/MaintenanceCard.astro";
+import EmptyState from "../../components/ui/EmptyState.astro";
+import { getMaintenance } from "../../lib/data";
+
+const maintenance = await getMaintenance();
+const now = new Date();
+
+const upcoming = maintenance.filter((m) => m.status === "scheduled").sort((a, b) => a.startTime.localeCompare(b.startTime));
+const inProgress = maintenance.filter((m) => m.status === "in_progress");
+const completed = maintenance.filter((m) => m.status === "completed").sort((a, b) => b.startTime.localeCompare(a.startTime));
+
+const title = "Scheduled Maintenance — Notifi Status";
+const description = "Upcoming, in-progress, and completed maintenance windows for the Notifi platform. All times UTC.";
+---
+
+<BaseLayout title={title} description={description} path="/maintenance">
+  <PageLayout currentPath="/maintenance">
+    <section class="container page-head">
+      <h1>Scheduled maintenance</h1>
+      <p>Planned work is announced at least 24 hours ahead (72 hours for major windows). All times are UTC. Maintenance windows are excluded from uptime calculations.</p>
+    </section>
+
+    {inProgress.length > 0 && (
+      <section class="container section">
+        <h2>In progress</h2>
+        <div class="card-list">
+          {inProgress.map((m) => <MaintenanceCard maintenance={m} now={now} />)}
+        </div>
+      </section>
+    )}
+
+    <section class="container section">
+      <h2>Upcoming</h2>
+      {upcoming.length > 0 ? (
+        <div class="card-list">
+          {upcoming.map((m) => <MaintenanceCard maintenance={m} now={now} />)}
+        </div>
+      ) : (
+        <EmptyState title="No upcoming maintenance" description="We will publish any planned maintenance here at least 24 hours in advance." />
+      )}
+    </section>
+
+    <section class="container section">
+      <h2>Completed</h2>
+      {completed.length > 0 ? (
+        <div class="card-list">
+          {completed.map((m) => <MaintenanceCard maintenance={m} now={now} />)}
+        </div>
+      ) : (
+        <EmptyState title="No completed maintenance recorded" />
+      )}
+    </section>
+  </PageLayout>
+</BaseLayout>
+
+<style>
+  .page-head {
+    padding-block: 2.5rem 1.5rem;
+  }
+
+  .page-head h1 {
+    margin: 0 0 0.5rem;
+  }
+
+  .page-head p {
+    margin: 0;
+    color: var(--fg-muted);
+    max-width: 60ch;
+  }
+
+  .section h2 {
+    margin: 0 0 1rem;
+    font-size: var(--text-xl);
+  }
+
+  .card-list {
+    display: grid;
+    gap: 0.75rem;
+  }
+</style>
