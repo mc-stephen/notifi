@@ -16,8 +16,7 @@ if (banner) {
   } catch {
     /* storage unavailable */
   }
-  const close = document.getElementById("announcement-close")
-  close?.addEventListener("click", () => {
+  document.getElementById("announcement-close")?.addEventListener("click", () => {
     banner.hidden = true
     try {
       sessionStorage.setItem("notifi-banner-dismissed", "1")

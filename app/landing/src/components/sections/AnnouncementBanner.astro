@@ -1,12 +1,12 @@
 ---
 ---
 
-<div id="announcement-banner" class="announcement" role="region" aria-label="Announcement">
+<div id="announcement-banner" class="announcement-banner" role="region" aria-label="Announcement">
   <div class="container announcement-inner">
     <p class="announcement-text">
-      <span class="announcement-chip">New</span>
-      <span>Channel templates make multi-channel sends one call.</span>
-      <a href="/changelog">Read the changelog</a>
+      <span class="announcement-label">New</span>
+      <span class="announcement-message">Channel templates make multi-channel sends one call.</span>
+      <a class="announcement-link" href="/changelog">Read the changelog</a>
     </p>
     <button id="announcement-close" class="announcement-close" type="button" aria-label="Dismiss announcement">
       <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none">
@@ -17,14 +17,17 @@
 </div>
 
 <style>
-  .announcement {
+  .announcement-banner {
     position: relative;
-    z-index: 60;
+    z-index: 40;
+    height: 2.5rem;
+    overflow: hidden;
     background: linear-gradient(90deg, var(--color-primary-500), var(--color-primary-400));
     color: var(--color-primary-foreground);
+    font-size: var(--text-sm);
   }
 
-  [data-theme="light"] .announcement {
+  [data-theme="light"] .announcement-banner {
     background: linear-gradient(90deg, var(--color-primary-600), var(--color-primary-500));
   }
 
@@ -33,7 +36,7 @@
     align-items: center;
     justify-content: center;
     gap: var(--space-3);
-    padding-block: 0.5rem;
+    height: 100%;
     padding-inline: 3rem var(--space-12);
   }
 
@@ -42,22 +45,17 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    font-size: var(--text-sm);
+    white-space: nowrap;
+    overflow: hidden;
     max-width: none;
   }
 
-  .announcement-text a {
-    color: inherit;
-    font-weight: 600;
-    text-decoration: underline;
-    text-underline-offset: 3px;
+  .announcement-message {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .announcement-text a:hover {
-    text-decoration-thickness: 2px;
-  }
-
-  .announcement-chip {
+  .announcement-label {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     font-weight: 600;
@@ -68,9 +66,23 @@
     background: oklch(0 0 0 / 0.22);
   }
 
+  .announcement-link {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    flex-shrink: 0;
+  }
+
+  .announcement-link:hover {
+    text-decoration-thickness: 2px;
+  }
+
   .announcement-close {
     position: absolute;
     right: var(--space-3);
+    top: 50%;
+    transform: translateY(-50%);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -87,7 +99,3 @@
     background: oklch(0 0 0 / 0.16);
   }
 </style>
-
-<script>
-  import "../../islands/site";
-</script>

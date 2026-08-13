@@ -98,8 +98,8 @@ const menus = [
 ---
 
 <header class="site-header">
-  <div class="container site-header-inner">
-    <a href="/" class="brand" aria-label="Notifi — home">
+  <div class="header-pill">
+    <a href="/" class="brand-pill" aria-label="Notifi — home">
       <Logo />
     </a>
 
@@ -139,14 +139,14 @@ const menus = [
         <li class="nav-item">
           <a class="nav-link" href="/pricing">Pricing</a>
         </li>
+        <li class="nav-item">
+          <a class="nav-link" href="https://docs.notifi.dev">Docs</a>
+        </li>
       </ul>
     </nav>
 
     <div class="site-actions">
-      <LiveStatusPill />
-      <a class="btn btn-ghost" href="https://docs.notifi.dev">Docs</a>
-      <ThemeToggle />
-      <a class="btn btn-primary" href="https://dashboard.notifi.dev">Start building free</a>
+      <a class="btn btn-primary header-cta" href="https://dashboard.notifi.dev">Start building free</a>
     </div>
 
     <button
@@ -192,6 +192,7 @@ const menus = [
       <div class="nav-drawer-actions">
         <a class="btn btn-secondary" href="https://docs.notifi.dev">Docs</a>
         <LiveStatusPill />
+        <ThemeToggle />
       </div>
       <a class="btn btn-primary btn-block" href="https://dashboard.notifi.dev">Start building free</a>
     </div>
@@ -199,42 +200,67 @@ const menus = [
 </header>
 
 <style>
+  :root {
+    --header-h: 4.25rem;
+    --pill-fill: oklch(0.16 0.045 265 / 0.82);
+    --pill-fill-soft: oklch(1 0.015 280 / 0.07);
+    --pill-border: oklch(1 0.01 280 / 0.1);
+    --pill-ink: oklch(0.87 0.012 280 / 0.85);
+    --pill-ink-strong: oklch(1 0.015 280);
+    --pill-ink-faint: oklch(0.87 0.012 280 / 0.55);
+  }
+
   .site-header {
     position: sticky;
-    top: 0;
+    top: 0.75rem;
     z-index: 50;
-    background: color-mix(in srgb, var(--color-canvas) 78%, transparent);
-    backdrop-filter: blur(14px) saturate(1.4);
-    -webkit-backdrop-filter: blur(14px) saturate(1.4);
-    border-bottom: 1px solid transparent;
-    transition: border-color var(--dur-fast) ease;
+    height: 4.75rem;
+    padding-inline: 1rem;
   }
 
-  .site-header.is-scrolled {
-    border-bottom-color: var(--color-border-subtle);
-  }
-
-  .site-header-inner {
+  .header-pill {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
-    height: var(--header-h);
+    gap: 0.75rem;
+    width: min(100%, 64rem);
+    margin-inline: auto;
+    padding: 0.5rem 0.625rem 0.5rem 0.5rem;
+    border-radius: 9999px;
+    background: var(--pill-fill);
+    border: 1px solid var(--pill-border);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    box-shadow: 0 0.5rem 2rem -0.75rem oklch(0 0 0 / 0.5);
+    transition: box-shadow var(--dur-fast) ease;
   }
 
-  .brand {
+  .site-header.is-scrolled .header-pill {
+    box-shadow: 0 0.75rem 2.5rem -0.75rem oklch(0 0 0 / 0.7);
+  }
+
+  .brand-pill {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    color: var(--color-foreground);
+    padding: 0.375rem 0.875rem;
+    border-radius: 9999px;
+    background: oklch(0.11 0.03 265 / 0.55);
+    border: 1px solid var(--pill-border);
+    text-decoration: none;
+    flex-shrink: 0;
+  }
+
+  .brand-pill:hover {
     text-decoration: none;
   }
 
-  .brand:hover {
-    text-decoration: none;
+  .brand-pill :global(.logo-wordmark) {
+    color: var(--pill-ink-strong);
   }
 
   .site-nav {
     display: none;
+    margin-inline: auto;
   }
 
   .nav-list {
@@ -255,28 +281,29 @@ const menus = [
     display: inline-flex;
     align-items: center;
     gap: 0.3125rem;
-    padding: 0.5rem 0.75rem;
+    padding: 0.4375rem 0.75rem;
     border: none;
     background: none;
-    border-radius: var(--radius-md);
+    border-radius: 9999px;
     font-family: var(--font-sans);
     font-size: var(--text-sm);
     font-weight: 500;
-    color: var(--color-foreground-muted);
+    color: var(--pill-ink);
     cursor: pointer;
     text-decoration: none;
+    transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
   }
 
   .nav-trigger:hover,
   .nav-link:hover,
   .nav-trigger:focus-visible {
-    color: var(--color-foreground);
-    background: var(--color-surface-muted);
+    color: var(--pill-ink-strong);
+    background: var(--pill-fill-soft);
     text-decoration: none;
   }
 
   .nav-chevron {
-    color: var(--color-foreground-faint);
+    color: var(--pill-ink-faint);
     transition: transform var(--dur-fast) var(--ease-out);
   }
 
@@ -306,9 +333,11 @@ const menus = [
     grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
     gap: 0.5rem;
     padding: 1.25rem;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border-subtle);
+    background: oklch(0.14 0.045 265 / 0.96);
+    border: 1px solid var(--pill-border);
     border-radius: var(--radius-xl);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
     box-shadow: var(--shadow-lg);
   }
 
@@ -319,7 +348,7 @@ const menus = [
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--color-foreground-faint);
+    color: var(--pill-ink-faint);
   }
 
   .mega-links {
@@ -335,13 +364,13 @@ const menus = [
     padding: 0.4375rem 0.5rem;
     border-radius: var(--radius-sm);
     font-size: var(--text-sm);
-    color: var(--color-foreground-muted);
+    color: var(--pill-ink);
     text-decoration: none;
   }
 
   .mega-links a:hover {
-    color: var(--color-foreground);
-    background: var(--color-surface-muted);
+    color: var(--pill-ink-strong);
+    background: var(--pill-fill-soft);
   }
 
   .site-actions {
@@ -351,16 +380,21 @@ const menus = [
     margin-left: auto;
   }
 
+  .header-cta {
+    border-radius: 9999px;
+    padding: 0.5rem 1.125rem;
+  }
+
   .nav-drawer-toggle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 2.5rem;
     height: 2.5rem;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-border-subtle);
-    background: var(--color-surface);
-    color: var(--color-foreground);
+    border-radius: 9999px;
+    border: 1px solid var(--pill-border);
+    background: var(--pill-fill-soft);
+    color: var(--pill-ink-strong);
     cursor: pointer;
   }
 
@@ -421,19 +455,6 @@ const menus = [
     display: flex;
     align-items: center;
     gap: 0.5rem;
-  }
-
-  @media (max-width: 51.999rem) {
-    .site-actions .btn-ghost,
-    .site-actions :global(.status-pill) {
-      display: none;
-    }
-  }
-
-  @media (max-width: 29.999rem) {
-    .site-actions .btn-primary {
-      display: none;
-    }
   }
 
   @media (min-width: 64rem) {

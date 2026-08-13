@@ -10,7 +10,8 @@ import DashboardMock from "../ui/DashboardMock.astro";
         One API · Every channel
       </div>
       <h1 class="hero-title">
-        One API. Every notification.<br />
+        One API.<br />
+        Every notification.<br />
         Every <span class="hero-accent">platform</span>.
       </h1>
       <p class="hero-sub">
@@ -43,20 +44,22 @@ import DashboardMock from "../ui/DashboardMock.astro";
   .hero {
     position: relative;
     overflow: hidden;
-    padding-block: var(--space-24) var(--space-20);
+    --hero-pull: 7.25rem;
+    margin-top: calc(-1 * var(--hero-pull));
+    padding-block: calc(var(--space-24) + var(--hero-pull)) var(--space-20);
     background: var(--color-canvas);
   }
 
   .hero::before {
     content: "";
     position: absolute;
-    inset: -20% -10% 30%;
+    inset: 0 -10% 35%;
     pointer-events: none;
-    background: radial-gradient(60% 52% at 50% 8%, oklch(0.515 0.235 280 / 0.22), transparent 70%);
+    background: radial-gradient(68% 52% at 50% 0%, oklch(0.515 0.235 280 / 0.32), transparent 75%);
   }
 
   [data-theme="light"] .hero::before {
-    background: radial-gradient(60% 52% at 50% 8%, oklch(0.515 0.235 280 / 0.09), transparent 70%);
+    background: radial-gradient(68% 52% at 50% 0%, oklch(0.515 0.235 280 / 0.12), transparent 75%);
   }
 
   .hero-inner {
