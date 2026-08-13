@@ -1,0 +1,93 @@
+---
+---
+
+<div id="announcement-banner" class="announcement" role="region" aria-label="Announcement">
+  <div class="container announcement-inner">
+    <p class="announcement-text">
+      <span class="announcement-chip">New</span>
+      <span>Channel templates make multi-channel sends one call.</span>
+      <a href="/changelog">Read the changelog</a>
+    </p>
+    <button id="announcement-close" class="announcement-close" type="button" aria-label="Dismiss announcement">
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none">
+        <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+      </svg>
+    </button>
+  </div>
+</div>
+
+<style>
+  .announcement {
+    position: relative;
+    z-index: 60;
+    background: linear-gradient(90deg, var(--color-primary-500), var(--color-primary-400));
+    color: var(--color-primary-foreground);
+  }
+
+  [data-theme="light"] .announcement {
+    background: linear-gradient(90deg, var(--color-primary-600), var(--color-primary-500));
+  }
+
+  .announcement-inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding-block: 0.5rem;
+    padding-inline: 3rem var(--space-12);
+  }
+
+  .announcement-text {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    max-width: none;
+  }
+
+  .announcement-text a {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .announcement-text a:hover {
+    text-decoration-thickness: 2px;
+  }
+
+  .announcement-chip {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-full);
+    background: oklch(0 0 0 / 0.22);
+  }
+
+  .announcement-close {
+    position: absolute;
+    right: var(--space-3);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .announcement-close:hover {
+    background: oklch(0 0 0 / 0.16);
+  }
+</style>
+
+<script>
+  import "../../islands/site";
+</script>

@@ -1,0 +1,258 @@
+---
+/**
+ * The signature Notifi motif: a single API request flowing through
+ * outbox → queue → workers → channels → delivered.
+ * Server-rendered SVG; the packet travels via CSS animation while each
+ * node lights up as it is reached — one narrative, no secondary
+ * checklist. Both animations disable under prefers-reduced-motion
+ * (arrows carry direction).
+ *
+ * Geometry: uniform node height 96, consistent 36–48px legs so the
+ * flow reads as one even rhythm. All centers share y=118.
+ */
+---
+
+<figure class="flow" role="img" aria-label="A single API request fans out through an outbox, workers, and channel routing to email, SMS, and push — all delivered.">
+  <svg class="flow-svg" viewBox="0 0 1080 240" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <marker id="flow-arrow" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0.5L7 4 0 7.5Z" fill="var(--color-border)" />
+      </marker>
+    </defs>
+
+    <!-- legs — even 36–48px gaps between nodes -->
+    <line x1="170" y1="118" x2="216" y2="118" marker-end="url(#flow-arrow)" class="leg" />
+    <line x1="328" y1="118" x2="368" y2="118" marker-end="url(#flow-arrow)" class="leg" />
+    <line x1="464" y1="118" x2="504" y2="118" marker-end="url(#flow-arrow)" class="leg" />
+    <line x1="608" y1="118" x2="656" y2="118" marker-end="url(#flow-arrow)" class="leg" />
+    <line x1="936" y1="118" x2="972" y2="118" marker-end="url(#flow-arrow)" class="leg" />
+
+    <!-- 1. POST /v1/notifications -->
+    <g class="node node-api">
+      <rect x="50" y="70" width="120" height="96" rx="14" />
+      <text x="110" y="104" text-anchor="middle" class="node-title">POST</text>
+      <text x="110" y="132" text-anchor="middle" class="node-sub mono">/v1/notifications</text>
+    </g>
+
+    <!-- 2. Outbox -->
+    <g class="node node-2">
+      <rect x="216" y="70" width="112" height="96" rx="14" />
+      <text x="272" y="104" text-anchor="middle" class="node-title">Outbox</text>
+      <text x="272" y="132" text-anchor="middle" class="node-sub">durable</text>
+    </g>
+
+    <!-- 3. Queue -->
+    <g class="node node-3">
+      <rect x="368" y="70" width="96" height="96" rx="14" />
+      <text x="416" y="104" text-anchor="middle" class="node-title">Queue</text>
+      <text x="416" y="132" text-anchor="middle" class="node-sub">buffered</text>
+    </g>
+
+    <!-- 4. Workers -->
+    <g class="node node-4">
+      <rect x="504" y="70" width="104" height="96" rx="14" />
+      <text x="556" y="104" text-anchor="middle" class="node-title">Workers</text>
+      <text x="556" y="132" text-anchor="middle" class="node-sub">fan-out</text>
+    </g>
+
+    <!-- 5. Channel cluster -->
+    <g class="node node-5">
+      <rect x="656" y="70" width="280" height="96" rx="14" />
+      <text x="796" y="94" text-anchor="middle" class="node-sub">Email · SMS · Push</text>
+      <g class="glyphs">
+        <g transform="translate(728, 108)">
+          <rect x="0" y="0" width="18" height="13" rx="3" fill="none" stroke="var(--color-foreground-muted)" stroke-width="1.6" />
+          <path d="M1 2l8 6 8-6" fill="none" stroke="var(--color-foreground-muted)" stroke-width="1.6" stroke-linecap="round" />
+        </g>
+        <g transform="translate(790, 108)">
+          <path d="M9 0a9 9 0 0 1 9 9c0 4-3 8-9 8-1 0-2 0-3-.5L1 19l1.5-4.5A9 9 0 0 1 0 9a9 9 0 0 1 9-9Z" fill="none" stroke="var(--color-foreground-muted)" stroke-width="1.6" />
+        </g>
+        <g transform="translate(852, 108)">
+          <path d="M18 8a6 6 0 0 1-6 6H7l-5 4v-4a6 6 0 0 1-2-4 6 6 0 0 1 6-6h6a6 6 0 0 1 6 6Z" fill="none" stroke="var(--color-foreground-muted)" stroke-width="1.6" stroke-linejoin="round" />
+        </g>
+      </g>
+    </g>
+
+    <!-- 6. Delivered -->
+    <g class="node node-done node-6">
+      <rect x="972" y="70" width="64" height="96" rx="14" />
+      <path d="M1002 108l7 7 13-14" fill="none" stroke="var(--color-success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+      <text x="1004" y="132" text-anchor="middle" class="node-sub mono">delivered</text>
+    </g>
+
+    <!-- animated packet -->
+    <circle class="packet" cx="0" cy="0" r="6" />
+  </svg>
+  <figcaption class="flow-caption">
+    <span class="mono">one request</span>
+    <span class="flow-caption-arrow" aria-hidden="true">→</span>
+    <span class="mono">email 412ms &middot; sms 388ms &middot; push 401ms</span>
+    <span class="flow-caption-arrow" aria-hidden="true">→</span>
+    <span class="mono flow-caption-ok">delivered</span>
+  </figcaption>
+</figure>
+
+<style>
+  .flow {
+    margin: 0;
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .flow-svg {
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  .leg {
+    stroke: var(--color-border);
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .node rect {
+    fill: var(--color-surface-sunken);
+    stroke: var(--color-border-subtle);
+    stroke-width: 1.2;
+  }
+
+  .node-api rect {
+    fill: oklch(0.515 0.235 280 / 0.14);
+    stroke: var(--color-primary-400);
+  }
+
+  .node-done rect {
+    fill: oklch(0.723 0.219 149.579 / 0.1);
+    stroke: oklch(0.723 0.219 149.579 / 0.45);
+  }
+
+  .node-title {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    font-weight: 600;
+    fill: var(--color-foreground);
+  }
+
+  .node-sub {
+    font-size: 11px;
+    fill: var(--color-foreground-muted);
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .packet {
+    fill: var(--color-primary-400);
+    filter: drop-shadow(0 0 6px oklch(0.515 0.235 280 / 0.6));
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .packet {
+      animation: packet-trip 4s linear infinite;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .packet {
+      display: none;
+    }
+  }
+
+  @keyframes packet-trip {
+    0% { transform: translate(110px, 118px); opacity: 0; }
+    6% { transform: translate(110px, 118px); opacity: 1; }
+    14% { transform: translate(272px, 118px); opacity: 1; }
+    19% { transform: translate(272px, 118px); opacity: 1; }
+    27% { transform: translate(416px, 118px); opacity: 1; }
+    32% { transform: translate(416px, 118px); opacity: 1; }
+    40% { transform: translate(556px, 118px); opacity: 1; }
+    45% { transform: translate(556px, 118px); opacity: 1; }
+    53% { transform: translate(796px, 118px); opacity: 1; }
+    58% { transform: translate(796px, 118px); opacity: 1; }
+    66% { transform: translate(1004px, 118px); opacity: 1; }
+    94% { transform: translate(1004px, 118px); opacity: 1; }
+    96% { transform: translate(1004px, 118px); opacity: 0; }
+    100% { transform: translate(1004px, 118px); opacity: 0; }
+  }
+
+  .flow {
+    --flow-lit: var(--color-primary-400);
+  }
+
+  [data-theme="light"] .flow {
+    --flow-lit: var(--color-primary-600);
+  }
+
+  .node rect {
+    transition: fill var(--dur-fast) ease, stroke var(--dur-fast) ease;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .node-2 rect { animation: node-2 4s linear infinite; }
+    .node-3 rect { animation: node-3 4s linear infinite; }
+    .node-4 rect { animation: node-4 4s linear infinite; }
+    .node-5 rect { animation: node-5 4s linear infinite; }
+    .node-6 rect { animation: node-6 4s linear infinite; }
+  }
+
+  @keyframes node-2 {
+    0%, 14% { fill: var(--color-surface-sunken); stroke: var(--color-border-subtle); }
+    18%, 100% { fill: oklch(0.515 0.235 280 / 0.14); stroke: var(--flow-lit); }
+  }
+
+  @keyframes node-3 {
+    0%, 27% { fill: var(--color-surface-sunken); stroke: var(--color-border-subtle); }
+    31%, 100% { fill: oklch(0.515 0.235 280 / 0.14); stroke: var(--flow-lit); }
+  }
+
+  @keyframes node-4 {
+    0%, 40% { fill: var(--color-surface-sunken); stroke: var(--color-border-subtle); }
+    44%, 100% { fill: oklch(0.515 0.235 280 / 0.14); stroke: var(--flow-lit); }
+  }
+
+  @keyframes node-5 {
+    0%, 53% { fill: var(--color-surface-sunken); stroke: var(--color-border-subtle); }
+    57%, 100% { fill: oklch(0.515 0.235 280 / 0.14); stroke: var(--flow-lit); }
+  }
+
+  @keyframes node-6 {
+    0%, 66% { fill: oklch(0.723 0.219 149.579 / 0.1); stroke: oklch(0.723 0.219 149.579 / 0.45); }
+    70%, 100% { fill: oklch(0.723 0.219 149.579 / 0.22); stroke: var(--color-success); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .node-2 rect,
+    .node-3 rect,
+    .node-4 rect,
+    .node-5 rect {
+      fill: oklch(0.515 0.235 280 / 0.14);
+      stroke: var(--flow-lit);
+    }
+
+    .node-6 rect {
+      fill: oklch(0.723 0.219 149.579 / 0.22);
+      stroke: var(--color-success);
+    }
+  }
+
+  .flow-caption {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--color-foreground-muted);
+  }
+
+  .flow-caption-arrow {
+    color: var(--color-foreground-faint);
+  }
+
+  .flow-caption-ok {
+    color: var(--color-success);
+  }
+</style>

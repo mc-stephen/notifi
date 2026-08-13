@@ -1,0 +1,118 @@
+---
+/**
+ * Performance claims. Honest by default: sample figures carry a
+ * placeholder label until M6 wires real data from the status API.
+ */
+const stats = [
+  { count: 99.99, decimals: 2, suffix: "%", label: "Delivery SLA", note: "target, sample" },
+  { count: 412, decimals: 0, suffix: "ms", label: "p95 send latency", note: "sample" },
+  { count: 2.4, decimals: 1, suffix: "B", label: "Notifications delivered", note: "sample" },
+  { count: 180, decimals: 0, suffix: "+", label: "Countries reached", note: "sample" },
+];
+---
+
+<section class="section performance" id="performance">
+  <div class="container" data-reveal>
+    <header class="section-head">
+      <p class="eyebrow">Performance</p>
+      <h2 class="section-title">Numbers we stand behind.</h2>
+      <p class="section-sub">
+        Production figures appear on your account dashboard. These placeholders
+        are replaced with live measurements from the public status API.
+      </p>
+    </header>
+
+    <dl class="stat-grid">
+      {stats.map((stat) => (
+        <div class="stat card">
+          <dd class="stat-value">
+            <span data-count={stat.count} data-decimals={stat.decimals} data-suffix={stat.suffix}>
+              {stat.count.toLocaleString("en-US", { minimumFractionDigits: stat.decimals })}
+            </span>
+            {stat.suffix}
+          </dd>
+          <dt class="stat-label">{stat.label}</dt>
+          <p class="stat-note mono">{stat.note}</p>
+        </div>
+      ))}
+    </dl>
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-20);
+    background: var(--color-surface-muted);
+    border-block: 1px solid var(--color-border-subtle);
+  }
+
+  .section-head {
+    max-width: 40rem;
+    margin: 0 auto var(--space-12);
+    text-align: center;
+  }
+
+  .section-title {
+    margin: var(--space-3) 0 0;
+  }
+
+  .section-sub {
+    margin: var(--space-4) auto 0;
+    color: var(--color-foreground-muted);
+  }
+
+  .stat-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .stat {
+    padding: var(--space-6);
+    text-align: center;
+    display: grid;
+    gap: var(--space-2);
+    justify-items: center;
+  }
+
+  .stat-value {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 2.25rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-foreground);
+  }
+
+  .stat-label {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--color-foreground-muted);
+  }
+
+  .stat-note {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-xs);
+    color: var(--color-foreground-faint);
+  }
+
+  @media (min-width: 40rem) {
+    .stat-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (min-width: 64rem) {
+    .stat-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+</style>
+
+<script>
+  import "../../islands/count";
+</script>

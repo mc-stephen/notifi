@@ -1,0 +1,85 @@
+---
+import ScheduleVisual from "../diagrams/ScheduleVisual.astro";
+---
+
+<section class="section scheduling" id="scheduling">
+  <div class="container">
+    <div class="schedule-layout">
+      <header class="schedule-copy" data-reveal>
+        <p class="eyebrow">Scheduling</p>
+        <h2 class="section-title">Sent at the right time,<br />in the right timezone</h2>
+        <p class="section-sub">
+          Schedule sends by cron or by window. Notifi resolves each recipient's
+          timezone before delivery — so a 9am window means 9am in every market,
+          not in your server's clock.
+        </p>
+        <ul class="schedule-points">
+          <li>Cron expressions and one-off delays</li>
+          <li>Per-recipient timezone resolution</li>
+          <li>Reschedules survive deploys — the outbox persists</li>
+        </ul>
+      </header>
+      <div class="schedule-visual" data-reveal data-reveal-delay="150">
+        <ScheduleVisual />
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-20);
+    background: var(--color-surface-muted);
+    border-block: 1px solid var(--color-border-subtle);
+  }
+
+  .schedule-layout {
+    display: grid;
+    gap: var(--space-12);
+    align-items: center;
+  }
+
+  .schedule-copy {
+    max-width: 36rem;
+  }
+
+  .section-title {
+    margin: var(--space-3) 0 0;
+  }
+
+  .section-sub {
+    margin: var(--space-4) 0 0;
+    color: var(--color-foreground-muted);
+  }
+
+  .schedule-points {
+    list-style: none;
+    margin: var(--space-6) 0 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .schedule-points li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: var(--text-sm);
+    color: var(--color-foreground-muted);
+  }
+
+  .schedule-points li::before {
+    content: "";
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: var(--radius-full);
+    background: var(--color-primary-400);
+    transform: translateY(-1px);
+  }
+
+  @media (min-width: 64rem) {
+    .schedule-layout {
+      grid-template-columns: 5fr 7fr;
+    }
+  }
+</style>

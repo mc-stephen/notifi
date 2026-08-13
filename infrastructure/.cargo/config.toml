@@ -1,2 +1,2 @@
 [env]
-NOTIFI_CONFIG_ROOT = { value = "assets", relative = true }
+NOTIFI_CONFIG_ROOT = { value = "../assets", relative = true }

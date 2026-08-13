@@ -1,0 +1,19 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import Pricing from "../components/sections/Pricing.astro";
+import CtaBanner from "../components/sections/CtaBanner.astro";
+---
+
+<BaseLayout title="Pricing — Notifi" path="/pricing" description="Notifi pricing: free forever tier, usage-based Scale plan, and enterprise with volume pricing.">
+  <MarketingLayout>
+    <PageHero
+      eyebrow="Pricing"
+      title="Pay for delivery, not for seats."
+      sub="Every plan includes the full API — no gated endpoints. The only difference is volume."
+    />
+    <Pricing />
+    <CtaBanner />
+  </MarketingLayout>
+</BaseLayout>

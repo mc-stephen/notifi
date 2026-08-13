@@ -1,0 +1,63 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import MarketingLayout from "../../layouts/MarketingLayout.astro";
+import PageHero from "../../components/sections/PageHero.astro";
+
+const note = `We collect only what the product needs: dashboard accounts, notification event data you send
+through the API, and contact details when you reach out. Data is encrypted at rest and in transit,
+deletable on demand, and never sold. The full legal policy with a subprocessor list will be published
+here before launch. For data requests: privacy@notifi.dev.`;
+---
+
+<BaseLayout title="Privacy — Notifi" path="/legal/privacy" description="Notifi privacy overview: what we collect, how it's stored, and how to erase it.">
+  <MarketingLayout>
+    <PageHero
+      eyebrow="Legal"
+      title="Privacy policy is being drafted."
+      sub="Meanwhile, the platform commitments are stable and enforceable by contract."
+    />
+    <section class="legal">
+      <div class="container">
+        <pre class="legal-text">{note}</pre>
+        <p class="legal-contact mono">
+          privacy@notifi.dev &middot; DPA on request
+        </p>
+      </div>
+    </section>
+  </MarketingLayout>
+</BaseLayout>
+
+<style>
+  .legal {
+    padding-block: var(--space-16) var(--space-20);
+  }
+
+  .legal-text {
+    margin: 0;
+    max-width: 46rem;
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    color: var(--color-foreground-muted);
+  }
+
+  .legal-contact {
+    margin: var(--space-8) 0 0;
+    font-size: var(--text-sm);
+    color: var(--color-foreground-faint);
+  }
+
+  .legal-contact a {
+    color: var(--color-primary-400);
+    text-decoration: none;
+  }
+
+  [data-theme="light"] .legal-contact a {
+    color: var(--color-primary-600);
+  }
+
+  .legal-contact a:hover {
+    text-decoration: underline;
+  }
+</style>

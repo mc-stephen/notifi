@@ -1,0 +1,6 @@
+{
+  "slug": "retry-policy",
+  "title": "A retry policy that makes sense",
+  "description": "Exponential backoff with jitter, per-channel limits, and dead-letter visibility. Failed sends surface in the dashboard, not in your logs.",
+  "icon": "retry"
+}

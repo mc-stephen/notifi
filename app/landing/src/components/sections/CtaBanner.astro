@@ -1,0 +1,144 @@
+---
+---
+
+
+
+<section class="cta">
+  <div class="container cta-inner" data-reveal>
+    <div class="cta-copy">
+      <p class="eyebrow">Get started</p>
+      <h2>Ship notifications like infrastructure.</h2>
+      <p>
+        The free tier is the full platform. No card, no trial clock, no
+        expiry. Swap your provider in an afternoon.
+      </p>
+      <div class="cta-ctas">
+        <a class="btn btn-primary" href="/">Create account</a>
+        <a class="btn btn-secondary" href="/contact-sales">Talk to sales</a>
+      </div>
+    </div>
+
+    <form class="newsletter card" data-newsletter>
+      <p class="newsletter-title">Release notes, monthly.</p>
+      <p class="newsletter-sub">
+        One email about the platform. No spam, no sequence — unsubscribe with
+        one click.
+      </p>
+      <label class="newsletter-field">
+        <span class="sr-only">Work email</span>
+        <input type="email" name="email" required autocomplete="email" placeholder="you@company.com" />
+        <button class="btn btn-primary" type="submit">Subscribe</button>
+      </label>
+      <p class="newsletter-note mono">opens the email client — no list, no tracking</p>
+    </form>
+  </div>
+</section>
+
+<style>
+  .cta {
+    padding-block: var(--space-24);
+  }
+
+  .cta-inner {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-12);
+  }
+
+  .cta-copy h2 {
+    margin: var(--space-4) 0 0;
+    max-width: 16ch;
+  }
+
+  .cta-copy p:not(.eyebrow) {
+    margin: var(--space-4) 0 0;
+    max-width: 30rem;
+    color: var(--color-foreground-muted);
+    line-height: 1.65;
+  }
+
+  .cta-ctas {
+    display: flex;
+    gap: var(--space-3);
+    margin-top: var(--space-8);
+    flex-wrap: wrap;
+  }
+
+  .newsletter {
+    padding: var(--space-6);
+    display: grid;
+    gap: var(--space-4);
+    align-content: start;
+  }
+
+  .newsletter-title {
+    margin: 0;
+    font-weight: 600;
+    font-size: 1.0625rem;
+  }
+
+  .newsletter-sub {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--color-foreground-muted);
+  }
+
+  .newsletter-field {
+    display: flex;
+    gap: var(--space-3);
+  }
+
+  .newsletter-field input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-muted);
+    color: var(--color-foreground);
+    font: inherit;
+    font-size: var(--text-sm);
+  }
+
+  .newsletter-field input:focus {
+    outline: 2px solid var(--color-primary-400);
+    outline-offset: 1px;
+  }
+
+  .newsletter-note {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--color-foreground-faint);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  @media (min-width: 64rem) {
+    .cta-inner {
+      grid-template-columns: 1.25fr 1fr;
+      align-items: center;
+    }
+  }
+</style>
+
+<script>
+  const form = document.querySelector<HTMLFormElement>("[data-newsletter]");
+  form?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const email = encodeURIComponent(String(data.get("email") ?? ""));
+    const subject = encodeURIComponent("Notifi release notes");
+    window.location.href = `mailto:hello@notifi.dev?subject=${subject}&to=${email}`;
+  });
+</script>

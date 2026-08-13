@@ -1,0 +1,7 @@
+{
+  "slug": "email",
+  "name": "Email",
+  "icon": "mail",
+  "blurb": "Transactional and marketing email with delivery events, bounces, and open tracking.",
+  "status": "available"
+}

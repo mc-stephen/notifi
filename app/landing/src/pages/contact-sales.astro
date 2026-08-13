@@ -1,0 +1,181 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import PageHero from "../components/sections/PageHero.astro";
+---
+
+<BaseLayout title="Contact sales — Notifi" path="/contact-sales" description="Talk to the Notifi team about enterprise plans, migration, or provider brokering.">
+  <MarketingLayout>
+    <PageHero
+      eyebrow="Contact"
+      title="Talk to an engineer, not a sequence."
+      sub="Tell us about your stack and volumes. A platform engineer — not a sales dev — replies within one business day."
+    />
+
+    <section class="sales">
+      <div class="container sales-inner">
+        <form class="sales-form card" data-mailto-form>
+          <div class="field-row">
+            <label class="field">
+              <span>Work email</span>
+              <input type="email" name="email" required autocomplete="email" placeholder="you@company.com" />
+            </label>
+            <label class="field">
+              <span>Company</span>
+              <input type="text" name="company" required autocomplete="organization" placeholder="Acme Inc." />
+            </label>
+          </div>
+          <label class="field">
+            <span>Monthly volume (optional)</span>
+            <select name="volume">
+              <option value="">Select an estimate</option>
+              <option>Under 1M notifications</option>
+              <option>1M – 10M</option>
+              <option>10M – 100M</option>
+              <option>Over 100M</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>What are you building?</span>
+            <textarea name="message" rows="5" placeholder="Stack, channels, compliance requirements…"></textarea>
+          </label>
+          <button class="btn btn-primary" type="submit">Send request</button>
+          <p class="sales-note mono">
+            No lists. No drip campaigns. Replies come from the people who run the platform.
+          </p>
+        </form>
+
+        <aside class="sales-alt">
+          <h2>Prefer email?</h2>
+          <p>
+            Write to{" "}
+            <a class="text-link" href="mailto:sales@notifi.dev">sales@notifi.dev</a>{" "}
+            and include your stack and volumes.
+          </p>
+          <h2>Evaluation</h2>
+          <p>
+            Every paid plan starts with a sandbox on the free tier — full API,
+            all channels, no time limit.
+          </p>
+        </aside>
+      </div>
+    </section>
+  </MarketingLayout>
+</BaseLayout>
+
+<style>
+  .sales {
+    padding-block: var(--space-20);
+  }
+
+  .sales-inner {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-12);
+  }
+
+  .sales-form {
+    padding: var(--space-8);
+    display: grid;
+    gap: var(--space-5);
+  }
+
+  .field {
+    display: grid;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .field input,
+  .field select,
+  .field textarea {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-muted);
+    color: var(--color-foreground);
+    font: inherit;
+    font-size: var(--text-sm);
+  }
+
+  .field input:focus,
+  .field select:focus,
+  .field textarea:focus {
+    outline: 2px solid var(--color-primary-400);
+    outline-offset: 1px;
+  }
+
+  .field textarea {
+    resize: vertical;
+  }
+
+  .sales-form .btn {
+    justify-self: start;
+  }
+
+  .sales-note {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--color-foreground-faint);
+  }
+
+  .sales-alt h2 {
+    margin: 0 0 var(--space-2);
+    font-size: 1.0625rem;
+  }
+
+  .sales-alt p {
+    margin: 0 0 var(--space-6);
+    color: var(--color-foreground-muted);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    max-width: 28rem;
+  }
+
+  .text-link {
+    color: var(--color-primary-400);
+    text-decoration: none;
+  }
+
+  [data-theme="light"] .text-link {
+    color: var(--color-primary-600);
+  }
+
+  .text-link:hover {
+    text-decoration: underline;
+  }
+
+  @media (min-width: 64rem) {
+    .sales-inner {
+      grid-template-columns: 2fr 1fr;
+      align-items: start;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4);
+    }
+  }
+</style>
+
+<script>
+  const form = document.querySelector<HTMLFormElement>("[data-mailto-form]");
+  form?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const subject = encodeURIComponent(`Sales inquiry from ${data.get("company") || "a company"}`);
+    const body = encodeURIComponent(
+      [
+        `Email: ${data.get("email")}`,
+        `Company: ${data.get("company")}`,
+        `Volume: ${data.get("volume") || "not specified"}`,
+        "",
+        data.get("message") || "",
+      ].join("\n")
+    );
+    window.location.href = `mailto:sales@notifi.dev?subject=${subject}&body=${body}`;
+  });
+</script>

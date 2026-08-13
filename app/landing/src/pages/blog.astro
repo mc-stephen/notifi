@@ -1,0 +1,127 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import CtaBanner from "../components/sections/CtaBanner.astro";
+import { getCollection } from "astro:content";
+
+const posts = (await getCollection("blog")).filter((p) => !p.data.draft);
+const byDate = [...posts].sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+---
+
+<BaseLayout title="Blog — Notifi" path="/blog" description="Engineering notes from the team building notification infrastructure.">
+  <MarketingLayout>
+    <PageHero
+      eyebrow="Blog"
+      title="Engineering notes, in public."
+      sub="How we design durable delivery, provider failover, and the outbox pattern."
+      secondaryCta={{ label: "RSS feed", href: "/rss.xml" }}
+    />
+
+    <section class="blog">
+      <div class="container">
+        {byDate.length === 0 ? (
+          <div class="blog-empty card">
+            <p class="blog-empty-code mono">zero drafts published</p>
+            <h2>Posts are in the pipeline.</h2>
+            <p>
+              The first engineering notes — durable delivery and the outbox
+              pattern — land here soon. The RSS feed will ping you.
+            </p>
+          </div>
+        ) : (
+          <ul class="post-list">
+            {byDate.map((post) => (
+              <li class="post card">
+                <h2><a href={`/blog/${post.id}`}>{post.data.title}</a></h2>
+                <p class="post-date mono">{post.data.pubDate.toISOString().slice(0, 10)}</p>
+                <p class="post-desc">{post.data.description}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+
+    <CtaBanner />
+  </MarketingLayout>
+</BaseLayout>
+
+<style>
+  .blog {
+    padding-block: var(--space-16) var(--space-20);
+  }
+
+  .blog-empty {
+    max-width: 36rem;
+    margin-inline: auto;
+    text-align: center;
+    padding: var(--space-12);
+  }
+
+  .blog-empty-code {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-primary-400);
+  }
+
+  [data-theme="light"] .blog-empty-code {
+    color: var(--color-primary-600);
+  }
+
+  .blog-empty h2 {
+    margin: var(--space-3) 0 0;
+  }
+
+  .blog-empty p:not(.blog-empty-code) {
+    margin: var(--space-4) auto 0;
+    color: var(--color-foreground-muted);
+  }
+
+  .post-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-5);
+    max-width: 46rem;
+  }
+
+  .post {
+    padding: var(--space-6);
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .post h2 {
+    margin: 0;
+    font-size: 1.125rem;
+  }
+
+  .post h2 a {
+    color: var(--color-foreground);
+  }
+
+  .post h2 a:hover {
+    color: var(--color-primary-400);
+  }
+
+  [data-theme="light"] .post h2 a:hover {
+    color: var(--color-primary-600);
+  }
+
+  .post-date {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--color-foreground-faint);
+  }
+
+  .post-desc {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-sm);
+    color: var(--color-foreground-muted);
+    max-width: none;
+  }
+</style>

@@ -42,7 +42,7 @@ Key properties:
 | Cache / rate limit / pub-sub | Redis |
 | Queue / workers | pgmq (enqueue atomically with the DB transaction) |
 | Telemetry | tracing + tracing-opentelemetry + Prometheus metrics |
-| Config | Layered: defaults ← `configs/` files ← `NOTIFI_*` env |
+| Config | Layered: defaults ← `NOTIFI_CONFIG_FILE` ← `NOTIFI_*` env |
 | IDs | ULID (newtyped per aggregate) |
 | Errors | thiserror; RFC 9457 problem details at the HTTP edge |
 
@@ -51,13 +51,14 @@ Key properties:
 ## 2. Workspace Layout (target)
 
 ```
-infrastructure/
-├── Cargo.toml                    # workspace manifest (members below)
+infrastructure/                 # server workspace (assets live at repo root)
+├── Cargo.toml                  # workspace manifest (members below)
 ├── rust-toolchain.toml
-├── README.md
-├── ARCHITECTURE.md               # this document
-├── configs/                      # tenant channel configs (existing convention)
-├── migrations/                   # numbered sqlx migrations (domain-namespaced tables)
+├── README.md                   # where-to-start + commands (see COMMANDS.md)
+├── docs/                       # ARCHITECTURE.md (this doc), SERVER.md, ...
+├── docker-compose.yml          # local Postgres (pgmq) + Redis
+├── .cargo/config.toml          # dev env: NOTIFI_CONFIG_ROOT → ../assets
+├── migrations/                 # numbered sqlx migrations (domain-namespaced tables)
 └── crates/
     ├── core/                     # notifi-core
     ├── domain-ports/             # notifi-domain-ports (trait-only)
@@ -84,6 +85,11 @@ infrastructure/
     └── adapters/
         └── channels/             # existing channel crates (email, sms, ...)
 ```
+
+Note: tenant channel configs and brand templates are **not** inside
+`infrastructure/` — they live at the **repo root** in
+`assets/brands/{brand}/{config,templates}/...` (shared with the dashboard).
+`NOTIFI_CONFIG_ROOT` points there (see §18).
 
 **Migration from the current tree:** the 13 channel crates already live at
 `crates/adapters/channels/`. What remains is the trait adoption (M3): channel
@@ -366,18 +372,19 @@ knowing who produced it.
 
 ## 18. Configuration Conventions
 
-- Layered loading (in `infra/config`): compiled defaults ← `configs/`
-  files ← environment `NOTIFI_*`. Never secrets in defaults or files
-  committed to git (see `configs/` note below).
+- Layered loading (in `infra/config`): compiled defaults ← optional config
+  file (`NOTIFI_CONFIG_FILE`) ← environment `NOTIFI_*`. Never secrets in
+  defaults or committed files.
 - One `AppConfig` struct composed of per-domain `XConfig` sections; each
   domain exposes `fn from_env`/`From<AppConfig>` for its own slice.
 - Tenant channel configs follow the canonical brand-assets layout
   `{NOTIFI_CONFIG_ROOT}/brands/{brand}/config/{channel}/` (templates at
   `.../brands/{brand}/templates/{name}/`), loaded through
   `core::ConfigResolver` (`channel_dir`/`template_dir`/`load_json`) honoring
-  `NOTIFI_CONFIG_ROOT` (default `configs`; local dev sets it to `assets` via
-  `infrastructure/.cargo/config.toml`) — this is the `ChannelConfigLoader`
-  trait from `domain-ports`, adopted by all adapters.
+  `NOTIFI_CONFIG_ROOT` (default `configs`; local dev sets it to the
+  repo-root `assets/` folder via `infrastructure/.cargo/config.toml`,
+  `value = "../assets"` resolved relative to that config file) — this is the
+  `ChannelConfigLoader` trait from `domain-ports`, adopted by all adapters.
 - Secrets: env vars or mounted secret files only (SMTP password, Twilio auth,
   service accounts, VAPID keys).
 

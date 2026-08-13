@@ -1,0 +1,89 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import Enterprise from "../components/sections/Enterprise.astro";
+import Performance from "../components/sections/Performance.astro";
+
+const sections = [
+  { term: "Onboarding", body: "A designated engineer configures projects, providers, and SSO with you — typically one working week." },
+  { term: "Migration", body: "Import existing templates and event types from the API. A migration playbook covers the common providers." },
+  { term: "Support", body: "Priority queue with a 4-hour response target. Dedicated Slack channel with the platform engineers." },
+  { term: "Contract", body: "Annual commitment with usage-based pricing and a 99.95% SLA with service credits." },
+];
+---
+
+<BaseLayout title="Enterprise — Notifi" path="/enterprise" description="Notifi for organizations: SSO, RBAC, audit logs, uptime SLA, and onboarding that fits a working week.">
+  <MarketingLayout>
+    <PageHero
+      eyebrow="Enterprise"
+      title="Notification infrastructure your board can sign off on."
+      sub="Single sign-on, role-based access, audit logs, and a contractual SLA — with engineering-led onboarding and a migration playbook."
+      primaryCta={{ label: "Contact sales", href: "/contact-sales" }}
+    />
+    <Enterprise showCta={false} />
+    <section class="details">
+      <div class="container">
+        <h2 class="details-title">How enterprise onboarding works.</h2>
+        <dl class="details-grid">
+          {sections.map((s) => (
+            <div class="details-item">
+              <dt class="mono">{s.term}</dt>
+              <dd>{s.body}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
+    <Performance />
+  </MarketingLayout>
+</BaseLayout>
+
+<style>
+  .details {
+    padding-block: var(--space-20);
+  }
+
+  .details-title {
+    margin: 0 0 var(--space-8);
+  }
+
+  .details-grid {
+    margin: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .details-item {
+    padding: var(--space-5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .details-item dt {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-primary-400);
+  }
+
+  [data-theme="light"] .details-item dt {
+    color: var(--color-primary-600);
+  }
+
+  .details-item dd {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.65;
+    color: var(--color-foreground-muted);
+  }
+
+  @media (min-width: 64rem) {
+    .details-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>

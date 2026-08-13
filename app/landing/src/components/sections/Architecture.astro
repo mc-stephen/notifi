@@ -1,0 +1,118 @@
+---
+import ArchitectureDiagram from "../diagrams/ArchitectureDiagram.astro";
+
+const captions = [
+  { title: "Ingest", body: "One idempotent endpoint. Every request is schema-validated, signed, and acknowledged with an outbox write before anything else happens." },
+  { title: "Outbox", body: "A durable outbox fsyncs before the API responds. If a worker crashes mid-deliver, the intent survives — nothing is lost, nothing is duplicated." },
+  { title: "Queue", body: "Work is buffered with backpressure. Bursts are absorbed instead of dropped, and slow providers never back up your API." },
+  { title: "Workers", body: "Retries use exponential backoff with jitter. Failed sends land in the dead-letter view with full context, not in your logs." },
+  { title: "Providers", body: "Every channel routes through providers with health checks and automatic failover. When one provider blips, delivery continues." },
+];
+---
+
+<section class="section architecture" id="architecture">
+  <div class="container">
+    <header class="section-head" data-reveal>
+      <p class="eyebrow">Architecture</p>
+      <h2 class="section-title">Built like the infrastructure you already run</h2>
+      <p class="section-sub">
+        Notifi is not a wrapper around email and SMS vendors. It is a pipeline —
+        each stage observable, each stage replaceable.
+      </p>
+    </header>
+
+    <div class="arch-layout">
+      <ol class="arch-captions">
+        {captions.map((caption, i) => (
+          <li class="arch-caption" data-stage-caption>
+            <span class="arch-step mono">{String(i + 1).padStart(2, "0")}</span>
+            <div>
+              <h3>{caption.title}</h3>
+              <p>{caption.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <ArchitectureDiagram />
+    </div>
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-20);
+  }
+
+  .section-head {
+    max-width: 40rem;
+    margin: 0 auto var(--space-12);
+    text-align: center;
+  }
+
+  .section-title {
+    margin: var(--space-3) 0 0;
+  }
+
+  .section-sub {
+    margin: var(--space-4) auto 0;
+    color: var(--color-foreground-muted);
+  }
+
+  .arch-layout {
+    display: grid;
+    gap: var(--space-8);
+    align-items: center;
+  }
+
+  .arch-captions {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .arch-caption {
+    display: grid;
+    grid-template-columns: 2.5rem 1fr;
+    gap: var(--space-4);
+    padding: var(--space-3);
+    border-radius: var(--radius-lg);
+    border: 1px solid transparent;
+    transition: border-color var(--dur-fast) ease, background var(--dur-fast) ease;
+  }
+
+  .arch-caption.is-active {
+    border-color: var(--color-border);
+    background: var(--color-surface);
+  }
+
+  .arch-step {
+    font-size: var(--text-xs);
+    color: var(--color-primary-400);
+    padding-top: 0.25rem;
+  }
+
+  [data-theme="light"] .arch-step {
+    color: var(--color-primary-600);
+  }
+
+  .arch-caption h3 {
+    margin: 0;
+    font-size: 1.0625rem;
+  }
+
+  .arch-caption p {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--color-foreground-muted);
+    max-width: none;
+  }
+
+  @media (min-width: 64rem) {
+    .arch-layout {
+      grid-template-columns: 4fr 5fr;
+    }
+  }
+</style>

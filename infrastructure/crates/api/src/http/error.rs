@@ -3,6 +3,10 @@
 //! [`ApiError`] lives in `notifi_core` (framework-free); the orphan rule keeps
 //! us from implementing axum's `IntoResponse` for it here, so we wrap it in
 //! the local [`ApiProblem`] newtype.
+//!
+//! This is presentation-layer code by design: the error *model* stays in the
+//! kernel (`crates/core/src/error.rs`) so every crate can share it without
+//! depending on axum (see `infrastructure/docs/ARCHITECTURE.md`).
 
 use axum::Json;
 use axum::http::StatusCode;

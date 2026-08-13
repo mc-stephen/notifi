@@ -1,0 +1,90 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import Security from "../components/sections/Security.astro";
+
+const details = [
+  { term: "Data encryption", body: "AES-256 at rest for all stored event and delivery data. TLS 1.3 for every connection, including internal service traffic." },
+  { term: "Key management", body: "Per-project API keys with scopes, expiry, and rotation. Keys are hashed at rest and never returned after creation." },
+  { term: "Retention & erasure", body: "Configurable event retention from 7 to 365 days. Right-to-erasure endpoints delete customer data within 48 hours." },
+  { term: "Compliance", body: "SOC 2 Type II and ISO 27001 audits are in progress. GDPR and CCPA data flows are supported today." },
+  { term: "Vulnerability handling", body: "Responsible disclosure program. Security advisories are published to the public changelog before they age 90 days." },
+  { term: "Billing of record", body: "Custom DPA, subprocessor list, and vendor security questionnaires are available on request." },
+];
+---
+
+<BaseLayout title="Security — Notifi" path="/security" description="How Notifi protects notification data: encryption, key management, retention, and compliance.">
+  <MarketingLayout>
+    <PageHero
+      eyebrow="Security"
+      title="Security is layered, documented, and auditable."
+      sub="Notifi encrypts data in transit and at rest, scopes keys per project, and publishes security decisions in the open. No payload mining, no silent retention."
+      primaryCta={{ label: "Start for free", href: "/" }}
+      secondaryCta={{ label: "View status", href: "/status" }}
+    />
+    <Security />
+    <section class="details">
+      <div class="container">
+        <h2 class="details-title">Details that survive a review.</h2>
+        <dl class="details-grid">
+          {details.map((d) => (
+            <div class="details-item">
+              <dt class="mono">{d.term}</dt>
+              <dd>{d.body}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
+  </MarketingLayout>
+</BaseLayout>
+
+<style>
+  .details {
+    padding-block: var(--space-20);
+  }
+
+  .details-title {
+    margin: 0 0 var(--space-8);
+  }
+
+  .details-grid {
+    margin: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .details-item {
+    padding: var(--space-5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .details-item dt {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-primary-400);
+  }
+
+  [data-theme="light"] .details-item dt {
+    color: var(--color-primary-600);
+  }
+
+  .details-item dd {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.65;
+    color: var(--color-foreground-muted);
+  }
+
+  @media (min-width: 64rem) {
+    .details-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>

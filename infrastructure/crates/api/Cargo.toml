@@ -10,6 +10,7 @@ notifi_core = { path = "../core" }
 notifi_infra_config = { path = "../infra/config" }
 notifi_infra_telemetry = { path = "../infra/telemetry" }
 redis = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }

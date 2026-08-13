@@ -1,0 +1,65 @@
+---
+/**
+ * Light/dark theme toggle. Progressive enhancement: the button only
+ * becomes interactive when the inline script runs; until then it is
+ * hidden (SSR output never shows a dead control).
+ */
+---
+
+<button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle color theme" hidden>
+  <svg class="icon-sun" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+    <circle cx="12" cy="12" r="4.5" fill="currentColor" />
+    <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+  </svg>
+  <svg class="icon-moon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" fill="currentColor" />
+  </svg>
+</button>
+
+<style>
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-subtle);
+    background: var(--color-surface);
+    color: var(--color-foreground-muted);
+    cursor: pointer;
+  }
+
+  .theme-toggle:hover {
+    color: var(--color-foreground);
+    border-color: var(--color-border);
+  }
+
+  .icon-sun,
+  .icon-moon {
+    display: none;
+  }
+
+  html[data-theme="light"] .icon-sun,
+  html[data-theme="dark"] .icon-moon,
+  html:not([data-theme]) .icon-moon {
+    display: block;
+  }
+</style>
+
+<script>
+  const toggle = document.getElementById("theme-toggle");
+  if (toggle) {
+    toggle.hidden = false;
+    toggle.addEventListener("click", () => {
+      const current = document.documentElement.getAttribute("data-theme");
+      const next = current === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try {
+        localStorage.setItem("notifi-theme", next);
+      } catch {
+        /* private mode */
+      }
+    });
+  }
+</script>

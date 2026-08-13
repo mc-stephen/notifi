@@ -1,0 +1,7 @@
+{
+  "slug": "sms",
+  "name": "SMS",
+  "icon": "message",
+  "blurb": "Global SMS with per-region routing, sender-ID rules, and automatic provider fallback.",
+  "status": "available"
+}

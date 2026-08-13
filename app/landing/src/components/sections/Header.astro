@@ -1,0 +1,453 @@
+---
+import Logo from "../ui/Logo.astro";
+import ThemeToggle from "../ui/ThemeToggle.astro";
+import LiveStatusPill from "../ui/LiveStatusPill.astro";
+
+interface NavLink {
+  href: string;
+  label: string;
+}
+
+interface MegaLink {
+  heading: string;
+  links: NavLink[];
+}
+
+const productsMega: MegaLink[] = [
+  {
+    heading: "Notifications",
+    links: [
+      { href: "https://docs.notifi.dev/api-reference", label: "API Reference" },
+      { href: "/sdk", label: "SDKs" },
+      { href: "https://docs.notifi.dev/templates", label: "Templates" },
+      { href: "https://docs.notifi.dev/scheduling", label: "Scheduling" },
+      { href: "https://docs.notifi.dev/providers", label: "Providers" },
+    ],
+  },
+  {
+    heading: "Channels",
+    links: [
+      { href: "https://docs.notifi.dev/channels/email", label: "Email" },
+      { href: "https://docs.notifi.dev/channels/sms", label: "SMS" },
+      { href: "https://docs.notifi.dev/channels/android", label: "Android (FCM)" },
+      { href: "https://docs.notifi.dev/channels/apple", label: "Apple (APNS)" },
+      { href: "https://docs.notifi.dev/channels/web-push", label: "Web Push" },
+      { href: "https://docs.notifi.dev/channels/linux", label: "Linux" },
+      { href: "https://docs.notifi.dev/channels/macos", label: "macOS" },
+      { href: "https://docs.notifi.dev/channels/rcs", label: "RCS" },
+    ],
+  },
+];
+
+const developersMega: MegaLink[] = [
+  {
+    heading: "Getting Started",
+    links: [
+      { href: "https://docs.notifi.dev/quickstart", label: "Quickstart" },
+      { href: "https://docs.notifi.dev/authentication", label: "Authentication" },
+      { href: "https://docs.notifi.dev/environments", label: "Environments" },
+      { href: "https://docs.notifi.dev/cli", label: "CLI" },
+    ],
+  },
+  {
+    heading: "Guides",
+    links: [
+      { href: "https://docs.notifi.dev/retries", label: "Retries & delivery" },
+      { href: "https://docs.notifi.dev/rate-limits", label: "Rate limits" },
+      { href: "https://docs.notifi.dev/webhooks", label: "Webhooks" },
+      { href: "https://docs.notifi.dev/errors", label: "Errors" },
+    ],
+  },
+  {
+    heading: "Reference",
+    links: [
+      { href: "https://docs.notifi.dev/api-reference", label: "API Reference" },
+      { href: "/sdk", label: "SDK Docs" },
+      { href: "https://docs.notifi.dev/errors", label: "Errors" },
+      { href: "/changelog", label: "Changelog" },
+    ],
+  },
+];
+
+const resourcesMega: MegaLink[] = [
+  {
+    heading: "Learn",
+    links: [
+      { href: "/blog", label: "Blog" },
+      { href: "/faq", label: "FAQ" },
+      { href: "https://status.notifi.dev", label: "Status" },
+      { href: "/contact-sales", label: "Support" },
+    ],
+  },
+  {
+    heading: "Company",
+    links: [
+      { href: "/pricing", label: "Pricing" },
+      { href: "/security", label: "Security" },
+      { href: "/enterprise", label: "Enterprise" },
+      { href: "/contact-sales", label: "Contact Sales" },
+    ],
+  },
+];
+
+const menus = [
+  { id: "mega-products", label: "Products", groups: productsMega },
+  { id: "mega-developers", label: "Developers", groups: developersMega },
+  { id: "mega-resources", label: "Resources", groups: resourcesMega },
+];
+---
+
+<header class="site-header">
+  <div class="container site-header-inner">
+    <a href="/" class="brand" aria-label="Notifi — home">
+      <Logo />
+    </a>
+
+    <nav class="site-nav" aria-label="Primary">
+      <ul class="nav-list">
+        {menus.map((menu) => (
+          <li class="nav-item">
+            <button
+              type="button"
+              class="nav-trigger"
+              aria-expanded="false"
+              aria-controls={menu.id}
+            >
+              {menu.label}
+              <svg class="nav-chevron" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none">
+                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+            <div id={menu.id} class="mega" data-mega>
+              <div class="mega-inner">
+                {menu.groups.map((group) => (
+                  <nav class="mega-group" aria-label={group.heading}>
+                    <h2 class="mega-heading">{group.heading}</h2>
+                    <ul class="mega-links">
+                      {group.links.map((link) => (
+                        <li>
+                          <a href={link.href}>{link.label}</a>
+                        </li>
+                      ))}
+                    </ul>
+                  </nav>
+                ))}
+              </div>
+            </div>
+          </li>
+        ))}
+        <li class="nav-item">
+          <a class="nav-link" href="/pricing">Pricing</a>
+        </li>
+      </ul>
+    </nav>
+
+    <div class="site-actions">
+      <LiveStatusPill />
+      <a class="btn btn-ghost" href="https://docs.notifi.dev">Docs</a>
+      <ThemeToggle />
+      <a class="btn btn-primary" href="https://dashboard.notifi.dev">Start building free</a>
+    </div>
+
+    <button
+      id="nav-drawer-toggle"
+      class="nav-drawer-toggle"
+      type="button"
+      aria-expanded="false"
+      aria-controls="nav-drawer"
+      aria-label="Open menu"
+    >
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none">
+        <path d="M3 7h18M3 12h18M3 17h18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+      </svg>
+    </button>
+  </div>
+
+  <div id="nav-drawer" class="nav-drawer">
+    <nav aria-label="Mobile">
+      <div class="nav-drawer-primary">
+        <a href="/pricing">Pricing</a>
+        {menus.map((menu) => (
+          <details class="nav-drawer-group">
+            <summary>{menu.label}</summary>
+            <div class="nav-drawer-groups">
+              {menu.groups.map((group) => (
+                <div>
+                  <h2 class="mega-heading">{group.heading}</h2>
+                  <ul class="mega-links">
+                    {group.links.map((link) => (
+                      <li>
+                        <a href={link.href}>{link.label}</a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </details>
+        ))}
+      </div>
+    </nav>
+    <div class="nav-drawer-footer">
+      <div class="nav-drawer-actions">
+        <a class="btn btn-secondary" href="https://docs.notifi.dev">Docs</a>
+        <LiveStatusPill />
+      </div>
+      <a class="btn btn-primary btn-block" href="https://dashboard.notifi.dev">Start building free</a>
+    </div>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--color-canvas) 78%, transparent);
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    border-bottom: 1px solid transparent;
+    transition: border-color var(--dur-fast) ease;
+  }
+
+  .site-header.is-scrolled {
+    border-bottom-color: var(--color-border-subtle);
+  }
+
+  .site-header-inner {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    height: var(--header-h);
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--color-foreground);
+    text-decoration: none;
+  }
+
+  .brand:hover {
+    text-decoration: none;
+  }
+
+  .site-nav {
+    display: none;
+  }
+
+  .nav-list {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .nav-item {
+    position: relative;
+  }
+
+  .nav-trigger,
+  .nav-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    padding: 0.5rem 0.75rem;
+    border: none;
+    background: none;
+    border-radius: var(--radius-md);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--color-foreground-muted);
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  .nav-trigger:hover,
+  .nav-link:hover,
+  .nav-trigger:focus-visible {
+    color: var(--color-foreground);
+    background: var(--color-surface-muted);
+    text-decoration: none;
+  }
+
+  .nav-chevron {
+    color: var(--color-foreground-faint);
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+
+  .nav-item:hover .nav-chevron,
+  .nav-trigger:focus-visible .nav-chevron {
+    transform: rotate(180deg);
+  }
+
+  .mega {
+    display: none;
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 34rem;
+    padding-top: 0.5rem;
+  }
+
+  .nav-item:hover .mega,
+  .nav-item:focus-within .mega,
+  .mega.is-open {
+    display: block;
+  }
+
+  .mega-inner {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0.5rem;
+    padding: 1.25rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .mega-heading {
+    margin: 0 0 0.5rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-foreground-faint);
+  }
+
+  .mega-links {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.125rem;
+  }
+
+  .mega-links a {
+    display: block;
+    padding: 0.4375rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    color: var(--color-foreground-muted);
+    text-decoration: none;
+  }
+
+  .mega-links a:hover {
+    color: var(--color-foreground);
+    background: var(--color-surface-muted);
+  }
+
+  .site-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+  }
+
+  .nav-drawer-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-subtle);
+    background: var(--color-surface);
+    color: var(--color-foreground);
+    cursor: pointer;
+  }
+
+  .nav-drawer {
+    display: none;
+    position: fixed;
+    inset: var(--header-h) 0 0 0;
+    z-index: 49;
+    overflow-y: auto;
+    padding: var(--space-6);
+    background: var(--color-canvas);
+    border-top: 1px solid var(--color-border-subtle);
+  }
+
+  .nav-drawer.is-open {
+    display: block;
+  }
+
+  .nav-drawer-primary {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .nav-drawer-primary > a,
+  .nav-drawer-group summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 0.5rem;
+    border-radius: var(--radius-md);
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--color-foreground);
+    text-decoration: none;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .nav-drawer-group summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .nav-drawer-groups {
+    display: grid;
+    gap: 1rem;
+    padding: 0.5rem 0 1rem 0.5rem;
+  }
+
+  .nav-drawer-footer {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: var(--space-8);
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--color-border-subtle);
+  }
+
+  .nav-drawer-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  @media (max-width: 51.999rem) {
+    .site-actions .btn-ghost,
+    .site-actions :global(.status-pill) {
+      display: none;
+    }
+  }
+
+  @media (max-width: 29.999rem) {
+    .site-actions .btn-primary {
+      display: none;
+    }
+  }
+
+  @media (min-width: 64rem) {
+    .site-nav {
+      display: block;
+    }
+
+    .nav-drawer-toggle,
+    .nav-drawer {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  import "../../islands/site";
+</script>

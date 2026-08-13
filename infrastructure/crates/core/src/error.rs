@@ -4,6 +4,12 @@ use std::fmt;
 ///
 /// Domains map their typed errors into an [`ApiError`] via [`IntoApiError`].
 /// The presentation layer (HTTP) renders it as an RFC 9457 problem document.
+///
+/// Note: this model lives in the framework-free kernel on purpose — every
+/// crate (domains, channels, binaries) can depend on it. The HTTP rendering
+/// (axum `IntoResponse`) lives at the edge in `crates/api/src/http/error.rs`
+/// and must NOT be moved here: the kernel stays framework-free
+/// (see `infrastructure/docs/ARCHITECTURE.md`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiError {
     /// HTTP status code.

@@ -1,0 +1,56 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import SdkSection from "../components/sections/SdkSection.astro";
+import CodeWindow from "../components/ui/CodeWindow.astro";
+import CtaBanner from "../components/sections/CtaBanner.astro";
+
+const sample = `import { Notifi } from "@notifi/sdk";
+
+const notifi = new Notifi({ apiKey: "ntf_live_..." });
+
+await notifi.send({
+  channels: ["email", "sms", "push"],
+  to: { email: "user@company.com" },
+  template: "order-updated",
+  variables: { orderId: "ord_8fkN2" },
+});
+`;
+---
+
+<BaseLayout title="SDKs — Notifi" path="/sdk" description="Notifi SDKs for TypeScript, Python, Go, Java, and Ruby — one typed API across every platform.">
+  <MarketingLayout>
+    <PageHero
+      eyebrow="SDKs"
+      title="One typed API across every stack."
+      sub="First-class SDKs for TypeScript, Python, Go, Java, and Ruby — with typed template variables and automatic retries built in."
+      primaryCta={{ label: "Read quickstart", href: "https://docs.notifi.dev/quickstart" }}
+      secondaryCta={{ label: "Browse API reference", href: "https://docs.notifi.dev/api-reference" }}
+    />
+    <SdkSection />
+    <section class="sdk-sample">
+      <div class="container">
+        <h2 class="sdk-sample-title">The whole platform, one call.</h2>
+        <CodeWindow filename="send.ts" lang="typescript" code={sample} />
+      </div>
+    </section>
+    <CtaBanner />
+  </MarketingLayout>
+</BaseLayout>
+
+<style>
+  .sdk-sample {
+    padding-block: var(--space-20);
+    background: var(--color-surface-muted);
+    border-block: 1px solid var(--color-border-subtle);
+  }
+
+  .sdk-sample-title {
+    margin: 0 0 var(--space-8);
+  }
+
+  .container {
+    max-width: 44rem;
+  }
+</style>

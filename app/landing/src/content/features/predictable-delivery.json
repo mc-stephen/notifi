@@ -1,0 +1,6 @@
+{
+  "slug": "predictable-delivery",
+  "title": "Predictable delivery",
+  "description": "An idempotent API, deterministic retries, and per-channel backoff. If a provider is slow, we retry with jitter — never on top of a spike.",
+  "icon": "layers"
+}

@@ -1,0 +1,5 @@
+{
+  "slug": "migration",
+  "question": "How hard is it to migrate from another provider?",
+  "answer": "If you use the generic event API, migration is a DNS and endpoint swap. The dashboard imports event types and Jinja templates from common providers, and the enterprise migration playbook covers the rest."
+}

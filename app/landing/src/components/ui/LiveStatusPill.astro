@@ -1,0 +1,64 @@
+---
+/**
+ * Status pill — static snapshot at build, upgraded to live status via the
+ * public status API (status.notifi.dev/api/status.json) once loaded.
+ * Defaults to "operational" and degrades gracefully offline.
+ */
+const label = "All systems operational";
+---
+
+<a
+  class="status-pill"
+  href="https://status.notifi.dev"
+  aria-label={`${label} — open status page`}
+  data-status-pill
+  data-status="live"
+  data-status-state="operational"
+>
+  <span class="status-dot" data-status-dot aria-hidden="true"></span>
+  <span class="status-text" data-status-text>{label}</span>
+</a>
+
+<style>
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3125rem 0.75rem;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-border-subtle);
+    background: var(--color-surface);
+    color: var(--color-foreground-muted);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .status-pill:hover {
+    text-decoration: none;
+    color: var(--color-foreground);
+    border-color: var(--color-border);
+  }
+
+  .status-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: var(--radius-full);
+    background: var(--color-success);
+  }
+
+  .status-dot[data-state="degraded"],
+  .status-dot[data-state="maintenance"] {
+    background: var(--color-warning);
+  }
+
+  .status-dot[data-state="partial_outage"],
+  .status-dot[data-state="major_outage"] {
+    background: var(--color-error);
+  }
+</style>
+
+<script>
+  import "../../islands/status";
+</script>

@@ -1,0 +1,5 @@
+{
+  "slug": "data-residency",
+  "question": "Where is my data stored?",
+  "answer": "Data is stored in the region you choose: us-east-1, eu-west-1, or ap-southeast-1 by default. EU residency and right-to-erasure flows are available on every plan above the free tier."
+}

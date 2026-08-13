@@ -1,0 +1,5 @@
+{
+  "slug": "bring-provider",
+  "question": "Can I bring my own provider credentials?",
+  "answer": "Yes. Attach your own SES, Twilio, or FCM accounts and Notifi routes through them with no markup. Or let Notifi broker provider capacity for you — the API is identical either way."
+}

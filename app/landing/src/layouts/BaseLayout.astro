@@ -1,0 +1,86 @@
+---
+import "../styles/global.css";
+import { SITE_DESCRIPTION, canonicalUrl, ogImage, ogUrl, seoTitle } from "../lib/seo";
+
+interface Props {
+  title: string;
+  description?: string;
+  /** Route path used for canonical URL + OG. e.g. "/pricing" */
+  path?: string;
+  /** OG image path, e.g. "/og/home.svg" */
+  image?: string;
+  jsonLd?: object | object[];
+}
+
+const {
+  title,
+  description = SITE_DESCRIPTION,
+  path = "/",
+  image = "/og/home.svg",
+  jsonLd,
+} = Astro.props;
+
+const pageTitle = seoTitle(title);
+const canonical = canonicalUrl(path);
+const ogUrlValue = ogUrl(path);
+const ogImageValue = ogImage(image);
+const jsonLdBlocks = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="canonical" href={canonical} />
+    {path === "/404" && <meta name="robots" content="noindex, nofollow" />}
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate" type="application/rss+xml" title="Notifi — Changelog RSS" href="/rss.xml" />
+    <meta name="theme-color" content="#141418" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#fbfbfd" media="(prefers-color-scheme: light)" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Notifi" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={ogUrlValue} />
+    <meta property="og:image" content={ogImageValue} />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageValue} />
+
+    <script is:inline>
+      {
+        /* Apply theme before first paint. Dark is the default; stored/system
+           preference wins. No flash of wrong theme, no hydration cost. */
+      }
+      (() => {
+        try {
+          const stored = localStorage.getItem("notifi-theme");
+          const theme =
+            stored === "dark" || stored === "light"
+              ? stored
+              : window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          document.documentElement.setAttribute("data-theme", theme);
+        } catch {
+          /* SSR/privacy-mode safe */
+        }
+      })();
+    </script>
+
+    {jsonLdBlocks.map((block) => (
+      <script is:inline type="application/ld+json" set:html={JSON.stringify(block)} />
+    ))}
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <slot />
+  </body>
+</html>

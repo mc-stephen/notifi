@@ -1,0 +1,69 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import AnnouncementBanner from "../components/sections/AnnouncementBanner.astro";
+import Hero from "../components/sections/Hero.astro";
+import FlowStrip from "../components/sections/FlowStrip.astro";
+import TrustBar from "../components/sections/TrustBar.astro";
+import Channels from "../components/sections/Channels.astro";
+import WhyDevsLoveIt from "../components/sections/WhyDevsLoveIt.astro";
+import SdkSection from "../components/sections/SdkSection.astro";
+import Templates from "../components/sections/Templates.astro";
+import Scheduling from "../components/sections/Scheduling.astro";
+import Architecture from "../components/sections/Architecture.astro";
+import ApiExample from "../components/sections/ApiExample.astro";
+import Analytics from "../components/sections/Analytics.astro";
+import Performance from "../components/sections/Performance.astro";
+import Providers from "../components/sections/Providers.astro";
+import Enterprise from "../components/sections/Enterprise.astro";
+import Security from "../components/sections/Security.astro";
+import Testimonials from "../components/sections/Testimonials.astro";
+import Pricing from "../components/sections/Pricing.astro";
+import Faq from "../components/sections/Faq.astro";
+import CtaBanner from "../components/sections/CtaBanner.astro";
+import { SITE_DESCRIPTION } from "../lib/seo";
+
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Notifi",
+  url: "https://notifi.dev",
+  logo: "https://notifi.dev/favicon.svg",
+  sameAs: ["https://github.com/mc-stephen/notifi"],
+};
+
+const softwareJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Notifi",
+  description: SITE_DESCRIPTION,
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Any",
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+};
+---
+
+<BaseLayout title="Notifi — Notifications as a Service" path="/" jsonLd={[organizationJsonLd, softwareJsonLd]}>
+  <MarketingLayout>
+    <AnnouncementBanner />
+    <Hero />
+    <FlowStrip />
+    <TrustBar />
+    <Channels />
+    <WhyDevsLoveIt />
+    <Architecture />
+    <ApiExample />
+    <SdkSection />
+    <Analytics />
+    <Templates />
+    <Scheduling />
+    <Providers />
+    <Enterprise />
+    <Performance />
+    <Security />
+    <Testimonials />
+    <Pricing />
+    <Faq />
+    <CtaBanner />
+  </MarketingLayout>
+</BaseLayout>

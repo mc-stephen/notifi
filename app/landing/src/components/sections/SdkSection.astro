@@ -1,0 +1,89 @@
+---
+import CodeWindow from "../ui/CodeWindow.astro";
+
+const sdks = ["JavaScript", "TypeScript", "Python", "Go", "Rust", "Java", "Kotlin", "Swift"];
+const install = `npm install @notifi/sdk`;
+---
+
+<section class="section sdk" id="sdks">
+  <div class="container" data-reveal>
+    <header class="section-head">
+      <p class="eyebrow">SDK support</p>
+      <h2 class="section-title">Your stack, covered</h2>
+      <p class="section-sub">
+        Official SDKs for the languages your team already runs. Every SDK wraps the
+        same API — idempotent, typed, and tested against the live reference.
+      </p>
+    </header>
+
+    <ul class="sdk-chips">
+      {sdks.map((sdk) => (
+        <li class="sdk-chip">{sdk}</li>
+      ))}
+      <li class="sdk-chip sdk-chip-more">More coming soon</li>
+    </ul>
+
+    <div class="sdk-install">
+      <CodeWindow filename="terminal" lang="shell" code={install} />
+    </div>
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-20);
+    background: var(--color-surface-muted);
+    border-block: 1px solid var(--color-border-subtle);
+  }
+
+  .section-head {
+    max-width: 40rem;
+    margin: 0 auto var(--space-12);
+    text-align: center;
+  }
+
+  .section-title {
+    margin: var(--space-3) 0 0;
+  }
+
+  .section-sub {
+    margin: var(--space-4) auto 0;
+    color: var(--color-foreground-muted);
+  }
+
+  .sdk-chips {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-3);
+  }
+
+  .sdk-chip {
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-foreground);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sdk-chip:hover {
+    border-color: var(--color-primary-400);
+    color: var(--color-primary-400);
+  }
+
+  .sdk-chip-more {
+    color: var(--color-foreground-faint);
+    border-style: dashed;
+  }
+
+  .sdk-install {
+    max-width: 30rem;
+    margin: var(--space-8) auto 0;
+  }
+</style>

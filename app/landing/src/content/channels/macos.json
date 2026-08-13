@@ -1,0 +1,7 @@
+{
+  "slug": "macos",
+  "name": "macOS",
+  "icon": "laptop",
+  "blurb": "Native macOS notifications — banners, alerts, and silent updates from one API.",
+  "status": "available"
+}

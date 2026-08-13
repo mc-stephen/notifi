@@ -1,0 +1,134 @@
+---
+/**
+ * Timezone-aware scheduling visual: a 24h week grid with delivery
+ * windows for three timezones. Static, server-rendered SVG.
+ */
+const zones = [
+  { name: "UTC", offset: "+00:00", start: 9, end: 17 },
+  { name: "America/New_York", offset: "-04:00 (EDT)", start: 9, end: 17 },
+  { name: "Asia/Kolkata", offset: "+05:30 (IST)", start: 10, end: 18 },
+];
+
+const axisLabel = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+---
+
+<figure class="schedule" role="img" aria-label="Delivery windows scheduled per timezone: 9am to 5pm in UTC, 9am to 5pm Eastern, and 10am to 6pm in India — each window shown on its local 24-hour clock.">
+  <svg viewBox="0 0 760 196" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    {zones.map((zone, row) => (
+      <g transform={`translate(0, ${row * 56})`}>
+        <text x="104" y="12" text-anchor="middle" class="zone-name">{zone.name}</text>
+        <text x="104" y="28" text-anchor="middle" class="zone-offset mono">{zone.offset}</text>
+        <g transform="translate(124, 0)">
+          {Array.from({ length: 24 }, (_, hour) => (
+            <rect
+
+              x={hour * 26}
+              y="2"
+              width="25"
+              height="34"
+              rx="4"
+              class={hour >= zone.start && hour < zone.end ? "window" : "hours"}
+            />
+          ))}
+          {[0, 6, 12, 18].map((hour) => (
+            <text x={hour * 26 + 3} y="54" class="hour-label mono">{hour}</text>
+          ))}
+        </g>
+      </g>
+    ))}
+    <g transform="translate(124, 180)">
+      {axisLabel.map((day, i) => (
+        <text x={i * 26 + 8} y="8" class="day-label">{day}</text>
+      ))}
+    </g>
+  </svg>
+  <figcaption class="schedule-caption">
+    <span class="schedule-legend">
+      <span class="schedule-swatch" aria-hidden="true"></span>
+      delivery window
+    </span>
+    <span class="mono">local time · 24h</span>
+  </figcaption>
+</figure>
+
+<style>
+  .schedule {
+    margin: 0;
+    display: grid;
+    gap: var(--space-4);
+    padding: var(--space-6);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-xl);
+    overflow-x: auto;
+  }
+
+  .schedule svg {
+    width: 100%;
+    min-width: 620px;
+    height: auto;
+  }
+
+  .zone-name {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    fill: var(--color-foreground);
+  }
+
+  .zone-offset {
+    font-size: 10px;
+    fill: var(--color-foreground-faint);
+  }
+
+  .hours {
+    fill: var(--color-surface-muted);
+    stroke: var(--color-border-subtle);
+    stroke-width: 1;
+  }
+
+  .window {
+    fill: oklch(0.65 0.22 280 / 0.3);
+    stroke: oklch(0.65 0.22 280 / 0.5);
+    stroke-width: 1;
+  }
+
+  [data-theme="light"] .window {
+    fill: oklch(0.515 0.235 280 / 0.22);
+    stroke: oklch(0.515 0.235 280 / 0.45);
+  }
+
+  .hour-label,
+  .day-label {
+    font-size: 10px;
+    fill: var(--color-foreground-faint);
+  }
+
+  .day-label {
+    font-weight: 500;
+  }
+
+  .schedule-caption {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    font-size: var(--text-xs);
+    color: var(--color-foreground-muted);
+  }
+
+  .schedule-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .schedule-swatch {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 3px;
+    background: oklch(0.65 0.22 280 / 0.3);
+    border: 1px solid oklch(0.65 0.22 280 / 0.5);
+  }
+</style>

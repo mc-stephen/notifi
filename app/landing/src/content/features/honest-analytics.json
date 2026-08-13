@@ -1,0 +1,6 @@
+{
+  "slug": "honest-analytics",
+  "title": "Honest analytics",
+  "description": "Every send produces an event: queued, sent, delivered, opened, bounced, failed. Measure each channel — no vanity numbers.",
+  "icon": "activity"
+}

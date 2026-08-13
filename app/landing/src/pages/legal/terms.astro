@@ -1,0 +1,50 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import MarketingLayout from "../../layouts/MarketingLayout.astro";
+import PageHero from "../../components/sections/PageHero.astro";
+
+const note = `Notifi is provided as a hosted platform under a subscription agreement. Use of the service
+implies acceptance of: no resale or white-labeling of the platform, no interference with other
+tenants, and data you send remains yours. Full terms, including the SLA credit schedule, will be
+published here before launch. Questions: legal@notifi.dev.`;
+---
+
+<BaseLayout title="Terms — Notifi" path="/legal/terms" description="Notifi terms of service overview.">
+  <MarketingLayout>
+    <PageHero
+      eyebrow="Legal"
+      title="Terms are being finalized."
+      sub="The operating rules are simple; the SLA schedule and DPAs are published here before launch."
+    />
+    <section class="legal">
+      <div class="container">
+        <pre class="legal-text">{note}</pre>
+        <p class="legal-contact mono">
+          legal@notifi.dev &middot; SLA credit schedule on request
+        </p>
+      </div>
+    </section>
+  </MarketingLayout>
+</BaseLayout>
+
+<style>
+  .legal {
+    padding-block: var(--space-16) var(--space-20);
+  }
+
+  .legal-text {
+    margin: 0;
+    max-width: 46rem;
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    color: var(--color-foreground-muted);
+  }
+
+  .legal-contact {
+    margin: var(--space-8) 0 0;
+    font-size: var(--text-sm);
+    color: var(--color-foreground-faint);
+  }
+</style>

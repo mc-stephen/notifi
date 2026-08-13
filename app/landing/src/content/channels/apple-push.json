@@ -1,0 +1,7 @@
+{
+  "slug": "apple-push",
+  "name": "Apple Push",
+  "icon": "smartphone",
+  "blurb": "APNS push for iOS, iPadOS, and macOS with automatic token registration.",
+  "status": "available"
+}

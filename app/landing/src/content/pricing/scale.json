@@ -1,0 +1,15 @@
+{
+  "slug": "scale",
+  "name": "Scale",
+  "tagline": "For teams shipping notifications to real users.",
+  "priceMonthly": 99,
+  "cta": "Start scaling",
+  "popular": true,
+  "features": [
+    "1M notifications / month",
+    "All channels incl. push",
+    "Unlimited projects & templates",
+    "Retention controls",
+    "Priority support"
+  ]
+}

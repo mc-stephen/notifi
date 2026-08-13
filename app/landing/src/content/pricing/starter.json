@@ -1,0 +1,14 @@
+{
+  "slug": "starter",
+  "name": "Starter",
+  "tagline": "For side projects and the first production stack.",
+  "priceMonthly": 0,
+  "cta": "Start for free",
+  "popular": false,
+  "features": [
+    "10k notifications / month",
+    "Email, SMS, webhooks",
+    "All SDKs and templates",
+    "Community support"
+  ]
+}

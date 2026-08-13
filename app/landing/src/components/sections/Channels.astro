@@ -1,0 +1,193 @@
+---
+import { getCollection } from "astro:content";
+import Icon from "../ui/Icon.astro";
+
+const channels = (await getCollection("channels")).sort((a, b) =>
+  a.data.status === b.data.status ? a.data.name.localeCompare(b.data.name) : a.data.status === "available" ? -1 : 1,
+);
+const available = channels.filter((c) => c.data.status === "available");
+const comingSoon = channels.filter((c) => c.data.status === "coming-soon");
+---
+
+<section class="section channels" id="channels">
+  <div class="container" data-reveal>
+    <header class="section-head">
+      <p class="eyebrow">Channels</p>
+      <h2 class="section-title">One integration. Every channel.</h2>
+      <p class="section-sub">
+        Add a channel in the dashboard, not in code. The API surface stays the same
+        whether you deliver to one channel or eight.
+      </p>
+    </header>
+
+    <ul class="channel-grid">
+      {available.map((channel) => (
+        <li class="channel-card card">
+          <div class="channel-icon">
+            <Icon name={channel.data.icon} size={22} />
+          </div>
+          <div class="channel-body">
+            <div class="channel-head">
+              <h3>{channel.data.name}</h3>
+              <span class="chip chip-ok">Available</span>
+            </div>
+            <p>{channel.data.blurb}</p>
+          </div>
+        </li>
+      ))}
+    </ul>
+
+    <div class="coming-soon" data-reveal>
+      <p class="coming-soon-label">Also on the roadmap</p>
+      <ul class="coming-soon-list">
+        {comingSoon.map((channel) => (
+          <li>
+            <Icon name={channel.data.icon} size={16} />
+            <span>{channel.data.name}</span>
+            <span class="chip chip-muted">Coming soon</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-20);
+  }
+
+  .section-head {
+    max-width: 40rem;
+    margin: 0 auto var(--space-12);
+    text-align: center;
+  }
+
+  .section-title {
+    margin: var(--space-3) 0 0;
+  }
+
+  .section-sub {
+    margin: var(--space-4) auto 0;
+    color: var(--color-foreground-muted);
+  }
+
+  .channel-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .channel-card {
+    display: grid;
+    gap: var(--space-4);
+    padding: var(--space-5);
+  }
+
+  .channel-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: var(--radius-md);
+    background: oklch(0.65 0.22 280 / 0.12);
+    color: var(--color-primary-400);
+  }
+
+  [data-theme="light"] .channel-icon {
+    background: oklch(0.515 0.235 280 / 0.1);
+    color: var(--color-primary-600);
+  }
+
+  .channel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .channel-head h3 {
+    margin: 0;
+    font-size: 1.0625rem;
+  }
+
+  .channel-body p {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--color-foreground-muted);
+  }
+
+  .chip {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    padding: 0.1875rem 0.5rem;
+    border-radius: var(--radius-full);
+  }
+
+  .chip-ok {
+    color: var(--color-success);
+    background: oklch(0.723 0.219 149.579 / 0.12);
+  }
+
+  .chip-muted {
+    color: var(--color-foreground-faint);
+    background: var(--color-surface-muted);
+  }
+
+  .coming-soon {
+    margin-top: var(--space-12);
+    border-top: 1px solid var(--color-border-subtle);
+    padding-top: var(--space-8);
+    text-align: center;
+  }
+
+  .coming-soon-label {
+    margin: 0 0 var(--space-4);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-foreground-faint);
+  }
+
+  .coming-soon-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-3);
+  }
+
+  .coming-soon-list li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.4375rem 0.75rem;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-border-subtle);
+    background: var(--color-surface);
+    color: var(--color-foreground-muted);
+    font-size: var(--text-sm);
+  }
+
+  @media (min-width: 40rem) {
+    .channel-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (min-width: 64rem) {
+    .channel-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+</style>

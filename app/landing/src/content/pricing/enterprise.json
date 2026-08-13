@@ -1,0 +1,15 @@
+{
+  "slug": "enterprise",
+  "name": "Enterprise",
+  "tagline": "Custom volume, SSO, and a contractual SLA.",
+  "priceMonthly": 0,
+  "cta": "Contact sales",
+  "popular": false,
+  "features": [
+    "Everything in Scale",
+    "SSO / SAML & SCIM",
+    "Audit logs & custom retention",
+    "99.95% SLA",
+    "Dedicated engineering"
+  ]
+}

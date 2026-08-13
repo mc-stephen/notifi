@@ -1,0 +1,94 @@
+---
+import { getCollection } from "astro:content";
+import Icon from "../ui/Icon.astro";
+
+const features = (await getCollection("features")).sort((a, b) => a.data.slug.localeCompare(b.data.slug));
+---
+
+<section class="section why" id="why">
+  <div class="container" data-reveal>
+    <header class="section-head">
+      <p class="eyebrow">Why developers love it</p>
+      <h2 class="section-title">Built for the code you already write</h2>
+    </header>
+
+    <ul class="feature-grid">
+      {features.map((feature) => (
+        <li class="feature-card card">
+          <div class="feature-icon">
+            <Icon name={feature.data.icon} size={22} />
+          </div>
+          <h3>{feature.data.title}</h3>
+          <p>{feature.data.description}</p>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-20);
+  }
+
+  .section-head {
+    max-width: 40rem;
+    margin: 0 auto var(--space-12);
+    text-align: center;
+  }
+
+  .section-title {
+    margin: var(--space-3) 0 0;
+  }
+
+  .feature-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .feature-card {
+    padding: var(--space-6);
+    display: grid;
+    gap: var(--space-3);
+    align-content: start;
+  }
+
+  .feature-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: var(--radius-md);
+    background: oklch(0.65 0.22 280 / 0.12);
+    color: var(--color-primary-400);
+  }
+
+  [data-theme="light"] .feature-icon {
+    background: oklch(0.515 0.235 280 / 0.1);
+    color: var(--color-primary-600);
+  }
+
+  .feature-card h3 {
+    margin: 0;
+    font-size: 1.125rem;
+  }
+
+  .feature-card p {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--color-foreground-muted);
+    max-width: none;
+  }
+
+  @media (min-width: 64rem) {
+    .feature-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+</style>

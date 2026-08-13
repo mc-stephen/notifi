@@ -1,0 +1,166 @@
+---
+import Icon from "../ui/Icon.astro";
+
+const claims = [
+  {
+    title: "Encrypted end to end",
+    body: "TLS 1.3 in transit, AES-256 at rest. Keys are scoped per project and rotatable on demand.",
+    icon: "shield",
+  },
+  {
+    title: "No payload vaults",
+    body: "Your notification content is never mined, scanned, or used for training. Deletion is immediate.",
+    icon: "bell",
+  },
+  {
+    title: "Signed & audited",
+    body: "Every API response is traceable to an event. Audit trails export to your SIEM via webhook.",
+    icon: "doc",
+  },
+  {
+    title: "GDPR-ready",
+    body: "Right-to-erasure and data export flows are built into the API. EU data residency available.",
+    icon: "globe",
+  },
+];
+---
+
+<section class="section security" id="security">
+  <div class="container" data-reveal>
+    <header class="section-head">
+      <p class="eyebrow">Security</p>
+      <h2 class="section-title">Trust is a property, not a promise.</h2>
+      <p class="section-sub">
+        Security decisions are documented in the platform design and auditable
+        at every layer.
+      </p>
+    </header>
+
+    <ul class="claim-grid">
+      {claims.map((claim) => (
+        <li class="claim card">
+          <div class="claim-icon">
+            <Icon name={claim.icon} size={20} />
+          </div>
+          <div>
+            <h3>{claim.title}</h3>
+            <p>{claim.body}</p>
+          </div>
+        </li>
+      ))}
+    </ul>
+
+    <p class="security-link">
+      <a class="text-link" href="/security">
+        Read the security overview <span class="link-arrow">&rarr;</span>
+      </a>
+    </p>
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-20);
+    background: var(--color-surface-muted);
+    border-block: 1px solid var(--color-border-subtle);
+  }
+
+  .section-head {
+    max-width: 40rem;
+    margin: 0 auto var(--space-12);
+    text-align: center;
+  }
+
+  .section-title {
+    margin: var(--space-3) 0 0;
+  }
+
+  .section-sub {
+    margin: var(--space-4) auto 0;
+    color: var(--color-foreground-muted);
+  }
+
+  .claim-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .claim {
+    padding: var(--space-6);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-4);
+    align-items: start;
+  }
+
+  .claim-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--radius-md);
+    background: oklch(0.65 0.22 280 / 0.12);
+    color: var(--color-primary-400);
+  }
+
+  [data-theme="light"] .claim-icon {
+    background: oklch(0.515 0.235 280 / 0.1);
+    color: var(--color-primary-600);
+  }
+
+  .claim h3 {
+    margin: 0;
+    font-size: 1rem;
+  }
+
+  .claim p {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--color-foreground-muted);
+  }
+
+  .security-link {
+    text-align: center;
+    margin: var(--space-8) 0 0;
+  }
+
+  .text-link {
+    color: var(--color-primary-400);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  [data-theme="light"] .text-link {
+    color: var(--color-primary-600);
+  }
+
+  .text-link:hover {
+    text-decoration: underline;
+  }
+
+  .link-arrow {
+    display: inline-block;
+    margin-left: 0.25rem;
+    transition: transform 0.15s ease;
+  }
+
+  .text-link:hover .link-arrow {
+    transform: translateX(0.25rem);
+  }
+
+  @media (min-width: 64rem) {
+    .claim-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    .claim {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

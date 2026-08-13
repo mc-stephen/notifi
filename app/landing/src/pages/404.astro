@@ -1,0 +1,66 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import { SITE_NAME } from "../lib/seo";
+---
+
+<BaseLayout title="Page not found — Notifi" path="/404">
+  <MarketingLayout>
+    <section class="nf">
+      <div class="container nf-inner" data-reveal>
+        <p class="nf-code mono">404</p>
+        <h1>This event was never dispatched.</h1>
+        <p class="nf-sub">
+          The page you're looking for doesn't exist — or was retired like an
+          old API version. Either way, the platform is still healthy.
+        </p>
+        <div class="nf-ctas">
+          <a class="btn btn-primary" href="/">Back to {SITE_NAME}</a>
+          <a class="btn btn-secondary" href="/status">Check status</a>
+        </div>
+      </div>
+    </section>
+  </MarketingLayout>
+</BaseLayout>
+
+<style>
+  .nf {
+    padding-block: var(--space-24);
+  }
+
+  .nf-inner {
+    max-width: 36rem;
+    text-align: center;
+  }
+
+  .nf-code {
+    margin: 0;
+    font-size: 3.5rem;
+    font-weight: 600;
+    color: var(--color-primary-400);
+    letter-spacing: -0.03em;
+  }
+
+  [data-theme="light"] .nf-code {
+    color: var(--color-primary-600);
+  }
+
+  .nf h1 {
+    margin: var(--space-4) 0 0;
+  }
+
+  .nf-sub {
+    margin: var(--space-4) auto 0;
+    max-width: 28rem;
+    color: var(--color-foreground-muted);
+    line-height: 1.65;
+  }
+
+  .nf-ctas {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-3);
+    margin-top: var(--space-8);
+    flex-wrap: wrap;
+  }
+</style>

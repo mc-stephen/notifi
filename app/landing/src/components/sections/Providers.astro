@@ -1,0 +1,182 @@
+---
+import Icon from "../ui/Icon.astro";
+
+const groups = [
+  {
+    name: "Email",
+    icon: "mail",
+    providers: [
+      { name: "Amazon SES", role: "primary" },
+      { name: "SendGrid", role: "failover" },
+      { name: "Postmark", role: "failover" },
+    ],
+  },
+  {
+    name: "SMS",
+    icon: "phone",
+    providers: [
+      { name: "Twilio", role: "primary" },
+      { name: "Vonage", role: "failover" },
+    ],
+  },
+  {
+    name: "Push",
+    icon: "smartphone",
+    providers: [
+      { name: "FCM", role: "primary" },
+      { name: "APNS", role: "primary" },
+    ],
+  },
+];
+---
+
+<section class="section providers" id="providers">
+  <div class="container" data-reveal>
+    <header class="section-head">
+      <p class="eyebrow">Provider network</p>
+      <h2 class="section-title">Never own a provider contract again.</h2>
+      <p class="section-sub">
+        Routing, health checks, and failover across providers are handled by the
+        platform. Bring your own provider credentials or let us broker them.
+      </p>
+    </header>
+
+    <ul class="provider-groups">
+      {groups.map((group) => (
+        <li class="provider-group card">
+          <h3 class="provider-group-title">
+            <span class="provider-group-icon">
+              <Icon name={group.icon} size={18} />
+            </span>
+            {group.name}
+          </h3>
+          <ul class="provider-list">
+            {group.providers.map((provider) => (
+              <li class="provider">
+                <span class={`provider-dot is-${provider.role}`} />
+                <span class="provider-name">{provider.name}</span>
+                <span class="provider-role mono">{provider.role}</span>
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
+
+    <p class="providers-note mono">
+      Health checks every 60s &middot; automatic failover &middot; per-provider
+      sending strategies
+    </p>
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-20);
+  }
+
+  .section-head {
+    max-width: 40rem;
+    margin: 0 auto var(--space-12);
+    text-align: center;
+  }
+
+  .section-title {
+    margin: var(--space-3) 0 0;
+  }
+
+  .section-sub {
+    margin: var(--space-4) auto 0;
+    color: var(--color-foreground-muted);
+  }
+
+  .provider-groups {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .provider-group {
+    padding: var(--space-6);
+  }
+
+  .provider-group-title {
+    margin: 0 0 var(--space-4);
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .provider-group-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-muted);
+    color: var(--color-foreground-muted);
+  }
+
+  .provider-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .provider {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: var(--space-3);
+    align-items: center;
+    font-size: var(--text-sm);
+  }
+
+  .provider-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+  }
+
+  .provider-dot.is-primary {
+    background: oklch(0.65 0.22 280 / 0.9);
+  }
+
+  [data-theme="light"] .provider-dot.is-primary {
+    background: var(--color-primary-600);
+  }
+
+  .provider-dot.is-failover {
+    background: var(--color-foreground-faint);
+  }
+
+  .provider-role {
+    font-size: var(--text-xs);
+    color: var(--color-foreground-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .providers-note {
+    text-align: center;
+    margin: var(--space-8) 0 0;
+    font-size: var(--text-xs);
+    color: var(--color-foreground-faint);
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+  }
+
+  @media (min-width: 64rem) {
+    .provider-groups {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+</style>

@@ -1,0 +1,5 @@
+{
+  "slug": "channels-coverage",
+  "question": "Which channels and providers do you support?",
+  "answer": "Email (SES, SendGrid, Postmark), SMS (Twilio, Vonage), push (FCM, APNS), plus webhooks and in-app. Providers are interchangeable — the platform handles health checks, retries, and failover between them."
+}

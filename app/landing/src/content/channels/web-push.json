@@ -1,0 +1,7 @@
+{
+  "slug": "web-push",
+  "name": "Web Push",
+  "icon": "globe",
+  "blurb": "Browser push via VAPID — Chrome, Firefox, Edge, and Safari, no app install required.",
+  "status": "available"
+}

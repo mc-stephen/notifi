@@ -1,0 +1,92 @@
+---
+import { getCollection } from "astro:content";
+
+const faqs = (await getCollection("faqs")).sort((a, b) => a.id.localeCompare(b.id));
+---
+
+<section class="section faq" id="faq">
+  <div class="container container-narrow" data-reveal>
+    <header class="section-head">
+      <p class="eyebrow">FAQ</p>
+      <h2 class="section-title">Questions teams actually ask.</h2>
+    </header>
+
+    <div class="faq-list">
+      {faqs.map((faq) => (
+        <details class="faq-item card">
+          <summary>{faq.data.question}</summary>
+          <p>{faq.data.answer}</p>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-20);
+    background: var(--color-surface-muted);
+    border-block: 1px solid var(--color-border-subtle);
+  }
+
+  .container-narrow {
+    max-width: 46rem;
+  }
+
+  .section-head {
+    max-width: 40rem;
+    margin: 0 auto var(--space-12);
+    text-align: center;
+  }
+
+  .section-title {
+    margin: var(--space-3) 0 0;
+  }
+
+  .faq-list {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .faq-item {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .faq-item summary {
+    cursor: pointer;
+    list-style: none;
+    padding: var(--space-4) var(--space-5);
+    font-weight: 500;
+    font-size: 0.9375rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .faq-item summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .faq-item summary::after {
+    content: "+";
+    font-family: var(--font-mono);
+    font-size: 1.125rem;
+    color: var(--color-foreground-faint);
+    transition: transform 0.15s ease;
+  }
+
+  .faq-item[open] summary::after {
+    transform: rotate(45deg);
+  }
+
+  .faq-item p {
+    margin: 0;
+    padding: 0 var(--space-5) var(--space-4);
+    font-size: var(--text-sm);
+    line-height: 1.65;
+    color: var(--color-foreground-muted);
+    max-width: none;
+  }
+</style>

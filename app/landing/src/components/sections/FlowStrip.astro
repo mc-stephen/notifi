@@ -1,0 +1,41 @@
+---
+/**
+ * The signature delivery-flow motif, relocated below the hero so the
+ * hero reads as a clean product showcase. One request, end to end.
+ */
+import FlowDiagram from "../diagrams/FlowDiagram.astro";
+---
+
+<section class="flowstrip">
+  <div class="container">
+    <p class="eyebrow" data-reveal>Under the hood</p>
+    <h2 class="flowstrip-title" data-reveal data-reveal-delay="80">One request, end to end.</h2>
+    <div data-reveal data-reveal-delay="160">
+      <FlowDiagram />
+    </div>
+  </div>
+</section>
+
+<style>
+  .flowstrip {
+    padding-block: var(--space-16) var(--space-20);
+    border-top: 1px solid var(--color-border-subtle);
+    background: var(--color-surface-muted);
+  }
+
+  .flowstrip .container {
+    display: grid;
+    gap: var(--space-3);
+    max-width: 76rem;
+  }
+
+  .flowstrip-title {
+    margin: 0 0 var(--space-8);
+    font-size: var(--text-h3);
+    text-align: center;
+  }
+
+  .eyebrow {
+    justify-self: center;
+  }
+</style>

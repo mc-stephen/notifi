@@ -1,0 +1,90 @@
+---
+import { getCollection } from "astro:content";
+
+const testimonials = (await getCollection("testimonials")).sort((a, b) =>
+  a.id.localeCompare(b.id)
+);
+---
+
+<section class="section testimonials" id="testimonials">
+  <div class="container" data-reveal>
+    <header class="section-head">
+      <p class="eyebrow">Proof</p>
+      <h2 class="section-title">Teams that stopped building plumbing.</h2>
+    </header>
+
+    <ul class="testimonial-grid">
+      {testimonials.map((t) => (
+        <li class="testimonial card">
+          <p class="testimonial-quote">&ldquo;{t.data.quote}&rdquo;</p>
+          <footer class="testimonial-meta">
+            <span class="testimonial-name">{t.data.name}</span>
+            <span class="testimonial-role mono">{t.data.role}</span>
+          </footer>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-20);
+    background: var(--color-surface-muted);
+    border-block: 1px solid var(--color-border-subtle);
+  }
+
+  .section-head {
+    max-width: 40rem;
+    margin: 0 auto var(--space-12);
+    text-align: center;
+  }
+
+  .section-title {
+    margin: var(--space-3) 0 0;
+  }
+
+  .testimonial-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .testimonial {
+    padding: var(--space-6);
+    display: grid;
+    gap: var(--space-4);
+    align-content: space-between;
+  }
+
+  .testimonial-quote {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.65;
+    color: var(--color-foreground);
+  }
+
+  .testimonial-meta {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  .testimonial-name {
+    font-weight: 600;
+    font-size: var(--text-sm);
+  }
+
+  .testimonial-role {
+    font-size: var(--text-xs);
+    color: var(--color-foreground-faint);
+  }
+
+  @media (min-width: 64rem) {
+    .testimonial-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+</style>

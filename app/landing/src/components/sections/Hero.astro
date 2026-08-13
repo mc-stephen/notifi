@@ -1,0 +1,174 @@
+---
+import DashboardMock from "../ui/DashboardMock.astro";
+---
+
+<section class="hero">
+  <div class="container hero-inner">
+    <div class="hero-copy" data-reveal>
+      <div class="hero-badge">
+        <span class="hero-badge-dot" aria-hidden="true"></span>
+        One API · Every channel
+      </div>
+      <h1 class="hero-title">
+        One API. Every notification.<br />
+        Every <span class="hero-accent">platform</span>.
+      </h1>
+      <p class="hero-sub">
+        Send email, SMS, push, and desktop notifications from a single endpoint —
+        with automatic retries, delivery analytics, and production-grade reliability.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary btn-lg btn-glow" href="https://dashboard.notifi.dev">Start building free</a>
+        <a class="btn btn-secondary btn-lg" href="https://docs.notifi.dev">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="currentColor">
+            <path d="M8 5.5v13l11-6.5z" />
+          </svg>
+          Watch demo
+        </a>
+      </div>
+      <p class="hero-meta">Free forever for 10,000 notifications / month. No credit card.</p>
+    </div>
+
+    <div class="hero-visual" data-reveal data-reveal-delay="150">
+      <div class="hero-stage">
+        <div class="hero-perspective">
+          <DashboardMock />
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    position: relative;
+    overflow: hidden;
+    padding-block: var(--space-24) var(--space-20);
+    background: var(--color-canvas);
+  }
+
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: -20% -10% 30%;
+    pointer-events: none;
+    background: radial-gradient(60% 52% at 50% 8%, oklch(0.515 0.235 280 / 0.22), transparent 70%);
+  }
+
+  [data-theme="light"] .hero::before {
+    background: radial-gradient(60% 52% at 50% 8%, oklch(0.515 0.235 280 / 0.09), transparent 70%);
+  }
+
+  .hero-inner {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: var(--space-12);
+  }
+
+  .hero-copy {
+    max-width: 56rem;
+    text-align: center;
+    margin-inline: auto;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4375rem 0.9375rem;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-border-subtle);
+    background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+    backdrop-filter: blur(6px);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--color-foreground-muted);
+  }
+
+  .hero-badge-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: var(--radius-full);
+    background: var(--color-primary-400);
+    box-shadow: 0 0 0 4px oklch(0.65 0.22 280 / 0.15), 0 0 12px oklch(0.65 0.22 280 / 0.7);
+  }
+
+  [data-theme="light"] .hero-badge-dot {
+    background: var(--color-primary-500);
+    box-shadow: 0 0 0 4px oklch(0.515 0.235 280 / 0.12), 0 0 12px oklch(0.515 0.235 280 / 0.45);
+  }
+
+  .hero-title {
+    font-size: var(--text-display);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    margin: var(--space-6) 0 0;
+  }
+
+  .hero-accent {
+    background: linear-gradient(120deg, var(--color-primary-400), var(--color-primary-600));
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+
+  .hero-sub {
+    font-size: 1.125rem;
+    color: var(--color-foreground-muted);
+    margin: var(--space-6) auto 0;
+  }
+
+  .hero-actions {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    margin-top: var(--space-8);
+  }
+
+  .hero-meta {
+    margin: var(--space-6) auto 0;
+    font-size: var(--text-sm);
+    color: var(--color-foreground-faint);
+  }
+
+  .hero-visual {
+    max-width: 66rem;
+    margin-inline: auto;
+    width: 100%;
+  }
+
+  .hero-stage {
+    position: relative;
+    perspective: 1600px;
+  }
+
+  .hero-stage::before {
+    content: "";
+    position: absolute;
+    inset: -18% -12% 8%;
+    pointer-events: none;
+    background: radial-gradient(52% 46% at 50% 38%, oklch(0.515 0.235 280 / 0.22), transparent 72%);
+    z-index: 0;
+  }
+
+  [data-theme="light"] .hero-stage::before {
+    background: radial-gradient(52% 46% at 50% 38%, oklch(0.515 0.235 280 / 0.1), transparent 72%);
+  }
+
+  .hero-perspective {
+    position: relative;
+    z-index: 1;
+    transform: rotateX(14deg) scale(1.02);
+    transform-origin: top center;
+    mask-image: linear-gradient(to bottom, black 72%, transparent 97%);
+    -webkit-mask-image: linear-gradient(to bottom, black 72%, transparent 97%);
+  }
+
+  @media (min-width: 64rem) {
+    .hero-inner {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

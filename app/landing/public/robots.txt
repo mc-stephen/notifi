@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://notifi.dev/sitemap-index.xml

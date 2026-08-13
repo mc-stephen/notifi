@@ -1,34 +1,18 @@
-//! HTTP presentation layer: router, middleware wiring, error mapping, handlers.
+//! HTTP presentation layer: router assembly, middleware wiring, error mapping.
 
 pub mod error;
 pub mod handlers;
+pub mod middleware;
+pub mod routes;
 
 use axum::Router;
-use axum::http::header::HeaderName;
-use axum::routing::get;
-use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
-use tower_http::trace::TraceLayer;
 
 use crate::state::AppState;
 
-/// Request-id header propagated into responses and logs for correlation.
-pub const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
-
-/// Builds the application router with its full middleware stack.
-///
-/// Layers (outermost last): trace/logging, CORS (permissive for dev), request-id
-/// propagation. The fallback renders RFC 9457 problem documents for 404/405.
+/// Builds the application router: mounts the full route surface
+/// ([`routes::all`]) and wraps it in the global middleware chain.
 pub fn build_router(state: AppState) -> Router {
-    Router::new()
-        .route("/", get(handlers::root))
-        .route("/healthz", get(handlers::healthz))
-        .route("/readyz", get(handlers::readyz))
-        .fallback(handlers::not_found)
-        .with_state(state)
-        .layer(PropagateRequestIdLayer::new(REQUEST_ID_HEADER))
-        .layer(SetRequestIdLayer::new(REQUEST_ID_HEADER, MakeRequestUuid))
-        .layer(tower_http::cors::CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http())
+    middleware::apply(routes::all(state))
 }
 
 #[cfg(test)]
@@ -36,7 +20,6 @@ mod tests {
     use super::*;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use std::sync::Arc;
     use tower::ServiceExt;
 
     fn test_app() -> Router {
@@ -61,6 +44,20 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/healthz")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn routes_catalog_is_served() {
+        let res = test_app()
+            .oneshot(
+                Request::builder()
+                    .uri("/routes")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -110,14 +107,5 @@ mod tests {
             .await
             .unwrap();
         assert!(res.headers().contains_key("x-request-id"));
-    }
-
-    #[test]
-    fn router_state_is_clonable() {
-        let state = AppState {
-            db: None,
-            redis: None,
-        };
-        let _ = Arc::new(state);
     }
 }

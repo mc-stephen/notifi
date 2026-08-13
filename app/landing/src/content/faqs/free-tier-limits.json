@@ -1,0 +1,5 @@
+{
+  "slug": "free-tier-limits",
+  "question": "What are the free tier limits?",
+  "answer": "The Starter plan includes 10,000 notifications per month across email, SMS, and webhooks. Every API feature is available — no gated endpoints."
+}

@@ -53,6 +53,7 @@ dependencies = [
  "notifi_infra_config",
  "notifi_infra_telemetry",
  "redis",
+ "serde",
  "serde_json",
  "sqlx",
  "tokio",

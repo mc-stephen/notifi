@@ -1,0 +1,33 @@
+---
+/**
+ * Notifi brand mark — bolt glyph + wordmark.
+ * Stroke inherits the current primary via currentColor.
+ */
+interface Props {
+  width?: number;
+  height?: number;
+  showWordmark?: boolean;
+}
+
+const { width = 24, height = 24, showWordmark = true } = Astro.props;
+---
+
+<svg class="logo-mark" viewBox="0 0 24 24" width={width} height={height} aria-hidden="true" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M22 12h-4l-3 9L9 3l-3 9H2" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+</svg>
+{showWordmark && <span class="logo-wordmark">Notifi</span>}
+
+<style>
+  .logo-mark {
+    color: var(--color-primary-400);
+    flex-shrink: 0;
+  }
+
+  .logo-wordmark {
+    font-family: var(--font-sans);
+    font-size: 1.125rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--color-foreground);
+  }
+</style>

@@ -1,0 +1,19 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import Faq from "../components/sections/Faq.astro";
+import CtaBanner from "../components/sections/CtaBanner.astro";
+---
+
+<BaseLayout title="FAQ — Notifi" path="/faq" description="Answers about Notifi channels, providers, migration, pricing, and data residency.">
+  <MarketingLayout>
+    <PageHero
+      eyebrow="FAQ"
+      title="Questions teams actually ask."
+      sub="If the answer you need isn't here, the platform engineers read every support email."
+    />
+    <Faq />
+    <CtaBanner />
+  </MarketingLayout>
+</BaseLayout>

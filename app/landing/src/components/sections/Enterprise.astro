@@ -1,0 +1,157 @@
+---
+import Icon from "../ui/Icon.astro";
+
+interface Props {
+  showCta?: boolean;
+}
+
+const { showCta = true } = Astro.props;
+
+const features = [
+  {
+    title: "SSO / SAML",
+    body: "SAML 2.0 and OIDC federation for Okta, Entra ID, and Google Workspace. SCIM provisioning included.",
+    icon: "shield",
+    wide: false,
+  },
+  {
+    title: "RBAC",
+    body: "Roles for owner, admin, developer, and read-only. Permissions apply to projects and API keys.",
+    icon: "doc",
+    wide: false,
+  },
+  {
+    title: "Audit logs",
+    body: "Every key rotation, role change, and configuration edit is recorded and exportable.",
+    icon: "clock",
+    wide: false,
+  },
+  {
+    title: "Uptime SLA",
+    body: "99.95% monthly SLA with service credits, backed by the public status page and quarterly reports.",
+    icon: "activity",
+    wide: true,
+  },
+];
+---
+
+<section class="section enterprise" id="enterprise">
+  <div class="container" data-reveal>
+    <header class="section-head">
+      <p class="eyebrow">Enterprise</p>
+      <h2 class="section-title">The checklist, answered.</h2>
+      <p class="section-sub">
+        The controls security teams ask for first — built in, not bolted on.
+      </p>
+    </header>
+
+    <ul class="enterprise-grid">
+      {features.map((feature) => (
+        <li class={`enterprise-card card ${feature.wide ? "is-wide" : ""}`}>
+          <div class="enterprise-icon">
+            <Icon name={feature.icon} size={22} />
+          </div>
+          <h3>{feature.title}</h3>
+          <p>{feature.body}</p>
+        </li>
+      ))}
+    </ul>
+
+    {showCta && (
+      <p class="enterprise-cta">
+        <a class="btn btn-secondary" href="/enterprise">Explore enterprise</a>
+      </p>
+    )}
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-20);
+  }
+
+  .section-head {
+    max-width: 40rem;
+    margin: 0 auto var(--space-12);
+    text-align: center;
+  }
+
+  .section-title {
+    margin: var(--space-3) 0 0;
+  }
+
+  .section-sub {
+    margin: var(--space-4) auto 0;
+    color: var(--color-foreground-muted);
+  }
+
+  .enterprise-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .enterprise-card {
+    padding: var(--space-6);
+    display: grid;
+    gap: var(--space-3);
+    align-content: start;
+  }
+
+  .enterprise-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: var(--radius-md);
+    background: oklch(0.65 0.22 280 / 0.12);
+    color: var(--color-primary-400);
+  }
+
+  [data-theme="light"] .enterprise-icon {
+    background: oklch(0.515 0.235 280 / 0.1);
+    color: var(--color-primary-600);
+  }
+
+  .enterprise-card h3 {
+    margin: 0;
+    font-size: 1.0625rem;
+  }
+
+  .enterprise-card p {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--color-foreground-muted);
+    max-width: none;
+  }
+
+  .enterprise-cta {
+    text-align: center;
+    margin: var(--space-8) 0 0;
+  }
+
+  @media (min-width: 40rem) {
+    .enterprise-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .enterprise-card.is-wide {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (min-width: 64rem) {
+    .enterprise-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    .enterprise-card.is-wide {
+      grid-column: auto;
+    }
+  }
+</style>

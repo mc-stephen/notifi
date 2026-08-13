@@ -58,7 +58,12 @@ cargo run -p api
 | `GET /` | Service identification (name, version, milestone) |
 | `GET /healthz` | Liveness — the process is up |
 | `GET /readyz` | Readiness — Postgres + Redis reachable (503 problem doc otherwise) |
+| `GET /routes` | Route catalog — every endpoint this server exposes |
 | any other path | RFC 9457 `application/problem+json` 404 |
+
+The route catalog is a single source of truth declared in
+`crates/api/src/http/routes.rs` — feature routes are defined in their own
+crate and mounted there under `/v1/...`.
 
 Every response carries a `x-request-id` header for log correlation.
 Errors are RFC 9457 problem documents: `{type, title, status, detail, correlation_id}`.

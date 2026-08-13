@@ -1,0 +1,5 @@
+{
+  "slug": "overages",
+  "question": "What happens if I exceed my notification volume?",
+  "answer": "Billing is usage-based above your included volume. Overage is prorated daily, and we warn your webhook and dashboard before you hit the threshold, with a hard cap you can set per project."
+}

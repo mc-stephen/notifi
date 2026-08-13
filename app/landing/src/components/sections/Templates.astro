@@ -1,0 +1,184 @@
+---
+const templates = [
+  {
+    name: "Order updated",
+    channels: ["Email", "SMS", "APNS"],
+    preview:
+      "Hi {first_name}, your order {order_id} has shipped and arrives by {eta}.",
+    tags: ["transactional", "variables"],
+  },
+  {
+    name: "Deploy complete",
+    channels: ["Web Push", "macOS", "Slack"],
+    preview: "Production deploy {commit} is live. {service} is serving at 100%.",
+    tags: ["devops", "teams"],
+  },
+  {
+    name: "Payment received",
+    channels: ["Email", "RCS"],
+    preview: "We received your payment of {amount} for {plan}. Thanks!",
+    tags: ["billing", "receipts"],
+  },
+];
+---
+
+<section class="section templates" id="templates">
+  <div class="container" data-reveal>
+    <header class="section-head">
+      <p class="eyebrow">Template system</p>
+      <h2 class="section-title">One template, every channel</h2>
+      <p class="section-sub">
+        Manage copy, variables, and channel-specific variants in one place.
+        Send to every channel from a single template id.
+      </p>
+    </header>
+
+    <ul class="template-grid">
+      {templates.map((template) => (
+        <li class="template-card card">
+          <div class="template-preview">
+            <p>
+              {template.preview.split(/[{}]/).map((part, i) =>
+                i % 2 === 1 ? (
+                  <span class="template-var">{`{${part}}`}</span>
+                ) : (
+                  part
+                ),
+              )}
+            </p>
+              <div class="template-channels">
+                {template.channels.map((channel) => (
+                  <span class="chip">{channel}</span>
+                ))}
+              </div>
+          </div>
+          <div class="template-meta">
+            <h3>{template.name}</h3>
+            <div class="template-tags">
+              {template.tags.map((tag) => (
+                <span class="tag">{tag}</span>
+              ))}
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-20);
+  }
+
+  .section-head {
+    max-width: 40rem;
+    margin: 0 auto var(--space-12);
+    text-align: center;
+  }
+
+  .section-title {
+    margin: var(--space-3) 0 0;
+  }
+
+  .section-sub {
+    margin: var(--space-4) auto 0;
+    color: var(--color-foreground-muted);
+  }
+
+  .template-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .template-card {
+    display: grid;
+    grid-template-rows: 1fr auto;
+    gap: var(--space-4);
+    padding: var(--space-6);
+  }
+
+  .template-preview {
+    display: grid;
+    gap: var(--space-4);
+    align-content: start;
+  }
+
+  .template-preview p {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.7;
+    color: var(--color-foreground-muted);
+    background: var(--color-surface-muted);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    max-width: none;
+  }
+
+  .template-var {
+    color: var(--color-primary-400);
+    background: oklch(0.65 0.22 280 / 0.12);
+    border-radius: 3px;
+    padding: 0 0.25em;
+  }
+
+  [data-theme="light"] .template-var {
+    color: var(--color-primary-600);
+    background: oklch(0.515 0.235 280 / 0.1);
+  }
+
+  .template-channels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .chip {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--color-foreground-muted);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    padding: 0.1875rem 0.5rem;
+  }
+
+  .template-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .template-meta h3 {
+    margin: 0;
+    font-size: 1rem;
+  }
+
+  .template-tags {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .tag {
+    font-size: var(--text-xs);
+    color: var(--color-foreground-faint);
+  }
+
+  @media (min-width: 40rem) {
+    .template-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (min-width: 64rem) {
+    .template-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+</style>
