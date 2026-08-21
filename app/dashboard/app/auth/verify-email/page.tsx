@@ -1,7 +1,8 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState, useEffect, ElementType } from "react";
 import {
   Loader2,
   CheckCircle2,
@@ -9,29 +10,102 @@ import {
   XCircle,
   Mail,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
-import { AuthHeaderMobile } from "@/components/custom/auth/auth-header";
 import { ErrorBanner } from "@/components/custom/auth/error-banner";
+import { AuthHeaderMobile } from "@/components/custom/auth/auth-header";
+
 import { useAuth } from "@/hooks/use-auth";
 
-type VerificationState = "loading" | "success" | "expired" | "invalid" | "resent";
+type VerificationState =
+  "loading" | "success" | "expired" | "invalid" | "resent";
 
+interface StateConfig {
+  icon: ElementType;
+  iconBgClass: string;
+  iconColorClass: string;
+  title: string;
+  description: string;
+  showActions?: boolean;
+}
+
+const STATE_CONFIG: Record<VerificationState, StateConfig> = {
+  loading: {
+    icon: Loader2,
+    iconBgClass: "bg-muted",
+    iconColorClass: "text-muted-foreground animate-spin",
+    title: "Verifying your email...",
+    description: "Please wait while we verify your email address.",
+  },
+  success: {
+    icon: CheckCircle2,
+    iconBgClass: "bg-success/10",
+    iconColorClass: "text-success",
+    title: "Email verified!",
+    description: "Your account has been verified. Redirecting to onboarding...",
+  },
+  expired: {
+    icon: AlertTriangle,
+    iconBgClass: "bg-warning/10",
+    iconColorClass: "text-warning",
+    title: "Link expired",
+    description:
+      "This verification link has expired. Please request a new one.",
+    showActions: true,
+  },
+  invalid: {
+    icon: XCircle,
+    iconBgClass: "bg-destructive/10",
+    iconColorClass: "text-destructive",
+    title: "Invalid link",
+    description: "This verification link is invalid. Please request a new one.",
+    showActions: true,
+  },
+  resent: {
+    icon: CheckCircle2,
+    iconBgClass: "bg-success/10",
+    iconColorClass: "text-success",
+    title: "Verification email sent",
+    description: "Check your inbox for a new verification link.",
+    showActions: true,
+  },
+};
+
+//============================
+//
+//============================
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <VerifyEmailForm />
+    </Suspense>
+  );
+}
+
+//============================
+//
+//============================
 function VerifyEmailForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") || "";
   const { verifyEmail, isLoading } = useAuth();
 
-  const [state, setState] = useState<VerificationState>(token ? "loading" : "resent");
+  const [state, setState] = useState<VerificationState>(
+    token ? "loading" : "resent",
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
 
-    const verify = async () => {
-      const result = await verifyEmail(token);
+    let redirectTimer: NodeJS.Timeout;
 
-      if (result.error) {
+    const verify = async () => {
+      const result = (await verifyEmail(token)) as
+        { error?: string } | undefined;
+
+      if (result?.error) {
         if (result.error.includes("expired")) {
           setState("expired");
         } else {
@@ -39,13 +113,17 @@ function VerifyEmailForm() {
         }
       } else {
         setState("success");
-        setTimeout(() => {
+        redirectTimer = setTimeout(() => {
           router.push("/onboarding/welcome");
         }, 3000);
       }
     };
 
     verify();
+
+    return () => {
+      if (redirectTimer) clearTimeout(redirectTimer);
+    };
   }, [token, verifyEmail, router]);
 
   const handleResend = async () => {
@@ -55,57 +133,38 @@ function VerifyEmailForm() {
     setState("resent");
   };
 
-  const handleBackToLogin = () => {
-    router.push("/auth/login");
-  };
+  const currentConfig = STATE_CONFIG[state];
+  const Icon = currentConfig.icon;
 
   return (
     <>
       <AuthHeaderMobile />
 
       <div className="space-y-6">
-        {state === "loading" && (
-          <div className="flex flex-col items-center text-center">
-            <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
-              <Loader2 className="size-6 animate-spin text-muted-foreground" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Verifying your email...
-            </h1>
-            <p className="mt-2 text-muted-foreground">
-              Please wait while we verify your email address.
-            </p>
+        <div className="flex flex-col items-center text-center">
+          <div
+            className={`mb-4 flex size-12 items-center justify-center rounded-full ${currentConfig.iconBgClass}`}
+          >
+            <Icon className={`size-6 ${currentConfig.iconColorClass}`} />
           </div>
-        )}
 
-        {state === "success" && (
-          <div className="flex flex-col items-center text-center">
-            <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-success/10">
-              <CheckCircle2 className="size-6 text-success" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Email verified!
-            </h1>
-            <p className="mt-2 text-muted-foreground">
-              Your account has been verified. Redirecting to onboarding...
-            </p>
-          </div>
-        )}
+          <h1 className="text-2xl font-bold tracking-tight">
+            {currentConfig.title}
+          </h1>
 
-        {state === "expired" && (
-          <div className="flex flex-col items-center text-center">
-            <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-warning/10">
-              <AlertTriangle className="size-6 text-warning" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight">Link expired</h1>
-            <p className="mt-2 text-muted-foreground">
-              This verification link has expired. Please request a new one.
-            </p>
+          <p className="mt-2 text-muted-foreground">
+            {currentConfig.description}
+          </p>
 
-            {error && <ErrorBanner message={error} className="mt-4" />}
+          {error && <ErrorBanner message={error} className="mt-4" />}
 
-            <div className="mt-6 flex flex-col gap-3">
-              <Button className="h-10" onClick={handleResend} disabled={isLoading}>
+          {currentConfig.showActions && (
+            <div className="mt-6 flex w-full flex-col gap-3">
+              <Button
+                className="h-10 w-full"
+                onClick={handleResend}
+                disabled={isLoading}
+              >
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 size-4 animate-spin" />
@@ -118,96 +177,28 @@ function VerifyEmailForm() {
                   </>
                 )}
               </Button>
-              <Button variant="ghost" className="h-10" onClick={handleBackToLogin}>
-                Back to sign in
+
+              <Button asChild variant="ghost" className="h-10 w-full">
+                <Link href="/auth/login">Back to sign in</Link>
               </Button>
             </div>
-          </div>
-        )}
-
-        {state === "invalid" && (
-          <div className="flex flex-col items-center text-center">
-            <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-destructive/10">
-              <XCircle className="size-6 text-destructive" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight">Invalid link</h1>
-            <p className="mt-2 text-muted-foreground">
-              This verification link is invalid. Please request a new one.
-            </p>
-
-            {error && <ErrorBanner message={error} className="mt-4" />}
-
-            <div className="mt-6 flex flex-col gap-3">
-              <Button className="h-10" onClick={handleResend} disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Mail className="mr-2 size-4" />
-                    Resend verification email
-                  </>
-                )}
-              </Button>
-              <Button variant="ghost" className="h-10" onClick={handleBackToLogin}>
-                Back to sign in
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {state === "resent" && (
-          <div className="flex flex-col items-center text-center">
-            <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-success/10">
-              <CheckCircle2 className="size-6 text-success" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Verification email sent
-            </h1>
-            <p className="mt-2 text-muted-foreground">
-              Check your inbox for a new verification link.
-            </p>
-
-            <div className="mt-6 flex flex-col gap-3">
-              <Button className="h-10" onClick={handleResend} disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Mail className="mr-2 size-4" />
-                    Resend verification email
-                  </>
-                )}
-              </Button>
-              <Button variant="ghost" className="h-10" onClick={handleBackToLogin}>
-                Back to sign in
-              </Button>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </>
   );
 }
 
-export default function VerifyEmailPage() {
+//============================
+//
+//============================
+function LoadingFallback() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex flex-col items-center text-center">
-          <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight">Loading...</h1>
-        </div>
-      }
-    >
-      <VerifyEmailForm />
-    </Suspense>
+    <div className="flex flex-col items-center text-center">
+      <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+      <h1 className="text-2xl font-bold tracking-tight">Loading...</h1>
+    </div>
   );
 }

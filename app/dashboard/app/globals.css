@@ -153,6 +153,10 @@
       color-scheme: dark;
     }
   }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 @layer utilities {

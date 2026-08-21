@@ -1,97 +1,103 @@
 "use client";
 
+import * as z from "zod";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Mail, User } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm, useWatch, Controller } from "react-hook-form";
+
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { AuthHeaderMobile } from "@/components/custom/auth/auth-header";
+import { AuthInput } from "@/components/custom/auth/auth-input";
 import { AuthFooter } from "@/components/custom/auth/auth-footer";
+import { ErrorBanner } from "@/components/custom/auth/error-banner";
+import { AuthHeaderMobile } from "@/components/custom/auth/auth-header";
 import { SocialButtons } from "@/components/custom/auth/social-buttons";
 import { PasswordInput } from "@/components/custom/auth/password-input";
 import { PasswordStrength } from "@/components/custom/auth/password-strength";
-import { AuthInput } from "@/components/custom/auth/auth-input";
-import { ErrorBanner } from "@/components/custom/auth/error-banner";
+
 import { useAuth } from "@/hooks/use-auth";
+
+//================================
+// Schema definition with cross-field validation
+//================================
+const signupSchema = z
+  .object({
+    name: z
+      .string()
+      .min(1, "Name is required")
+      .min(2, "Name must be at least 2 characters"),
+    email: z
+      .string()
+      .min(1, "Email is required")
+      .email("Please enter a valid email address"),
+    password: z
+      .string()
+      .min(1, "Password is required")
+      .min(8, "Password must be at least 8 characters"),
+    confirmPassword: z.string().min(1, "Please confirm your password"),
+    agreedToTerms: z.boolean().refine((val) => val === true, {
+      message: "You must agree to the terms",
+    }),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
+type SignupFormValues = z.infer<typeof signupSchema>;
 
 export default function SignupPage() {
   const router = useRouter();
   const { signup, loginWithOAuth, isLoading } = useAuth();
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<{
-    name?: string;
-    email?: string;
-    password?: string;
-    confirmPassword?: string;
-    terms?: string;
-  }>({});
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors },
+  } = useForm<SignupFormValues>({
+    resolver: zodResolver(signupSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+      agreedToTerms: false,
+    },
+  });
 
-  const validate = () => {
-    const errors: typeof fieldErrors = {};
+  const passwordValue = useWatch({
+    control,
+    name: "password",
+    defaultValue: "",
+  });
 
-    if (!name) {
-      errors.name = "Name is required";
-    } else if (name.length < 2) {
-      errors.name = "Name must be at least 2 characters";
-    }
+  const onSubmit = async (data: SignupFormValues) => {
+    setServerError(null);
 
-    if (!email) {
-      errors.email = "Email is required";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      errors.email = "Please enter a valid email address";
-    }
+    const result = (await signup(data.name, data.email, data.password)) as
+      { error?: string } | undefined;
 
-    if (!password) {
-      errors.password = "Password is required";
-    } else if (password.length < 8) {
-      errors.password = "Password must be at least 8 characters";
-    }
-
-    if (!confirmPassword) {
-      errors.confirmPassword = "Please confirm your password";
-    } else if (password !== confirmPassword) {
-      errors.confirmPassword = "Passwords do not match";
-    }
-
-    if (!agreedToTerms) {
-      errors.terms = "You must agree to the terms";
-    }
-
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!validate()) return;
-
-    const result = await signup(name, email, password);
-
-    if (result.error) {
-      setError(result.error);
+    if (result?.error) {
+      setServerError(result.error);
     } else {
       router.push("/auth/verify-email?token=mock_token_123");
     }
   };
 
   const handleGitHub = async () => {
-    setError(null);
+    setServerError(null);
     await loginWithOAuth("github");
     router.push("/");
   };
 
   const handleGoogle = async () => {
-    setError(null);
+    setServerError(null);
     await loginWithOAuth("google");
     router.push("/");
   };
@@ -110,9 +116,9 @@ export default function SignupPage() {
           </p>
         </div>
 
-        {error && <ErrorBanner message={error} />}
+        {serverError && <ErrorBanner message={serverError} />}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Full name</Label>
             <AuthInput
@@ -120,17 +126,13 @@ export default function SignupPage() {
               type="text"
               icon={User}
               placeholder="John Doe"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                setFieldErrors((prev) => ({ ...prev, name: undefined }));
-              }}
-              aria-invalid={!!fieldErrors.name}
-              aria-describedby={fieldErrors.name ? "name-error" : undefined}
+              {...register("name")}
+              aria-invalid={!!errors.name}
+              aria-describedby={errors.name ? "name-error" : undefined}
             />
-            {fieldErrors.name && (
+            {errors.name && (
               <p id="name-error" className="text-xs text-destructive">
-                {fieldErrors.name}
+                {errors.name.message}
               </p>
             )}
           </div>
@@ -142,17 +144,13 @@ export default function SignupPage() {
               type="email"
               icon={Mail}
               placeholder="you@example.com"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setFieldErrors((prev) => ({ ...prev, email: undefined }));
-              }}
-              aria-invalid={!!fieldErrors.email}
-              aria-describedby={fieldErrors.email ? "email-error" : undefined}
+              {...register("email")}
+              aria-invalid={!!errors.email}
+              aria-describedby={errors.email ? "email-error" : undefined}
             />
-            {fieldErrors.email && (
+            {errors.email && (
               <p id="email-error" className="text-xs text-destructive">
-                {fieldErrors.email}
+                {errors.email.message}
               </p>
             )}
           </div>
@@ -162,23 +160,17 @@ export default function SignupPage() {
             <PasswordInput
               id="password"
               placeholder="Enter your password"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                setFieldErrors((prev) => ({ ...prev, password: undefined }));
-              }}
-              error={fieldErrors.password}
-              aria-invalid={!!fieldErrors.password}
-              aria-describedby={
-                fieldErrors.password ? "password-error" : undefined
-              }
+              {...register("password")}
+              error={errors.password?.message}
+              aria-invalid={!!errors.password}
+              aria-describedby={errors.password ? "password-error" : undefined}
             />
-            {fieldErrors.password && (
+            {errors.password && (
               <p id="password-error" className="text-xs text-destructive">
-                {fieldErrors.password}
+                {errors.password.message}
               </p>
             )}
-            <PasswordStrength password={password} />
+            <PasswordStrength password={passwordValue} />
           </div>
 
           <div className="space-y-2">
@@ -186,42 +178,40 @@ export default function SignupPage() {
             <PasswordInput
               id="confirmPassword"
               placeholder="Confirm your password"
-              value={confirmPassword}
-              onChange={(e) => {
-                setConfirmPassword(e.target.value);
-                setFieldErrors((prev) => ({
-                  ...prev,
-                  confirmPassword: undefined,
-                }));
-              }}
-              error={fieldErrors.confirmPassword}
-              aria-invalid={!!fieldErrors.confirmPassword}
+              {...register("confirmPassword")}
+              error={errors.confirmPassword?.message}
+              aria-invalid={!!errors.confirmPassword}
               aria-describedby={
-                fieldErrors.confirmPassword ? "confirm-password-error" : undefined
+                errors.confirmPassword ? "confirm-password-error" : undefined
               }
             />
-            {fieldErrors.confirmPassword && (
+            {errors.confirmPassword && (
               <p
                 id="confirm-password-error"
                 className="text-xs text-destructive"
               >
-                {fieldErrors.confirmPassword}
+                {errors.confirmPassword.message}
               </p>
             )}
           </div>
 
           <div className="space-y-2">
             <div className="flex items-start gap-2">
-              <Checkbox
-                id="terms"
-                checked={agreedToTerms}
-                onCheckedChange={(checked) => {
-                  setAgreedToTerms(checked === true);
-                  setFieldErrors((prev) => ({ ...prev, terms: undefined }));
-                }}
-                aria-invalid={!!fieldErrors.terms}
-                aria-describedby={fieldErrors.terms ? "terms-error" : undefined}
-                className="mt-0.5"
+              <Controller
+                control={control}
+                name="agreedToTerms"
+                render={({ field }) => (
+                  <Checkbox
+                    id="terms"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    aria-invalid={!!errors.agreedToTerms}
+                    aria-describedby={
+                      errors.agreedToTerms ? "terms-error" : undefined
+                    }
+                    className="mt-0.5"
+                  />
+                )}
               />
               <Label
                 htmlFor="terms"
@@ -245,9 +235,9 @@ export default function SignupPage() {
                 </a>
               </Label>
             </div>
-            {fieldErrors.terms && (
+            {errors.agreedToTerms && (
               <p id="terms-error" className="text-xs text-destructive">
-                {fieldErrors.terms}
+                {errors.agreedToTerms.message}
               </p>
             )}
           </div>
@@ -286,9 +276,6 @@ export default function SignupPage() {
     </>
   );
 }
-
-
-
 
 // Because in a real system or a mock flow:
 // - Signup creates the account and generates a verification token (e.g. mock_token_123).

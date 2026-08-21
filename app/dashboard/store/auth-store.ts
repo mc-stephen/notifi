@@ -26,11 +26,12 @@ function generateToken(): string {
   return `mock_token_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
-function createSession(user: User): Session {
+function createSession(user: User, rememberMe: boolean): Session {
+  const days = rememberMe ? 30 : 1;
   return {
     user,
     token: generateToken(),
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    expiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
   };
 }
 
@@ -40,7 +41,11 @@ type AuthState = {
   isLoading: boolean;
   isAuthenticated: boolean;
 
-  login: (email: string, password: string) => Promise<{ error?: string }>;
+  login: (
+    email: string,
+    password: string,
+    rememberMe: boolean
+  ) => Promise<{ error?: string }>;
   signup: (
     name: string,
     email: string,
@@ -62,7 +67,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: false,
   isAuthenticated: false,
 
-  login: async (email, password) => {
+  login: async (email, password, rememberMe) => {
     set({ isLoading: true });
 
     // Simulate API delay
@@ -78,10 +83,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
 
     const { password: _, ...user } = mockUser;
-    const session = createSession(user);
+    const session = createSession(user, rememberMe);
+    const maxAge = rememberMe ? 30 * 24 * 60 * 60 : 24 * 60 * 60;
 
     if (typeof window !== "undefined") {
-      document.cookie = "session_token=mock_session_token; path=/; max-age=604800";
+      document.cookie = `session_token=mock_session_token; path=/; max-age=${maxAge}`;
     }
 
     set({
@@ -117,10 +123,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     MOCK_USERS.push({ ...newUser, password });
 
-    const session = createSession(newUser);
+    const session = createSession(newUser, false);
 
     if (typeof window !== "undefined") {
-      document.cookie = "session_token=mock_session_token; path=/; max-age=604800";
+      document.cookie = "session_token=mock_session_token; path=/; max-age=86400";
     }
 
     set({
@@ -147,10 +153,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       lastLoginAt: new Date().toISOString(),
     };
 
-    const session = createSession(oauthUser);
+    const session = createSession(oauthUser, false);
 
     if (typeof window !== "undefined") {
-      document.cookie = "session_token=mock_session_token; path=/; max-age=604800";
+      document.cookie = "session_token=mock_session_token; path=/; max-age=86400";
     }
 
     set({

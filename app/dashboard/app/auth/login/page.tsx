@@ -1,75 +1,93 @@
 "use client";
 
+import * as z from "zod";
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Loader2, Mail } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useForm, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { AuthHeaderMobile } from "@/components/custom/auth/auth-header";
-import { AuthFooter } from "@/components/custom/auth/auth-footer";
-import { SocialButtons } from "@/components/custom/auth/social-buttons";
-import { PasswordInput } from "@/components/custom/auth/password-input";
 import { AuthInput } from "@/components/custom/auth/auth-input";
+import { AuthFooter } from "@/components/custom/auth/auth-footer";
 import { ErrorBanner } from "@/components/custom/auth/error-banner";
+import { SocialButtons } from "@/components/custom/auth/social-buttons";
+import { AuthHeaderMobile } from "@/components/custom/auth/auth-header";
+import { PasswordInput } from "@/components/custom/auth/password-input";
+
 import { useAuth } from "@/hooks/use-auth";
+
+//================================
+// Validation schema defined outside component to avoid re-creation
+//================================
+const loginSchema = z.object({
+  email: z
+    .string()
+    .min(1, "Email is required")
+    .email("Please enter a valid email address"),
+  password: z.string().min(1, "Password is required"),
+  rememberMe: z.boolean(),
+});
+
+type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
   const { login, loginWithOAuth, isLoading } = useAuth();
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<{
-    email?: string;
-    password?: string;
-  }>({});
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    control,
+    formState: { errors },
+  } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+      rememberMe: false,
+    },
+  });
 
-  const validate = () => {
-    const errors: { email?: string; password?: string } = {};
+  const rememberMe = useWatch({
+    control,
+    name: "rememberMe",
+    defaultValue: false,
+  });
 
-    if (!email) {
-      errors.email = "Email is required";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      errors.email = "Please enter a valid email address";
-    }
+  //================================
+  //
+  //================================
+  const onSubmit = async (data: LoginFormValues) => {
+    setServerError(null);
+    const result = (await login(data.email, data.password, data.rememberMe)) as
+      { error?: string } | undefined;
 
-    if (!password) {
-      errors.password = "Password is required";
-    }
-
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!validate()) return;
-
-    const result = await login(email, password);
-
-    if (result.error) {
-      setError(result.error);
+    if (result?.error) {
+      setServerError(result.error);
     } else {
       router.push("/");
     }
   };
 
-  const handleGitHub = async () => {
-    setError(null);
-    await loginWithOAuth("github");
-    router.push("/");
-  };
+  //================================
+  //
+  //================================
+  const handleOAuth = async (provider: "github" | "google") => {
+    setServerError(null);
+    const result = (await loginWithOAuth(provider)) as
+      { error?: string } | undefined;
 
-  const handleGoogle = async () => {
-    setError(null);
-    await loginWithOAuth("google");
+    if (result?.error) {
+      setServerError(result.error);
+      return;
+    }
     router.push("/");
   };
 
@@ -86,9 +104,9 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {error && <ErrorBanner message={error} />}
+        {serverError && <ErrorBanner message={serverError} />}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <AuthInput
@@ -96,17 +114,13 @@ export default function LoginPage() {
               type="email"
               icon={Mail}
               placeholder="Enter your email"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setFieldErrors((prev) => ({ ...prev, email: undefined }));
-              }}
-              aria-invalid={!!fieldErrors.email}
-              aria-describedby={fieldErrors.email ? "email-error" : undefined}
+              {...register("email")}
+              aria-invalid={!!errors.email}
+              aria-describedby={errors.email ? "email-error" : undefined}
             />
-            {fieldErrors.email && (
+            {errors.email && (
               <p id="email-error" className="text-xs text-destructive">
-                {fieldErrors.email}
+                {errors.email.message}
               </p>
             )}
           </div>
@@ -115,7 +129,7 @@ export default function LoginPage() {
             <div className="flex items-center justify-between">
               <Label htmlFor="password">Password</Label>
               <Link
-                href="/auth/forgot-password"
+                href="/auth/password/forgot"
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
                 Forgot password?
@@ -124,20 +138,14 @@ export default function LoginPage() {
             <PasswordInput
               id="password"
               placeholder="Enter your password"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                setFieldErrors((prev) => ({ ...prev, password: undefined }));
-              }}
-              error={fieldErrors.password}
-              aria-invalid={!!fieldErrors.password}
-              aria-describedby={
-                fieldErrors.password ? "password-error" : undefined
-              }
+              {...register("password")}
+              error={errors.password?.message}
+              aria-invalid={!!errors.password}
+              aria-describedby={errors.password ? "password-error" : undefined}
             />
-            {fieldErrors.password && (
+            {errors.password && (
               <p id="password-error" className="text-xs text-destructive">
-                {fieldErrors.password}
+                {errors.password.message}
               </p>
             )}
           </div>
@@ -146,7 +154,9 @@ export default function LoginPage() {
             <Checkbox
               id="remember"
               checked={rememberMe}
-              onCheckedChange={(checked) => setRememberMe(checked === true)}
+              onCheckedChange={(checked) =>
+                setValue("rememberMe", checked === true)
+              }
             />
             <Label htmlFor="remember" className="text-sm font-normal">
               Remember me
@@ -177,8 +187,8 @@ export default function LoginPage() {
         </div>
 
         <SocialButtons
-          onGitHub={handleGitHub}
-          onGoogle={handleGoogle}
+          onGitHub={() => handleOAuth("github")}
+          onGoogle={() => handleOAuth("google")}
           isLoading={isLoading}
         />
 

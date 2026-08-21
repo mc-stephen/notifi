@@ -32,11 +32,11 @@ export function proxy(request: NextRequest) {
 
   // If authenticated and trying to access auth pages, redirect to dashboard
   if (isAuthenticated && pathname.startsWith("/auth")) {
-    // Allow signup, forgot-password, reset-password, verify-email
+    // Allow signup, password/forgot, password/reset, verify-email
     const allowedAuthPaths = [
       "/auth/signup",
-      "/auth/forgot-password",
-      "/auth/reset-password",
+      "/auth/password/forgot",
+      "/auth/password/reset",
       "/auth/verify-email",
     ];
 
