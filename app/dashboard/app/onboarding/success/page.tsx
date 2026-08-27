@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PartyPopper, ArrowRight, BookOpen } from "lucide-react";
+import { PartyPopper, ArrowRight, BookOpen, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/custom/auth/error-banner";
 import { env } from "@/lib/env";
@@ -97,8 +97,17 @@ export default function SuccessPage() {
           disabled={saving}
           className="w-full"
         >
-          Go to Dashboard
-          <ArrowRight className="ml-2 size-4" />
+          {saving ? (
+            <>
+              <Loader2 className="mr-2 size-4 animate-spin" />
+              Finishing up...
+            </>
+          ) : (
+            <>
+              Go to Dashboard
+              <ArrowRight className="ml-2 size-4" />
+            </>
+          )}
         </Button>
         <Button
           variant="outline"

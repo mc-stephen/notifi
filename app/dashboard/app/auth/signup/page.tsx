@@ -20,34 +20,29 @@ import { PasswordInput } from "@/components/custom/auth/password-input";
 import { PasswordStrength } from "@/components/custom/auth/password-strength";
 
 import { useAuth } from "@/hooks/use-auth";
+import { postAuthDestination } from "@/store/auth-store";
 import { links } from "@/lib/env";
 
 //================================
-// Schema definition with cross-field validation
+// Schema definition
 //================================
-const signupSchema = z
-  .object({
-    name: z
-      .string()
-      .min(1, "Name is required")
-      .min(2, "Name must be at least 2 characters"),
-    email: z
-      .string()
-      .min(1, "Email is required")
-      .email("Please enter a valid email address"),
-    password: z
-      .string()
-      .min(1, "Password is required")
-      .min(8, "Password must be at least 8 characters"),
-    confirmPassword: z.string().min(1, "Please confirm your password"),
-    agreedToTerms: z.boolean().refine((val) => val === true, {
-      message: "You must agree to the terms",
-    }),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
+const signupSchema = z.object({
+  name: z
+    .string()
+    .min(1, "Name is required")
+    .min(2, "Name must be at least 2 characters"),
+  email: z
+    .string()
+    .min(1, "Email is required")
+    .email("Please enter a valid email address"),
+  password: z
+    .string()
+    .min(1, "Password is required")
+    .min(8, "Password must be at least 8 characters"),
+  agreedToTerms: z.boolean().refine((val) => val === true, {
+    message: "You must agree to the terms",
+  }),
+});
 
 type SignupFormValues = z.infer<typeof signupSchema>;
 
@@ -67,7 +62,6 @@ export default function SignupPage() {
       name: "",
       email: "",
       password: "",
-      confirmPassword: "",
       agreedToTerms: false,
     },
   });
@@ -105,7 +99,7 @@ export default function SignupPage() {
       setServerError(result.error);
       return;
     }
-    router.push("/");
+    router.push(postAuthDestination());
   };
 
   const handleGoogle = async () => {
@@ -117,7 +111,7 @@ export default function SignupPage() {
       setServerError(result.error);
       return;
     }
-    router.push("/");
+    router.push(postAuthDestination());
   };
 
   return (
@@ -189,28 +183,6 @@ export default function SignupPage() {
               </p>
             )}
             <PasswordStrength password={passwordValue} />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm password</Label>
-            <PasswordInput
-              id="confirmPassword"
-              placeholder="Confirm your password"
-              {...register("confirmPassword")}
-              error={errors.confirmPassword?.message}
-              aria-invalid={!!errors.confirmPassword}
-              aria-describedby={
-                errors.confirmPassword ? "confirm-password-error" : undefined
-              }
-            />
-            {errors.confirmPassword && (
-              <p
-                id="confirm-password-error"
-                className="text-xs text-destructive"
-              >
-                {errors.confirmPassword.message}
-              </p>
-            )}
           </div>
 
           <div className="space-y-2">

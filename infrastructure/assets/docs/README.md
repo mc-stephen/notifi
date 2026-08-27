@@ -17,6 +17,9 @@ New to this codebase? Follow this order:
 4. **`Cargo.toml`** — package manifest + `[workspace] members`: the channel
    plugin crates.
 
+Quick references: [`OAUTH_SETUP.md`](./OAUTH_SETUP.md) for GitHub/Google
+app registration, [`COMMANDS.md`](./COMMANDS.md) for the full command list.
+
 ## Layout
 
 ```

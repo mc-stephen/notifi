@@ -20,6 +20,7 @@ import { AuthHeaderMobile } from "@/components/custom/auth/auth-header";
 import { PasswordInput } from "@/components/custom/auth/password-input";
 
 import { useAuth } from "@/hooks/use-auth";
+import { postAuthDestination } from "@/store/auth-store";
 
 //================================
 // Validation schema defined outside component to avoid re-creation
@@ -87,7 +88,7 @@ function LoginForm() {
     if (result?.error) {
       setServerError(result.error);
     } else {
-      router.push("/");
+      router.push(postAuthDestination());
     }
   };
 
@@ -103,7 +104,7 @@ function LoginForm() {
       setServerError(result.error);
       return;
     }
-    router.push("/");
+    router.push(postAuthDestination());
   };
 
   return (

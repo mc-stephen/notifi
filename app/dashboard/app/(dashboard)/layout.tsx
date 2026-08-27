@@ -17,6 +17,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const onboardingCompleted = useAuthStore((s) => s.onboardingCompleted);
+  const authHydrated = useAuthStore((s) => s.authHydrated);
 
   // Onboarding is mandatory: accounts without an org + project (the
   // server-derived flag) are sent back into the flow on every visit.
@@ -25,6 +26,22 @@ export default function DashboardLayout({
       router.replace("/onboarding/welcome");
     }
   }, [isAuthenticated, onboardingCompleted, router]);
+
+  // Until fetchMe settles we don't know whether the session is valid — hold
+  // the content so neither the dashboard nor the onboarding redirect flash.
+  if (!authHydrated) {
+    return (
+      <div className="flex h-screen overflow-hidden">
+        <div className="hidden lg:block h-full">
+          <Sidebar />
+        </div>
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <Topbar />
+          <main className="flex-1 overflow-y-auto" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">

@@ -56,15 +56,28 @@ fn app_without_auth() -> Router {
     )
 }
 
-/// Same, plus the OAuth runtime backed by a stub provider.
+/// Same, plus the OAuth runtime wired through `AppState` — the exact
+/// production path (`v1_router`'s conditional Extension layer), so a layer/
+/// extractor type mismatch cannot hide here.
 fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
-    let (router, store) = app();
-    let runtime = Arc::new(OAuthRuntime {
+    let store = Arc::new(FakeAuthStore::new());
+    let auth = Arc::new(AuthService::new(store.clone(), true));
+    let oauth = Arc::new(OAuthRuntime {
         provider: Arc::new(StubOAuthProvider),
         dashboard_url: "http://localhost:3000".to_string(),
     });
-    // Re-wrap the router with the OAuth extension layered on top.
-    (router.layer(axum::Extension(runtime)), store)
+    (
+        build_router(
+            AppState {
+                db: None,
+                redis: None,
+                auth: Some(auth),
+                oauth: Some(oauth),
+            },
+            &AppConfig::default(),
+        ),
+        store,
+    )
 }
 
 struct StubOAuthProvider;

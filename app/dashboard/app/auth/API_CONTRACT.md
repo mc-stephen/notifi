@@ -48,7 +48,7 @@ Request:
 { "name": "string", "email": "string", "password": "string" }
 ```
 
-(The page also validates `confirmPassword` + `agreedToTerms` locally — not sent.)
+(The page also validates `agreedToTerms` locally — not sent. No confirm-password field; the show/hide toggle on the single password input covers typo checking.)
 
 Response `201`:
 

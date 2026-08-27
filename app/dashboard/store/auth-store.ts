@@ -42,6 +42,12 @@ type AuthState = {
   session: Session | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  /**
+   * True once the session question is settled (fetchMe returned or failed).
+   * Before that, the store doesn't know whether the cookie is valid — the
+   * dashboard gate renders nothing to avoid unauthenticated flashes.
+   */
+  authHydrated: boolean;
   /** Server-derived: owns ≥1 org with ≥1 project (can skip onboarding). */
   onboardingCompleted: boolean;
 
@@ -77,6 +83,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   session: null,
   isLoading: false,
   isAuthenticated: false,
+  authHydrated: false,
   onboardingCompleted: false,
 
   login: async (email, password, rememberMe) => {
@@ -131,6 +138,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     // Popup-first OAuth: the backend callback posts the outcome back to
     // this window, then fetchMe() hydrates the session from the new cookie.
     const url = `${env.apiBase}/v1/auth/oauth/${provider}?popup=1`;
+
+    // Loading state drives the Sign in/Sign up buttons (disabled + spinner)
+    // for the whole attempt — set it before the popup opens.
+    set({ isLoading: true });
+
     const popup = window.open(url, "notifi-oauth", "width=520,height=640");
 
     // Popup blocked → full-page redirect; the server sets the cookie either
@@ -142,16 +154,26 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     return new Promise<{ error?: string } | undefined>((resolve) => {
       const expectedOrigin = new URL(env.apiBase).origin;
+      let settled = false;
 
       function onMessage(event: MessageEvent) {
-        if (event.origin !== expectedOrigin) return;
+        if (settled || event.origin !== expectedOrigin) return;
         const data = event.data as { type?: string } | null;
         if (data?.type === "oauth:success") {
+          settled = true;
           cleanup();
-          void useAuthStore.getState().fetchMe();
-          resolve({});
+          // Await hydration before resolving: callers navigate right after,
+          // and the onboarding gate must already know both flags. Loading
+          // stays on until the store is hydrated.
+          void (async () => {
+            await useAuthStore.getState().fetchMe();
+            set({ isLoading: false });
+            resolve({});
+          })();
         } else if (data?.type === "oauth:error") {
+          settled = true;
           cleanup();
+          set({ isLoading: false });
           resolve({
             error: "Sign-in with that provider failed. Please try again.",
           });
@@ -159,7 +181,20 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
       function cleanup() {
         window.removeEventListener("message", onMessage);
+        clearInterval(closePoll);
       }
+
+      // Abandonment: the user closes the popup without completing the flow.
+      // `popup.closed` stays readable cross-origin; without this the loading
+      // state would be stuck forever.
+      const closePoll = window.setInterval(() => {
+        if (!popup.closed) return;
+        settled = true;
+        cleanup();
+        set({ isLoading: false });
+        resolve(undefined);
+      }, 500);
+
       window.addEventListener("message", onMessage);
     });
   },
@@ -245,9 +280,12 @@ export const useAuthStore = create<AuthState>((set) => ({
         user: data.user,
         isAuthenticated: true,
         onboardingCompleted: data.onboardingCompleted,
+        authHydrated: true,
       });
     } catch {
-      // No valid session cookie (or API down) — stay signed out.
+      // No valid session cookie (or API down) — stay signed out, but the
+      // session question is now settled.
+      set({ authHydrated: true });
     }
   },
 
@@ -264,3 +302,14 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 }));
+
+/**
+ * Landing route after any successful sign-in — decided by the server-derived
+ * onboarding flag so users land directly where they belong (no dashboard
+ * bounce).
+ */
+export function postAuthDestination(): string {
+  return useAuthStore.getState().onboardingCompleted
+    ? "/"
+    : "/onboarding/welcome";
+}

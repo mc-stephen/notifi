@@ -17,10 +17,16 @@ pub fn v1_router(state: &AppState) -> Router<AppState> {
     let auth_routes = match state.auth.clone() {
         Some(service) => auth::routes::router().layer(axum::Extension(service)),
         None => auth::routes::router(),
-    }
-    // OAuth runtime is optional independently of the service: without it
-    // (no provider credentials) the /oauth routes answer 503.
-    .layer(axum::Extension(state.oauth.clone()));
+    };
+    // The OAuth runtime is optional independently of the service; without
+    // it (no provider credentials) the /oauth routes answer 503. Layered
+    // conditionally so the extension carries the bare `Arc<OAuthRuntime>`
+    // the handlers extract — NOT `Extension<Option<Arc<...>>>`, which would
+    // silently never match.
+    let auth_routes = match state.oauth.clone() {
+        Some(runtime) => auth_routes.layer(axum::Extension(runtime)),
+        None => auth_routes,
+    };
 
     Router::new().nest("/auth", auth_routes)
 }
