@@ -6,52 +6,16 @@ import { Building2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { OnboardingNav } from "@/components/custom/onboarding/onboarding-nav";
 import { useOnboardingStore } from "@/store/onboarding-store";
 
-const REGIONS = [
-  { value: "us-east-1", label: "US East (Virginia)" },
-  { value: "us-west-2", label: "US West (Oregon)" },
-  { value: "eu-west-1", label: "EU (Ireland)" },
-  { value: "eu-central-1", label: "EU (Frankfurt)" },
-  { value: "ap-southeast-1", label: "Asia Pacific (Singapore)" },
-  { value: "ap-northeast-1", label: "Asia Pacific (Tokyo)" },
-];
-
-const TIMEZONES = [
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Los_Angeles",
-  "Europe/London",
-  "Europe/Berlin",
-  "Asia/Tokyo",
-  "Asia/Singapore",
-  "Australia/Sydney",
-];
-
 export default function OrganizationPage() {
   const router = useRouter();
-  const { orgName, orgLogo, region, timezone, updateData } = useOnboardingStore();
+  const { orgName, orgLogo, updateData } = useOnboardingStore();
   const [name, setName] = useState(orgName);
-  const [selectedRegion, setSelectedRegion] = useState(region);
-  const [selectedTimezone, setSelectedTimezone] = useState(
-    timezone || "America/New_York"
-  );
 
   const handleContinue = () => {
-    updateData({
-      orgName: name,
-      region: selectedRegion,
-      timezone: selectedTimezone,
-    });
+    updateData({ orgName: name });
     useOnboardingStore.getState().nextStep();
     router.push(
       useOnboardingStore
@@ -104,49 +68,12 @@ export default function OrganizationPage() {
             onChange={(e) => setName(e.target.value)}
           />
         </div>
-
-        {/* Region */}
-        <div className="space-y-2">
-          <Label>Region</Label>
-          <Select value={selectedRegion} onValueChange={(v) => v && setSelectedRegion(v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select a region" />
-            </SelectTrigger>
-            <SelectContent>
-              {REGIONS.map((r) => (
-                <SelectItem key={r.value} value={r.value}>
-                  {r.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Data residency region. Notifications will be sent from this region.
-          </p>
-        </div>
-
-        {/* Timezone */}
-        <div className="space-y-2">
-          <Label>Timezone</Label>
-          <Select value={selectedTimezone} onValueChange={(v) => v && setSelectedTimezone(v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select a timezone" />
-            </SelectTrigger>
-            <SelectContent>
-              {TIMEZONES.map((tz) => (
-                <SelectItem key={tz} value={tz}>
-                  {tz.replace(/_/g, " ")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
       </div>
 
       <OnboardingNav
-        showSkip
         onNext={handleContinue}
         nextLabel="Continue"
+        nextDisabled={!name.trim()}
       />
     </div>
   );

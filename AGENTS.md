@@ -7,7 +7,7 @@ Dual-workspace repository containing an enterprise notification platform dashboa
 | Workspace | Directory | Tech Stack |
 |-----------|-----------|------------|
 | **Dashboard** | `app/dashboard/` | Next.js 16 (App Router), React 19, Tailwind CSS v4, shadcn/v4 (Base UI) |
-| **Server** | `infrastructure/` | Rust (Cargo workspace, 18 member crates) |
+| **Server** | `infrastructure/` | Rust (single `server` crate + channel plugin crates) |
 
 *Run commands from workspace subdirectories (`app/dashboard/` or `infrastructure/`).*
 
@@ -24,8 +24,8 @@ npm run lint     # ESLint checks
 
 ### Route Structure
 - **Dashboard (`/`)**: `app/(dashboard)/` — route group for top-level pages (`/`, `/settings`, `/profile`, `/billing`).
-- **Auth (`/auth/*`)**: `app/auth/` — non-parenthesized directory preserving `/auth/` URL path (`/auth/login`, `/auth/signup`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/verify-email`).
-- **Onboarding (`/onboarding/*`)**: `app/onboarding/` — non-parenthesized directory preserving `/onboarding/` URL path (`/onboarding/welcome`, `/onboarding/use-case`, `/onboarding/organization`, `/onboarding/project`, `/onboarding/api-key`, `/onboarding/setup-channels`, `/onboarding/invite-team`, `/onboarding/success`).
+- **Auth (`/auth/*`)**: `app/auth/` — non-parenthesized directory preserving `/auth/` URL path (`/auth/login`, `/auth/signup`, `/auth/password/forgot`, `/auth/password/reset`, `/auth/verify-email`).
+- **Onboarding (`/onboarding/*`)**: `app/onboarding/` — non-parenthesized directory preserving `/onboarding/` URL path (`/onboarding/welcome`, `/onboarding/use-case`, `/onboarding/organization`, `/onboarding/project`, `/onboarding/setup-channels`, `/onboarding/invite-team`, `/onboarding/success`).
 
 *Note: Route groups with parentheses (like `(auth)`) strip the folder name from the URL path. Regular folders without parentheses preserve the path segment. Do NOT place auth or onboarding in parenthesized route groups if URL path prefixes are required.*
 
@@ -50,20 +50,36 @@ npm run lint     # ESLint checks
 
 ---
 
+## API Contract Docs
+
+- **Auth**: `app/dashboard/app/auth/API_CONTRACT.md` — expected request/response shapes for login, signup, OAuth, forgot/reset password, verify email.
+- **Onboarding**: `app/dashboard/app/onboarding/API_CONTRACT.md` — data collected per step and proposed endpoints (flow is currently client-side only).
+
+**Rule for any AI model or developer**: these files document the frontend's expected API contract. If you change an auth or onboarding page's inputs/outputs, validation, redirects, or the matching backend implementation, you MUST update the relevant contract file in the same change. (Dashboard pages have no contract file yet.)
+
+---
+
 ## Backend Server (`infrastructure/`)
 
+The server is a **single crate** rooted at `infrastructure/` (`src/{api,domain,ports,infra,testing}`), plus independent channel plugin crates in `infrastructure/channels/*`. Two independent API surfaces: **project** (product API at the root; API-key auth from M6) and **user** (dashboard backend under `/v1`, versioned).
+
 ### Commands
+
+Run from `infrastructure/`:
+
 ```shell
 cargo check --workspace --exclude web_channel     # Check workspace
 cargo clippy --workspace --exclude web_channel --all-targets -- -D warnings
 cargo test --workspace --exclude web_channel      # Run unit/integration tests
-cargo run -p api                                  # Run main API executable
+cargo run                                         # Run main server executable
 ```
 
-### Architecture & Workspace Quirks
-- **Design Doc**: See `infrastructure/docs/ARCHITECTURE.md` — the authoritative architecture (layers, domain template, conventions, M0–M8 roadmap).
-- **Main Executable**: Package name is **`api`** (in `crates/api/`). Run with `cargo run -p api` (M1 adds the axum server; M0 is a bootstrap + SMTP smoke test).
-- **Crate Architecture**: Workspace members are `crates/` (core, domain-ports, infra, api) plus 13 channel crates under `crates/adapters/channels/`. Channel crates must never depend on each other or on domains; they will adopt the `notifi_domain_ports::DeliveryProvider` trait in M3.
-- **Framework-free Kernel**: `crates/core` (errors, ULID ids, events, outbox) and `crates/domain-ports` (traits) have no axum/sqlx/redis deps — keep it that way.
-- **Known Build Issue**: `web_channel` currently has `web-push` API mismatch errors. Always include `--exclude web_channel` when running workspace commands (until M3 fixes it).
-- **Runtime Tenant Config**: Configs load dynamically at runtime from `{NOTIFI_CONFIG_ROOT}/brands/{brand}/config/{channel_name}/` (root defaults to `configs`; local dev sets it to `assets` via `infrastructure/.cargo/config.toml`). Channels parse their own config; use `notifi_core::config::ConfigResolver::load_json` for new code. Brand templates live at `{NOTIFI_CONFIG_ROOT}/brands/{brand}/templates/{name}/`.
+### Architecture & Quirks
+
+- **Design Doc**: See `infrastructure/assets/docs/ARCHITECTURE.md` — layering rules, conventions, M0–M8 roadmap. §2 documents the current single-crate layout (the doc's earlier multi-crate history is noted at its top).
+- **Module boundaries** (single crate, enforced by visibility): `src/api/` = HTTP presentation only · `src/domain/` = framework-free business logic · `src/ports/` = trait contracts (`AuthStore`, `OAuthIdentityProvider`) implemented by `infra/` · `src/infra/` = concrete drivers (sqlx, reqwest, config, telemetry). Keep axum/sqlx/reqwest out of `domain/` and `ports/`.
+- **API surfaces**: route registry per surface lives in `src/api/catalog.rs` (drives `GET /routes`). Project endpoints mount in `src/api/project/mod.rs` — empty until M2 lands product endpoints. Dashboard endpoints live under `src/api/user/` and mount at `/v1/auth/*` today.
+- **Shared kernel crates**: `crates/core` (errors, ULID ids, events, outbox, config resolver) and `crates/domain-ports` (trait-only contracts) stay framework-free — keep them that way; the channel plugins will consume them in M3.
+- **Known Build Issue**: `web_channel` is currently broken (web-push API mismatch). Always include `--exclude web_channel` when running workspace commands. A fix-checklist TODO sits at the top of `channels/web_channel/src/lib.rs`.
+- **Runtime Tenant Config**: Configs load dynamically at runtime from `{NOTIFI_CONFIG_ROOT}/brands/{brand}/config/{channel_name}/` (root defaults to `configs`; local dev sets it to `infrastructure/assets` via `infrastructure/.cargo/config.toml`). Channels parse their own config; use `notifi_core::config::ConfigResolver::load_json` for new code. Brand templates live at `{NOTIFI_CONFIG_ROOT}/brands/{brand}/templates/{name}/`.
+- **Layout**: server-owned data and docs live under `infrastructure/assets/` (`brands/`, `docs/`, `migrations/`); migrations apply from `assets/migrations/` at boot.

@@ -2,16 +2,18 @@ export type User = {
   id: string;
   name: string;
   email: string;
-  avatar?: string;
+  avatar: string | null;
   emailVerified: boolean;
   createdAt: string;
-  lastLoginAt: string;
+  lastLoginAt: string | null;
 };
 
 export type Session = {
   user: User;
   token: string;
   expiresAt: string;
+  /** True when the account already owns an org + project (skips onboarding). */
+  onboardingCompleted: boolean;
 };
 
 export type OAuthProvider = "github" | "google";

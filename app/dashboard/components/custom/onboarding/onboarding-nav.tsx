@@ -7,24 +7,23 @@ import { useOnboardingStore } from "@/store/onboarding-store";
 
 type OnboardingNavProps = {
   showBack?: boolean;
-  showSkip?: boolean;
   showNext?: boolean;
   nextLabel?: string;
   isLoading?: boolean;
+  /** Disables the Continue button until the step's input is valid. */
+  nextDisabled?: boolean;
   onNext?: () => void;
   onBack?: () => void;
-  onSkip?: () => void;
 };
 
 export function OnboardingNav({
   showBack = true,
-  showSkip = false,
   showNext = true,
   nextLabel = "Continue",
   isLoading = false,
+  nextDisabled = false,
   onNext,
   onBack,
-  onSkip,
 }: OnboardingNavProps) {
   const router = useRouter();
   const { nextStep, prevStep, getStepRoute, currentStep, getTotalSteps } =
@@ -50,14 +49,6 @@ export function OnboardingNav({
     }
   };
 
-  const handleSkip = () => {
-    if (onSkip) {
-      onSkip();
-    } else {
-      router.push("/");
-    }
-  };
-
   return (
     <div className="flex items-center justify-between">
       <div>
@@ -70,13 +61,11 @@ export function OnboardingNav({
       </div>
 
       <div className="flex items-center gap-3">
-        {showSkip && (
-          <Button variant="ghost" onClick={handleSkip} disabled={isLoading}>
-            Skip for now
-          </Button>
-        )}
         {showNext && (
-          <Button onClick={handleNext} disabled={isLoading}>
+          <Button
+            onClick={handleNext}
+            disabled={isLoading || nextDisabled}
+          >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />

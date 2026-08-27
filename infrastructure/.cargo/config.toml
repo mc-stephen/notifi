@@ -1,2 +1,5 @@
 [env]
-NOTIFI_CONFIG_ROOT = { value = "../assets", relative = true }
+NOTIFI_CONFIG_ROOT = { value = "./assets", relative = true }
+# Local development: one-time email tokens appear in API responses so the
+# signup → verify-email flow is testable without real email delivery (M4).
+NOTIFI_EXPOSE_DEV_TOKENS = "true"

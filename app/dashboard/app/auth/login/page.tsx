@@ -2,8 +2,8 @@
 
 import * as z from "zod";
 import Link from "next/link";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Mail } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -36,9 +36,24 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
+  // useSearchParams requires a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login, loginWithOAuth, isLoading } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
+
+  // Set by the OAuth callback when popup/redirect sign-in fails.
+  const oauthFailed = searchParams.get("error") === "oauth_failed";
+  const bannerMessage = serverError ??
+    (oauthFailed ? "Sign-in with that provider failed. Please try again." : null);
 
   const {
     register,
@@ -104,7 +119,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {serverError && <ErrorBanner message={serverError} />}
+        {bannerMessage && <ErrorBanner message={bannerMessage} />}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">

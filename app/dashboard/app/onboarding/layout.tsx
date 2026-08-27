@@ -11,7 +11,6 @@ const STEP_LABELS = [
   "Use Case",
   "Organization",
   "Project",
-  "API Key",
   "Channels",
   "Team",
   "Success",

@@ -3,38 +3,23 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Code2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { OnboardingNav } from "@/components/custom/onboarding/onboarding-nav";
 import { useOnboardingStore } from "@/store/onboarding-store";
 
 export default function ProjectPage() {
   const router = useRouter();
-  const {
-    projectName,
-    projectDescription,
-    projectEnvironment,
-    updateData,
-  } = useOnboardingStore();
+  const { projectName, projectDescription, updateData } = useOnboardingStore();
 
   const [name, setName] = useState(projectName);
   const [description, setDescription] = useState(projectDescription);
-  const [environment, setEnvironment] = useState(projectEnvironment);
 
   const handleContinue = () => {
     updateData({
       projectName: name,
       projectDescription: description,
-      projectEnvironment: environment,
     });
     useOnboardingStore.getState().nextStep();
     router.push(
@@ -87,24 +72,6 @@ export default function ProjectPage() {
           />
         </div>
 
-        {/* Environment */}
-        <div className="space-y-2">
-          <Label>Default environment</Label>
-          <Select value={environment} onValueChange={(v) => v && setEnvironment(v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="development">Development</SelectItem>
-              <SelectItem value="staging">Staging</SelectItem>
-              <SelectItem value="production">Production</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            You can create additional environments later.
-          </p>
-        </div>
-
         {/* Quick preview */}
         <div className="rounded-xl border bg-muted/30 p-4">
           <div className="mb-2 text-xs font-medium text-muted-foreground">
@@ -117,7 +84,7 @@ export default function ProjectPage() {
             <div>
               <div className="font-medium">{name || "My App"}</div>
               <div className="text-xs text-muted-foreground">
-                {description || "No description"} · {environment}
+                {description || "No description"} · development
               </div>
             </div>
           </div>
@@ -125,9 +92,9 @@ export default function ProjectPage() {
       </div>
 
       <OnboardingNav
-        showSkip
         onNext={handleContinue}
         nextLabel="Continue"
+        nextDisabled={!name.trim()}
       />
     </div>
   );

@@ -89,7 +89,8 @@ function VerifyEmailForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") || "";
-  const { verifyEmail, isLoading } = useAuth();
+  const email = searchParams.get("email") || "";
+  const { verifyEmail, resendVerification, isLoading } = useAuth();
 
   const [state, setState] = useState<VerificationState>(
     token ? "loading" : "resent",
@@ -128,8 +129,22 @@ function VerifyEmailForm() {
 
   const handleResend = async () => {
     setError(null);
-    // Mock resend - in real app would call API
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (!email) {
+      // Direct visits (e.g. from a real email link) carry no email; the API
+      // resend endpoint requires one. Point the user back to sign-in instead.
+      setError(
+        "We can't tell which address to resend to. Sign in and request a new verification link."
+      );
+      return;
+    }
+
+    const result = (await resendVerification(email)) as
+      | { error?: string }
+      | undefined;
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
     setState("resent");
   };
 
@@ -178,8 +193,13 @@ function VerifyEmailForm() {
                 )}
               </Button>
 
-              <Button asChild variant="ghost" className="h-10 w-full">
-                <Link href="/auth/login">Back to sign in</Link>
+              <Button variant="ghost" className="h-10 w-full">
+                <Link
+                  href="/auth/login"
+                  className="flex items-center justify-center gap-2"
+                >
+                  <span>Back to sign in</span>
+                </Link>
               </Button>
             </div>
           )}

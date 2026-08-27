@@ -62,7 +62,7 @@ The brand voice in one sentence: **a senior engineer explaining the system to a 
 
 ## 4. Color System
 
-All colors are OKLCh. The canonical anchor values come from `assets/identity/colors.md`; the scale below extends it.
+All colors are OKLCh. The canonical anchor values come from `shared/identity/colors.md`; the scale below extends it.
 
 ### 4.1 Primary scale
 
@@ -454,6 +454,6 @@ These are the only existing deviations; converge without breaking current builds
 |---|---|---|---|
 | Dashboard (`app/dashboard/app/globals.css`) | Primary hue `202.8` (cyan-steel), chart-1 same | Hue `280`; keep structure (oklch values swap; dark primary becomes `oklch(0.65 0.22 280)`) | Token swap only |
 | Status (`app/status/src/styles/global.css`) | Accent `#2563eb`, Inter/JetBrains Mono | Violet `oklch(0.515 0.235 280)` light / `oklch(0.65 0.22 280)` dark; Geist + Geist Mono; keep the status-specific semantic palette (operational/degraded/… is domain data, not brand) | Token + font swap |
-| Docs (Fumadocs) | Already violet per `assets/identity` | Align neutral scale + radii to this document | Minor |
+| Docs (Fumadocs) | Already violet per `shared/identity` | Align neutral scale + radii to this document | Minor |
 
 Migration is incremental: ship new surfaces violet-first; convert existing surfaces in dedicated cleanup milestones, verifying with `astro check` / `npm run build` after each swap.

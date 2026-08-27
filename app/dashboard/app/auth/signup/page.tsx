@@ -20,6 +20,7 @@ import { PasswordInput } from "@/components/custom/auth/password-input";
 import { PasswordStrength } from "@/components/custom/auth/password-strength";
 
 import { useAuth } from "@/hooks/use-auth";
+import { links } from "@/lib/env";
 
 //================================
 // Schema definition with cross-field validation
@@ -80,25 +81,42 @@ export default function SignupPage() {
   const onSubmit = async (data: SignupFormValues) => {
     setServerError(null);
 
+    // Signup starts a session server-side, so we go straight to onboarding
+    // (and then the dashboard). The verification link arrives by email; in
+    // dev mode the raw token also comes back for manual testing.
     const result = (await signup(data.name, data.email, data.password)) as
-      { error?: string } | undefined;
+      | { error?: string }
+      | undefined;
 
     if (result?.error) {
       setServerError(result.error);
-    } else {
-      router.push("/auth/verify-email?token=mock_token_123");
+      return;
     }
+
+    router.push("/onboarding/welcome");
   };
 
   const handleGitHub = async () => {
     setServerError(null);
-    await loginWithOAuth("github");
+    const result = (await loginWithOAuth("github")) as
+      | { error?: string }
+      | undefined;
+    if (result?.error) {
+      setServerError(result.error);
+      return;
+    }
     router.push("/");
   };
 
   const handleGoogle = async () => {
     setServerError(null);
-    await loginWithOAuth("google");
+    const result = (await loginWithOAuth("google")) as
+      | { error?: string }
+      | undefined;
+    if (result?.error) {
+      setServerError(result.error);
+      return;
+    }
     router.push("/");
   };
 
@@ -219,17 +237,19 @@ export default function SignupPage() {
               >
                 I agree to the{" "}
                 <a
-                  href="#"
+                  href={links.terms}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="text-primary hover:underline"
-                  onClick={(e) => e.preventDefault()}
                 >
                   Terms of Service
                 </a>{" "}
                 and{" "}
                 <a
-                  href="#"
+                  href={links.privacy}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="text-primary hover:underline"
-                  onClick={(e) => e.preventDefault()}
                 >
                   Privacy Policy
                 </a>
@@ -277,8 +297,15 @@ export default function SignupPage() {
   );
 }
 
-// Because in a real system or a mock flow:
-// - Signup creates the account and generates a verification token (e.g. mock_token_123).
-// - Redirecting to /auth/verify-email?token=mock_token_123 simulates clicking the verification link sent to your email!
-// - verify-email automatically verifies the token, shows the "success" screen ("Email verified! Redirecting to onboarding..."), and navigates to /onboarding/welcome.
-// Let's trace Op
+// Real flow (wired to the Rust API):
+// - Signup POSTs /v1/auth/signup, which creates the account AND starts a
+//   short-lived session (rememberMe=false) — so this continues straight to
+//   onboarding and then the dashboard.
+// - The backend emails a welcome mail plus a verification link; that link is
+//   the only path to /auth/verify-email?token=... In dev mode (no email
+//   delivery yet) the API also returns a raw verificationToken for manual
+//   testing of that page.
+// - Until verified, the dashboard shows an unverified-email banner warning
+//   that unverified accounts are deleted after 48 hours.
+// - OAuth routes are stubbed server-side (501) until provider apps exist;
+//   their error text is surfaced in the banner.

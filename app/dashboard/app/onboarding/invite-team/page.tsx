@@ -150,7 +150,6 @@ export default function InviteTeamPage() {
       </div>
 
       <OnboardingNav
-        showSkip
         onNext={handleContinue}
         nextLabel="Continue"
       />

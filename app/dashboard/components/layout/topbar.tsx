@@ -166,6 +166,7 @@ function UserMenu() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const initials = user?.name
     ? user.name
@@ -176,9 +177,13 @@ function UserMenu() {
         .slice(0, 2)
     : "?";
 
-  const handleLogout = () => {
-    logout();
-    document.cookie = "session_token=; path=/; max-age=0";
+  // Await the API call: the httpOnly session cookie is cleared by the
+  // server's response — navigating before that lands gets bounced back to
+  // `/` by the auth proxy.
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    await logout();
     router.push("/auth/login");
   };
 
@@ -210,9 +215,13 @@ function UserMenu() {
           Settings
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem className="text-destructive" onClick={handleLogout}>
+        <DropdownMenuItem
+          className="text-destructive"
+          onClick={handleLogout}
+          disabled={loggingOut}
+        >
           <LogOut className="size-4" />
-          Sign out
+          {loggingOut ? "Signing out..." : "Sign out"}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -1,8 +1,8 @@
 "use client";
 
 import { Rocket } from "lucide-react";
-import { OnboardingNav } from "@/components/custom/onboarding/onboarding-nav";
 import { useAuthStore } from "@/store/auth-store";
+import { OnboardingNav } from "@/components/custom/onboarding/onboarding-nav";
 
 export default function WelcomePage() {
   const user = useAuthStore((s) => s.user);
@@ -32,10 +32,6 @@ export default function WelcomePage() {
           },
           {
             step: "3",
-            text: "Generate an API key",
-          },
-          {
-            step: "4",
             text: "Configure notification channels",
           },
         ].map((item) => (

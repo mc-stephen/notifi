@@ -1,9 +1,0 @@
-[package]
-name = "notifi_infra_config"
-version.workspace = true
-edition.workspace = true
-description = "Layered application configuration for Notifi binaries"
-
-[dependencies]
-serde = { workspace = true }
-serde_json = { workspace = true }

@@ -5,7 +5,6 @@ const STEP_ROUTES = [
   "/onboarding/use-case",
   "/onboarding/organization",
   "/onboarding/project",
-  "/onboarding/api-key",
   "/onboarding/setup-channels",
   "/onboarding/invite-team",
   "/onboarding/success",
@@ -17,13 +16,8 @@ type OnboardingData = {
   useCase: string | null;
   orgName: string;
   orgLogo: string | null;
-  region: string;
-  timezone: string;
   projectName: string;
   projectDescription: string;
-  projectEnvironment: string;
-  apiKeyGenerated: boolean;
-  apiKey: string | null;
   selectedChannels: string[];
   teamEmails: string[];
 };
@@ -44,13 +38,8 @@ const initialState: OnboardingData = {
   useCase: null,
   orgName: "",
   orgLogo: null,
-  region: "",
-  timezone: "",
   projectName: "",
   projectDescription: "",
-  projectEnvironment: "development",
-  apiKeyGenerated: false,
-  apiKey: null,
   selectedChannels: [],
   teamEmails: [],
 };

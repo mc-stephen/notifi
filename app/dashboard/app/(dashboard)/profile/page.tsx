@@ -91,8 +91,9 @@ export default function ProfilePage() {
     if (deleteEmail !== user?.email) return;
     setDeleting(true);
     await new Promise((r) => setTimeout(r, 1000));
-    logout();
-    document.cookie = "session_token=; path=/; max-age=0";
+    // Await the API call so the httpOnly session cookie is actually
+    // cleared before navigating (the proxy bounces cookie-holders).
+    await logout();
     router.push("/auth/login");
   };
 

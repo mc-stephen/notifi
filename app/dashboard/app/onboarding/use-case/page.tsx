@@ -112,9 +112,9 @@ export default function UseCasePage() {
       </div>
 
       <OnboardingNav
-        showSkip
         onNext={handleContinue}
         nextLabel="Continue"
+        nextDisabled={!selected}
       />
     </div>
   );

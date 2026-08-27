@@ -1,38 +1,40 @@
 import { create } from "zustand";
 import type { User, Session, OAuthProvider } from "@/lib/auth-types";
+import { api, ApiError } from "@/lib/api";
+import { env } from "@/lib/env";
 
-const MOCK_USERS: (User & { password: string })[] = [
-  {
-    id: "user_1",
-    name: "John Doe",
-    email: "john@example.com",
-    password: "Password123!",
-    emailVerified: true,
-    createdAt: "2025-01-10T00:00:00Z",
-    lastLoginAt: "2025-07-25T00:00:00Z",
-  },
-  {
-    id: "user_2",
-    name: "Jane Smith",
-    email: "jane@example.com",
-    password: "Password456!",
-    emailVerified: false,
-    createdAt: "2025-03-15T00:00:00Z",
-    lastLoginAt: "2025-07-20T00:00:00Z",
-  },
-];
+/**
+ * Real API-backed auth state.
+ *
+ * - Session ownership lives on the Rust API: it sets/clears the httpOnly
+ *   `session_token` cookie; this store never touches document.cookie.
+ * - Actions keep the `{ error?: string }` return contract the auth pages
+ *   were written against (message text comes from problem documents).
+ */
 
-function generateToken(): string {
-  return `mock_token_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-}
+type LoginResponse = { user: User; session: Session };
+type SignupResponse = LoginResponse & { verificationToken?: string };
+type MeResponse = { user: User; onboardingCompleted: boolean };
 
-function createSession(user: User, rememberMe: boolean): Session {
-  const days = rememberMe ? 30 : 1;
-  return {
-    user,
-    token: generateToken(),
-    expiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
+/** Payload for `POST /v1/auth/onboarding/complete`. */
+export type CompleteOnboardingInput = {
+  organization: {
+    name: string;
+    logoUrl?: string | null;
   };
+  project: {
+    name: string;
+    description?: string | null;
+    environment: "development" | "staging" | "production";
+  };
+};
+
+function toErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof TypeError) {
+    return "Cannot reach the server. Please make sure the API is running.";
+  }
+  return "Something went wrong. Please try again.";
 }
 
 type AuthState = {
@@ -40,6 +42,8 @@ type AuthState = {
   session: Session | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  /** Server-derived: owns ≥1 org with ≥1 project (can skip onboarding). */
+  onboardingCompleted: boolean;
 
   login: (
     email: string,
@@ -50,15 +54,22 @@ type AuthState = {
     name: string,
     email: string,
     password: string
-  ) => Promise<{ error?: string }>;
-  loginWithOAuth: (provider: OAuthProvider) => Promise<void>;
-  logout: () => void;
+  ) => Promise<{ error?: string; verificationToken?: string }>;
+  loginWithOAuth: (
+    provider: OAuthProvider
+  ) => Promise<{ error?: string } | undefined>;
+  logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<{ error?: string }>;
   resetPassword: (
     token: string,
     password: string
   ) => Promise<{ error?: string }>;
   verifyEmail: (token: string) => Promise<{ error?: string }>;
+  resendVerification: (email: string) => Promise<{ error?: string }>;
+  fetchMe: () => Promise<void>;
+  completeOnboarding: (
+    input: CompleteOnboardingInput
+  ) => Promise<{ error?: string; alreadyCompleted?: boolean }>;
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -66,165 +77,190 @@ export const useAuthStore = create<AuthState>((set) => ({
   session: null,
   isLoading: false,
   isAuthenticated: false,
+  onboardingCompleted: false,
 
   login: async (email, password, rememberMe) => {
     set({ isLoading: true });
 
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    try {
+      const data = await api<LoginResponse>("/v1/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password, rememberMe }),
+      });
 
-    const mockUser = MOCK_USERS.find(
-      (u) => u.email === email && u.password === password
-    );
-
-    if (!mockUser) {
+      set({
+        user: data.user,
+        session: data.session,
+        isLoading: false,
+        isAuthenticated: true,
+        onboardingCompleted: data.session.onboardingCompleted,
+      });
+      return {};
+    } catch (err) {
       set({ isLoading: false });
-      return { error: "Invalid email or password. Please try again." };
+      return { error: toErrorMessage(err) };
     }
-
-    const { password: _, ...user } = mockUser;
-    const session = createSession(user, rememberMe);
-    const maxAge = rememberMe ? 30 * 24 * 60 * 60 : 24 * 60 * 60;
-
-    if (typeof window !== "undefined") {
-      document.cookie = `session_token=mock_session_token; path=/; max-age=${maxAge}`;
-    }
-
-    set({
-      user,
-      session,
-      isLoading: false,
-      isAuthenticated: true,
-    });
-
-    return {};
   },
 
   signup: async (name, email, password) => {
     set({ isLoading: true });
 
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    try {
+      // Signup starts a session server-side (rememberMe=false → 1-day
+      // cookie), so onboarding and the dashboard continue without a login.
+      const data = await api<SignupResponse>("/v1/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({ name, email, password }),
+      });
 
-    const existingUser = MOCK_USERS.find((u) => u.email === email);
-
-    if (existingUser) {
+      set({
+        user: data.user,
+        session: data.session,
+        isLoading: false,
+        isAuthenticated: true,
+        onboardingCompleted: data.session.onboardingCompleted,
+      });
+      return { verificationToken: data.verificationToken };
+    } catch (err) {
       set({ isLoading: false });
-      return { error: "An account with this email already exists." };
+      return { error: toErrorMessage(err) };
     }
-
-    const newUser: User = {
-      id: `user_${Date.now()}`,
-      name,
-      email,
-      emailVerified: false,
-      createdAt: new Date().toISOString(),
-      lastLoginAt: new Date().toISOString(),
-    };
-
-    MOCK_USERS.push({ ...newUser, password });
-
-    const session = createSession(newUser, false);
-
-    if (typeof window !== "undefined") {
-      document.cookie = "session_token=mock_session_token; path=/; max-age=86400";
-    }
-
-    set({
-      user: newUser,
-      session,
-      isLoading: false,
-      isAuthenticated: true,
-    });
-
-    return {};
   },
 
-  loginWithOAuth: async (provider) => {
-    set({ isLoading: true });
+  loginWithOAuth: (provider) => {
+    // Popup-first OAuth: the backend callback posts the outcome back to
+    // this window, then fetchMe() hydrates the session from the new cookie.
+    const url = `${env.apiBase}/v1/auth/oauth/${provider}?popup=1`;
+    const popup = window.open(url, "notifi-oauth", "width=520,height=640");
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    const oauthUser: User = {
-      id: `user_${Date.now()}`,
-      name: provider === "google" ? "Google User" : "GitHub User",
-      email: `user@${provider}.com`,
-      emailVerified: true,
-      createdAt: new Date().toISOString(),
-      lastLoginAt: new Date().toISOString(),
-    };
-
-    const session = createSession(oauthUser, false);
-
-    if (typeof window !== "undefined") {
-      document.cookie = "session_token=mock_session_token; path=/; max-age=86400";
+    // Popup blocked → full-page redirect; the server sets the cookie either
+    // way and fetchMe() restores the session after the bounce back home.
+    if (!popup) {
+      window.location.assign(`${env.apiBase}/v1/auth/oauth/${provider}`);
+      return Promise.resolve(undefined);
     }
 
-    set({
-      user: oauthUser,
-      session,
-      isLoading: false,
-      isAuthenticated: true,
+    return new Promise<{ error?: string } | undefined>((resolve) => {
+      const expectedOrigin = new URL(env.apiBase).origin;
+
+      function onMessage(event: MessageEvent) {
+        if (event.origin !== expectedOrigin) return;
+        const data = event.data as { type?: string } | null;
+        if (data?.type === "oauth:success") {
+          cleanup();
+          void useAuthStore.getState().fetchMe();
+          resolve({});
+        } else if (data?.type === "oauth:error") {
+          cleanup();
+          resolve({
+            error: "Sign-in with that provider failed. Please try again.",
+          });
+        }
+      }
+      function cleanup() {
+        window.removeEventListener("message", onMessage);
+      }
+      window.addEventListener("message", onMessage);
     });
   },
 
-  logout: () => {
-    if (typeof window !== "undefined") {
-      document.cookie = "session_token=; path=/; max-age=0";
-    }
+  logout: async () => {
+    // Optimistic local clear; the server clears the cookie regardless.
+    set({ user: null, session: null, isAuthenticated: false, onboardingCompleted: false });
 
-    set({
-      user: null,
-      session: null,
-      isLoading: false,
-      isAuthenticated: false,
-    });
+    try {
+      await api("/v1/auth/logout", { method: "POST" });
+    } catch {
+      // Already logged out locally; nothing else to do.
+    }
   },
 
   forgotPassword: async (email) => {
     set({ isLoading: true });
 
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    const existingUser = MOCK_USERS.find((u) => u.email === email);
-
-    if (!existingUser) {
+    try {
+      // Always 200 — never reveals whether the account exists.
+      await api("/v1/auth/password/forgot", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
       set({ isLoading: false });
-      return { error: "No account found with this email address." };
+      return {};
+    } catch (err) {
+      set({ isLoading: false });
+      return { error: toErrorMessage(err) };
     }
-
-    set({ isLoading: false });
-    return {};
   },
 
   resetPassword: async (token, password) => {
     set({ isLoading: true });
 
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    if (!token || token.length < 10) {
+    try {
+      await api("/v1/auth/password/reset", {
+        method: "POST",
+        body: JSON.stringify({ token, password }),
+      });
       set({ isLoading: false });
-      return { error: "Invalid or expired reset token." };
+      return {};
+    } catch (err) {
+      set({ isLoading: false });
+      return { error: toErrorMessage(err) };
     }
-
-    set({ isLoading: false });
-    return {};
   },
 
   verifyEmail: async (token) => {
+    try {
+      await api("/v1/auth/verify-email", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+      });
+      return {};
+    } catch (err) {
+      // Expired tokens answer 410 with "expired" in the detail; pages branch on that word.
+      return { error: toErrorMessage(err) };
+    }
+  },
+
+  resendVerification: async (email) => {
     set({ isLoading: true });
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    if (!token || token.length < 10) {
+    try {
+      // Always 200 regardless of account existence.
+      await api("/v1/auth/verify-email/resend", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
       set({ isLoading: false });
-      return { error: "Invalid or expired verification token." };
+      return {};
+    } catch (err) {
+      set({ isLoading: false });
+      return { error: toErrorMessage(err) };
     }
+  },
 
-    set((state) => ({
-      user: state.user ? { ...state.user, emailVerified: true } : null,
-      isLoading: false,
-    }));
+  fetchMe: async () => {
+    try {
+      const data = await api<MeResponse>("/v1/auth/me");
+      set({
+        user: data.user,
+        isAuthenticated: true,
+        onboardingCompleted: data.onboardingCompleted,
+      });
+    } catch {
+      // No valid session cookie (or API down) — stay signed out.
+    }
+  },
 
-    return {};
+  completeOnboarding: async (input) => {
+    try {
+      const data = await api<{ status: string; alreadyCompleted?: boolean }>(
+        "/v1/auth/onboarding/complete",
+        { method: "POST", body: JSON.stringify(input) }
+      );
+      set({ onboardingCompleted: true });
+      return { alreadyCompleted: data.alreadyCompleted };
+    } catch (err) {
+      return { error: toErrorMessage(err) };
+    }
   },
 }));

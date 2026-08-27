@@ -8,6 +8,7 @@ export function useAuth() {
     session,
     isLoading,
     isAuthenticated,
+    onboardingCompleted,
     login,
     signup,
     loginWithOAuth,
@@ -15,6 +16,9 @@ export function useAuth() {
     forgotPassword,
     resetPassword,
     verifyEmail,
+    resendVerification,
+    fetchMe,
+    completeOnboarding,
   } = useAuthStore();
 
   return {
@@ -22,6 +26,7 @@ export function useAuth() {
     session,
     isLoading,
     isAuthenticated,
+    onboardingCompleted,
     login,
     signup,
     loginWithOAuth,
@@ -29,5 +34,8 @@ export function useAuth() {
     forgotPassword,
     resetPassword,
     verifyEmail,
+    resendVerification,
+    fetchMe,
+    completeOnboarding,
   };
 }

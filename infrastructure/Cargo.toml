@@ -1,24 +1,53 @@
+[package]
+name = "server"
+version.workspace = true
+edition.workspace = true
+description = "Notifi server — HTTP API, domain logic, and infrastructure in one crate"
+
+[dependencies]
+argon2 = { workspace = true }
+axum = { workspace = true }
+axum-extra = { workspace = true }
+chrono = { workspace = true }
+dotenvy = { workspace = true }
+hex = { workspace = true }
+notifi_core = { path = "crates/core" }
+rand = { workspace = true }
+redis = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+ulid = { workspace = true }
+urlencoding = { workspace = true }
+
+[dev-dependencies]
+http-body-util = "0.1"
+
 [workspace]
 resolver = "2"
 members = [
-  "crates/api",
-  "crates/core",
-  "crates/domain-ports",
-  "crates/infra/config",
-  "crates/infra/telemetry",
-  "crates/adapters/channels/android_channel",
-  "crates/adapters/channels/discord_channel",
-  "crates/adapters/channels/email_channel",
-  "crates/adapters/channels/ios_channel",
-  "crates/adapters/channels/linux_channel",
-  "crates/adapters/channels/macos_channel",
-  "crates/adapters/channels/slack_channel",
-  "crates/adapters/channels/sms_channel",
-  "crates/adapters/channels/telegram_channel",
-  "crates/adapters/channels/web_channel",
-  "crates/adapters/channels/webhook_channel",
-  "crates/adapters/channels/whatsapp_channel",
-  "crates/adapters/channels/window_channel",
+  "channels/android_channel",
+  "channels/discord_channel",
+  "channels/email_channel",
+  "channels/ios_channel",
+  "channels/linux_channel",
+  "channels/macos_channel",
+  "channels/slack_channel",
+  "channels/sms_channel",
+  "channels/telegram_channel",
+  "channels/web_channel",
+  "channels/webhook_channel",
+  "channels/whatsapp_channel",
+  "channels/window_channel",
 ]
 
 [workspace.package]
@@ -27,15 +56,28 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
+argon2 = "0.5"
 axum = "0.8"
-redis = { version = "0.28", features = ["tokio-comp"] }
+axum-extra = { version = "0.10", features = ["cookie"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+dotenvy = "0.15"
+hex = "0.4"
+rand = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# TLS note: this deployment's TLS terminators (Coolify) reject rustls
+# handshakes and use a private CA, so we use native-tls; rediss:// URLs with
+# a #insecure fragment then accept self-signed certs (dev-only compromise).
+redis = { version = "0.28", features = ["tokio-comp", "tokio-native-tls-comp", "tls-native-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "macros", "migrate"] }
+sha2 = "0.10"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "macros", "migrate", "chrono", "tls-rustls-ring"] }
 thiserror = "2"
+time = "0.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors", "request-id", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ulid = { version = "1", features = ["serde"] }
+urlencoding = "2"

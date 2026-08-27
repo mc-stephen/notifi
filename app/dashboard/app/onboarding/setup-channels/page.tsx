@@ -135,7 +135,6 @@ export default function ChannelsPage() {
       </div>
 
       <OnboardingNav
-        showSkip
         onNext={handleContinue}
         nextLabel="Continue"
       />
