@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { env } from "@/lib/env";
+import { env, links } from "@/lib/env";
 import {
   Package,
   Copy,
@@ -48,7 +48,7 @@ await client.sendNotification({
   body: "Thank you for signing up.",
   priority: "normal",
 });`,
-    docs: env.docs("/sdks/node"),
+    docs: links.sdkDocs.node,
     status: "stable",
   },
   {
@@ -68,7 +68,7 @@ client.send_notification(
     body="Thank you for signing up.",
     priority="normal",
 )`,
-    docs: env.docs("/sdks/python"),
+    docs: links.sdkDocs.python,
     status: "stable",
   },
   {
@@ -99,7 +99,7 @@ func main() {
     }
     fmt.Println("Sent:", result.ID)
 }`,
-    docs: env.docs("/sdks/go"),
+    docs: links.sdkDocs.go,
     status: "stable",
   },
   {
@@ -128,7 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Sent: {}", result.id);
     Ok(())
 }`,
-    docs: env.docs("/sdks/rust"),
+    docs: links.sdkDocs.rust,
     status: "beta",
   },
   {
@@ -153,7 +153,7 @@ await notifi.sendNotification({
   channel: "push-ios",
   body: "New message received",
 });`,
-    docs: env.docs("/sdks/react-native"),
+    docs: links.sdkDocs["react-native"],
     status: "stable",
   },
   {
@@ -174,7 +174,7 @@ await client.sendNotification(
   body: 'New message received',
   priority: 'normal',
 );`,
-    docs: env.docs("/sdks/flutter"),
+    docs: links.sdkDocs.flutter,
     status: "beta",
   },
   {
@@ -195,7 +195,7 @@ let result = try await client.sendNotification(
 )
 
 print("Sent: \\(result.id)")`,
-    docs: env.docs("/sdks/swift"),
+    docs: links.sdkDocs.swift,
     status: "alpha",
   },
   {
@@ -216,7 +216,7 @@ val result = client.sendNotification(
 )
 
 println("Sent: \${result.id}")`,
-    docs: env.docs("/sdks/kotlin"),
+    docs: links.sdkDocs.kotlin,
     status: "alpha",
   },
   {
@@ -235,7 +235,7 @@ println("Sent: \${result.id}")`,
     "body": "Thank you for signing up.",
     "priority": "normal"
   }'`,
-    docs: env.docs("/api"),
+    docs: links.docsApi,
     status: "stable",
   },
 ];
@@ -272,7 +272,7 @@ export default function SdkPage() {
         description="Client libraries for every platform"
         breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "SDKs" }]}
         actions={
-          <Button size="sm" variant="outline" className="gap-1.5" render={<a href={env.docs()} target="_blank" rel="noopener noreferrer" />}>
+          <Button size="sm" variant="outline" className="gap-1.5" render={<a href={links.docs} target="_blank" rel="noopener noreferrer" />}>
             <BookOpen className="size-3.5" /> API docs <ExternalLink className="size-3 ml-1" />
           </Button>
         }

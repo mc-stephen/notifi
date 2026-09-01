@@ -1,28 +1,17 @@
-export type Organization = {
-  id: string;
-  name: string;
-  slug: string;
-  logo?: string;
-  plan: Plan;
-  createdAt: string;
-};
-
 export type Plan = "free" | "starter" | "pro" | "enterprise";
 
 export type Project = {
   id: string;
-  orgId: string;
   name: string;
   slug: string;
   description?: string;
   createdAt: string;
 };
 
-export type Environment = "development" | "staging" | "production";
+export type Environment = "development" | "production";
 
 export type TeamMember = {
   id: string;
-  orgId: string;
   userId: string;
   name: string;
   email: string;

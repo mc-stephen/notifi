@@ -24,15 +24,15 @@ export default function WelcomePage() {
         {[
           {
             step: "1",
-            text: "Tell us about your organization",
-          },
-          {
-            step: "2",
             text: "Create your first project",
           },
           {
-            step: "3",
+            step: "2",
             text: "Configure notification channels",
+          },
+          {
+            step: "3",
+            text: "Invite your team",
           },
         ].map((item) => (
           <div

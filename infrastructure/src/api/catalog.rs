@@ -83,7 +83,7 @@ pub const USER_V1_ROUTES: &[RouteInfo] = &[
         path: "/v1/auth/onboarding/complete",
         surface: Surface::UserV1,
         feature: "auth",
-        description: "persist the first organization + project (ends onboarding)",
+        description: "persist the first project (ends onboarding)",
     },
     RouteInfo {
         method: "GET",

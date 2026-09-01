@@ -5,40 +5,33 @@ import { useRouter } from "next/navigation";
 import { PartyPopper, ArrowRight, BookOpen, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/custom/auth/error-banner";
-import { env } from "@/lib/env";
+import { links } from "@/lib/env";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useAuth } from "@/hooks/use-auth";
 
 export default function SuccessPage() {
   const router = useRouter();
   const {
-    orgName,
-    orgLogo,
     projectName,
     projectDescription,
-    selectedChannels,
     completeOnboarding: markComplete,
   } = useOnboardingStore();
   const { completeOnboarding } = useAuth();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Persisting the first org + project is what flips the server-side
-  // onboarding flag that unlocks the dashboard.
+  // Persisting the first project is what flips the server-side onboarding
+  // flag that unlocks the dashboard.
   const handleGoToDashboard = async () => {
     setError(null);
     setSaving(true);
 
-    // New projects always start in development; staging/production come later.
+    // New projects always start in development mode (the project-level
+    // environment gate); staging/production are toggled in the dashboard.
     const result = await completeOnboarding({
-      organization: {
-        name: orgName.trim() || "My Organization",
-        logoUrl: orgLogo,
-      },
       project: {
         name: projectName.trim() || "My App",
         description: projectDescription || null,
-        environment: "development",
       },
     });
 
@@ -75,22 +68,6 @@ export default function SuccessPage() {
         </div>
       )}
 
-      <div className="mb-10 w-full max-w-sm">
-        {/* Quick stats */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-xl border p-3">
-            <div className="text-2xl font-bold text-primary">
-              {selectedChannels.length}
-            </div>
-            <div className="text-xs text-muted-foreground">Channels</div>
-          </div>
-          <div className="rounded-xl border p-3">
-            <div className="text-2xl font-bold text-primary">0</div>
-            <div className="text-xs text-muted-foreground">Sent</div>
-          </div>
-        </div>
-      </div>
-
       <div className="flex w-full max-w-sm flex-col gap-3">
         <Button
           onClick={handleGoToDashboard}
@@ -111,7 +88,7 @@ export default function SuccessPage() {
         </Button>
         <Button
           variant="outline"
-          onClick={() => window.open(env.docs(), "_blank")}
+          onClick={() => window.open(links.docs, "_blank")}
           className="w-full"
         >
           <BookOpen className="mr-2 size-4" />

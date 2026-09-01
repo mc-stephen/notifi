@@ -366,38 +366,24 @@ impl AuthService {
     // ------------------------------------------------------------------
 
     /// Whether the account can skip onboarding — true when the user already
-    /// belongs to an organization that owns at least one project (e.g. an
-    /// invited member signing up for the first time).
+    /// owns or belongs to at least one project (e.g. an invited member
+    /// signing up for the first time).
     pub async fn onboarding_completed(&self, user_id: UserId) -> Result<bool, AuthError> {
-        Ok(self.store.has_org_and_project(user_id).await?)
+        Ok(self.store.has_project(user_id).await?)
     }
 
-    /// Persists the first organization + project collected by the dashboard
-    /// onboarding flow (org + owner membership + project + default
-    /// environment, atomically).
+    /// Persists the first project collected by the dashboard onboarding
+    /// flow. New projects start in `development` mode (the project-level
+    /// environment gate, defaulted by the schema).
     pub async fn complete_onboarding(
         &self,
         user_id: UserId,
         input: OnboardingInput,
     ) -> Result<(), AuthError> {
-        let org_name = input.org_name.trim();
-        if org_name.is_empty() || org_name.len() > 100 {
-            return Err(AuthError::Validation(
-                "organization name must be between 1 and 100 characters".to_string(),
-            ));
-        }
         let project_name = input.project_name.trim();
         if project_name.is_empty() || project_name.len() > 100 {
             return Err(AuthError::Validation(
                 "project name must be between 1 and 100 characters".to_string(),
-            ));
-        }
-        if !matches!(
-            input.environment.as_str(),
-            "development" | "staging" | "production"
-        ) {
-            return Err(AuthError::Validation(
-                "environment must be development, staging, or production".to_string(),
             ));
         }
 

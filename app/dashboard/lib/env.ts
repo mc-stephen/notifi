@@ -11,11 +11,41 @@ export const env = {
 };
 
 /**
- * Marketing-site destinations — the ONLY place these paths are spelled out.
- * Components import from here so a path change (e.g. /privacy →
- * /legal/privacy) is a one-line edit.
+ * Single source of truth for every link leaving the dashboard. Paths are
+ * spelled out ONLY here — components import from `links`, never build URLs
+ * themselves, so a path change (e.g. /privacy → /legal/privacy) is a
+ * one-line edit.
  */
 export const links = {
+  // marketing site
   terms: env.website("/terms"),
   privacy: env.website("/privacy"),
+
+  // docs
+  docs: env.docs(),
+  docsApi: env.docs("/api"),
+  docsGettingStarted: env.docs("/getting-started"),
+  docsSdks: env.docs("/sdks"),
+  docsChangelog: env.docs("/changelog"),
+  sdkDocs: {
+    node: env.docs("/sdks/node"),
+    python: env.docs("/sdks/python"),
+    go: env.docs("/sdks/go"),
+    rust: env.docs("/sdks/rust"),
+    "react-native": env.docs("/sdks/react-native"),
+    flutter: env.docs("/sdks/flutter"),
+    swift: env.docs("/sdks/swift"),
+    kotlin: env.docs("/sdks/kotlin"),
+  },
+  integrationDocs: {
+    segment: env.docs("/integrations/segment"),
+    posthog: env.docs("/integrations/posthog"),
+    datadog: env.docs("/integrations/datadog"),
+    sentry: env.docs("/integrations/sentry"),
+    zapier: env.docs("/integrations/zapier"),
+    mixpanel: env.docs("/integrations/mixpanel"),
+    slack: env.docs("/integrations/slack"),
+    pagerduty: env.docs("/integrations/pagerduty"),
+    opentelemetry: env.docs("/integrations/opentelemetry"),
+  },
 };

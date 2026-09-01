@@ -9,7 +9,6 @@ import { useOnboardingStore, STEP_ROUTES } from "@/store/onboarding-store";
 const STEP_LABELS = [
   "Welcome",
   "Use Case",
-  "Organization",
   "Project",
   "Channels",
   "Team",

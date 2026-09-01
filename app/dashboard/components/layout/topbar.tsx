@@ -16,21 +16,19 @@ import {
   DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetTrigger, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Sidebar } from "./sidebar";
 import { NavigationProgress } from "@/components/custom/navigation-progress";
-import { useOrgStore } from "@/store/org-store";
+import { NotificationMenu } from "@/components/custom/notification-menu";
 import { useProjectStore } from "@/store/project-store";
 import { useEnvironmentStore } from "@/store/environment-store";
 import { useUIStore } from "@/store/ui-store";
-import { ENVIRONMENT_COLORS, ENVIRONMENT_LABELS } from "@/lib/constants";
+import { ENVIRONMENT_DOTS, ENVIRONMENT_LABELS } from "@/lib/constants";
 import type { Environment } from "@/lib/types";
 import {
   Menu,
   Search,
   ChevronsUpDown,
-  Bell,
   Moon,
   Sun,
   LogOut,
@@ -39,8 +37,8 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
-function OrgSwitcher() {
-  const { organizations, currentOrg, setCurrentOrg } = useOrgStore();
+function ProjectSwitcher() {
+  const { projects, currentProject, setCurrentProject } = useProjectStore();
 
   return (
     <DropdownMenu>
@@ -50,48 +48,12 @@ function OrgSwitcher() {
         }
       >
         <div className="flex size-6 items-center justify-center rounded bg-primary/10 text-primary text-xs font-bold">
-          {currentOrg?.name?.charAt(0) ?? "N"}
+          {currentProject?.name?.charAt(0) ?? "P"}
         </div>
-        <span className="hidden sm:inline text-sm font-medium max-w-[120px] truncate">{currentOrg?.name ?? "Select org"}</span>
+        <span className="hidden sm:inline text-sm font-medium max-w-[120px] truncate">{currentProject?.name ?? "Select project"}</span>
         <ChevronsUpDown className="size-3.5 text-muted-foreground" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuLabel>Organization</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {organizations.map((org) => (
-          <DropdownMenuItem
-            key={org.id}
-            onClick={() => setCurrentOrg(org)}
-            className={cn(org.id === currentOrg?.id && "bg-accent")}
-          >
-            <div className="flex size-6 items-center justify-center rounded bg-primary/10 text-primary text-xs font-bold">
-              {org.name.charAt(0)}
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm">{org.name}</span>
-              <span className="text-xs text-muted-foreground capitalize">{org.plan}</span>
-            </div>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function ProjectSwitcher() {
-  const { projects, currentProject, setCurrentProject } = useProjectStore();
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button variant="ghost" size="sm" className="gap-1.5 px-2" />
-        }
-      >
-        <span className="text-sm font-medium max-w-[140px] truncate">{currentProject?.name ?? "Select project"}</span>
-        <ChevronsUpDown className="size-3 text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
+      <DropdownMenuContent align="start" className="w-64">
         <DropdownMenuLabel>Project</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {projects.map((project) => (
@@ -100,6 +62,9 @@ function ProjectSwitcher() {
             onClick={() => setCurrentProject(project)}
             className={cn(project.id === currentProject?.id && "bg-accent")}
           >
+            <div className="flex size-6 items-center justify-center rounded bg-primary/10 text-primary text-xs font-bold">
+              {project.name.charAt(0)}
+            </div>
             <div className="flex flex-col">
               <span className="text-sm">{project.name}</span>
               {project.description && (
@@ -115,7 +80,7 @@ function ProjectSwitcher() {
 
 function EnvironmentSwitcher() {
   const { currentEnvironment, setEnvironment } = useEnvironmentStore();
-  const envs: Environment[] = ["development", "staging", "production"];
+  const envs: Environment[] = ["development", "production"];
 
   return (
     <DropdownMenu>
@@ -124,17 +89,20 @@ function EnvironmentSwitcher() {
           <Button variant="ghost" size="sm" className="gap-1.5 px-2" />
         }
       >
-        <Badge variant="outline" className={cn("gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider", ENVIRONMENT_COLORS[currentEnvironment])}>
+        <span className={cn("size-2 rounded-full", ENVIRONMENT_DOTS[currentEnvironment])} />
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {ENVIRONMENT_LABELS[currentEnvironment]}
-        </Badge>
+        </span>
+        <ChevronsUpDown className="size-3 text-muted-foreground" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="center">
-        <DropdownMenuRadioGroup value={currentEnvironment} onValueChange={(v) => setEnvironment(v as Environment)}>
+      <DropdownMenuContent align="start" className="w-44">
+        <DropdownMenuLabel>Environment</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuRadioGroup value={currentEnvironment} onValueChange={(v) => v && setEnvironment(v as Environment)}>
           {envs.map((env) => (
             <DropdownMenuRadioItem key={env} value={env}>
-              <Badge variant="outline" className={cn("gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider", ENVIRONMENT_COLORS[env])}>
-                {ENVIRONMENT_LABELS[env]}
-              </Badge>
+              <span className={cn("size-2 rounded-full", ENVIRONMENT_DOTS[env])} />
+              <span className="text-sm">{ENVIRONMENT_LABELS[env]}</span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
@@ -272,10 +240,8 @@ export function Topbar() {
           </SheetContent>
         </Sheet>
 
-        {/* Org + Project switchers */}
+        {/* Project + Environment switchers */}
         <div className="flex items-center gap-1">
-          <OrgSwitcher />
-          <span className="text-muted-foreground">/</span>
           <ProjectSwitcher />
           <EnvironmentSwitcher />
         </div>
@@ -285,10 +251,7 @@ export function Topbar() {
           <div className="hidden md:block">
             <SearchButton />
           </div>
-          <Button variant="ghost" size="icon-sm" className="relative">
-            <Bell className="size-4" />
-            <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-primary" />
-          </Button>
+          <NotificationMenu />
           <ThemeToggle />
           <UserMenu />
         </div>

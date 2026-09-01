@@ -4,7 +4,6 @@ import type { Project } from "@/lib/types";
 const MOCK_PROJECTS: Project[] = [
   {
     id: "proj_1",
-    orgId: "org_1",
     name: "Main App",
     slug: "main-app",
     description: "Primary application notifications",
@@ -12,7 +11,6 @@ const MOCK_PROJECTS: Project[] = [
   },
   {
     id: "proj_2",
-    orgId: "org_1",
     name: "Marketing Site",
     slug: "marketing-site",
     description: "Marketing and campaign notifications",
@@ -20,7 +18,6 @@ const MOCK_PROJECTS: Project[] = [
   },
   {
     id: "proj_3",
-    orgId: "org_1",
     name: "Mobile App",
     slug: "mobile-app",
     description: "Mobile push notifications",

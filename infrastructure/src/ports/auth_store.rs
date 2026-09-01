@@ -35,17 +35,11 @@ impl From<StoreError> for crate::domain::auth::errors::AuthError {
     }
 }
 
-/// Data collected by the dashboard onboarding flow (first org + project).
+/// Data collected by the dashboard onboarding flow (first project).
 #[derive(Debug, Clone)]
 pub struct OnboardingInput {
-    pub org_name: String,
-    pub org_logo_url: Option<String>,
-    pub org_region: Option<String>,
-    pub org_timezone: Option<String>,
     pub project_name: String,
     pub project_description: Option<String>,
-    /// One of `development | staging | production`.
-    pub environment: String,
 }
 
 pub trait AuthStore: Send + Sync {
@@ -110,11 +104,10 @@ pub trait AuthStore: Send + Sync {
     ) -> BoxFut<'_, Result<(), StoreError>>;
 
     // -- onboarding ---------------------------------------------------------
-    /// Whether `user_id` belongs to at least one organization that owns at
-    /// least one project — the "can skip onboarding" test.
-    fn has_org_and_project(&self, user_id: UserId) -> BoxFut<'_, Result<bool, StoreError>>;
-    /// Creates the first organization (+ owner membership), project, and
-    /// default environment atomically.
+    /// Whether `user_id` owns or belongs to at least one project — the "can
+    /// skip onboarding" test.
+    fn has_project(&self, user_id: UserId) -> BoxFut<'_, Result<bool, StoreError>>;
+    /// Creates the first project and its default environment atomically.
     fn complete_onboarding(
         &self,
         user_id: UserId,

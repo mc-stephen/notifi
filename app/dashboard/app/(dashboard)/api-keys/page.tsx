@@ -38,14 +38,12 @@ type ApiKeyEntry = {
 
 const MOCK_KEYS: ApiKeyEntry[] = [
   { id: "key_1", name: "Production API Key", prefix: "napi_prod_", environment: "production", permissions: ["read", "write"], lastUsedAt: "2025-06-25T10:00:00Z", enabled: true, createdAt: "2025-01-15T00:00:00Z" },
-  { id: "key_2", name: "Staging API Key", prefix: "napi_stg_", environment: "staging", permissions: ["read", "write"], lastUsedAt: "2025-06-24T15:30:00Z", enabled: true, createdAt: "2025-02-01T00:00:00Z" },
   { id: "key_3", name: "Development Key", prefix: "napi_dev_", environment: "development", permissions: ["read"], lastUsedAt: "2025-06-20T09:00:00Z", enabled: true, createdAt: "2025-03-10T00:00:00Z" },
   { id: "key_4", name: "Legacy Integration", prefix: "napi_leg_", environment: "production", permissions: ["read"], enabled: false, createdAt: "2024-06-01T00:00:00Z" },
 ];
 
 const ENV_COLORS: Record<string, string> = {
   production: "bg-success/15 text-success border-success/20",
-  staging: "bg-warning/15 text-warning border-warning/20",
   development: "bg-info/15 text-info border-info/20",
 };
 

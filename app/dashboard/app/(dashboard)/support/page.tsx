@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { env } from "@/lib/env";
+import { env, links } from "@/lib/env";
 import {
   Dialog,
   DialogContent,
@@ -70,7 +70,7 @@ export default function SupportPage() {
               <span className="text-sm text-muted-foreground">Documentation</span>
               <BookOpen className="size-4 text-muted-foreground" />
             </div>
-            <a href={env.docs()} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline mt-1 block">
+            <a href={links.docs} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline mt-1 block">
               Browse docs →
             </a>
           </CardContent>
@@ -81,7 +81,7 @@ export default function SupportPage() {
               <span className="text-sm text-muted-foreground">API Reference</span>
               <Zap className="size-4 text-muted-foreground" />
             </div>
-            <a href={env.docs("/api")} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline mt-1 block">
+            <a href={links.docsApi} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline mt-1 block">
               View API docs →
             </a>
           </CardContent>
@@ -147,10 +147,10 @@ export default function SupportPage() {
             </CardHeader>
             <CardContent className="space-y-2">
               {[
-                { label: "Getting Started Guide", href: env.docs("/getting-started"), icon: BookOpen },
-                { label: "API Reference", href: env.docs("/api"), icon: Zap },
-                { label: "SDK Documentation", href: env.docs("/sdks"), icon: FileText },
-                { label: "Changelog", href: env.docs("/changelog"), icon: FileText },
+                { label: "Getting Started Guide", href: links.docsGettingStarted, icon: BookOpen },
+                { label: "API Reference", href: links.docsApi, icon: Zap },
+                { label: "SDK Documentation", href: links.docsSdks, icon: FileText },
+                { label: "Changelog", href: links.docsChangelog, icon: FileText },
                 { label: "Status Page", href: env.status, icon: CheckCircle2 },
               ].map((link) => (
                 <a

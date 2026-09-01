@@ -17,7 +17,7 @@ pub struct FakeAuthStore {
     users: RwLock<Vec<User>>,
     sessions: RwLock<Vec<Session>>,
     tokens: RwLock<Vec<AuthToken>>,
-    /// Users treated as having an org + project (onboarding done).
+    /// Users treated as owning/belonging to a project (onboarding done).
     onboarded: RwLock<Vec<String>>,
 }
 
@@ -41,9 +41,9 @@ impl FakeAuthStore {
         self.tokens.write().unwrap().push(token);
     }
 
-    /// Marks `user_id` as already owning an org + project (e.g. an invited
-    /// member) so onboarding is considered complete.
-    pub fn seed_onboarded(&self, user_id: crate::domain::auth::entities::UserId) {
+    /// Marks `user_id` as already owning/belonging to a project (e.g. an
+    /// invited member) so onboarding is considered complete.
+    pub fn seed_project(&self, user_id: crate::domain::auth::entities::UserId) {
         self.onboarded.write().unwrap().push(user_id.to_string());
     }
 }
@@ -294,7 +294,7 @@ impl AuthStore for FakeAuthStore {
         })
     }
 
-    fn has_org_and_project(
+    fn has_project(
         &self,
         user_id: crate::domain::auth::entities::UserId,
     ) -> BoxFut<'_, Result<bool, StoreError>> {

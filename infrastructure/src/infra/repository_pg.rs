@@ -17,9 +17,6 @@ use crate::ports::auth_store::{
 };
 use crate::domain::auth::value_objects::Email;
 
-/// Seeded system `owner` role (migrations/0002_platform_orgs.sql).
-const OWNER_ROLE_ID: &str = "01KZ8KAFYKD2RFQB4481AR5EV3";
-
 /// PostgreSQL-backed auth store.
 pub struct PgAuthStore {
     pool: PgPool,
@@ -93,42 +90,20 @@ fn slugify(name: &str) -> String {
         }
     }
     let trimmed = slug.trim_matches('-').to_string();
-    if trimmed.is_empty() { "org".to_string() } else { trimmed }
+    if trimmed.is_empty() { "project".to_string() } else { trimmed }
 }
 
 /// Appends `-2`, `-3`, ... until the candidate is free; falls back to a
 /// ULID suffix for pathological collisions.
 const MAX_SLUG_ATTEMPTS: u32 = 50;
 
-async fn unique_org_slug(tx: &mut PgConnection, base: &str) -> Result<String, StoreError> {
+/// Project slugs are globally unique (`UNIQUE (slug)`).
+async fn unique_project_slug(tx: &mut PgConnection, base: &str) -> Result<String, StoreError> {
     for n in 0..MAX_SLUG_ATTEMPTS {
         let candidate = if n == 0 { base.to_string() } else { format!("{base}-{n}") };
         let taken = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM platform_organizations WHERE slug = $1)",
+            "SELECT EXISTS(SELECT 1 FROM platform_projects WHERE slug = $1)",
         )
-        .bind(&candidate)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(map_err)?;
-        if !taken {
-            return Ok(candidate);
-        }
-    }
-    Ok(format!("{base}-{}", Ulid::new()))
-}
-
-/// Project slugs are unique per organization (`UNIQUE (org_id, slug)`).
-async fn unique_project_slug(
-    tx: &mut PgConnection,
-    base: &str,
-    org_id: &str,
-) -> Result<String, StoreError> {
-    for n in 0..MAX_SLUG_ATTEMPTS {
-        let candidate = if n == 0 { base.to_string() } else { format!("{base}-{n}") };
-        let taken = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM platform_projects WHERE org_id = $1 AND slug = $2)",
-        )
-        .bind(org_id)
         .bind(&candidate)
         .fetch_one(&mut *tx)
         .await
@@ -459,18 +434,16 @@ impl AuthStore for PgAuthStore {
 
     // -- onboarding ---------------------------------------------------------
 
-    fn has_org_and_project(&self, user_id: UserId) -> BoxFut<'_, Result<bool, StoreError>> {
+    fn has_project(&self, user_id: UserId) -> BoxFut<'_, Result<bool, StoreError>> {
         let pool = self.pool.clone();
         Box::pin(async move {
             let has = sqlx::query_scalar::<_, bool>(
                 "SELECT EXISTS (
-                    SELECT 1 FROM platform_members pm
-                    JOIN platform_organizations o ON o.id = pm.org_id
-                    WHERE pm.user_id = $1
-                      AND pm.deleted_at IS NULL AND o.deleted_at IS NULL
-                ) AND EXISTS (
-                    SELECT 1 FROM platform_projects p
-                    JOIN platform_members pm ON pm.org_id = p.org_id
+                    SELECT 1 FROM platform_projects
+                    WHERE created_by = $1 AND deleted_at IS NULL
+                ) OR EXISTS (
+                    SELECT 1 FROM platform_project_members pm
+                    JOIN platform_projects p ON p.id = pm.project_id
                     WHERE pm.user_id = $1
                       AND pm.deleted_at IS NULL AND p.deleted_at IS NULL
                 )",
@@ -492,62 +465,20 @@ impl AuthStore for PgAuthStore {
         Box::pin(async move {
             let mut tx = pool.begin().await.map_err(map_err)?;
 
-            let org_id = Ulid::new().to_string();
-            let org_base = slugify(&input.org_name);
-            let org_slug = unique_org_slug(&mut tx, &org_base).await?;
-            sqlx::query(
-                "INSERT INTO platform_organizations
-                    (id, name, slug, logo_url, region, timezone, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
-            )
-            .bind(&org_id)
-            .bind(input.org_name.trim())
-            .bind(&org_slug)
-            .bind(&input.org_logo_url)
-            .bind(&input.org_region)
-            .bind(&input.org_timezone)
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(map_err)?;
-
-            // owner membership via the seeded system role (migrations/0002)
-            sqlx::query(
-                "INSERT INTO platform_members (id, org_id, user_id, role_id, status, joined_at)
-                 VALUES ($1, $2, $3, $4, 'active', now())",
-            )
-            .bind(Ulid::new().to_string())
-            .bind(&org_id)
-            .bind(user_id.to_string())
-            .bind(OWNER_ROLE_ID)
-            .execute(&mut *tx)
-            .await
-            .map_err(map_err)?;
-
             let project_id = Ulid::new().to_string();
             let project_base = slugify(&input.project_name);
-            let project_slug = unique_project_slug(&mut tx, &project_base, &org_id).await?;
+            let project_slug = unique_project_slug(&mut tx, &project_base).await?;
+            // The project-level environment gate defaults to 'development'
+            // via the schema — new projects are test-mode only.
             sqlx::query(
-                "INSERT INTO platform_projects (id, org_id, name, slug, description, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6)",
+                "INSERT INTO platform_projects (id, name, slug, description, created_by)
+                 VALUES ($1, $2, $3, $4, $5)",
             )
             .bind(&project_id)
-            .bind(&org_id)
             .bind(input.project_name.trim())
             .bind(&project_slug)
             .bind(&input.project_description)
             .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(map_err)?;
-
-            sqlx::query(
-                "INSERT INTO platform_environments (id, project_id, name, slug)
-                 VALUES ($1, $2, $3, $3)",
-            )
-            .bind(Ulid::new().to_string())
-            .bind(&project_id)
-            .bind(input.environment)
             .execute(&mut *tx)
             .await
             .map_err(map_err)?;

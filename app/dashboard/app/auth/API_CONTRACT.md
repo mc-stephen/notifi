@@ -38,7 +38,7 @@ Response `200`:
 }
 ```
 
-`session.onboardingCompleted` is server-derived: true when the account already belongs to an organization that owns at least one project (e.g. an invited member). Sets the httpOnly `session_token` cookie. Errors: `401` "Invalid email or password." Page redirects to `/`.
+`session.onboardingCompleted` is server-derived: true when the account already owns or belongs to at least one project (e.g. an invited member). Sets the httpOnly `session_token` cookie. Errors: `401` "Invalid email or password." Page redirects to `/`.
 
 ### 2. Signup — `POST /v1/auth/signup`
 
@@ -97,14 +97,40 @@ Request:
 
 ```json
 {
-  "organization": { "name": "string", "logoUrl": "string|null", "region": "string|null", "timezone": "string|null" },
-  "project": { "name": "string", "description": "string|null", "environment": "development | staging | production" }
+  "project": { "name": "string", "description": "string|null" }
 }
 ```
 
-Response `200 { "status": "ok" }` — or `{ "status": "ok", "alreadyCompleted": true }` when the flag was already set (idempotent). Creates the organization + owner membership + project + default environment in one transaction. Errors: `400` validation (names 1–100 chars, environment allowlist).
+Response `200 { "status": "ok" }` — or `{ "status": "ok", "alreadyCompleted": true }` when the flag was already set (idempotent). Creates the project (owned by the session user). New projects start in **development mode** (schema default). Errors: `400` validation (name 1–100 chars).
 
 Called by the onboarding success page; flips the server-derived flag that unlocks the dashboard.
+
+### Project model
+
+The user account **is** the workspace: projects are owned by their creator
+(`created_by`) and can be shared via per-project membership
+(`platform_project_members` with roles `owner | admin | editor | viewer`).
+User-level "folders" (`platform_user_groups` + `platform_user_group_projects`)
+group projects for UI organization only — no auth/billing semantics. The
+onboarding flag means *owns or belongs to ≥1 project*.
+
+**Environments** work on two layers (Stripe-style test/live):
+
+1. **Data discriminator** — env-scoped resources carry their own
+   `environment` column (`development` | `production`): API keys now, channel
+   configs / provider accounts later. One project can hold dev-scoped and
+   prod-scoped rows simultaneously; switching modes never destroys either.
+2. **Project gate** — `platform_projects.environment` (default
+   `development`) says which environments are *allowed right now*:
+   - `development`: only dev-scoped credentials work; a request carrying a
+     production-scoped key is rejected with an error like
+     *"This project is in test mode. Switch to live in the dashboard to use
+     production credentials."*
+   - `production`: both dev-scoped and prod-scoped credentials work (test
+     keys stay usable).
+
+Enforcement lives in the product API surface (M2+); the project-mode toggle
+endpoint arrives with the projects page milestone.
 
 ### 6. Forgot password — `POST /v1/auth/password/forgot`
 

@@ -47,7 +47,6 @@ const MOCK_PROJECTS: ProjectEntry[] = [
     description: "Main web application notifications",
     environments: [
       { name: "Production", apiKeyPrefix: "napi_prod_", notificationsToday: 12847 },
-      { name: "Staging", apiKeyPrefix: "napi_stg_", notificationsToday: 342 },
       { name: "Development", apiKeyPrefix: "napi_dev_", notificationsToday: 89 },
     ],
     createdAt: "2025-01-10T00:00:00Z",
@@ -59,7 +58,7 @@ const MOCK_PROJECTS: ProjectEntry[] = [
     description: "iOS and Android push notifications",
     environments: [
       { name: "Production", apiKeyPrefix: "napi_prod_m_", notificationsToday: 8420 },
-      { name: "Staging", apiKeyPrefix: "napi_stg_m_", notificationsToday: 120 },
+      { name: "Development", apiKeyPrefix: "napi_dev_m_", notificationsToday: 120 },
     ],
     createdAt: "2025-02-15T00:00:00Z",
   },
@@ -70,6 +69,7 @@ const MOCK_PROJECTS: ProjectEntry[] = [
     description: "Internal team notifications and alerts",
     environments: [
       { name: "Production", apiKeyPrefix: "napi_prod_i_", notificationsToday: 245 },
+      { name: "Development", apiKeyPrefix: "napi_dev_i_", notificationsToday: 0 },
     ],
     createdAt: "2025-03-20T00:00:00Z",
   },

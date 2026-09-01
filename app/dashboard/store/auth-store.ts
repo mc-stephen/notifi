@@ -18,14 +18,9 @@ type MeResponse = { user: User; onboardingCompleted: boolean };
 
 /** Payload for `POST /v1/auth/onboarding/complete`. */
 export type CompleteOnboardingInput = {
-  organization: {
-    name: string;
-    logoUrl?: string | null;
-  };
   project: {
     name: string;
     description?: string | null;
-    environment: "development" | "staging" | "production";
   };
 };
 

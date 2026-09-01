@@ -50,25 +50,12 @@ pub struct ResendVerificationRequest {
     pub email: String,
 }
 
-/// Body of `POST /v1/auth/onboarding/complete` — the first org + project
+/// Body of `POST /v1/auth/onboarding/complete` — the first project
 /// collected by the dashboard flow.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompleteOnboardingRequest {
-    pub organization: OnboardingOrganizationDto,
     pub project: OnboardingProjectDto,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OnboardingOrganizationDto {
-    pub name: String,
-    #[serde(default)]
-    pub logo_url: Option<String>,
-    #[serde(default)]
-    pub region: Option<String>,
-    #[serde(default)]
-    pub timezone: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,20 +64,14 @@ pub struct OnboardingProjectDto {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
-    pub environment: String,
 }
 
 impl CompleteOnboardingRequest {
     /// Flattens into the storage-level input.
     pub fn into_input(self) -> crate::ports::auth_store::OnboardingInput {
         crate::ports::auth_store::OnboardingInput {
-            org_name: self.organization.name,
-            org_logo_url: self.organization.logo_url,
-            org_region: self.organization.region,
-            org_timezone: self.organization.timezone,
             project_name: self.project.name,
             project_description: self.project.description,
-            environment: self.project.environment,
         }
     }
 }

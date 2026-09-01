@@ -25,7 +25,7 @@ npm run lint     # ESLint checks
 ### Route Structure
 - **Dashboard (`/`)**: `app/(dashboard)/` — route group for top-level pages (`/`, `/settings`, `/profile`, `/billing`).
 - **Auth (`/auth/*`)**: `app/auth/` — non-parenthesized directory preserving `/auth/` URL path (`/auth/login`, `/auth/signup`, `/auth/password/forgot`, `/auth/password/reset`, `/auth/verify-email`).
-- **Onboarding (`/onboarding/*`)**: `app/onboarding/` — non-parenthesized directory preserving `/onboarding/` URL path (`/onboarding/welcome`, `/onboarding/use-case`, `/onboarding/organization`, `/onboarding/project`, `/onboarding/setup-channels`, `/onboarding/invite-team`, `/onboarding/success`).
+- **Onboarding (`/onboarding/*`)**: `app/onboarding/` — non-parenthesized directory preserving `/onboarding/` URL path (`/onboarding/welcome`, `/onboarding/use-case`, `/onboarding/project`, `/onboarding/setup-channels`, `/onboarding/invite-team`, `/onboarding/success`).
 
 *Note: Route groups with parentheses (like `(auth)`) strip the folder name from the URL path. Regular folders without parentheses preserve the path segment. Do NOT place auth or onboarding in parenthesized route groups if URL path prefixes are required.*
 

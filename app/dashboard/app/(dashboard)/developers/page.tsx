@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CodeBlock } from "@/components/custom/code-block";
-import { env } from "@/lib/env";
+import { env, links } from "@/lib/env";
 import { format } from "date-fns";
 import {
   Activity,
@@ -87,7 +87,7 @@ export default function DevelopersPage() {
         breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Developers" }]}
         actions={
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" className="gap-1.5" render={<a href={env.docs()} target="_blank" rel="noopener noreferrer" />}>
+            <Button size="sm" variant="outline" className="gap-1.5" render={<a href={links.docs} target="_blank" rel="noopener noreferrer" />}>
               API docs <ExternalLink className="size-3 ml-1" />
             </Button>
           </div>

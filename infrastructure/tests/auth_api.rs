@@ -270,10 +270,9 @@ async fn onboarding_complete_flips_the_flag_and_is_idempotent() {
     let res = get_with_cookie_on(app.clone(), "/v1/auth/me", Some(&token)).await;
     assert_eq!(body_json(res).await["onboardingCompleted"], false);
 
-    // completing onboarding persists org + project
+    // completing onboarding persists the first project
     let payload = json!({
-        "organization": {"name": "Acme Corp", "region": "us-east-1", "timezone": "America/New_York"},
-        "project": {"name": "My App", "description": "first project", "environment": "development"},
+        "project": {"name": "My App", "description": "first project"},
     });
     let res = post_json_with_cookie(
         app.clone(),
@@ -304,11 +303,11 @@ async fn onboarding_complete_flips_the_flag_and_is_idempotent() {
 }
 
 #[tokio::test]
-async fn invited_member_with_org_and_project_skips_onboarding() {
+async fn invited_member_of_existing_project_skips_onboarding() {
     let (app, store) = app();
 
-    // simulate an invitation accepted before first sign-in: the member row
-    // exists under an org that already has a project.
+    // simulate an invitation accepted before first sign-in: the membership
+    // row already exists on someone else's project.
     let res = post_json(
         app.clone(),
         "/v1/auth/signup",
@@ -318,7 +317,7 @@ async fn invited_member_with_org_and_project_skips_onboarding() {
     assert_eq!(res.status(), StatusCode::CREATED);
     let body = body_json(res).await;
     let user_id = body["user"]["id"].as_str().unwrap().to_string();
-    store.seed_onboarded(user_id.parse().unwrap());
+    store.seed_project(user_id.parse().unwrap());
 
     let res = post_json(
         app,

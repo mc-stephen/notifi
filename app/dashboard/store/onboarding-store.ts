@@ -3,7 +3,6 @@ import { create } from "zustand";
 const STEP_ROUTES = [
   "/onboarding/welcome",
   "/onboarding/use-case",
-  "/onboarding/organization",
   "/onboarding/project",
   "/onboarding/setup-channels",
   "/onboarding/invite-team",
@@ -14,8 +13,6 @@ type OnboardingData = {
   currentStep: number;
   isCompleted: boolean;
   useCase: string | null;
-  orgName: string;
-  orgLogo: string | null;
   projectName: string;
   projectDescription: string;
   selectedChannels: string[];
@@ -36,8 +33,6 @@ const initialState: OnboardingData = {
   currentStep: 0,
   isCompleted: false,
   useCase: null,
-  orgName: "",
-  orgLogo: null,
   projectName: "",
   projectDescription: "",
   selectedChannels: [],

@@ -15,7 +15,7 @@ A **Modular Monolith**: one deployable unit, many crates, compiler-enforced boun
 │  api (HTTP)              workers (queue consumers)        ← binaries      │
 │  composition root: mount routers, wire dependencies                       │
 ├──────────────────────────────────────────────────────────────────────────┤
-│  domains/*    organizations  auth  notifications  delivery  recipients   │
+│  domains/*    projects  auth  notifications  delivery  recipients        │
 │               providers  templates  webhooks  schedules  analytics        │
 │               billing                                                    │
 │               each = vertical slice with mini clean architecture inside  │
@@ -256,7 +256,7 @@ knowing who produced it.
 
 | Feature (domain) | Owns |
 |---|---|
-| organizations | orgs, projects, environments, membership roles |
+| projects | projects, env-scoped credentials (dev/prod gate), per-project membership, user folders |
 | auth | API keys (hashed), sessions, members, permissions |
 | notifications | notification aggregate, state machine, queuing |
 | delivery | attempts, provider registry, retry policy, DLQ |
@@ -452,6 +452,6 @@ No rewrites: the ports are already the network boundaries.
 | M3 | Delivery | `domain-ports::DeliveryProvider`; convert all 13 channel crates (email, sms, android/fcm, ios, macos, web, webhook, whatsapp, telegram, slack, discord, window, linux) to implement it; **fix web_channel against web-push 0.9**; provider registry, attempt records, retry policy, DLQ; `delivered/failed/retried` events | Entire workspace compiles; one end-to-end send through an adapter; retries + DLQ tested |
 | M4 | Providers + Templates | `providers` domain (accounts, channel configs CRUD, secrets); `templates` (render, publish) | Configure SMTP provider + template via API; render verified |
 | M5 | Recipients & Devices | `recipients` domain: recipients, devices, per-recipient channel preferences; delivery honors preferences | Preferenced delivery path tested |
-| M6 | Platform | `organizations` (orgs/projects/environments), `auth` (API keys, rate limits in Redis), `billing` (usage metering, par-org plans) | Authenticated sends; rate limit enforced; usage rows accrue |
+| M6 | Platform | `projects` (projects + env-gated API keys), `auth` (rate limits in Redis), `billing` (usage metering, per-account plans) | Authenticated sends; rate limit enforced; usage rows accrue |
 | M7 | Growth | `webhooks` (outgoing), `schedules` (cron), `analytics` read models | Scheduled + webhook delivery end-to-end |
 | M8 | Hardening | JWT sessions, observability dashboards, load/perf tests, docs, READMEs complete; extraction drills documented | Production readiness review pass |

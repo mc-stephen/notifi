@@ -194,14 +194,17 @@ export const ROLE_COLORS: Record<Role, string> = {
 
 export const ENVIRONMENT_LABELS: Record<Environment, string> = {
   development: "Development",
-  staging: "Staging",
   production: "Production",
 };
 
 export const ENVIRONMENT_COLORS: Record<Environment, string> = {
   development: "bg-info/15 text-info",
-  staging: "bg-warning/15 text-warning",
   production: "bg-success/15 text-success",
+};
+
+export const ENVIRONMENT_DOTS: Record<Environment, string> = {
+  development: "bg-info",
+  production: "bg-success",
 };
 
 export const PLAN_LABELS: Record<Plan, string> = {
