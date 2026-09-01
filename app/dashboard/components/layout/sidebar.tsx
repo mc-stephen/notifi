@@ -3,12 +3,12 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { NAV_GROUPS } from "@/lib/constants";
 import { useUIStore } from "@/store/ui-store";
+import { ProjectSwitcher } from "./project-switcher";
+import { PlanBanner } from "@/components/custom/plan-banner";
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -25,8 +25,8 @@ function SidebarItem({ item, collapsed }: { item: (typeof NAV_GROUPS)[number]["i
       className={cn(
         "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
         isActive
-          ? "bg-sidebar-accent text-sidebar-primary"
-          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+          ? "bg-primary/10 text-primary"
+          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
         collapsed && "justify-center px-2",
       )}
     >
@@ -67,7 +67,7 @@ function SidebarGroup({ group, collapsed }: { group: (typeof NAV_GROUPS)[number]
     <Collapsible defaultOpen>
       <CollapsibleTrigger
         render={
-          <button className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50 hover:text-sidebar-foreground/70 transition-colors" />
+          <button className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent/40 hover:text-sidebar-foreground/70" />
         }
       >
         <span>{group.label}</span>
@@ -91,7 +91,7 @@ export function Sidebar({ className, mobile = false, onNavigate }: { className?:
   return (
     <aside
       className={cn(
-        "flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-all duration-200",
+        "relative flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-all duration-200",
         collapsed ? "w-16" : "w-60",
         className,
       )}
@@ -114,7 +114,7 @@ export function Sidebar({ className, mobile = false, onNavigate }: { className?:
         )}
       </div>
 
-      {/* Navigation */}
+      {/* Navigation — only this section scrolls */}
       <div className="flex-1 min-h-0 overflow-y-auto px-2 py-3">
         <nav className="space-y-4">
           {NAV_GROUPS.map((group) => (
@@ -123,21 +123,33 @@ export function Sidebar({ className, mobile = false, onNavigate }: { className?:
         </nav>
       </div>
 
-      {/* Collapse toggle (desktop only) */}
+      {/* Pinned footer — project switcher + plan banner */}
+      <div className="shrink-0 space-y-2 border-t border-sidebar-border px-2 pt-3 pb-2">
+        <ProjectSwitcher collapsed={collapsed} />
+        <PlanBanner collapsed={collapsed} />
+      </div>
+
+      {/* Seam toggle — straddles sidebar/topbar border */}
       {!mobile && (
-        <>
-          <Separator />
-          <div className="flex items-center justify-center p-2">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={toggleSidebar}
-              className="text-sidebar-foreground/50 hover:text-sidebar-foreground"
-            >
-              {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-            </Button>
-          </div>
-        </>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                onClick={toggleSidebar}
+                className="absolute right-0 top-[12px] z-50 flex size-7 translate-x-1/2 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+              />
+            }
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="size-4" />
+            ) : (
+              <PanelLeftClose className="size-4" />
+            )}
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          </TooltipContent>
+        </Tooltip>
       )}
     </aside>
   );

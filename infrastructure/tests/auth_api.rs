@@ -15,6 +15,7 @@ use server::api::state::AppState;
 use server::domain::auth::{
     AuthToken as AuthTokenEntity, AuthTokenId, AuthService, TokenPurpose, hash_token,
 };
+use server::domain::projects::ProjectService;
 use server::ports::auth_store::{AuthStore, BoxFut};
 use server::ports::oauth::{
     AuthorizeStart, OAuthError, OAuthIdentityProvider, OAuthProfile, OAuthRuntime,
@@ -36,6 +37,7 @@ fn app() -> (Router, Arc<FakeAuthStore>) {
                 redis: None,
                 auth: Some(auth),
                 oauth: None,
+                projects: None,
             },
             &AppConfig::default(),
         ),
@@ -51,6 +53,7 @@ fn app_without_auth() -> Router {
             redis: None,
             auth: None,
             oauth: None,
+            projects: None,
         },
         &AppConfig::default(),
     )
@@ -73,6 +76,7 @@ fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
                 redis: None,
                 auth: Some(auth),
                 oauth: Some(oauth),
+                projects: None,
             },
             &AppConfig::default(),
         ),
@@ -773,4 +777,164 @@ async fn oauth_routes_answer_503_without_runtime() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+// -- projects feature tests -------------------------------------------------
+
+/// App wired with both auth and projects services (fake-backed).
+fn app_with_projects() -> (Router, Arc<FakeAuthStore>) {
+    let store = Arc::new(FakeAuthStore::new());
+    let auth = Arc::new(AuthService::new(store.clone(), true));
+    let projects = Arc::new(ProjectService::new(store.clone()));
+    (
+        build_router(
+            AppState {
+                db: None,
+                redis: None,
+                auth: Some(auth),
+                oauth: None,
+                projects: Some(projects),
+            },
+            &AppConfig::default(),
+        ),
+        store,
+    )
+}
+
+#[tokio::test]
+async fn list_projects_empty_for_new_user() {
+    let (app, _store) = app_with_projects();
+    let (token, _uid) = signup_and_login_on(app.clone(), "proj-list@example.com").await;
+    let res = get_with_cookie_on(app, "/v1/projects", Some(&token)).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res).await["projects"], json!([]));
+}
+
+#[tokio::test]
+async fn list_projects_returns_onboarded_project() {
+    let (app, _store) = app_with_projects();
+    let (token, _uid) = signup_and_login_on(app.clone(), "proj-onboard@example.com").await;
+
+    // complete onboarding → creates a real project via the auth store
+    let res = post_json_with_cookie(
+        app.clone(),
+        "/v1/auth/onboarding/complete",
+        json!({"project": {"name": "My App", "description": "test"}}),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // list should now return that project with environment = development
+    let res = get_with_cookie_on(app, "/v1/projects", Some(&token)).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let projects = body["projects"].as_array().unwrap();
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0]["name"], "My App");
+    assert_eq!(projects[0]["environment"], "development");
+}
+
+#[tokio::test]
+async fn patch_environment_switches_gate() {
+    let (app, _store) = app_with_projects();
+    let (token, _uid) = signup_and_login_on(app.clone(), "proj-patch@example.com").await;
+
+    // complete onboarding
+    let res = post_json_with_cookie(
+        app.clone(),
+        "/v1/auth/onboarding/complete",
+        json!({"project": {"name": "Env App"}}),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // fetch project id from list
+    let res = get_with_cookie_on(app.clone(), "/v1/projects", Some(&token)).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let project_id = body_json(res).await["projects"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // switch to production
+    let res = patch_json_with_cookie(
+        app.clone(),
+        &format!("/v1/projects/{project_id}/environment"),
+        json!({"environment": "production"}),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res).await["project"]["environment"], "production");
+
+    // verify via list
+    let res = get_with_cookie_on(app, "/v1/projects", Some(&token)).await;
+    assert_eq!(body_json(res).await["projects"][0]["environment"], "production");
+}
+
+#[tokio::test]
+async fn patch_environment_rejects_invalid_env() {
+    let (app, _store) = app_with_projects();
+    let (token, _uid) = signup_and_login_on(app.clone(), "proj-invalid-env@example.com").await;
+
+    let res = post_json_with_cookie(
+        app.clone(),
+        "/v1/auth/onboarding/complete",
+        json!({"project": {"name": "Bad Env"}}),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let res = get_with_cookie_on(app.clone(), "/v1/projects", Some(&token)).await;
+    let project_id = body_json(res).await["projects"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = patch_json_with_cookie(
+        app,
+        &format!("/v1/projects/{project_id}/environment"),
+        json!({"environment": "staging"}),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn patch_environment_returns_404_for_unknown_project() {
+    let (app, _store) = app_with_projects();
+    let (token, _uid) = signup_and_login_on(app.clone(), "proj-404@example.com").await;
+
+    let res = patch_json_with_cookie(
+        app,
+        "/v1/projects/nonexistent/environment",
+        json!({"environment": "production"}),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+/// PATCH helper: sends a JSON body with the session cookie.
+async fn patch_json_with_cookie(
+    app: Router,
+    uri: &str,
+    body: Value,
+    token: &str,
+) -> axum::response::Response {
+    app.oneshot(
+        Request::builder()
+            .method("PATCH")
+            .uri(uri)
+            .header("content-type", "application/json")
+            .header("cookie", format!("session_token={token}"))
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap(),
+    )
+    .await
+    .unwrap()
 }

@@ -54,6 +54,7 @@ mod tests {
                 redis: None,
                 auth: None,
                 oauth: None,
+                projects: None,
             },
             &AppConfig::default(),
         )

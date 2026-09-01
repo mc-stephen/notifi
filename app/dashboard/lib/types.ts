@@ -5,6 +5,7 @@ export type Project = {
   name: string;
   slug: string;
   description?: string;
+  environment: Environment;
   createdAt: string;
 };
 

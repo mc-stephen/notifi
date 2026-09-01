@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 import { PageHeader } from "@/components/custom/page-header";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { CodeBlock } from "@/components/custom/code-block";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Dialog,
@@ -14,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { env } from "@/lib/env";
 import { format } from "date-fns";
 import {
   KeyRound,
@@ -22,6 +26,7 @@ import {
   EyeOff,
   Copy,
   Trash2,
+  Play,
 } from "lucide-react";
 
 type ApiKeyEntry = {
@@ -69,6 +74,14 @@ export default function ApiKeysPage() {
         }
       />
 
+      <Tabs defaultValue="keys">
+        <TabsList>
+          <TabsTrigger value="keys">API Keys</TabsTrigger>
+          <TabsTrigger value="playground">Playground</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="keys" className="mt-4">
+          <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardContent className="pt-5">
@@ -178,6 +191,62 @@ export default function ApiKeysPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="playground" className="mt-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>API Playground</CardTitle>
+                <Button size="sm" className="gap-1.5">
+                  <Play className="size-3.5" /> Send request
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-2">
+                <select className="rounded-md border bg-transparent px-3 py-2 text-sm font-mono">
+                  <option>POST</option>
+                  <option>GET</option>
+                  <option>PUT</option>
+                  <option>DELETE</option>
+                </select>
+                <Input
+                  defaultValue={`${env.apiBase}/v1/notifications`}
+                  className="flex-1 font-mono text-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Request Body</label>
+                <CodeBlock
+                  language="JSON"
+                  code={JSON.stringify({
+                    recipient_id: "rcp_0001",
+                    channel: "email",
+                    subject: "Hello from playground",
+                    body: "This is a test notification sent from the developer console.",
+                    priority: "normal",
+                  }, null, 2)}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Response</label>
+                <CodeBlock
+                  language="JSON"
+                  code={JSON.stringify({
+                    id: "ntf_0042",
+                    status: "queued",
+                    channel: "email",
+                    recipient_id: "rcp_0001",
+                    created_at: new Date().toISOString(),
+                  }, null, 2)}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

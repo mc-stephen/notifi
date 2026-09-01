@@ -5,6 +5,7 @@
 //! [`v1_router`] (auth today; onboarding/organizations next).
 
 pub mod auth;
+pub mod projects;
 
 use axum::Router;
 
@@ -28,5 +29,17 @@ pub fn v1_router(state: &AppState) -> Router<AppState> {
         None => auth_routes,
     };
 
-    Router::new().nest("/auth", auth_routes)
+    let mut project_routes = projects::routes::router();
+    // Project routes require session auth via `CurrentUser`, which needs the
+    // auth service extension.
+    if let Some(auth_service) = state.auth.clone() {
+        project_routes = project_routes.layer(axum::Extension(auth_service));
+    }
+    if let Some(service) = state.projects.clone() {
+        project_routes = project_routes.layer(axum::Extension(service));
+    }
+
+    Router::new()
+        .nest("/auth", auth_routes)
+        .nest("/projects", project_routes)
 }

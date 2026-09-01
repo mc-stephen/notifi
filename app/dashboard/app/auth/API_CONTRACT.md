@@ -130,7 +130,57 @@ onboarding flag means *owns or belongs to ≥1 project*.
      keys stay usable).
 
 Enforcement lives in the product API surface (M2+); the project-mode toggle
-endpoint arrives with the projects page milestone.
+endpoint is now live (see the two project endpoints below).
+
+### Project endpoints
+
+#### `GET /v1/projects` — list projects
+
+Requires a valid session cookie. Returns all projects the user owns or belongs to.
+
+Response `200`:
+
+```json
+{
+  "projects": [
+    {
+      "id": "string",
+      "name": "string",
+      "slug": "string",
+      "description": "string|null",
+      "environment": "development|production",
+      "createdAt": "2025-01-20T00:00:00Z"
+    }
+  ]
+}
+```
+
+Used by the topbar project switcher and environment switcher on dashboard mount.
+
+#### `PATCH /v1/projects/:id/environment` — switch environment gate
+
+Requires a valid session cookie. The user must own or belong to the project.
+
+Request: `{ "environment": "development|production" }`
+
+Response `200`:
+
+```json
+{
+  "project": {
+    "id": "string",
+    "name": "string",
+    "slug": "string",
+    "description": "string|null",
+    "environment": "production",
+    "createdAt": "2025-01-20T00:00:00Z"
+  }
+}
+```
+
+Errors: `400` invalid environment value, `404` project not found or user lacks access.
+
+Called by the topbar environment segmented control; the UI shows a spinner while the request is in flight and reverts on failure with a toast.
 
 ### 6. Forgot password — `POST /v1/auth/password/forgot`
 

@@ -3,8 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useChannels, useProviders } from "@/hooks";
 import { PageHeader } from "@/components/custom/page-header";
-import { ChannelBadge } from "@/components/custom/channel-badge";
+import { CHANNEL_ICON_MAP } from "@/components/custom/channel-badge";
 import { HealthIndicator } from "@/components/custom/health-indicator";
+import { CHANNEL_LABELS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,8 +31,8 @@ export default function ChannelsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Channels & Providers"
-        description={`${enabledCount} active channels, ${providers.length} providers`}
+        title="Channels"
+        description={`${enabledCount} of ${channels.length} channels enabled`}
         breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Channels" }]}
         actions={
           <Button size="sm" className="gap-1.5">
@@ -89,6 +90,7 @@ export default function ChannelsPage() {
         {channels.map((channel) => {
           const channelProviders = providers.filter((p) => p.channelId === channel.id);
           const bestProvider = channelProviders.sort((a, b) => a.priority - b.priority)[0];
+          const ChannelIcon = CHANNEL_ICON_MAP[channel.type];
 
           return (
             <Card
@@ -99,9 +101,11 @@ export default function ChannelsPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <ChannelBadge channel={channel.type} showIcon />
+                    <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <ChannelIcon className="size-4" />
+                    </div>
                     <div>
-                      <CardTitle className="text-sm">{channel.type.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</CardTitle>
+                      <CardTitle className="text-sm">{CHANNEL_LABELS[channel.type]}</CardTitle>
                       <div className="flex items-center gap-2 mt-0.5">
                         <Badge variant={channel.enabled ? "default" : "secondary"} className={channel.enabled ? "bg-success/15 text-success border-success/20" : ""}>
                           {channel.enabled ? "Enabled" : "Disabled"}
@@ -114,7 +118,11 @@ export default function ChannelsPage() {
                       </div>
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon-xs">
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Settings className="size-3.5" />
                   </Button>
                 </div>

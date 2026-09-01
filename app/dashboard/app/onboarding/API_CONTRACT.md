@@ -6,7 +6,7 @@ Contract for the onboarding flow (`/onboarding/*`, 6 steps). Sources: `app/onboa
 
 The flow is client-side (Zustand, `store/onboarding-store.ts`) **except for completion**: the success page `POST`s the collected project to the API (`/v1/auth/onboarding/complete`), which persists it and flips the server-derived `onboardingCompleted` flag returned by login/signup/`me`. The dashboard layout gates on that flag — accounts that own/belong to no project are redirected back into onboarding on every visit. Skip buttons have been removed; all steps are required.
 
-Data collected per step below; only the project (+ its default `development` environment) persists today — channel selection and team invites still need backend endpoints. **API keys are not part of onboarding** — they are managed in the dashboard (`/api-keys`, Developers page); server-side key generation (shown exactly once) remains pending backend work.
+Data collected per step below; only the project (+ its default `development` environment) persists today — channel selection and team invites still need backend endpoints. The environment gate is now **persisted on the server**: the topbar segmented control calls `PATCH /v1/projects/{id}/environment` to switch between development and production (see the auth contract §5b for the full endpoint shapes). **API keys are not part of onboarding** — they are managed in the dashboard (`/api-keys`, Developers page); server-side key generation (shown exactly once) remains pending backend work.
 
 ## Flow
 

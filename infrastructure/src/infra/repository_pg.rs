@@ -1,7 +1,9 @@
-//! sqlx implementation of the [`AuthStore`] port (PostgreSQL).
+//! sqlx implementation of the [`AuthStore`] and [`ProjectsStore`] ports
+//! (PostgreSQL).
 //!
 //! Tables come from `migrations/0001_platform_users.sql` (`auth_users`,
-//! `auth_sessions`, `auth_tokens`). Soft-deleted users are invisible to
+//! `auth_sessions`, `auth_tokens`). Projects live in `platform_projects`
+//! (see `0001_initial_schema.sql`). Soft-deleted rows are invisible to
 //! every lookup. Raw tokens/cookies never reach this module — callers pass
 //! SHA-256 hashes.
 
@@ -15,6 +17,7 @@ use crate::domain::auth::entities::{
 use crate::ports::auth_store::{
     AuthStore, BoxFut, OnboardingInput, StoreError,
 };
+use crate::ports::projects_store::{ProjectSummary, ProjectsStore};
 use crate::domain::auth::value_objects::Email;
 
 /// PostgreSQL-backed auth store.
@@ -490,6 +493,102 @@ impl AuthStore for PgAuthStore {
 }
 
 // -- row types ----------------------------------------------------------
+
+#[derive(sqlx::FromRow)]
+struct ProjectRow {
+    id: String,
+    name: String,
+    slug: String,
+    description: Option<String>,
+    environment: String,
+    created_at: DateTime<Utc>,
+}
+
+impl TryFrom<ProjectRow> for ProjectSummary {
+    type Error = StoreError;
+
+    fn try_from(row: ProjectRow) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: row.id,
+            name: row.name,
+            slug: row.slug,
+            description: row.description,
+            environment: row.environment,
+            created_at: row.created_at,
+        })
+    }
+}
+
+impl ProjectsStore for PgAuthStore {
+    fn list_projects(
+        &self,
+        user_id: UserId,
+    ) -> BoxFut<'_, Result<Vec<ProjectSummary>, StoreError>> {
+        let pool = self.pool.clone();
+        Box::pin(async move {
+            let rows = sqlx::query_as::<_, ProjectRow>(
+                "SELECT id, name, slug, description, environment, created_at
+                 FROM platform_projects p
+                 WHERE p.deleted_at IS NULL
+                   AND (
+                        p.created_by = $1
+                        OR EXISTS (
+                            SELECT 1 FROM platform_project_members pm
+                            WHERE pm.project_id = p.id
+                              AND pm.user_id = $1
+                              AND pm.deleted_at IS NULL
+                        )
+                   )
+                 ORDER BY p.created_at",
+            )
+            .bind(user_id.to_string())
+            .fetch_all(&pool)
+            .await
+            .map_err(map_err)?;
+
+            rows.into_iter()
+                .map(ProjectSummary::try_from)
+                .collect::<Result<Vec<_>, _>>()
+        })
+    }
+
+    fn set_project_environment(
+        &self,
+        user_id: UserId,
+        project_id: &str,
+        environment: &str,
+    ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        let environment = environment.to_string();
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, ProjectRow>(
+                "UPDATE platform_projects p
+                 SET environment = $3, updated_at = now()
+                 WHERE p.id = $2
+                   AND p.deleted_at IS NULL
+                   AND (
+                        p.created_by = $1
+                        OR EXISTS (
+                            SELECT 1 FROM platform_project_members pm
+                            WHERE pm.project_id = p.id
+                              AND pm.user_id = $1
+                              AND pm.deleted_at IS NULL
+                        )
+                   )
+                 RETURNING id, name, slug, description, environment, created_at",
+            )
+            .bind(user_id.to_string())
+            .bind(&project_id)
+            .bind(&environment)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+
+            row.map(ProjectSummary::try_from).transpose()
+        })
+    }
+}
 
 #[derive(sqlx::FromRow)]
 struct SessionRow {

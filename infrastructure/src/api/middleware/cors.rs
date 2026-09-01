@@ -16,7 +16,7 @@ pub fn layer(origins: &[String]) -> CorsLayer {
     CorsLayer::new()
         .allow_origin(allowed)
         .allow_credentials(true)
-        .allow_methods([Method::GET, Method::POST])
+        .allow_methods([Method::GET, Method::POST, Method::PATCH])
         .allow_headers([CONTENT_TYPE])
         .max_age(std::time::Duration::from_secs(600))
 }

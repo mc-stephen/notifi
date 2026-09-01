@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { Toaster } from "@/components/ui/sonner";
 
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
@@ -37,7 +38,7 @@ export default function DashboardLayout({
         </div>
         <div className="flex flex-1 flex-col overflow-hidden">
           <Topbar />
-          <main className="flex-1 overflow-y-auto" />
+          <main className="flex-1 overflow-y-auto bg-muted/40" />
         </div>
       </div>
     );
@@ -54,8 +55,8 @@ export default function DashboardLayout({
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar />
         <VerifyEmailBanner />
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[1400px] p-4 lg:p-6">
+        <main className="flex-1 overflow-y-auto bg-muted/40">
+          <div className="mx-auto max-w-[1400px] p-6 lg:p-8">
             {children}
           </div>
         </main>
@@ -63,6 +64,7 @@ export default function DashboardLayout({
 
       {/* Command palette */}
       <CommandPalette />
+      <Toaster position="top-right" />
     </div>
   );
 }

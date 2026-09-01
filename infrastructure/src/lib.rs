@@ -67,6 +67,13 @@ fn run_inner() -> Result<(), String> {
             ))
         });
 
+        // Projects slice: same store backing, separate service instance.
+        let projects = db.as_ref().map(|pool| {
+            std::sync::Arc::new(domain::projects::ProjectService::new(
+                std::sync::Arc::new(infra::PgAuthStore::new(pool.clone())),
+            ))
+        });
+
         // OAuth sign-in is wired when at least one provider has credentials.
         let github = match (
             config.oauth.github_client_id.clone(),
@@ -108,6 +115,9 @@ fn run_inner() -> Result<(), String> {
         if auth.is_none() {
             tracing::warn!("auth disabled (needs database); /v1/auth routes will answer 503");
         }
+        if projects.is_none() {
+            tracing::warn!("projects disabled (needs database); /v1/projects routes will answer 503");
+        }
         if oauth.is_none() {
             tracing::warn!(
                 "oauth disabled (no provider credentials); /v1/auth/oauth routes will answer 503"
@@ -120,6 +130,7 @@ fn run_inner() -> Result<(), String> {
                 redis: redis_conn,
                 auth,
                 oauth,
+                projects,
             },
             &config,
         );

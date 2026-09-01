@@ -127,6 +127,21 @@ pub const USER_V1_ROUTES: &[RouteInfo] = &[
         feature: "auth",
         description: "re-issue the verification email (always 200)",
     },
+    // -- projects feature ----------------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/v1/projects",
+        surface: Surface::UserV1,
+        feature: "projects",
+        description: "list projects the user owns or belongs to",
+    },
+    RouteInfo {
+        method: "PATCH",
+        path: "/v1/projects/{id}/environment",
+        surface: Surface::UserV1,
+        feature: "projects",
+        description: "switch the project-level environment gate",
+    },
 ];
 
 /// Ops/infrastructure routes (absolute root, outside both surfaces).

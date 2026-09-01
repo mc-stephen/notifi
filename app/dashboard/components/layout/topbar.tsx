@@ -12,8 +12,6 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetTrigger, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -28,86 +26,51 @@ import type { Environment } from "@/lib/types";
 import {
   Menu,
   Search,
-  ChevronsUpDown,
   Moon,
   Sun,
   LogOut,
   Settings,
   User,
+  Loader2,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
-function ProjectSwitcher() {
-  const { projects, currentProject, setCurrentProject } = useProjectStore();
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button variant="ghost" className="gap-2 px-2 py-1.5 h-auto" />
-        }
-      >
-        <div className="flex size-6 items-center justify-center rounded bg-primary/10 text-primary text-xs font-bold">
-          {currentProject?.name?.charAt(0) ?? "P"}
-        </div>
-        <span className="hidden sm:inline text-sm font-medium max-w-[120px] truncate">{currentProject?.name ?? "Select project"}</span>
-        <ChevronsUpDown className="size-3.5 text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuLabel>Project</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {projects.map((project) => (
-          <DropdownMenuItem
-            key={project.id}
-            onClick={() => setCurrentProject(project)}
-            className={cn(project.id === currentProject?.id && "bg-accent")}
-          >
-            <div className="flex size-6 items-center justify-center rounded bg-primary/10 text-primary text-xs font-bold">
-              {project.name.charAt(0)}
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm">{project.name}</span>
-              {project.description && (
-                <span className="text-xs text-muted-foreground truncate max-w-[200px]">{project.description}</span>
-              )}
-            </div>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 function EnvironmentSwitcher() {
-  const { currentEnvironment, setEnvironment } = useEnvironmentStore();
+  const { currentEnvironment, pending, switchEnvironment } = useEnvironmentStore();
+  const currentProject = useProjectStore((s) => s.currentProject);
   const envs: Environment[] = ["development", "production"];
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button variant="ghost" size="sm" className="gap-1.5 px-2" />
-        }
-      >
-        <span className={cn("size-2 rounded-full", ENVIRONMENT_DOTS[currentEnvironment])} />
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {ENVIRONMENT_LABELS[currentEnvironment]}
-        </span>
-        <ChevronsUpDown className="size-3 text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-44">
-        <DropdownMenuLabel>Environment</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuRadioGroup value={currentEnvironment} onValueChange={(v) => v && setEnvironment(v as Environment)}>
-          {envs.map((env) => (
-            <DropdownMenuRadioItem key={env} value={env}>
-              <span className={cn("size-2 rounded-full", ENVIRONMENT_DOTS[env])} />
-              <span className="text-sm">{ENVIRONMENT_LABELS[env]}</span>
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className="flex items-center gap-1 rounded-full bg-muted p-1" role="radiogroup" aria-busy={pending || undefined}>
+      {envs.map((env) => {
+        const active = env === currentEnvironment;
+        return (
+          <button
+            key={env}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            disabled={pending}
+            onClick={() => {
+              if (currentProject) void switchEnvironment(currentProject.id, env);
+            }}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:opacity-60",
+              active
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {pending && active ? (
+              <Loader2 className="size-1.5 animate-spin" />
+            ) : (
+              <span className={cn("size-1.5 rounded-full", ENVIRONMENT_DOTS[env])} />
+            )}
+            {ENVIRONMENT_LABELS[env]}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -210,6 +173,7 @@ function ThemeToggle() {
       size="icon-sm"
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
       aria-label="Toggle theme"
+      className="text-muted-foreground hover:text-foreground"
     >
       {mounted
         ? (theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />)
@@ -240,17 +204,18 @@ export function Topbar() {
           </SheetContent>
         </Sheet>
 
-        {/* Project + Environment switchers */}
-        <div className="flex items-center gap-1">
-          <ProjectSwitcher />
+        {/* Search (left) */}
+        <div className="hidden md:block">
+          <SearchButton />
+        </div>
+
+        {/* Environment switch (centered) */}
+        <div className="absolute left-1/2 hidden -translate-x-1/2 md:block">
           <EnvironmentSwitcher />
         </div>
 
         {/* Right side */}
         <div className="ml-auto flex items-center gap-2">
-          <div className="hidden md:block">
-            <SearchButton />
-          </div>
           <NotificationMenu />
           <ThemeToggle />
           <UserMenu />

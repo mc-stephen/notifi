@@ -17,7 +17,7 @@ import {
   Webhook,
 } from "lucide-react";
 
-const CHANNEL_ICON_MAP: Record<NotificationChannel, React.ComponentType<{ className?: string }>> = {
+export const CHANNEL_ICON_MAP: Record<NotificationChannel, React.ComponentType<{ className?: string }>> = {
   email: Mail,
   sms: MessageSquare,
   "push-android": Smartphone,

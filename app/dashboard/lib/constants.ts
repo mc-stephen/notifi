@@ -16,16 +16,13 @@ import {
   Megaphone,
   Clock,
   Radio,
-  Plug,
   BarChart3,
   Zap,
   Webhook,
   KeyRound,
   Package,
-  Code2,
   ScrollText,
   UserCog,
-  FolderOpen,
   CreditCard,
   Link,
   Settings,
@@ -66,7 +63,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Channels",
     items: [
       { label: "Channels", href: "/channels", icon: Radio },
-      { label: "Providers", href: "/providers", icon: Plug },
+      { label: "Integrations", href: "/integrations", icon: Link },
     ],
   },
   {
@@ -83,15 +80,12 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Webhooks", href: "/webhooks", icon: Webhook },
       { label: "API Keys", href: "/api-keys", icon: KeyRound },
       { label: "SDKs", href: "/sdk", icon: Package },
-      { label: "Developers", href: "/developers", icon: Code2 },
-      { label: "Integrations", href: "/integrations", icon: Link },
     ],
   },
   {
     label: "Workspace",
     items: [
       { label: "Team", href: "/team", icon: UserCog },
-      { label: "Projects", href: "/projects", icon: FolderOpen },
       { label: "Billing", href: "/billing", icon: CreditCard },
     ],
   },
@@ -212,6 +206,23 @@ export const PLAN_LABELS: Record<Plan, string> = {
   starter: "Starter",
   pro: "Pro",
   enterprise: "Enterprise",
+};
+
+// TODO: wire to billing API when it lands — these are demo placeholders.
+export const CURRENT_PLAN: Plan = "free";
+
+export const PLAN_DESCRIPTIONS: Record<Plan, string> = {
+  free: "10k credits/mo",
+  starter: "100k credits/mo",
+  pro: "Unlimited credits",
+  enterprise: "Custom limits",
+};
+
+export const PLAN_UPGRADEABLE: Record<Plan, boolean> = {
+  free: true,
+  starter: true,
+  pro: true,
+  enterprise: false,
 };
 
 export const HEALTH_LABELS: Record<HealthStatus, string> = {

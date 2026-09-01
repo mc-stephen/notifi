@@ -20,6 +20,8 @@ pub enum AuthError {
     TokenExpired(String),
     /// Missing/invalid session cookie on a protected endpoint.
     Unauthorized,
+    /// A requested resource does not exist (or is not visible to the caller).
+    NotFound(String),
     /// Auth routes are mounted but the service is unavailable (no database).
     NotConfigured,
     /// Endpoint exists but its real implementation hasn't landed yet.
@@ -37,6 +39,7 @@ impl std::fmt::Display for AuthError {
             Self::TokenInvalid(m) => write!(f, "invalid token: {m}"),
             Self::TokenExpired(m) => write!(f, "expired token: {m}"),
             Self::Unauthorized => write!(f, "unauthorized"),
+            Self::NotFound(m) => write!(f, "not found: {m}"),
             Self::NotConfigured => write!(f, "auth service not configured"),
             Self::NotImplemented(m) => write!(f, "not implemented: {m}"),
             Self::Storage(m) => write!(f, "storage failure: {m}"),
@@ -76,6 +79,7 @@ impl IntoApiError for AuthError {
                 "Service Unavailable",
                 "auth is unavailable because the database is not configured.",
             ),
+            Self::NotFound(detail) => ApiError::new(404, "about:blank", "Not Found", detail.clone()),
             Self::NotImplemented(detail) => {
                 ApiError::new(501, "about:blank", "Not Implemented", detail.clone())
             }

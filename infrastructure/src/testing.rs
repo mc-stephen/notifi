@@ -1,15 +1,16 @@
-//! In-memory [`AuthStore`] implementation for tests.
+//! In-memory [`AuthStore`] and [`ProjectsStore`] implementations for tests.
 //!
-//! Not compiled out: it is small, dependency-free, and lets downstream
+//! Not compiled out: they are small, dependency-free, and let downstream
 //! crates (the `api` binary's HTTP tests) build fully functional auth
-//! services without a database.
+//! and project services without a database.
 
 use std::sync::RwLock;
 
 use chrono::{DateTime, Utc};
 
-use crate::domain::auth::entities::{AuthToken, Session, TokenPurpose, User};
+use crate::domain::auth::entities::{AuthToken, Session, TokenPurpose, User, UserId};
 use crate::ports::auth_store::{AuthStore, BoxFut, StoreError};
+use crate::ports::projects_store::{ProjectSummary, ProjectsStore};
 
 /// Thread-safe in-memory store.
 #[derive(Default)]
@@ -19,6 +20,8 @@ pub struct FakeAuthStore {
     tokens: RwLock<Vec<AuthToken>>,
     /// Users treated as owning/belonging to a project (onboarding done).
     onboarded: RwLock<Vec<String>>,
+    /// Projects seeded for a user: (owner_user_id, ProjectSummary).
+    projects: RwLock<Vec<(String, ProjectSummary)>>,
 }
 
 impl FakeAuthStore {
@@ -45,6 +48,15 @@ impl FakeAuthStore {
     /// invited member) so onboarding is considered complete.
     pub fn seed_project(&self, user_id: crate::domain::auth::entities::UserId) {
         self.onboarded.write().unwrap().push(user_id.to_string());
+    }
+
+    /// Seeds a real project summary for the given user so the projects
+    /// API returns data in list/set-environment endpoints.
+    pub fn seed_project_summary(&self, user_id: UserId, project: ProjectSummary) {
+        self.projects
+            .write()
+            .unwrap()
+            .push((user_id.to_string(), project));
     }
 }
 
@@ -311,16 +323,79 @@ impl AuthStore for FakeAuthStore {
     fn complete_onboarding(
         &self,
         user_id: crate::domain::auth::entities::UserId,
-        _input: crate::ports::auth_store::OnboardingInput,
+        input: crate::ports::auth_store::OnboardingInput,
     ) -> BoxFut<'_, Result<(), StoreError>> {
         let onboarded = &self.onboarded;
+        let projects = &self.projects;
         Box::pin(async move {
-            let mut onboarded = onboarded.write().map_err(lock_err)?;
-            let id = user_id.to_string();
-            if !onboarded.contains(&id) {
-                onboarded.push(id);
+            // Mark onboarded.
+            {
+                let mut list = onboarded.write().map_err(lock_err)?;
+                let id = user_id.to_string();
+                if !list.contains(&id) {
+                    list.push(id);
+                }
+            }
+            // Seed a real project so GET /v1/projects returns data.
+            {
+                let mut list = projects.write().map_err(lock_err)?;
+                let slug = input
+                    .project_name
+                    .to_lowercase()
+                    .replace(' ', "-")
+                    .chars()
+                    .filter(|c| c.is_alphanumeric() || *c == '-')
+                    .take(40)
+                    .collect::<String>();
+                list.push((
+                    user_id.to_string(),
+                    ProjectSummary {
+                        id: ulid::Ulid::new().to_string(),
+                        name: input.project_name,
+                        slug,
+                        description: input.project_description,
+                        environment: "development".to_string(),
+                        created_at: chrono::Utc::now(),
+                    },
+                ));
             }
             Ok(())
+        })
+    }
+}
+
+impl ProjectsStore for FakeAuthStore {
+    fn list_projects(&self, user_id: UserId) -> BoxFut<'_, Result<Vec<ProjectSummary>, StoreError>> {
+        let projects = &self.projects;
+        Box::pin(async move {
+            let owned = projects.read().map_err(lock_err)?;
+            Ok(owned
+                .iter()
+                .filter(|(owner, _)| *owner == user_id.to_string())
+                .map(|(_, p)| p.clone())
+                .collect())
+        })
+    }
+
+    fn set_project_environment(
+        &self,
+        user_id: UserId,
+        project_id: &str,
+        environment: &str,
+    ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>> {
+        let projects = &self.projects;
+        let project_id = project_id.to_string();
+        let environment = environment.to_string();
+        let user_id_str = user_id.to_string();
+        Box::pin(async move {
+            let mut projects = projects.write().map_err(lock_err)?;
+            Ok(projects
+                .iter_mut()
+                .find(|(owner, p)| *owner == user_id_str && p.id == project_id)
+                .map(|(_, p)| {
+                    p.environment = environment;
+                    p.clone()
+                }))
         })
     }
 }

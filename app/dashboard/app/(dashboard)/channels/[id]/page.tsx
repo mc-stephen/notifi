@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/custom/page-header";
 import { ChannelBadge } from "@/components/custom/channel-badge";
 import { HealthIndicator } from "@/components/custom/health-indicator";
 import { CodeBlock } from "@/components/custom/code-block";
+import { CHANNEL_LABELS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +43,7 @@ function ChannelDetail({ id }: { id: string }) {
   }
 
   const bestProvider = providers.sort((a, b) => a.priority - b.priority)[0];
-  const channelName = channel.type.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const channelName = CHANNEL_LABELS[channel.type];
 
   return (
     <div className="space-y-6">

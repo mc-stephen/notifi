@@ -56,7 +56,7 @@
 
 /* Light mode (default) */
 :root {
-  --background: oklch(0.985 0 0);
+  --background: oklch(0.972 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -66,12 +66,12 @@
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.955 0 0);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.955 0 0);
+  --muted: oklch(0.962 0 0);
   --muted-foreground: oklch(0.556 0 0);
   --accent: oklch(0.955 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.900 0 0);
+  --border: oklch(0.885 0 0);
   --input: oklch(0.900 0 0);
   --ring: oklch(0.384 0.062 202.8);
   --success: oklch(0.648 0.150 160);
@@ -86,13 +86,13 @@
   --chart-4: oklch(0.795 0.120 75);
   --chart-5: oklch(0.577 0.245 27.325);
   --radius: 0.625rem;
-  --sidebar: oklch(1 0 0);
+  --sidebar: oklch(0.977 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.384 0.062 202.8);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.955 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.900 0 0);
+  --sidebar-border: oklch(0.885 0 0);
   --sidebar-ring: oklch(0.384 0.062 202.8);
 }
 
@@ -192,4 +192,25 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+}
+
+/* Sonner toast integration — sonner hardcodes grays for description and
+   close-button and uses flat vars for card chrome; map them onto app tokens
+   and give error toasts a destructive-tinted look in both themes. */
+[data-sonner-toast] [data-description] {
+  color: var(--muted-foreground);
+}
+
+[data-sonner-toast] [data-close-button] {
+  color: var(--muted-foreground);
+  border-color: var(--border);
+}
+
+[data-sonner-toast][data-type="error"] {
+  --normal-bg: color-mix(in oklab, var(--destructive) 7%, var(--popover));
+  --normal-border: color-mix(in oklab, var(--destructive) 40%, var(--border));
+}
+
+[data-sonner-toast][data-type="error"] [data-icon] {
+  color: var(--destructive);
 }
