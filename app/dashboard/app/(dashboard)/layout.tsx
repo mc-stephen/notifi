@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { VerifyEmailBanner } from "@/components/custom/dashboard/verify-email-banner";
+import { EnvironmentBanner } from "@/components/custom/dashboard/environment-banner";
 import { useAuthStore } from "@/store/auth-store";
 
 export default function DashboardLayout({
@@ -54,6 +55,7 @@ export default function DashboardLayout({
       {/* Main area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar />
+        <EnvironmentBanner />
         <VerifyEmailBanner />
         <main className="flex-1 overflow-y-auto bg-muted/40">
           <div className="mx-auto max-w-[1400px] p-6 lg:p-8">

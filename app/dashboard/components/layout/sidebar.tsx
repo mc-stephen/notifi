@@ -3,21 +3,33 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
 import { NAV_GROUPS } from "@/lib/constants";
 import { useUIStore } from "@/store/ui-store";
 import { ProjectSwitcher } from "./project-switcher";
 import { PlanBanner } from "@/components/custom/plan-banner";
-import {
-  PanelLeftClose,
-  PanelLeftOpen,
-  ChevronRight,
-} from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, ChevronRight } from "lucide-react";
 
-function SidebarItem({ item, collapsed }: { item: (typeof NAV_GROUPS)[number]["items"][number]; collapsed: boolean }) {
+function SidebarItem({
+  item,
+  collapsed,
+}: {
+  item: (typeof NAV_GROUPS)[number]["items"][number];
+  collapsed: boolean;
+}) {
   const pathname = usePathname();
-  const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+  const isActive =
+    pathname === item.href ||
+    (item.href !== "/" && pathname.startsWith(item.href));
 
   const link = (
     <Link
@@ -52,7 +64,13 @@ function SidebarItem({ item, collapsed }: { item: (typeof NAV_GROUPS)[number]["i
   return link;
 }
 
-function SidebarGroup({ group, collapsed }: { group: (typeof NAV_GROUPS)[number]; collapsed: boolean }) {
+function SidebarGroup({
+  group,
+  collapsed,
+}: {
+  group: (typeof NAV_GROUPS)[number];
+  collapsed: boolean;
+}) {
   if (collapsed) {
     return (
       <div className="space-y-1">
@@ -84,7 +102,15 @@ function SidebarGroup({ group, collapsed }: { group: (typeof NAV_GROUPS)[number]
   );
 }
 
-export function Sidebar({ className, mobile = false, onNavigate }: { className?: string; mobile?: boolean; onNavigate?: () => void }) {
+export function Sidebar({
+  className,
+  mobile = false,
+  onNavigate,
+}: {
+  className?: string;
+  mobile?: boolean;
+  onNavigate?: () => void;
+}) {
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
   const collapsed = !mobile && sidebarCollapsed;
 
@@ -97,9 +123,18 @@ export function Sidebar({ className, mobile = false, onNavigate }: { className?:
       )}
     >
       {/* Logo */}
-      <div className={cn("flex h-14 items-center border-b border-sidebar-border px-3", collapsed && "justify-center")}>
+      <div
+        className={cn(
+          "flex h-14 items-center border-b border-sidebar-border px-3",
+          collapsed && "justify-center",
+        )}
+      >
         {!collapsed ? (
-          <Link href="/" className="flex items-center gap-2 font-semibold text-base" onClick={onNavigate}>
+          <Link
+            href="/"
+            className="flex items-center gap-2 font-semibold text-base"
+            onClick={onNavigate}
+          >
             <div className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">
               N
             </div>
@@ -118,15 +153,21 @@ export function Sidebar({ className, mobile = false, onNavigate }: { className?:
       <div className="flex-1 min-h-0 overflow-y-auto px-2 py-3">
         <nav className="space-y-4">
           {NAV_GROUPS.map((group) => (
-            <SidebarGroup key={group.label} group={group} collapsed={collapsed} />
+            <SidebarGroup
+              key={group.label}
+              group={group}
+              collapsed={collapsed}
+            />
           ))}
         </nav>
       </div>
 
       {/* Pinned footer — project switcher + plan banner */}
-      <div className="shrink-0 space-y-2 border-t border-sidebar-border px-2 pt-3 pb-2">
-        <ProjectSwitcher collapsed={collapsed} />
-        <PlanBanner collapsed={collapsed} />
+      <div className="shrink-0 border-t border-sidebar-border">
+        <div className="space-y-2 bg-muted p-2">
+          <ProjectSwitcher collapsed={collapsed} />
+          <PlanBanner collapsed={collapsed} />
+        </div>
       </div>
 
       {/* Seam toggle — straddles sidebar/topbar border */}

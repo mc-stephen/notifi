@@ -1,27 +1,37 @@
 "use client";
 
-import { useMetrics, useNotificationTimeline, useNotifications } from "@/hooks";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { DataTable } from "@/components/custom/data-table";
 import { MetricCard } from "@/components/custom/metric-card";
 import { StatusBadge } from "@/components/custom/status-badge";
 import { ChannelBadge } from "@/components/custom/channel-badge";
+import { AreaChart } from "@/components/custom/charts/area-chart";
 import { PriorityBadge } from "@/components/custom/priority-badge";
 import { HealthIndicator } from "@/components/custom/health-indicator";
-import { DataTable } from "@/components/custom/data-table";
-import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { AreaChart } from "@/components/custom/charts/area-chart";
-import { type ColumnDef } from "@tanstack/react-table";
-import type { Notification } from "@/lib/types";
-import { format } from "date-fns";
-import { ArrowRight, Activity } from "lucide-react";
-import Link from "next/link";
+import { useMetrics, useNotificationTimeline, useNotifications } from "@/hooks";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardAction,
+} from "@/components/ui/card";
 
+import Link from "next/link";
+import { format } from "date-fns";
+import type { Notification } from "@/lib/types";
+import { ArrowRight, Activity } from "lucide-react";
+import { type ColumnDef } from "@tanstack/react-table";
+
+//===================================
+//
+//===================================
 function MetricCards() {
   const metrics = useMetrics();
 
   return (
-    <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+    <div className="grid gap-4 grid-cols-2 md:grid-cols-6">
       {metrics.map((m) => (
         <MetricCard key={m.title} {...m} />
       ))}
@@ -29,6 +39,9 @@ function MetricCards() {
   );
 }
 
+//===================================
+//
+//===================================
 function NotificationTimeline() {
   const data = useNotificationTimeline();
 
@@ -38,7 +51,7 @@ function NotificationTimeline() {
         <CardTitle>Notification Timeline</CardTitle>
         <CardAction>
           <Button variant="ghost" size="sm" render={<Link href="/analytics" />}>
-              View analytics <ArrowRight className="size-3.5 ml-1" />
+            View analytics <ArrowRight className="size-3.5 ml-1" />
           </Button>
         </CardAction>
       </CardHeader>
@@ -49,6 +62,9 @@ function NotificationTimeline() {
   );
 }
 
+//===================================
+//
+//===================================
 function HealthStatus() {
   const providers = [
     { name: "SendGrid (Email)", status: "healthy" as const },
@@ -77,7 +93,9 @@ function HealthStatus() {
       <CardContent>
         <div className="space-y-4">
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Providers</h4>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              Providers
+            </h4>
             <div className="space-y-1.5">
               {providers.map((p) => (
                 <div key={p.name} className="flex items-center justify-between">
@@ -89,7 +107,9 @@ function HealthStatus() {
           </div>
           <Separator />
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">System</h4>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              System
+            </h4>
             <div className="space-y-1.5">
               {systemStatus.map((s) => (
                 <div key={s.name} className="flex items-center justify-between">
@@ -105,6 +125,9 @@ function HealthStatus() {
   );
 }
 
+//===================================
+//
+//===================================
 function RecentNotificationsTable() {
   const { items } = useNotifications(undefined, undefined, 1, 50);
 
@@ -119,7 +142,9 @@ function RecentNotificationsTable() {
     {
       accessorKey: "channel",
       header: "Channel",
-      cell: ({ row }) => <ChannelBadge channel={row.original.channel} showIcon />,
+      cell: ({ row }) => (
+        <ChannelBadge channel={row.original.channel} showIcon />
+      ),
     },
     {
       accessorKey: "subject",
@@ -163,8 +188,12 @@ function RecentNotificationsTable() {
       <CardHeader>
         <CardTitle>Recent Notifications</CardTitle>
         <CardAction>
-          <Button variant="ghost" size="sm" render={<Link href="/notifications" />}>
-              View all <ArrowRight className="size-3.5 ml-1" />
+          <Button
+            variant="ghost"
+            size="sm"
+            render={<Link href="/notifications" />}
+          >
+            View all <ArrowRight className="size-3.5 ml-1" />
           </Button>
         </CardAction>
       </CardHeader>
@@ -181,12 +210,17 @@ function RecentNotificationsTable() {
   );
 }
 
+//===================================
+//
+//===================================
 export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Overview of your notification system.</p>
+        <p className="text-sm text-muted-foreground">
+          Overview of your notification system.
+        </p>
       </div>
 
       <MetricCards />

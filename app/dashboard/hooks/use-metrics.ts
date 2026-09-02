@@ -6,8 +6,6 @@ import {
   XCircle,
   Clock,
   TrendingUp,
-  MousePointerClick,
-  Eye,
   Timer,
 } from "lucide-react";
 
@@ -47,20 +45,6 @@ export function useMetrics(): MetricCard[] {
       change: 0.4,
       changeLabel: "vs last week",
       icon: TrendingUp,
-    },
-    {
-      title: "Open Rate",
-      value: "68.1%",
-      change: 2.1,
-      changeLabel: "vs last week",
-      icon: Eye,
-    },
-    {
-      title: "Click Rate",
-      value: "24.7%",
-      change: -1.3,
-      changeLabel: "vs last week",
-      icon: MousePointerClick,
     },
     {
       title: "Avg Latency",
