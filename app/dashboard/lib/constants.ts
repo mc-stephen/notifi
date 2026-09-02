@@ -7,6 +7,7 @@ import type {
   Plan,
   HealthStatus,
   DevicePlatform,
+  NotificationSettingsCategory,
 } from "./types";
 import {
   LayoutDashboard,
@@ -27,6 +28,7 @@ import {
   Link,
   Settings,
   HelpCircle,
+  Inbox,
   type LucideIcon,
 } from "lucide-react";
 
@@ -47,7 +49,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Core",
     items: [
       { label: "Dashboard", href: "/", icon: LayoutDashboard },
-      { label: "Notifications", href: "/notifications", icon: Bell },
+      { label: "Deliveries", href: "/deliveries", icon: Bell },
       { label: "Recipients", href: "/recipients", icon: Users },
       { label: "Templates", href: "/templates", icon: FileText },
     ],
@@ -93,6 +95,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "System",
     items: [
       { label: "Settings", href: "/settings", icon: Settings },
+      { label: "Notifications", href: "/notifications", icon: Inbox },
       { label: "Support", href: "/support", icon: HelpCircle },
     ],
   },
@@ -224,6 +227,57 @@ export const PLAN_UPGRADEABLE: Record<Plan, boolean> = {
   pro: true,
   enterprise: false,
 };
+
+export const NOTIFICATION_SETTINGS: NotificationSettingsCategory[] = [
+  {
+    id: "team",
+    label: "Team",
+    description: "Changes to project membership and roles.",
+    settings: [
+      { key: "team_add", label: "Team member added", description: "When someone is added to this project.", email: true, inApp: true },
+      { key: "team_remove", label: "Team member removed", description: "When someone is removed from this project.", email: true, inApp: true },
+      { key: "team_role_change", label: "Role changed", description: "When a member's role is updated.", email: false, inApp: true },
+    ],
+  },
+  {
+    id: "integrations",
+    label: "Integrations",
+    description: "Channel providers and connections.",
+    settings: [
+      { key: "provider_add", label: "Provider added", description: "When a new channel provider is connected.", email: true, inApp: true },
+      { key: "provider_delete", label: "Provider removed", description: "When a channel provider is disconnected.", email: true, inApp: true },
+    ],
+  },
+  {
+    id: "security",
+    label: "Security",
+    description: "API keys and access changes.",
+    settings: [
+      { key: "api_key_created", label: "API key created", description: "When a new API key is generated.", email: true, inApp: true },
+      { key: "api_key_revoked", label: "API key revoked", description: "When an API key is revoked.", email: true, inApp: true },
+    ],
+  },
+  {
+    id: "projects",
+    label: "Projects",
+    description: "Project lifecycle events.",
+    settings: [
+      { key: "project_created", label: "Project created", description: "When a new project is created.", email: true, inApp: true },
+    ],
+  },
+  {
+    id: "billing",
+    label: "Billing",
+    description: "Invoices, payments, and plan changes.",
+    settings: [
+      { key: "billing_invoice_paid", label: "Invoice paid", description: "When an invoice is paid successfully.", email: true, inApp: true },
+      { key: "billing_payment_failed", label: "Payment failed", description: "When a payment fails.", email: true, inApp: true },
+      { key: "billing_plan_changed", label: "Plan changed", description: "When the workspace plan changes.", email: true, inApp: true },
+    ],
+  },
+];
+
+export const CURRENT_USER_ROLE: Role = "admin";
 
 export const HEALTH_LABELS: Record<HealthStatus, string> = {
   healthy: "Healthy",

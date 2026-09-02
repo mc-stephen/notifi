@@ -290,7 +290,7 @@ function RecipientNotifications({ recipientId }: { recipientId: string }) {
             {notifications.map((n) => (
               <TableRow key={n.id}>
                 <TableCell>
-                  <Link href={`/notifications/${n.id}`} className="font-mono text-xs hover:underline">
+                  <Link href={`/deliveries/${n.id}`} className="font-mono text-xs hover:underline">
                     {n.id}
                   </Link>
                 </TableCell>

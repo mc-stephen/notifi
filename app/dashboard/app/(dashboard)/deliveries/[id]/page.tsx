@@ -43,15 +43,15 @@ function NewNotificationForm() {
         description="Manually dispatch a notification to a recipient"
         breadcrumbs={[
           { label: "Dashboard", href: "/" },
-          { label: "Notifications", href: "/notifications" },
+          { label: "Deliveries", href: "/deliveries" },
           { label: "New" },
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => router.push("/notifications")}>
+            <Button size="sm" variant="outline" onClick={() => router.push("/deliveries")}>
               <ArrowLeft className="size-3.5 mr-1" /> Cancel
             </Button>
-            <Button size="sm" className="gap-1.5" onClick={() => router.push("/notifications")}>
+            <Button size="sm" className="gap-1.5" onClick={() => router.push("/deliveries")}>
               <Send className="size-3.5" /> Send notification
             </Button>
           </div>
@@ -156,7 +156,7 @@ function NewNotificationForm() {
             <CardContent className="space-y-2 text-xs text-muted-foreground">
               <p>Use a valid recipient ID that exists in your project.</p>
               <p>The notification will be dispatched immediately through the configured channel.</p>
-              <p>You can track delivery status from the notifications list.</p>
+              <p>You can track delivery status from the deliveries list.</p>
             </CardContent>
           </Card>
         </div>
@@ -223,8 +223,8 @@ function NotificationDetail({ id }: { id: string }) {
       <div className="flex flex-col items-center justify-center py-20">
         <h2 className="text-lg font-medium">Notification not found</h2>
         <p className="text-sm text-muted-foreground mt-1">The notification {id} does not exist.</p>
-        <Button variant="outline" className="mt-4" onClick={() => router.push("/notifications")}>
-          <ArrowLeft className="size-3.5 mr-1" /> Back to notifications
+        <Button variant="outline" className="mt-4" onClick={() => router.push("/deliveries")}>
+          <ArrowLeft className="size-3.5 mr-1" /> Back to deliveries
         </Button>
       </div>
     );
@@ -240,7 +240,7 @@ function NotificationDetail({ id }: { id: string }) {
         description={notification.subject ?? notification.body.slice(0, 80)}
         breadcrumbs={[
           { label: "Dashboard", href: "/" },
-          { label: "Notifications", href: "/notifications" },
+          { label: "Deliveries", href: "/deliveries" },
           { label: notification.id },
         ]}
         actions={

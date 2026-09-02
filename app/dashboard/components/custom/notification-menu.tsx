@@ -173,7 +173,7 @@ export function NotificationMenu() {
         <div className="p-1.5">
           <DropdownMenuItem
             className="justify-center rounded-lg py-2 text-sm font-medium text-primary"
-            onClick={() => router.push("/notifications")}
+            onClick={() => router.push("/deliveries")}
           >
             View all notifications
           </DropdownMenuItem>

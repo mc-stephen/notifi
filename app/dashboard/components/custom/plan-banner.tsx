@@ -44,7 +44,7 @@ export function PlanBanner({ collapsed = false }: { collapsed?: boolean }) {
     <Link
       href="/billing"
       className={cn(
-        "bg-sidebar group flex items-center justify-between rounded-lg border border-sidebar-border px-3 py-2 transition-colors",
+        "bg-sidebar group flex items-center justify-between rounded-lg border border-sidebar-border px-2 py-2 transition-colors",
         "hover:border-primary/30 hover:bg-sidebar-accent/40",
       )}
     >

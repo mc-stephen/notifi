@@ -135,7 +135,7 @@ export default function IntegrationsPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {filtered.map((integration) => (
           <Card key={integration.id} className="hover:bg-muted/30 transition-colors">
             <CardHeader className="pb-3">

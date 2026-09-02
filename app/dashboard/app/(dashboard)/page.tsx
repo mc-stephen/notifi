@@ -191,7 +191,7 @@ function RecentNotificationsTable() {
           <Button
             variant="ghost"
             size="sm"
-            render={<Link href="/notifications" />}
+            render={<Link href="/deliveries" />}
           >
             View all <ArrowRight className="size-3.5 ml-1" />
           </Button>

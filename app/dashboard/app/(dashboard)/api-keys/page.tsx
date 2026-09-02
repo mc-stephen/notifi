@@ -6,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { CodeBlock } from "@/components/custom/code-block";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Dialog,
@@ -17,7 +17,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { env } from "@/lib/env";
 import { format } from "date-fns";
 import {
   KeyRound,
@@ -26,7 +25,9 @@ import {
   EyeOff,
   Copy,
   Trash2,
-  Play,
+  ShieldCheck,
+  MapPin,
+  Lock,
 } from "lucide-react";
 
 type ApiKeyEntry = {
@@ -41,10 +42,24 @@ type ApiKeyEntry = {
   createdAt: string;
 };
 
+type WhitelistEntry = {
+  id: string;
+  address: string;
+  label: string;
+  lastUsedAt?: string;
+  addedAt: string;
+};
+
 const MOCK_KEYS: ApiKeyEntry[] = [
   { id: "key_1", name: "Production API Key", prefix: "napi_prod_", environment: "production", permissions: ["read", "write"], lastUsedAt: "2025-06-25T10:00:00Z", enabled: true, createdAt: "2025-01-15T00:00:00Z" },
   { id: "key_3", name: "Development Key", prefix: "napi_dev_", environment: "development", permissions: ["read"], lastUsedAt: "2025-06-20T09:00:00Z", enabled: true, createdAt: "2025-03-10T00:00:00Z" },
   { id: "key_4", name: "Legacy Integration", prefix: "napi_leg_", environment: "production", permissions: ["read"], enabled: false, createdAt: "2024-06-01T00:00:00Z" },
+];
+
+const MOCK_WHITELIST: WhitelistEntry[] = [
+  { id: "ip_1", address: "203.0.113.10", label: "Office network", lastUsedAt: "2025-06-25T09:15:00Z", addedAt: "2025-01-10T00:00:00Z" },
+  { id: "ip_2", address: "198.51.100.42", label: "CI/CD server", lastUsedAt: "2025-06-24T22:00:00Z", addedAt: "2025-03-02T00:00:00Z" },
+  { id: "ip_3", address: "192.0.2.77", label: "Staging", addedAt: "2024-11-20T00:00:00Z" },
 ];
 
 const ENV_COLORS: Record<string, string> = {
@@ -56,9 +71,32 @@ export default function ApiKeysPage() {
   const [keys] = useState(MOCK_KEYS);
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
   const [deleteDialog, setDeleteDialog] = useState<ApiKeyEntry | null>(null);
+  const [enforce, setEnforce] = useState(false);
+  const [whitelist, setWhitelist] = useState(MOCK_WHITELIST);
+  const [newAddress, setNewAddress] = useState("");
+  const [newLabel, setNewLabel] = useState("");
 
   const toggleVisibility = (id: string) => {
     setVisibleKeys((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const addAddress = () => {
+    if (!newAddress.trim()) return;
+    setWhitelist((prev) => [
+      ...prev,
+      {
+        id: `ip_${Date.now()}`,
+        address: newAddress.trim(),
+        label: newLabel.trim() || "Untitled",
+        addedAt: new Date().toISOString(),
+      },
+    ]);
+    setNewAddress("");
+    setNewLabel("");
+  };
+
+  const removeAddress = (id: string) => {
+    setWhitelist((prev) => prev.filter((entry) => entry.id !== id));
   };
 
   return (
@@ -77,7 +115,7 @@ export default function ApiKeysPage() {
       <Tabs defaultValue="keys">
         <TabsList>
           <TabsTrigger value="keys">API Keys</TabsTrigger>
-          <TabsTrigger value="playground">Playground</TabsTrigger>
+          <TabsTrigger value="whitelist">IP Whitelisting</TabsTrigger>
         </TabsList>
 
         <TabsContent value="keys" className="mt-4">
@@ -194,57 +232,112 @@ export default function ApiKeysPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="playground" className="mt-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>API Playground</CardTitle>
-                <Button size="sm" className="gap-1.5">
-                  <Play className="size-3.5" /> Send request
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-2">
-                <select className="rounded-md border bg-transparent px-3 py-2 text-sm font-mono">
-                  <option>POST</option>
-                  <option>GET</option>
-                  <option>PUT</option>
-                  <option>DELETE</option>
-                </select>
-                <Input
-                  defaultValue={`${env.apiBase}/v1/notifications`}
-                  className="flex-1 font-mono text-sm"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Request Body</label>
-                <CodeBlock
-                  language="JSON"
-                  code={JSON.stringify({
-                    recipient_id: "rcp_0001",
-                    channel: "email",
-                    subject: "Hello from playground",
-                    body: "This is a test notification sent from the developer console.",
-                    priority: "normal",
-                  }, null, 2)}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Response</label>
-                <CodeBlock
-                  language="JSON"
-                  code={JSON.stringify({
-                    id: "ntf_0042",
-                    status: "queued",
-                    channel: "email",
-                    recipient_id: "rcp_0001",
-                    created_at: new Date().toISOString(),
-                  }, null, 2)}
-                />
-              </div>
-            </CardContent>
-          </Card>
+        <TabsContent value="whitelist" className="mt-4">
+          <div className="space-y-6">
+            <Card>
+              <CardContent className="pt-5">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <ShieldCheck className="size-5" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold">Enforce IP allowlist</div>
+                      <p className="max-w-md text-xs text-muted-foreground">
+                        When enabled, API requests are only accepted from the IP addresses below.
+                        Requests from any other address will be rejected.
+                      </p>
+                    </div>
+                  </div>
+                  <Switch size="default" checked={enforce} onCheckedChange={setEnforce} />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="size-4 text-muted-foreground" /> Allowed addresses
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">IP or CIDR</label>
+                    <Input
+                      placeholder="203.0.113.0/24"
+                      value={newAddress}
+                      onChange={(e) => setNewAddress(e.target.value)}
+                      className="w-52 font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Label</label>
+                    <Input
+                      placeholder="Office network"
+                      value={newLabel}
+                      onChange={(e) => setNewLabel(e.target.value)}
+                      className="w-48 text-sm"
+                    />
+                  </div>
+                  <Button size="sm" className="gap-1.5" onClick={addAddress}>
+                    <Plus className="size-3.5" /> Add address
+                  </Button>
+                </div>
+
+                <div className="rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Address</TableHead>
+                        <TableHead>Label</TableHead>
+                        <TableHead>Last used</TableHead>
+                        <TableHead className="w-[60px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {whitelist.map((entry) => (
+                        <TableRow key={entry.id}>
+                          <TableCell>
+                            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+                              {entry.address}
+                            </code>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm">{entry.label}</span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-xs text-muted-foreground">
+                              {entry.lastUsedAt ? format(new Date(entry.lastUsedAt), "MMM d, HH:mm") : "Never"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="icon-xs" className="text-destructive" onClick={() => removeAddress(entry.id)}>
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {whitelist.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
+                            No allowed addresses yet. Add one above to get started.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {!enforce && whitelist.length > 0 && (
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Lock className="size-3.5" />
+                    The allowlist is not being enforced until you toggle the setting above.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

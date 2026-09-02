@@ -163,8 +163,8 @@ export function Sidebar({
       </div>
 
       {/* Pinned footer — project switcher + plan banner */}
-      <div className="shrink-0 border-t border-sidebar-border">
-        <div className="space-y-2 bg-muted p-2">
+      <div className="shrink-0 border-t p-2 border-sidebar-border">
+        <div className="space-y-2 rounded-sm bg-muted/60 border p-2">
           <ProjectSwitcher collapsed={collapsed} />
           <PlanBanner collapsed={collapsed} />
         </div>

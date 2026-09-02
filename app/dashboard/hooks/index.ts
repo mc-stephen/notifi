@@ -4,3 +4,5 @@ export { useRecipients, useRecipient, useRecipientNotifications } from "./use-re
 export { useTemplates, useTemplate } from "./use-templates";
 export { useEvents } from "./use-events";
 export { useChannels, useProviders, useProvidersByChannel, useProviderHealth } from "./use-channels";
+export { useInAppNotifications } from "./use-in-app-notifications";
+export { useNotificationSettings } from "./use-notification-settings";

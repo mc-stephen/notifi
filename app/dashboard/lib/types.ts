@@ -23,6 +23,44 @@ export type TeamMember = {
 
 export type Role = "owner" | "admin" | "developer" | "viewer" | "billing";
 
+export type InAppNotificationType =
+  | "team_add"
+  | "team_remove"
+  | "role_change"
+  | "provider_add"
+  | "provider_delete"
+  | "api_key_created"
+  | "api_key_revoked"
+  | "project_created"
+  | "billing_change"
+  | "system";
+
+export type InAppNotification = {
+  id: string;
+  type: InAppNotificationType;
+  title: string;
+  message: string;
+  actorName?: string;
+  projectName: string;
+  read: boolean;
+  createdAt: string;
+};
+
+export type NotificationSetting = {
+  key: string;
+  label: string;
+  description: string;
+  email: boolean;
+  inApp: boolean;
+};
+
+export type NotificationSettingsCategory = {
+  id: string;
+  label: string;
+  description: string;
+  settings: NotificationSetting[];
+};
+
 export type NotificationChannel =
   | "email"
   | "sms"
