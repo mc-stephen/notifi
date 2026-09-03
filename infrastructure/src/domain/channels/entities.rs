@@ -30,6 +30,9 @@ pub struct ProviderDefinition {
     /// URL to the provider's logo/icon (optional).
     #[serde(default)]
     pub icon_url: Option<String>,
+    /// URL to the provider's documentation (optional).
+    #[serde(default)]
+    pub docs_url: Option<String>,
     /// Config fields for the primary API connection.
     #[serde(default)]
     pub config_fields: Vec<ConfigField>,

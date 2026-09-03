@@ -19,6 +19,7 @@ export interface ProviderDefinition {
   primary_regions?: string[];
   platforms?: string[];
   icon_url?: string;
+  docs_url?: string;
   config_fields: ConfigField[];
   smtp_fallback?: SmtpFallbackConfig;
 }

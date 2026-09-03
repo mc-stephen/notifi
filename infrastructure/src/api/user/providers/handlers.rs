@@ -32,6 +32,8 @@ pub struct ProviderDto {
     pub platforms: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docs_url: Option<String>,
     pub config_fields: Vec<ConfigFieldDto>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub smtp_fallback: Option<SmtpFallbackDto>,
@@ -85,6 +87,7 @@ fn build_email_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: None,
+                docs_url: Some("https://datatracker.ietf.org/doc/html/rfc5321".to_string()),
                 config_fields: vec![
                     ConfigField { key: "host".to_string(), label: "SMTP Host".to_string(), field_type: ConfigFieldType::Text, required: true },
                     ConfigField { key: "port".to_string(), label: "SMTP Port".to_string(), field_type: ConfigFieldType::Number, required: true },
@@ -102,6 +105,7 @@ fn build_email_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/sendgrid.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://docs.sendgrid.com/".to_string()),
                 config_fields: vec![
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "from_email".to_string(), label: "From Email".to_string(), field_type: ConfigFieldType::Email, required: true },
@@ -125,6 +129,7 @@ fn build_email_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/resend.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://resend.com/docs".to_string()),
                 config_fields: vec![
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "from_email".to_string(), label: "From Email".to_string(), field_type: ConfigFieldType::Email, required: true },
@@ -148,6 +153,7 @@ fn build_email_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://api.iconify.design/logos/aws-ses.svg".to_string()),
+                docs_url: Some("https://docs.aws.amazon.com/ses/".to_string()),
                 config_fields: vec![
                     ConfigField { key: "access_key".to_string(), label: "Access Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "secret_key".to_string(), label: "Secret Key".to_string(), field_type: ConfigFieldType::Password, required: true },
@@ -173,6 +179,7 @@ fn build_email_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/postmarkapp.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://postmarkapp.com/developer".to_string()),
                 config_fields: vec![
                     ConfigField { key: "server_token".to_string(), label: "Server Token".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "from_email".to_string(), label: "From Email".to_string(), field_type: ConfigFieldType::Email, required: true },
@@ -196,6 +203,7 @@ fn build_email_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/mailgun.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://documentation.mailgun.com/".to_string()),
                 config_fields: vec![
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "domain".to_string(), label: "Domain".to_string(), field_type: ConfigFieldType::Text, required: true },
@@ -220,6 +228,7 @@ fn build_email_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/brevo.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://developers.brevo.com/".to_string()),
                 config_fields: vec![
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "from_email".to_string(), label: "From Email".to_string(), field_type: ConfigFieldType::Email, required: true },
@@ -252,6 +261,7 @@ fn build_sms_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/twilio.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://www.twilio.com/docs".to_string()),
                 config_fields: vec![
                     ConfigField { key: "account_sid".to_string(), label: "Account SID".to_string(), field_type: ConfigFieldType::Text, required: true },
                     ConfigField { key: "auth_token".to_string(), label: "Auth Token".to_string(), field_type: ConfigFieldType::Password, required: true },
@@ -266,6 +276,7 @@ fn build_sms_channel() -> ChannelDefinition {
                 primary_regions: vec!["NG".to_string(), "GH".to_string(), "KE".to_string()],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/termii.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://developer.termii.com/".to_string()),
                 config_fields: vec![
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "sender_id".to_string(), label: "Sender ID".to_string(), field_type: ConfigFieldType::Text, required: true },
@@ -280,6 +291,7 @@ fn build_sms_channel() -> ChannelDefinition {
                 primary_regions: vec!["NG".to_string(), "GH".to_string(), "KE".to_string(), "UG".to_string()],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/africastalking.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://docs.africastalking.com/".to_string()),
                 config_fields: vec![
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "username".to_string(), label: "Username".to_string(), field_type: ConfigFieldType::Text, required: true },
@@ -294,6 +306,7 @@ fn build_sms_channel() -> ChannelDefinition {
                 primary_regions: vec!["NG".to_string()],
                 platforms: vec![],
                 icon_url: None,
+                docs_url: Some("https://smslive247.com/docs".to_string()),
                 config_fields: vec![
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "sender_id".to_string(), label: "Sender ID".to_string(), field_type: ConfigFieldType::Text, required: true },
@@ -307,6 +320,7 @@ fn build_sms_channel() -> ChannelDefinition {
                 primary_regions: vec!["NG".to_string()],
                 platforms: vec![],
                 icon_url: None,
+                docs_url: Some("https://www.ebulksms.com/pages/api-docs".to_string()),
                 config_fields: vec![
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "sender_id".to_string(), label: "Sender ID".to_string(), field_type: ConfigFieldType::Text, required: true },
@@ -320,6 +334,7 @@ fn build_sms_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/infobip.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://www.infobip.com/docs".to_string()),
                 config_fields: vec![
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "base_url".to_string(), label: "Base URL".to_string(), field_type: ConfigFieldType::Text, required: true },
@@ -334,6 +349,7 @@ fn build_sms_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/vonage.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://developer.nexmo.com/".to_string()),
                 config_fields: vec![
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "api_secret".to_string(), label: "API Secret".to_string(), field_type: ConfigFieldType::Password, required: true },
@@ -348,6 +364,7 @@ fn build_sms_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/bird.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://bird.com/developer".to_string()),
                 config_fields: vec![
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "base_url".to_string(), label: "Base URL".to_string(), field_type: ConfigFieldType::Text, required: true },
@@ -370,7 +387,8 @@ fn build_push_channel() -> ChannelDefinition {
                 scope: ProviderScope::Global,
                 primary_regions: vec![],
                 platforms: vec!["android".to_string(), "web".to_string()],
-                icon_url: Some("https://cdn.brandfetch.io/firebase.google.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                icon_url: Some("https://api.iconify.design/logos/firebase-icon.svg".to_string()),
+                docs_url: Some("https://firebase.google.com/docs/cloud-messaging".to_string()),
                 config_fields: vec![
                     ConfigField { key: "service_account_key".to_string(), label: "Service Account Key (JSON)".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "project_id".to_string(), label: "Project ID".to_string(), field_type: ConfigFieldType::Text, required: false },
@@ -384,6 +402,7 @@ fn build_push_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec!["ios".to_string(), "macos".to_string()],
                 icon_url: Some("https://cdn.brandfetch.io/apple.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://developer.apple.com/documentation/usernotifications".to_string()),
                 config_fields: vec![
                     ConfigField { key: "key_id".to_string(), label: "Key ID".to_string(), field_type: ConfigFieldType::Text, required: true },
                     ConfigField { key: "team_id".to_string(), label: "Team ID".to_string(), field_type: ConfigFieldType::Text, required: true },
@@ -400,6 +419,7 @@ fn build_push_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec!["android".to_string(), "ios".to_string(), "web".to_string()],
                 icon_url: Some("https://cdn.brandfetch.io/onesignal.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://documentation.onesignal.com/".to_string()),
                 config_fields: vec![
                     ConfigField { key: "app_id".to_string(), label: "App ID".to_string(), field_type: ConfigFieldType::Text, required: true },
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
@@ -414,6 +434,7 @@ fn build_push_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec!["android".to_string(), "ios".to_string()],
                 icon_url: Some("https://cdn.brandfetch.io/pushy.me/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://pushy.me/docs".to_string()),
                 config_fields: vec![
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "app_id".to_string(), label: "App ID".to_string(), field_type: ConfigFieldType::Text, required: false },
@@ -427,6 +448,7 @@ fn build_push_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec!["android".to_string(), "ios".to_string(), "web".to_string()],
                 icon_url: Some("https://cdn.brandfetch.io/braze.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://www.braze.com/docs/".to_string()),
                 config_fields: vec![
                     ConfigField { key: "api_key".to_string(), label: "API Key".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "app_id".to_string(), label: "App ID".to_string(), field_type: ConfigFieldType::Text, required: true },
@@ -450,6 +472,7 @@ fn build_chat_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/slack.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://api.slack.com/".to_string()),
                 config_fields: vec![
                     ConfigField { key: "type".to_string(), label: "Auth Type".to_string(), field_type: ConfigFieldType::Text, required: true },
                     ConfigField { key: "webhook_url".to_string(), label: "Webhook URL".to_string(), field_type: ConfigFieldType::Text, required: false },
@@ -465,6 +488,7 @@ fn build_chat_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/telegram.org/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://core.telegram.org/bots/api".to_string()),
                 config_fields: vec![
                     ConfigField { key: "bot_token".to_string(), label: "Bot Token".to_string(), field_type: ConfigFieldType::Password, required: true },
                     ConfigField { key: "chat_id".to_string(), label: "Chat ID".to_string(), field_type: ConfigFieldType::Text, required: true },
@@ -478,6 +502,7 @@ fn build_chat_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/whatsapp.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://developers.facebook.com/docs/whatsapp/".to_string()),
                 config_fields: vec![
                     ConfigField { key: "phone_number_id".to_string(), label: "Phone Number ID".to_string(), field_type: ConfigFieldType::Text, required: true },
                     ConfigField { key: "access_token".to_string(), label: "Access Token".to_string(), field_type: ConfigFieldType::Password, required: true },
@@ -492,6 +517,7 @@ fn build_chat_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/discord.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://discord.com/developers/docs".to_string()),
                 config_fields: vec![
                     ConfigField { key: "type".to_string(), label: "Auth Type".to_string(), field_type: ConfigFieldType::Text, required: true },
                     ConfigField { key: "webhook_url".to_string(), label: "Webhook URL".to_string(), field_type: ConfigFieldType::Text, required: false },
@@ -507,6 +533,7 @@ fn build_chat_channel() -> ChannelDefinition {
                 primary_regions: vec![],
                 platforms: vec![],
                 icon_url: Some("https://cdn.brandfetch.io/microsoft.com/w/512/h/512/theme/dark/icon.jpeg".to_string()),
+                docs_url: Some("https://learn.microsoft.com/microsoftteams/".to_string()),
                 config_fields: vec![
                     ConfigField { key: "webhook_url".to_string(), label: "Webhook URL".to_string(), field_type: ConfigFieldType::Text, required: true },
                     ConfigField { key: "channel_name".to_string(), label: "Channel Name".to_string(), field_type: ConfigFieldType::Text, required: false },
@@ -549,6 +576,7 @@ impl From<ProviderDefinition> for ProviderDto {
             primary_regions: provider.primary_regions,
             platforms: provider.platforms,
             icon_url: provider.icon_url,
+            docs_url: provider.docs_url,
             config_fields: provider.config_fields.into_iter().map(|f| f.into()).collect(),
             smtp_fallback: provider.smtp_fallback.map(|s| s.into()),
         }

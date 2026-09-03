@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useProviderRegistry } from "@/hooks";
+import { useProjectStore } from "@/store/project-store";
+import { api, ApiError } from "@/lib/api";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/custom/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +23,7 @@ import {
   Loader2,
   Search,
   ChevronDown,
+  ExternalLink,
 } from "lucide-react";
 
 const CHANNEL_ICONS: Record<string, string> = {
@@ -31,9 +35,12 @@ const CHANNEL_ICONS: Record<string, string> = {
 
 export default function ProvidersPage() {
   const { registry, loading, error } = useProviderRegistry();
+  const projectId = useProjectStore((s) => s.currentProject?.id);
   const [search, setSearch] = useState("");
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [connectDialog, setConnectDialog] = useState<{ channel: string; provider: string } | null>(null);
+  const [configForm, setConfigForm] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   if (loading) {
     return (
@@ -59,6 +66,41 @@ export default function ProvidersPage() {
   const searchLower = search.toLowerCase();
   const hasSearch = searchLower.length > 0;
   const hasChannelFilter = selectedChannel !== null;
+
+  async function handleConnect() {
+    if (!connectDialog) return;
+
+    if (!projectId) {
+      toast.error("No project selected. Please select or create a project first.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await api(`/v1/projects/${projectId}/channel-configs`, {
+        method: "POST",
+        body: JSON.stringify({
+          channel_id: connectDialog.channel,
+          provider_id: connectDialog.provider,
+          config: configForm,
+          enabled: true,
+        }),
+      });
+      toast.success("Provider connected successfully");
+      setConnectDialog(null);
+      setConfigForm({});
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Failed to connect provider";
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleDialogClose() {
+    setConnectDialog(null);
+    setConfigForm({});
+  }
 
   return (
     <div className="space-y-6">
@@ -141,6 +183,17 @@ export default function ProvidersPage() {
                             {provider.name.charAt(0)}
                           </div>
                           <CardTitle className="text-sm">{provider.name}</CardTitle>
+                          {provider.docs_url && (
+                            <a
+                              href={provider.docs_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-muted-foreground hover:text-foreground ml-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink className="size-3" />
+                            </a>
+                          )}
                         </div>
                       </div>
                     </CardHeader>
@@ -190,7 +243,7 @@ export default function ProvidersPage() {
 
       <Dialog
         open={!!connectDialog}
-        onOpenChange={() => setConnectDialog(null)}
+        onOpenChange={handleDialogClose}
       >
         <DialogContent>
           <DialogHeader>
@@ -214,16 +267,26 @@ export default function ProvidersPage() {
                   <Input
                     placeholder={`Enter ${field.label.toLowerCase()}`}
                     type={field.type === "password" ? "password" : field.type === "email" ? "email" : "text"}
+                    value={configForm[field.key] ?? ""}
+                    onChange={(e) => setConfigForm({ ...configForm, [field.key]: e.target.value })}
                   />
                 </div>
               ));
             })()}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConnectDialog(null)}>
+            <Button variant="outline" onClick={handleDialogClose} disabled={submitting}>
               Cancel
             </Button>
-            <Button onClick={() => setConnectDialog(null)}>Connect</Button>
+            <Button onClick={handleConnect} disabled={submitting || !projectId}>
+              {submitting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" /> Connecting...
+                </>
+              ) : (
+                "Connect"
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
