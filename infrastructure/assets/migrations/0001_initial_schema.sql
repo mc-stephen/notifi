@@ -1,6 +1,6 @@
 -- 0001_initial_schema.sql
--- Clean-origin schema for the Notifi server (dev-stage squash of the
--- project's earliest migration history — from production onward migrations
+-- Clean-origin schema for the Notifi server (dev-stage squash of all
+-- migrations into a single file — from production onward migrations
 -- are append-only, see ARCHITECTURE.md §19).
 --
 -- Conventions:
@@ -62,10 +62,6 @@ CREATE INDEX idx_auth_tokens_user ON auth_tokens(user_id);
 -- projects and API keys
 -- ---------------------------------------------------------------------------
 
--- The user account IS the workspace: projects are owned by their creator
--- and shared via per-project membership (platform_project_members).
--- `environment` is the project-level gate: development → only dev-scoped
--- credentials work; production → dev and prod credentials both work.
 CREATE TABLE platform_projects (
     id          VARCHAR(26) PRIMARY KEY,
     name        TEXT        NOT NULL,
@@ -82,18 +78,6 @@ CREATE TABLE platform_projects (
 
 CREATE INDEX idx_projects_created_by ON platform_projects(created_by);
 
--- API keys: the raw key is shown once at creation and never stored. The
--- server stores the key's public `prefix` (for identification in listings
--- and logs) plus `key_hash` (SHA-256 of the full key). `permissions` is a
--- subset of the permission catalog; `scopes` restricts the key to specific
--- channels (e.g. {'email','sms'}) or entities (e.g. {'project:abc'}).
---
--- Environment model (Stripe-style test/live):
---   * every env-scoped resource carries its own `environment` column
---     (`development` | `production`) — dev and prod rows coexist;
---   * `platform_projects.environment` gates which environments are allowed
---     right now: development → only dev-scoped credentials work (prod keys
---     get a "switch to live" error); production → both work.
 CREATE TABLE auth_api_keys (
     id             VARCHAR(26) PRIMARY KEY,
     project_id     VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
@@ -104,7 +88,7 @@ CREATE TABLE auth_api_keys (
                    CHECK (environment IN ('development', 'production')),
     permissions    TEXT[]      NOT NULL DEFAULT '{}',
     scopes         TEXT[]      NOT NULL DEFAULT '{}',
-    rate_limit     INT, -- requests per minute; NULL = plan default
+    rate_limit     INT,
     expires_at     TIMESTAMPTZ,
     last_used_at   TIMESTAMPTZ,
     enabled        BOOLEAN     NOT NULL DEFAULT TRUE,
@@ -136,8 +120,6 @@ CREATE TABLE platform_project_members (
 
 CREATE INDEX idx_project_members_user ON platform_project_members(user_id);
 
--- User-level "folders" for organizing projects in the UI. No auth/billing
--- semantics — purely a grouping convenience.
 CREATE TABLE platform_user_groups (
     id         VARCHAR(26) PRIMARY KEY,
     user_id    VARCHAR(26) NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
@@ -161,11 +143,6 @@ CREATE TABLE platform_user_group_projects (
 -- transactional outbox for domain events
 -- ---------------------------------------------------------------------------
 
--- Producers INSERT an envelope in the same transaction as their aggregate
--- write; a dispatcher polls `pending` rows and publishes them to the message
--- bus (pgmq at M2+), then marks them `published`. `attempts` counts retries
--- for crash/serialization failures; poison rows stay `failed` for inspection.
-
 CREATE TABLE event_outbox (
     id           BIGSERIAL PRIMARY KEY,
     envelope     JSONB       NOT NULL,
@@ -181,3 +158,95 @@ CREATE TABLE event_outbox (
 CREATE INDEX idx_outbox_pending
     ON event_outbox (created_at)
     WHERE status = 'pending';
+
+-- ---------------------------------------------------------------------------
+-- audit logs (append-only)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE audit_logs (
+    id           VARCHAR(26) PRIMARY KEY,
+    user_id      VARCHAR(26) REFERENCES auth_users(id) ON DELETE SET NULL,
+    actor_name   TEXT,
+    event_type   TEXT        NOT NULL,
+    message      TEXT        NOT NULL,
+    project_id   VARCHAR(26),
+    metadata     JSONB,
+    occurred_at  TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX idx_audit_logs_user_time
+    ON audit_logs (user_id, occurred_at DESC);
+
+CREATE INDEX idx_audit_logs_time
+    ON audit_logs (occurred_at DESC);
+
+-- ---------------------------------------------------------------------------
+-- recipients (brand end-users)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE platform_recipients (
+    id           VARCHAR(26) PRIMARY KEY,
+    project_id   VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
+    user_id      TEXT        NOT NULL,
+    name         TEXT        NOT NULL,
+    contacts     JSONB       NOT NULL DEFAULT '{}',
+    created_by   VARCHAR(26) REFERENCES auth_users(id) ON DELETE SET NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at   TIMESTAMPTZ,
+    UNIQUE (project_id, user_id)
+);
+
+CREATE INDEX idx_recipients_project ON platform_recipients(project_id);
+
+-- ---------------------------------------------------------------------------
+-- message templates
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE platform_templates (
+    id           VARCHAR(26) PRIMARY KEY,
+    project_id   VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
+    name         TEXT        NOT NULL,
+    description  TEXT,
+    channel      TEXT        NOT NULL DEFAULT 'email',
+    content      JSONB       NOT NULL DEFAULT '{}',
+    version      INT         NOT NULL DEFAULT 1,
+    created_by   VARCHAR(26) REFERENCES auth_users(id) ON DELETE SET NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at   TIMESTAMPTZ
+);
+
+CREATE INDEX idx_templates_project ON platform_templates(project_id);
+
+CREATE TABLE platform_template_attachments (
+    id           VARCHAR(26) PRIMARY KEY,
+    template_id  VARCHAR(26) NOT NULL REFERENCES platform_templates(id) ON DELETE CASCADE,
+    name         TEXT        NOT NULL,
+    mime_type    TEXT        NOT NULL,
+    size_bytes   BIGINT      NOT NULL DEFAULT 0,
+    url          TEXT        NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_template_attachments_template ON platform_template_attachments(template_id);
+
+-- ---------------------------------------------------------------------------
+-- provider configs (per-project credentials)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE platform_project_provider_configs (
+    id               TEXT PRIMARY KEY,
+    project_id       TEXT NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
+    channel_id       TEXT NOT NULL,
+    provider_id      TEXT NOT NULL,
+    config           JSONB NOT NULL DEFAULT '{}',
+    smtp_fallback    JSONB,
+    enabled          BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (project_id, channel_id, provider_id)
+);
+
+CREATE INDEX idx_provider_configs_project ON platform_project_provider_configs(project_id);
+CREATE INDEX idx_provider_configs_channel ON platform_project_provider_configs(channel_id);

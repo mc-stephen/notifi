@@ -1,4 +1,5 @@
-mod config;
+pub mod config;
+pub mod providers;
 
 pub use config::EmailConfig;
 
@@ -18,19 +19,19 @@ pub struct EmailMessage {
     pub body_html: Option<String>,
 }
 
-pub struct EmailProvider {
-    config: EmailConfig,
+pub struct EmailSender {
+    config: config::EmailConfig,
 }
 
-impl EmailProvider {
-    pub fn new(config: EmailConfig) -> Self {
+impl EmailSender {
+    pub fn new(config: config::EmailConfig) -> Self {
         Self { config }
     }
 
     pub async fn send_mail(&self, msg: &EmailMessage) -> Result<(), String> {
         let from: Address = self
             .config
-            .from_address
+            .from_address()
             .parse()
             .map_err(|e| format!("Invalid from_address: {e}"))?;
 
@@ -78,17 +79,30 @@ impl EmailProvider {
                 .map_err(|e| format!("Failed to build email: {e}"))?
         };
 
-        let creds = Credentials::new(self.config.username.clone(), self.config.password.clone());
+        // For SMTP config, use lettre directly
+        match &self.config {
+            config::EmailConfig::Smtp(smtp_config) => {
+                let creds = Credentials::new(smtp_config.username.clone(), smtp_config.password.clone());
 
-        let mailer = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&self.config.host)
-            .port(self.config.port)
-            .credentials(creds)
-            .build();
+                let mailer = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&smtp_config.host)
+                    .port(smtp_config.port)
+                    .credentials(creds)
+                    .build();
 
-        mailer
-            .send(email)
-            .await
-            .map_err(|e| format!("SMTP send failed: {e}"))?;
+                mailer
+                    .send(email)
+                    .await
+                    .map_err(|e| format!("SMTP send failed: {e}"))?;
+            }
+            _ => {
+                // For API-based providers, use their specific HTTP clients
+                // TODO: Implement SendGrid, Resend, etc. API calls
+                return Err(format!(
+                    "Provider {} not yet implemented for direct sending",
+                    self.config.provider_name()
+                ));
+            }
+        }
 
         Ok(())
     }

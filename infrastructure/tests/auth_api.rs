@@ -16,11 +16,12 @@ use server::domain::auth::{
     AuthToken as AuthTokenEntity, AuthTokenId, AuthService, TokenPurpose, hash_token,
 };
 use server::domain::projects::ProjectService;
+use server::domain::audit::AuditService;
 use server::ports::auth_store::{AuthStore, BoxFut};
 use server::ports::oauth::{
     AuthorizeStart, OAuthError, OAuthIdentityProvider, OAuthProfile, OAuthRuntime,
 };
-use server::testing::FakeAuthStore;
+use server::testing::{FakeAuditStore, FakeAuthStore};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -29,7 +30,8 @@ use server::infra::config::AppConfig;
 /// App wired with a fake-backed auth service (dev tokens exposed).
 fn app() -> (Router, Arc<FakeAuthStore>) {
     let store = Arc::new(FakeAuthStore::new());
-    let auth = Arc::new(AuthService::new(store.clone(), true));
+    let audit = Arc::new(AuditService::new(Arc::new(FakeAuditStore::new())));
+    let auth = Arc::new(AuthService::new(store.clone(), true, audit.clone()));
     (
         build_router(
             AppState {
@@ -38,6 +40,10 @@ fn app() -> (Router, Arc<FakeAuthStore>) {
                 auth: Some(auth),
                 oauth: None,
                 projects: None,
+                audit: Some(audit),
+                recipients: None,
+                templates: None,
+                channel_providers: None,
             },
             &AppConfig::default(),
         ),
@@ -54,6 +60,10 @@ fn app_without_auth() -> Router {
             auth: None,
             oauth: None,
             projects: None,
+            audit: None,
+            recipients: None,
+            templates: None,
+            channel_providers: None,
         },
         &AppConfig::default(),
     )
@@ -64,7 +74,8 @@ fn app_without_auth() -> Router {
 /// extractor type mismatch cannot hide here.
 fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
     let store = Arc::new(FakeAuthStore::new());
-    let auth = Arc::new(AuthService::new(store.clone(), true));
+    let audit = Arc::new(AuditService::new(Arc::new(FakeAuditStore::new())));
+    let auth = Arc::new(AuthService::new(store.clone(), true, audit.clone()));
     let oauth = Arc::new(OAuthRuntime {
         provider: Arc::new(StubOAuthProvider),
         dashboard_url: "http://localhost:3000".to_string(),
@@ -77,6 +88,10 @@ fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
                 auth: Some(auth),
                 oauth: Some(oauth),
                 projects: None,
+                audit: Some(audit),
+                recipients: None,
+                templates: None,
+                channel_providers: None,
             },
             &AppConfig::default(),
         ),
@@ -784,8 +799,9 @@ async fn oauth_routes_answer_503_without_runtime() {
 /// App wired with both auth and projects services (fake-backed).
 fn app_with_projects() -> (Router, Arc<FakeAuthStore>) {
     let store = Arc::new(FakeAuthStore::new());
-    let auth = Arc::new(AuthService::new(store.clone(), true));
-    let projects = Arc::new(ProjectService::new(store.clone()));
+    let audit = Arc::new(AuditService::new(Arc::new(FakeAuditStore::new())));
+    let auth = Arc::new(AuthService::new(store.clone(), true, audit.clone()));
+    let projects = Arc::new(ProjectService::new(store.clone(), audit.clone()));
     (
         build_router(
             AppState {
@@ -794,6 +810,10 @@ fn app_with_projects() -> (Router, Arc<FakeAuthStore>) {
                 auth: Some(auth),
                 oauth: None,
                 projects: Some(projects),
+                audit: Some(audit),
+                recipients: None,
+                templates: None,
+                channel_providers: None,
             },
             &AppConfig::default(),
         ),
@@ -938,3 +958,78 @@ async fn patch_json_with_cookie(
     .await
     .unwrap()
 }
+
+// -- audit log ----------------------------------------------------------
+
+#[tokio::test]
+async fn logs_require_auth() {
+    let (app, _store) = app_with_projects();
+    let res = get_with_cookie_on(app, "/v1/logs", None).await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn logs_return_recorded_actions_after_signup_and_login() {
+    let (app, _store) = app_with_projects();
+    let (token, uid) = signup_and_login_on(app.clone(), "logs@example.com").await;
+
+    let res = get_with_cookie_on(app, "/v1/logs", Some(&token)).await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let body = body_json(res).await;
+    let logs = body["logs"].as_array().unwrap();
+    // signup then login produce two account-scoped entries for this user
+    assert!(
+        logs.iter().any(|l| {
+            l["eventType"] == "user.signup" && l["userId"] == uid
+        }),
+        "expected user.signup for this user, got {logs:?}"
+    );
+    assert!(
+        logs.iter().any(|l| l["eventType"] == "user.login"),
+        "expected user.login, got {logs:?}"
+    );
+}
+
+#[tokio::test]
+async fn logs_record_project_environment_switch() {
+    let (app, _store) = app_with_projects();
+    let (token, _uid) = signup_and_login_on(app.clone(), "logs-env@example.com").await;
+
+    // complete onboarding → creates a project; capture its id from /projects
+    let res = post_json_with_cookie(
+        app.clone(),
+        "/v1/auth/onboarding/complete",
+        json!({"project": {"name": "Log App", "description": "test"}}),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let res = get_with_cookie_on(app.clone(), "/v1/projects", Some(&token)).await;
+    let project_id = body_json(res).await["projects"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = patch_json_with_cookie(
+        app.clone(),
+        &format!("/v1/projects/{project_id}/environment"),
+        json!({"environment": "production"}),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let res = get_with_cookie_on(app, "/v1/logs", Some(&token)).await;
+    let body = body_json(res).await;
+    let logs = body["logs"].as_array().unwrap();
+    assert!(
+        logs.iter().any(|l| {
+            l["eventType"] == "project.environment_changed"
+                && l["projectId"] == project_id
+        }),
+        "expected the environment switch entry, got {logs:?}"
+    );
+}
+

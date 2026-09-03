@@ -130,3 +130,23 @@ requests finish, logs say `api shutdown complete`.
 | `received fatal alert: HandshakeFailure` | server's TLS rejected the handshake — try `sslmode=disable` in the URL and fix the server's TLS config (traffic is then unencrypted!) |
 | migration warnings about checksums | migrations already applied — normal |
 | bind error on port | something else uses 8080 → `NOTIFI_PORT=XXXX cargo run` |
+
+## 10. Database reset
+
+Nuke the database and re-apply migrations from scratch:
+
+```shell
+cargo run -- --reset-db    # drops public schema, re-applies 0001_initial_schema.sql, exits
+cargo run                  # normal server start
+```
+
+> Use this when migration history is stale (e.g., after deleting migration files)
+> or when you want a clean dev start without touching Docker volumes.
+
+### When to use
+
+| Scenario | Command |
+|---|---|
+| Fresh dev start, no data to keep | `cargo run -- --reset-db` |
+| Migration history mismatch | `cargo run -- --reset-db` |
+| Want to wipe Docker volumes too | `docker compose down -v && cargo run -- --reset-db` |

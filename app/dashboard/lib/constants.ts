@@ -18,7 +18,6 @@ import {
   Clock,
   Radio,
   BarChart3,
-  Zap,
   Webhook,
   KeyRound,
   Package,
@@ -65,14 +64,13 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Channels",
     items: [
       { label: "Channels", href: "/channels", icon: Radio },
-      { label: "Integrations", href: "/integrations", icon: Link },
+      { label: "Providers", href: "/providers", icon: Link },
     ],
   },
   {
     label: "Insights",
     items: [
       { label: "Analytics", href: "/analytics", icon: BarChart3 },
-      { label: "Events", href: "/events", icon: Zap },
       { label: "Logs", href: "/logs", icon: ScrollText },
     ],
   },

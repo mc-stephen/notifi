@@ -1,20 +1,27 @@
-use super::SmsSender;
-use futures::future::BoxFuture;
+use serde::Deserialize;
 use reqwest::Client;
+use futures::future::BoxFuture;
 
+use super::SmsSender;
+
+/// Twilio SMS configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TwilioConfig {
+    pub account_sid: String,
+    pub auth_token: String,
+    pub from_number: String,
+}
+
+/// Twilio SMS provider implementation.
 pub struct TwilioProvider {
-    account_sid: String,
-    auth_token: String,
-    from_number: String,
+    config: TwilioConfig,
     client: Client,
 }
 
 impl TwilioProvider {
-    pub fn new(account_sid: String, auth_token: String, from_number: String) -> Self {
+    pub fn new(config: TwilioConfig) -> Self {
         Self {
-            account_sid,
-            auth_token,
-            from_number,
+            config,
             client: Client::new(),
         }
     }
@@ -24,13 +31,13 @@ impl SmsSender for TwilioProvider {
     fn send(&self, to: &str, text: &str) -> BoxFuture<'static, Result<(), String>> {
         let url = format!(
             "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
-            self.account_sid
+            self.config.account_sid
         );
-        let from = self.from_number.clone();
+        let from = self.config.from_number.clone();
         let to = to.to_string();
         let text = text.to_string();
         let client = self.client.clone();
-        let auth = (self.account_sid.clone(), self.auth_token.clone());
+        let auth = (self.config.account_sid.clone(), self.config.auth_token.clone());
 
         Box::pin(async move {
             let params = [("From", from), ("To", to), ("Body", text)];

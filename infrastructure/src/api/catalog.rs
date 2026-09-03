@@ -142,6 +142,123 @@ pub const USER_V1_ROUTES: &[RouteInfo] = &[
         feature: "projects",
         description: "switch the project-level environment gate",
     },
+    // -- logs feature -------------------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/v1/logs",
+        surface: Surface::UserV1,
+        feature: "logs",
+        description: "audit-log entries the user may see (their own + project)",
+    },
+    // -- recipients feature ---------------------------------------------------
+    RouteInfo {
+        method: "POST",
+        path: "/v1/projects/{id}/recipients",
+        surface: Surface::UserV1,
+        feature: "recipients",
+        description: "create a recipient (brand end-user) in a project",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/v1/projects/{id}/recipients",
+        surface: Surface::UserV1,
+        feature: "recipients",
+        description: "list recipients in a project, newest first",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/v1/projects/{id}/recipients/{recipient_id}",
+        surface: Surface::UserV1,
+        feature: "recipients",
+        description: "fetch a single recipient",
+    },
+    RouteInfo {
+        method: "PATCH",
+        path: "/v1/projects/{id}/recipients/{recipient_id}",
+        surface: Surface::UserV1,
+        feature: "recipients",
+        description: "update a recipient's name/contacts",
+    },
+    RouteInfo {
+        method: "DELETE",
+        path: "/v1/projects/{id}/recipients/{recipient_id}",
+        surface: Surface::UserV1,
+        feature: "recipients",
+        description: "soft-delete a recipient",
+    },
+    // -- templates feature ----------------------------------------------------
+    RouteInfo {
+        method: "POST",
+        path: "/v1/projects/{id}/templates",
+        surface: Surface::UserV1,
+        feature: "templates",
+        description: "create a message template (per-channel content + attachments)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/v1/projects/{id}/templates",
+        surface: Surface::UserV1,
+        feature: "templates",
+        description: "list templates in a project, newest first",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/v1/projects/{id}/templates/{template_id}",
+        surface: Surface::UserV1,
+        feature: "templates",
+        description: "fetch a single template with its attachments",
+    },
+    RouteInfo {
+        method: "PATCH",
+        path: "/v1/projects/{id}/templates/{template_id}",
+        surface: Surface::UserV1,
+        feature: "templates",
+        description: "update a template's content and/or attachments",
+    },
+    RouteInfo {
+        method: "DELETE",
+        path: "/v1/projects/{id}/templates/{template_id}",
+        surface: Surface::UserV1,
+        feature: "templates",
+        description: "soft-delete a template",
+    },
+    // -- providers feature ----------------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/v1/providers",
+        surface: Surface::UserV1,
+        feature: "providers",
+        description: "full provider registry (all channels + providers + config_fields)",
+    },
+    // -- channel-configs feature -----------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/v1/projects/{id}/channel-configs",
+        surface: Surface::UserV1,
+        feature: "channel_configs",
+        description: "list connected providers for a project",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/v1/projects/{id}/channel-configs",
+        surface: Surface::UserV1,
+        feature: "channel_configs",
+        description: "connect a provider (store API keys + SMTP fallback)",
+    },
+    RouteInfo {
+        method: "PATCH",
+        path: "/v1/projects/{id}/channel-configs/{config_id}",
+        surface: Surface::UserV1,
+        feature: "channel_configs",
+        description: "update a provider's configuration",
+    },
+    RouteInfo {
+        method: "DELETE",
+        path: "/v1/projects/{id}/channel-configs/{config_id}",
+        surface: Surface::UserV1,
+        feature: "channel_configs",
+        description: "disconnect a provider",
+    },
 ];
 
 /// Ops/infrastructure routes (absolute root, outside both surfaces).

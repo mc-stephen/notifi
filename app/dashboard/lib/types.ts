@@ -116,17 +116,12 @@ export type Notification = {
 export type Recipient = {
   id: string;
   projectId: string;
-  email?: string;
-  phone?: string;
+  /** The brand's in-house targeting key, unique within the project. */
+  userId: string;
   name: string;
-  attributes?: Record<string, string>;
-  tags?: string[];
-  segments?: string[];
-  language?: string;
-  timezone?: string;
+  /** Flexible contact blob (email, phone, device/push ids, ...). */
+  contacts?: Record<string, unknown>;
   createdAt: string;
-  lastActiveAt?: string;
-  devices?: Device[];
 };
 
 export type DevicePlatform =
@@ -153,29 +148,32 @@ export type Device = {
   expiresAt?: string;
 };
 
+/// A notification template. Contains one per-channel content representation
+/// (subject, html, text, sms, push title/body...) stored as a flexible JSON
+/// `content` blob, plus metadata-only attachments.
 export type Template = {
   id: string;
   projectId: string;
   name: string;
-  folder?: string;
-  category?: string;
-  channel: NotificationChannel;
-  subject?: string;
-  body: string;
-  variables: TemplateVariable[];
+  description?: string;
+  channel: string;
+  content: TemplateContent;
   version: number;
-  isDraft: boolean;
-  locale?: string;
+  attachments: TemplateAttachment[];
   createdAt: string;
   updatedAt: string;
 };
 
-export type TemplateVariable = {
+/// Flexible per-channel content. Keys vary by channel; the UI reads/writes
+/// well-known keys (subject, html, text, sms, push:{title,body}) via helpers.
+export type TemplateContent = Record<string, unknown>;
+
+export type TemplateAttachment = {
+  id: string;
   name: string;
-  type: "string" | "number" | "boolean" | "date" | "json";
-  required: boolean;
-  defaultValue?: string;
-  description?: string;
+  mimeType: string;
+  sizeBytes: number;
+  url: string;
 };
 
 export type Campaign = {
@@ -215,37 +213,30 @@ export type Schedule = {
   createdAt: string;
 };
 
-export type ChannelConfig = {
+/// A connected messaging provider (e.g. SendGrid, Twilio, FCM).
+export type MessageProvider = {
+  id: string;
+  projectId: string;
+  name: string;
+  type: NotificationChannel;
+  connected: boolean;
+  health: HealthStatus;
+  latencyMs: number;
+  successRate: number;
+  region: string;
+  config: Record<string, unknown>;
+  quotaUsed: number;
+  quotaLimit: number;
+  createdAt: string;
+};
+
+/// A logical channel with provider routing (ordered by priority).
+export type Channel = {
   id: string;
   projectId: string;
   type: NotificationChannel;
   enabled: boolean;
-  config: Record<string, unknown>;
-};
-
-export type ProviderType =
-  | "email"
-  | "sms"
-  | "push-android"
-  | "push-ios"
-  | "web-push"
-  | "webhook";
-
-export type Provider = {
-  id: string;
-  channelId: string;
-  type: ProviderType;
-  name: string;
-  enabled: boolean;
-  health: HealthStatus;
-  latencyMs: number;
-  successRate: number;
-  priority: number;
-  fallbackId?: string;
-  region?: string;
-  quotaUsed: number;
-  quotaLimit: number;
-  createdAt: string;
+  providerIds: string[];
 };
 
 export type HealthStatus = "healthy" | "degraded" | "down" | "unknown";

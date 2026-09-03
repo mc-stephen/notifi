@@ -307,6 +307,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat_channel"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2378,6 +2389,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "push_channel"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "quinn"
 version = "0.11.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3024,6 +3046,7 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "argon2",
+ "async-trait",
  "axum",
  "axum-extra",
  "chrono",

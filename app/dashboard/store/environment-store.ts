@@ -7,6 +7,8 @@ import { toast } from "sonner";
 type EnvironmentStore = {
   currentEnvironment: Environment;
   pending: boolean;
+  /** True after syncFromProject has run at least once. */
+  hydrated: boolean;
   /** Call from the topbar after projects hydrate to sync the env from the server. */
   syncFromProject: (env: Environment) => void;
   /** PATCH the server, then commit locally. Reverts on failure. */
@@ -16,9 +18,10 @@ type EnvironmentStore = {
 export const useEnvironmentStore = create<EnvironmentStore>((set, get) => ({
   currentEnvironment: "development",
   pending: false,
+  hydrated: false,
 
   syncFromProject: (env) => {
-    if (!get().pending) set({ currentEnvironment: env });
+    if (!get().pending) set({ currentEnvironment: env, hydrated: true });
   },
 
   switchEnvironment: async (projectId, env) => {

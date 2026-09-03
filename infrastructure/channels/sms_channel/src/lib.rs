@@ -2,35 +2,37 @@ pub mod config;
 pub mod providers;
 
 pub use config::SmsConfig;
-use providers::{LocalNigeriaProvider, SmsSender, TwilioProvider};
+use providers::SmsSender;
 
 pub struct SmsMessage {
     pub to: String,
     pub text: String,
 }
 
-pub struct SmsProvider {
-    sender: Box<dyn SmsSender>,
+pub struct SmsSender2 {
+    config: config::SmsConfig,
 }
 
-impl SmsProvider {
-    pub fn new(config: SmsConfig) -> Self {
-        let sender: Box<dyn SmsSender> = match config {
-            SmsConfig::Twilio {
-                account_sid,
-                auth_token,
-                from_number,
-            } => Box::new(TwilioProvider::new(account_sid, auth_token, from_number)),
-            SmsConfig::LocalNigeria {
-                api_key,
-                base_url,
-                sender_id,
-            } => Box::new(LocalNigeriaProvider::new(api_key, base_url, sender_id)),
-        };
-        Self { sender }
+impl SmsSender2 {
+    pub fn new(config: config::SmsConfig) -> Self {
+        Self { config }
     }
 
     pub async fn send_sms(&self, msg: &SmsMessage) -> Result<(), String> {
-        self.sender.send(&msg.to, &msg.text).await
+        let provider = self.config.clone().to_provider();
+        match provider {
+            providers::SmsProvider::Twilio(c) => {
+                let sender = providers::twilio::TwilioProvider::new(c);
+                sender.send(&msg.to, &msg.text).await
+            }
+            providers::SmsProvider::LocalNigeria(c) => {
+                let sender = providers::local_nigeria::LocalNigeriaProvider::new(c);
+                sender.send(&msg.to, &msg.text).await
+            }
+            _ => Err(format!(
+                "SMS provider not yet implemented: {}",
+                provider.provider_name()
+            )),
+        }
     }
 }

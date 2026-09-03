@@ -294,7 +294,7 @@ function NotificationDetail({ id }: { id: string }) {
                   <div>
                     <dt className="text-muted-foreground">Recipient</dt>
                     <dd className="mt-1">
-                      <Link href={`/recipients/${notification.recipientId}`} className="font-mono text-xs hover:underline">
+                      <Link href="/recipients" className="font-mono text-xs hover:underline">
                         {notification.recipientId}
                       </Link>
                     </dd>

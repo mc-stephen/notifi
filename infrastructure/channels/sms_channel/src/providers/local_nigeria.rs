@@ -1,40 +1,38 @@
-use super::SmsSender;
-use futures::future::BoxFuture;
+use serde::Deserialize;
 use reqwest::Client;
-use serde::Serialize;
+use futures::future::BoxFuture;
 
+use super::SmsSender;
+
+/// Local Nigeria SMS configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LocalNigeriaConfig {
+    pub api_key: String,
+    pub base_url: String,
+    pub sender_id: String,
+}
+
+/// Local Nigeria SMS provider implementation.
 pub struct LocalNigeriaProvider {
-    api_key: String,
-    base_url: String,
-    sender_id: String,
+    config: LocalNigeriaConfig,
     client: Client,
 }
 
 impl LocalNigeriaProvider {
-    pub fn new(api_key: String, base_url: String, sender_id: String) -> Self {
+    pub fn new(config: LocalNigeriaConfig) -> Self {
         Self {
-            api_key,
-            base_url,
-            sender_id,
+            config,
             client: Client::new(),
         }
     }
 }
 
-#[derive(Serialize)]
-struct NigeriaPayload {
-    api_key: String,
-    sender_id: String,
-    to: String,
-    message: String,
-}
-
 impl SmsSender for LocalNigeriaProvider {
     fn send(&self, to: &str, text: &str) -> BoxFuture<'static, Result<(), String>> {
-        let url = format!("{}/send", self.base_url);
+        let url = format!("{}/send", self.config.base_url);
         let payload = NigeriaPayload {
-            api_key: self.api_key.clone(),
-            sender_id: self.sender_id.clone(),
+            api_key: self.config.api_key.clone(),
+            sender_id: self.config.sender_id.clone(),
             to: to.to_string(),
             message: text.to_string(),
         };
@@ -56,4 +54,12 @@ impl SmsSender for LocalNigeriaProvider {
             }
         })
     }
+}
+
+#[derive(serde::Serialize)]
+struct NigeriaPayload {
+    api_key: String,
+    sender_id: String,
+    to: String,
+    message: String,
 }

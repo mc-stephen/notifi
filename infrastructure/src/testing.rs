@@ -8,9 +8,17 @@ use std::sync::RwLock;
 
 use chrono::{DateTime, Utc};
 
+use notifi_core::Ulid;
+
 use crate::domain::auth::entities::{AuthToken, Session, TokenPurpose, User, UserId};
+use crate::domain::audit::entities::AuditEntry;
+use crate::ports::audit_store::{AuditFilters, AuditStore};
 use crate::ports::auth_store::{AuthStore, BoxFut, StoreError};
 use crate::ports::projects_store::{ProjectSummary, ProjectsStore};
+use crate::ports::recipients_store::{RecipientRecord, RecipientsStore};
+use crate::ports::templates_store::{
+    AttachmentInput, AttachmentRecord, TemplateRecord, TemplatesStore,
+};
 
 /// Thread-safe in-memory store.
 #[derive(Default)]
@@ -396,6 +404,458 @@ impl ProjectsStore for FakeAuthStore {
                     p.environment = environment;
                     p.clone()
                 }))
+        })
+    }
+}
+
+/// In-memory, append-only [`AuditStore`] for tests.
+#[derive(Default)]
+pub struct FakeAuditStore {
+    entries: RwLock<Vec<AuditEntry>>,
+}
+
+impl FakeAuditStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Directly seeds an audit entry (bypasses the service).
+    pub fn seed(&self, entry: AuditEntry) {
+        self.entries.write().unwrap().push(entry);
+    }
+
+    /// The current contents, newest-first as inserted.
+    pub fn all(&self) -> Vec<AuditEntry> {
+        let mut all = self.entries.read().unwrap().clone();
+        all.reverse();
+        all
+    }
+}
+
+impl AuditStore for FakeAuditStore {
+    fn record(&self, entry: &AuditEntry) -> BoxFut<'_, Result<(), StoreError>> {
+        let entries = &self.entries;
+        let entry = entry.clone();
+        Box::pin(async move {
+            entries.write().map_err(lock_err)?.push(entry);
+            Ok(())
+        })
+    }
+
+    fn list(
+        &self,
+        user_id: &str,
+        _filters: AuditFilters<'_>,
+        limit: i64,
+        _before_id: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<AuditEntry>, StoreError>> {
+        let entries = self.entries.read().unwrap().clone();
+        let user_id = user_id.to_string();
+        Box::pin(async move {
+            let mut mine: Vec<_> = entries
+                .into_iter()
+                .filter(|e| {
+                    e.user_id.as_deref() == Some(user_id.as_str())
+                        || e.project_id.as_deref().is_some()
+                })
+                .collect();
+            mine.reverse();
+            mine.truncate(limit.max(0) as usize);
+            Ok(mine)
+        })
+    }
+}
+
+/// In-memory [`RecipientsStore`] for tests.
+///
+/// Visibility mirrors the Postgres store: an actor can only see/create/
+/// delete recipients in a project they own or belong to, tracked via
+/// [`FakeRecipientsStore::seed_visible`].
+#[derive(Default)]
+pub struct FakeRecipientsStore {
+    recipients: RwLock<Vec<RecipientRecord>>,
+    /// (user_id, project_id) pairs the actor may access.
+    visible: RwLock<Vec<(String, String)>>,
+}
+
+impl FakeRecipientsStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Grants `user_id` access to `project_id` (ownership/membership).
+    pub fn seed_visible(&self, user_id: &str, project_id: &str) {
+        self.visible
+            .write()
+            .unwrap()
+            .push((user_id.to_string(), project_id.to_string()));
+    }
+
+    /// The full contents (for assertions).
+    pub fn all(&self) -> Vec<RecipientRecord> {
+        let mut all = self.recipients.read().unwrap().clone();
+        all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        all
+    }
+
+    fn is_visible(&self, user_id: &str, project_id: &str) -> bool {
+        self.visible
+            .read()
+            .unwrap()
+            .iter()
+            .any(|(u, p)| u == user_id && p == project_id)
+    }
+}
+
+impl RecipientsStore for FakeRecipientsStore {
+    fn create(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
+        user_id: &str,
+        name: &str,
+        contacts: serde_json::Value,
+    ) -> BoxFut<'_, Result<RecipientRecord, StoreError>> {
+        let recipients = &self.recipients;
+        let actor = actor.to_string();
+        let project_id = project_id.to_string();
+        let user_id = user_id.to_string();
+        let name = name.to_string();
+        let visible = self.visible.read().unwrap().clone();
+        Box::pin(async move {
+            if !visible
+                .iter()
+                .any(|(u, p)| *u == actor && *p == project_id)
+            {
+                return Err(StoreError::Storage(
+                    "project not found or not visible".to_string(),
+                ));
+            }
+            let mut list = recipients.write().map_err(lock_err)?;
+            if list
+                .iter()
+                .any(|r| r.project_id == project_id && r.user_id == user_id)
+            {
+                return Err(StoreError::Conflict);
+            }
+            let record = RecipientRecord {
+                id: format!("rcp_{}", list.len() + 1),
+                project_id: project_id.clone(),
+                user_id: user_id.clone(),
+                name,
+                contacts,
+                created_at: chrono::Utc::now(),
+            };
+            list.push(record.clone());
+            Ok(record)
+        })
+    }
+
+    fn list(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
+        _search: Option<&str>,
+        limit: i64,
+        before: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<RecipientRecord>, StoreError>> {
+        let actor = actor.to_string();
+        let project_id = project_id.to_string();
+        let before = before.map(str::to_owned);
+        let recipients = self.recipients.read().unwrap().clone();
+        Box::pin(async move {
+            if !self.is_visible(&actor, &project_id) {
+                return Ok(Vec::new());
+            }
+            let mut list: Vec<_> = recipients
+                .into_iter()
+                .filter(|r| r.project_id == project_id)
+                .filter(|r| before.as_deref().is_none_or(|b| r.id.as_str() < b))
+                .collect();
+            list.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            list.truncate(limit.max(0) as usize);
+            Ok(list)
+        })
+    }
+
+    fn get(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
+        recipient_id: &str,
+    ) -> BoxFut<'_, Result<Option<RecipientRecord>, StoreError>> {
+        let actor = actor.to_string();
+        let project_id = project_id.to_string();
+        let recipient_id = recipient_id.to_string();
+        let recipients = self.recipients.read().unwrap().clone();
+        Box::pin(async move {
+            if !self.is_visible(&actor, &project_id) {
+                return Ok(None);
+            }
+            Ok(recipients
+                .into_iter()
+                .find(|r| r.id == recipient_id && r.project_id == project_id))
+        })
+    }
+
+    fn update(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
+        recipient_id: &str,
+        name: &str,
+        contacts: serde_json::Value,
+    ) -> BoxFut<'_, Result<Option<RecipientRecord>, StoreError>> {
+        let actor = actor.to_string();
+        let project_id = project_id.to_string();
+        let recipient_id = recipient_id.to_string();
+        let name = name.to_string();
+        let recipients = &self.recipients;
+        Box::pin(async move {
+            if !self.is_visible(&actor, &project_id) {
+                return Ok(None);
+            }
+            let mut list = recipients.write().map_err(lock_err)?;
+            let result = list
+                .iter_mut()
+                .find(|r| r.id == recipient_id && r.project_id == project_id);
+            if let Some(record) = result {
+                record.name = name.clone();
+                record.contacts = contacts.clone();
+                Ok(Some(record.clone()))
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
+    fn remove(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
+        recipient_id: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let actor = actor.to_string();
+        let project_id = project_id.to_string();
+        let recipient_id = recipient_id.to_string();
+        let recipients = &self.recipients;
+        Box::pin(async move {
+            if !self.is_visible(&actor, &project_id) {
+                return Ok(false);
+            }
+            let mut list = recipients.write().map_err(lock_err)?;
+            let before = list.len();
+            list.retain(|r| !(r.id == recipient_id && r.project_id == project_id));
+            Ok(list.len() != before)
+        })
+    }
+}
+
+/// In-memory [`TemplatesStore`] for tests.
+///
+/// Visibility mirrors the Postgres store: an actor can only see/create/update
+/// templates in a project they own or belong to, tracked via
+/// [`FakeTemplatesStore::seed_visible`].
+#[derive(Default)]
+pub struct FakeTemplatesStore {
+    templates: RwLock<Vec<TemplateRecord>>,
+    /// (user_id, project_id) pairs the actor may access.
+    visible: RwLock<Vec<(String, String)>>,
+}
+
+impl FakeTemplatesStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Grants `user_id` access to `project_id` (ownership/membership).
+    pub fn seed_visible(&self, user_id: &str, project_id: &str) {
+        self.visible
+            .write()
+            .unwrap()
+            .push((user_id.to_string(), project_id.to_string()));
+    }
+
+    /// The full contents (for assertions), newest first.
+    pub fn all(&self) -> Vec<TemplateRecord> {
+        let mut all = self.templates.read().unwrap().clone();
+        all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        all
+    }
+
+    fn is_visible(&self, user_id: &str, project_id: &str) -> bool {
+        self.visible
+            .read()
+            .unwrap()
+            .iter()
+            .any(|(u, p)| u == user_id && p == project_id)
+    }
+}
+
+fn attachments_from_inputs(inputs: Vec<AttachmentInput>) -> Vec<AttachmentRecord> {
+    inputs
+        .into_iter()
+        .map(|a| AttachmentRecord {
+            id: format!("att_{}", Ulid::new()),
+            name: a.name,
+            mime_type: a.mime_type,
+            size_bytes: a.size_bytes,
+            url: a.url,
+        })
+        .collect()
+}
+
+impl TemplatesStore for FakeTemplatesStore {
+    #[allow(clippy::too_many_arguments)]
+    fn create(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
+        name: &str,
+        description: Option<&str>,
+        channel: &str,
+        content: serde_json::Value,
+        attachments: Vec<AttachmentInput>,
+    ) -> BoxFut<'_, Result<TemplateRecord, StoreError>> {
+        let templates = &self.templates;
+        let actor = actor.to_string();
+        let project_id = project_id.to_string();
+        let name = name.to_string();
+        let description = description.map(str::to_owned);
+        let channel = channel.to_string();
+        let visible = self.visible.read().unwrap().clone();
+        Box::pin(async move {
+            if !visible.iter().any(|(u, p)| *u == actor && *p == project_id) {
+                return Err(StoreError::Storage(
+                    "project not found or not visible".to_string(),
+                ));
+            }
+            let now = chrono::Utc::now();
+            let record = TemplateRecord {
+                id: format!("tpl_{}", Ulid::new()),
+                project_id: project_id.clone(),
+                name,
+                description,
+                channel,
+                content,
+                version: 1,
+                attachments: attachments_from_inputs(attachments),
+                created_at: now,
+                updated_at: now,
+            };
+            templates.write().map_err(lock_err)?.push(record.clone());
+            Ok(record)
+        })
+    }
+
+    fn list(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
+        _search: Option<&str>,
+        limit: i64,
+        before: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<TemplateRecord>, StoreError>> {
+        let actor = actor.to_string();
+        let project_id = project_id.to_string();
+        let before = before.map(str::to_owned);
+        let templates = self.templates.read().unwrap().clone();
+        Box::pin(async move {
+            if !self.is_visible(&actor, &project_id) {
+                return Ok(Vec::new());
+            }
+            let mut list: Vec<_> = templates
+                .into_iter()
+                .filter(|t| t.project_id == project_id)
+                .filter(|t| before.as_deref().is_none_or(|b| t.id.as_str() < b))
+                .collect();
+            list.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            list.truncate(limit.max(0) as usize);
+            Ok(list)
+        })
+    }
+
+    fn get(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
+        template_id: &str,
+    ) -> BoxFut<'_, Result<Option<TemplateRecord>, StoreError>> {
+        let actor = actor.to_string();
+        let project_id = project_id.to_string();
+        let template_id = template_id.to_string();
+        let templates = self.templates.read().unwrap().clone();
+        Box::pin(async move {
+            if !self.is_visible(&actor, &project_id) {
+                return Ok(None);
+            }
+            Ok(templates
+                .into_iter()
+                .find(|t| t.id == template_id && t.project_id == project_id))
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn update(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
+        template_id: &str,
+        name: &str,
+        description: Option<&str>,
+        channel: &str,
+        content: serde_json::Value,
+        attachments: Vec<AttachmentInput>,
+    ) -> BoxFut<'_, Result<Option<TemplateRecord>, StoreError>> {
+        let actor = actor.to_string();
+        let project_id = project_id.to_string();
+        let template_id = template_id.to_string();
+        let name = name.to_string();
+        let description = description.map(str::to_owned);
+        let channel = channel.to_string();
+        let templates = &self.templates;
+        let new_attachments = attachments_from_inputs(attachments);
+        Box::pin(async move {
+            if !self.is_visible(&actor, &project_id) {
+                return Ok(None);
+            }
+            let mut list = templates.write().map_err(lock_err)?;
+            let result = list
+                .iter_mut()
+                .find(|t| t.id == template_id && t.project_id == project_id);
+            if let Some(record) = result {
+                record.name = name.clone();
+                record.description = description.clone();
+                record.channel = channel.clone();
+                record.content = content.clone();
+                record.version += 1;
+                record.updated_at = chrono::Utc::now();
+                record.attachments = new_attachments.clone();
+                Ok(Some(record.clone()))
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
+    fn remove(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
+        template_id: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let actor = actor.to_string();
+        let project_id = project_id.to_string();
+        let template_id = template_id.to_string();
+        let templates = &self.templates;
+        Box::pin(async move {
+            if !self.is_visible(&actor, &project_id) {
+                return Ok(false);
+            }
+            let mut list = templates.write().map_err(lock_err)?;
+            let before = list.len();
+            list.retain(|t| !(t.id == template_id && t.project_id == project_id));
+            Ok(list.len() != before)
         })
     }
 }

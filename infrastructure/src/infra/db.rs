@@ -28,3 +28,38 @@ pub async fn connect(config: &AppConfig) -> Option<PgPool> {
 
     Some(pool)
 }
+
+/// Drops the entire `public` schema and re-applies all migrations.
+///
+/// Used by `cargo run -- --reset-db` for a clean dev start.
+pub async fn reset(config: &AppConfig) -> Result<(), String> {
+    let url = config
+        .database
+        .url
+        .as_ref()
+        .ok_or("NOTIFI_DATABASE_URL not set")?;
+
+    let pool = PgPool::connect(url)
+        .await
+        .map_err(|e| format!("connection failed: {e}"))?;
+
+    tracing::info!("dropping all tables...");
+    sqlx::query("DROP SCHEMA public CASCADE")
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("drop failed: {e}"))?;
+
+    sqlx::query("CREATE SCHEMA public")
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("create schema failed: {e}"))?;
+
+    tracing::info!("re-applying migrations...");
+    sqlx::migrate!("./assets/migrations")
+        .run(&pool)
+        .await
+        .map_err(|e| format!("migrate failed: {e}"))?;
+
+    tracing::info!("database reset complete");
+    Ok(())
+}

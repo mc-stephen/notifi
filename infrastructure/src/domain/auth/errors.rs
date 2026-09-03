@@ -22,6 +22,8 @@ pub enum AuthError {
     Unauthorized,
     /// A requested resource does not exist (or is not visible to the caller).
     NotFound(String),
+    /// A unique constraint was violated (e.g. duplicate brand user_id).
+    Conflict(String),
     /// Auth routes are mounted but the service is unavailable (no database).
     NotConfigured,
     /// Endpoint exists but its real implementation hasn't landed yet.
@@ -40,6 +42,7 @@ impl std::fmt::Display for AuthError {
             Self::TokenExpired(m) => write!(f, "expired token: {m}"),
             Self::Unauthorized => write!(f, "unauthorized"),
             Self::NotFound(m) => write!(f, "not found: {m}"),
+            Self::Conflict(m) => write!(f, "conflict: {m}"),
             Self::NotConfigured => write!(f, "auth service not configured"),
             Self::NotImplemented(m) => write!(f, "not implemented: {m}"),
             Self::Storage(m) => write!(f, "storage failure: {m}"),
@@ -80,6 +83,7 @@ impl IntoApiError for AuthError {
                 "auth is unavailable because the database is not configured.",
             ),
             Self::NotFound(detail) => ApiError::new(404, "about:blank", "Not Found", detail.clone()),
+            Self::Conflict(detail) => ApiError::new(409, "about:blank", "Conflict", detail.clone()),
             Self::NotImplemented(detail) => {
                 ApiError::new(501, "about:blank", "Not Implemented", detail.clone())
             }

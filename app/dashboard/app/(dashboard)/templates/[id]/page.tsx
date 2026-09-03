@@ -1,299 +1,321 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useTemplate } from "@/hooks";
+import { useTemplate, useTemplateActions } from "@/hooks";
 import { PageHeader } from "@/components/custom/page-header";
-import { ChannelBadge } from "@/components/custom/channel-badge";
-import { CodeBlock } from "@/components/custom/code-block";
+import {
+  TEMPLATE_CHANNELS,
+  templateChannelModel,
+  coveredChannels,
+  getChannelField,
+  setChannelField,
+  emptyChannelFields,
+  type TemplateField,
+} from "@/lib/template-content";
+import type { TemplateAttachment, TemplateContent } from "@/lib/types";
+import { ApiError } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import {
   ArrowLeft,
   Save,
-  Eye,
-  Copy,
-  RotateCcw,
   Trash2,
-  Variable,
-  Clock,
-  CheckCircle2,
+  Loader2,
+  AlertTriangle,
   FileText,
+  Paperclip,
+  Plus,
+  Clock,
+  Settings2,
 } from "lucide-react";
 
-function NewTemplateForm() {
-  const router = useRouter();
-  const [name, setName] = useState("");
-  const [channel, setChannel] = useState("email");
-  const [body, setBody] = useState("");
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
+function AttachmentRow({
+  attachment,
+  onRemove,
+}: {
+  attachment: { id?: string; name: string; mimeType: string; sizeBytes: number };
+  onRemove: () => void;
+}) {
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Create Template"
-        description="Design a new notification template"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/" },
-          { label: "Templates", href: "/templates" },
-          { label: "New" },
-        ]}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => router.push("/templates")}>
-              <ArrowLeft className="size-3.5 mr-1" /> Cancel
-            </Button>
-            <Button size="sm" className="gap-1.5" onClick={() => router.push("/templates")}>
-              <Save className="size-3.5" /> Create template
-            </Button>
-          </div>
-        }
-      />
-
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="size-4" /> Template Details
-              </CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Template name</label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Welcome Email"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Channel</label>
-              <select
-                value={channel}
-                onChange={(e) => setChannel(e.target.value)}
-                className="w-full rounded-md border bg-transparent px-3 py-2 text-sm"
-              >
-                <option value="email">Email</option>
-                <option value="sms">SMS</option>
-                <option value="push-android">Android Push</option>
-                <option value="push-ios">Apple Push</option>
-                <option value="web-push">Web Push</option>
-                <option value="slack">Slack</option>
-                <option value="discord">Discord</option>
-                <option value="webhook">Webhook</option>
-              </select>
-            </div>
-            {channel === "email" && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Subject</label>
-                <Input placeholder="Email subject line" />
-              </div>
-            )}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Body</label>
-              <textarea
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="Write your template body here. Use {{variable_name}} for dynamic values."
-                className="w-full min-h-[300px] rounded-md border bg-transparent px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Variables</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-xs text-muted-foreground">
-                Variables are detected automatically when you use {"{{variable_name}}"} syntax in the body.
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Preview</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-xs text-muted-foreground">
-                Preview will be available after creating the template.
-              </p>
-            </CardContent>
-          </Card>
+    <div className="flex items-center gap-3 rounded-md border px-3 py-2">
+      <FileText className="size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium">{attachment.name}</div>
+        <div className="text-xs text-muted-foreground">
+          {attachment.mimeType} · {formatBytes(attachment.sizeBytes)}
         </div>
       </div>
+      <Button variant="ghost" size="icon-xs" onClick={onRemove}>
+        <Trash2 className="size-3.5" />
+      </Button>
     </div>
   );
 }
 
-function TemplateEditor({ template }: { template: NonNullable<ReturnType<typeof useTemplate>> }) {
-  const [body, setBody] = useState(template.body);
-  const [subject, setSubject] = useState(template.subject ?? "");
-
+function ChannelTab({
+  channel,
+  active,
+  onClick,
+}: {
+  channel: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const model = templateChannelModel(channel);
+  const Icon = model.icon;
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Editor</CardTitle>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" className="gap-1.5">
-                <Eye className="size-3.5" /> Preview
-              </Button>
-              <Button size="sm" className="gap-1.5">
-                <Save className="size-3.5" /> Save
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {template.channel === "email" && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Subject</label>
-              <Input
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="Email subject line"
-              />
-            </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        active
+          ? "bg-foreground text-background"
+          : "text-muted-foreground hover:bg-muted",
+      )}
+    >
+      <Icon className="size-3.5" />
+      {model.label}
+    </button>
+  );
+}
+
+function ChannelFieldInput({
+  id,
+  field,
+  value,
+  onChange,
+}: {
+  id: string;
+  field: TemplateField;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{field.label}</Label>
+      {field.multiline ? (
+        <textarea
+          id={id}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.placeholder}
+          className="w-full min-h-[160px] rounded-md border bg-transparent px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+        />
+      ) : (
+        <Input
+          id={id}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.placeholder}
+        />
+      )}
+    </div>
+  );
+}
+
+function EmailFormatTabs({
+  value,
+  onChange,
+}: {
+  value: "html" | "text";
+  onChange: (value: "html" | "text") => void;
+}) {
+  return (
+    <div className="inline-flex items-center gap-1 rounded-lg border bg-muted/40 p-1">
+      {(
+        [
+          { value: "html", label: "HTML" },
+          { value: "text", label: "Plain text" },
+        ] as const
+      ).map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={cn(
+            "rounded-md px-3 py-1 text-xs font-medium transition-colors",
+            value === opt.value
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
           )}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Body</label>
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              className="w-full min-h-[300px] rounded-md border bg-transparent px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Variable className="size-3.5" /> Variables
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {template.variables.map((v) => (
-              <div key={v.name} className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">{`{{${v.name}}}`}</code>
-                  <Badge variant="secondary" className="text-[10px] px-1 h-3.5">{v.type}</Badge>
-                </div>
-                {v.description && (
-                  <p className="text-xs text-muted-foreground">{v.description}</p>
-                )}
-                <Input
-                  placeholder={v.defaultValue ?? `Enter ${v.name}`}
-                  className="h-7 text-xs"
-                />
-              </div>
-            ))}
-            {template.variables.length === 0 && (
-              <p className="text-xs text-muted-foreground">No variables in this template.</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Preview Data</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CodeBlock
-              language="JSON"
-              code={JSON.stringify(
-                Object.fromEntries(template.variables.map((v) => [v.name, v.defaultValue ?? ""])),
-                null,
-                2,
-              )}
-            />
-          </CardContent>
-        </Card>
-      </div>
+        >
+          {opt.label}
+        </button>
+      ))}
     </div>
   );
 }
 
-function VersionHistory({ template }: { template: NonNullable<ReturnType<typeof useTemplate>> }) {
-  const versions = Array.from({ length: template.version }, (_, i) => ({
-    version: template.version - i,
-    updatedAt: new Date(new Date(template.updatedAt).getTime() - i * 86400000 * 7).toISOString(),
-    author: ["Alice Chen", "Bob Kim", "Carol Wu"][i % 3],
-    changes: i === 0 ? "Latest version" : `Updated ${["body", "subject", "variables"][i % 3]}`,
-  }));
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Version History</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Version</TableHead>
-              <TableHead>Changes</TableHead>
-              <TableHead>Author</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead className="w-[80px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {versions.map((v) => (
-              <TableRow key={v.version}>
-                <TableCell>
-                  <Badge variant={v.version === template.version ? "default" : "secondary"}>
-                    v{v.version}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-sm">{v.changes}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{v.author}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {format(new Date(v.updatedAt), "MMM d, yyyy")}
-                </TableCell>
-                <TableCell>
-                  {v.version !== template.version && (
-                    <Button variant="ghost" size="icon-xs">
-                      <RotateCcw className="size-3" />
-                    </Button>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
-}
-
-function TemplateDetail({ id }: { id: string }) {
-  const template = useTemplate(id);
+function TemplateEditor({ id }: { id: string }) {
   const router = useRouter();
+  const { template, loading, error, refresh } = useTemplate(id);
+  const { update, remove } = useTemplateActions();
 
-  if (id === "new") {
-    return <NewTemplateForm />;
+  // Draft: the full per-channel content blob { email: {...}, sms: {...} }.
+  const [draft, setDraft] = useState<TemplateContent>({});
+  const [activeChannel, setActiveChannel] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Email sub-tab: which body format (HTML or plain text) is shown for email.
+  const [emailFormat, setEmailFormat] = useState<"html" | "text">("html");
+
+  // Attachment drafts (metadata only; existing ones keep ids by url).
+  const [drafts, setDrafts] = useState<TemplateAttachment[]>([]);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addMime, setAddMime] = useState("");
+  const [addUrl, setAddUrl] = useState("");
+  const [addSize, setAddSize] = useState("");
+
+  // Channel management + delete.
+  const [manageOpen, setManageOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Seed drafts once (never again for the same id, so a post-save reload
+  // doesn't wipe in-progress edits).
+  const initializedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!template) return;
+    if (initializedFor.current === template.id) return;
+    initializedFor.current = template.id;
+    setDraft({ ...(template.content ?? {}) } as TemplateContent);
+    setDrafts(template.attachments ?? []);
+  }, [template]);
+
+  const covered = coveredChannels(draft);
+  const active = activeChannel || (covered.length > 0 ? covered[0] : "");
+  const activeModel = active ? templateChannelModel(active) : null;
+
+  const setField = useCallback(
+    (channel: string, key: string, value: string) => {
+      setDraft((prev) => setChannelField(prev, channel, key, value));
+    },
+    [],
+  );
+
+  const toggleChannel = useCallback((channel: string, checked: boolean) => {
+    setDraft((prev) => {
+      if (checked) {
+        return { ...prev, [channel]: emptyChannelFields(channel, false) };
+      }
+      const next = { ...prev };
+      delete next[channel];
+      return next;
+    });
+    setActiveChannel((current) => {
+      if (current === channel && !checked) {
+        return covered.filter((c) => c !== channel)[0] ?? "";
+      }
+      return current;
+    });
+  }, [covered]);
+
+  const handleSave = useCallback(async () => {
+    if (!template) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const attachments = drafts.map((a) => ({
+        name: a.name,
+        mimeType: a.mimeType,
+        sizeBytes: a.sizeBytes,
+        url: a.url,
+      }));
+      await update(template.id, {
+        name: template.name,
+        description: template.description,
+        channel: template.channel,
+        content: draft,
+        attachments,
+      });
+      await refresh();
+    } catch (e) {
+      setSaveError(
+        e instanceof ApiError ? e.message : "Failed to save template",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [template, draft, drafts, update, refresh]);
+
+  const handleAddAttachment = useCallback(() => {
+    const size = Number(addSize);
+    if (!addName.trim() || !addUrl.trim()) return;
+    setDrafts((prev) => [
+      ...prev,
+      {
+        id: `draft_${Date.now()}`,
+        name: addName.trim(),
+        mimeType: addMime.trim() || "application/octet-stream",
+        sizeBytes: isNaN(size) || size < 0 ? 0 : size,
+        url: addUrl.trim(),
+      },
+    ]);
+    setAddName("");
+    setAddMime("");
+    setAddUrl("");
+    setAddSize("");
+    setAddOpen(false);
+  }, [addName, addMime, addUrl, addSize]);
+
+  const handleDelete = useCallback(async () => {
+    if (!template) return;
+    setDeleting(true);
+    try {
+      await remove(template.id);
+      router.push("/templates");
+    } finally {
+      setDeleting(false);
+    }
+  }, [template, remove, router]);
+
+  if (loading) {
+    return (
+      <div className="overflow-hidden rounded-lg border bg-white">
+        <div className="flex items-center justify-center py-20 text-muted-foreground">
+          <Loader2 className="size-5 animate-spin mr-2" /> Loading template…
+        </div>
+      </div>
+    );
   }
 
-  if (!template) {
+  if (error || !template) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <h2 className="text-lg font-medium">Template not found</h2>
-        <p className="text-sm text-muted-foreground mt-1">The template {id} does not exist.</p>
-        <Button variant="outline" className="mt-4" onClick={() => router.push("/templates")}>
+        <AlertTriangle className="size-8 text-warning" />
+        <h2 className="text-lg font-medium mt-3">Template not found</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          {error ?? `The template ${id} does not exist.`}
+        </p>
+        <Button
+          variant="outline"
+          className="mt-4"
+          onClick={() => router.push("/templates")}
+        >
           <ArrowLeft className="size-3.5 mr-1" /> Back to templates
         </Button>
       </div>
@@ -304,7 +326,7 @@ function TemplateDetail({ id }: { id: string }) {
     <div className="space-y-6">
       <PageHeader
         title={template.name}
-        description={template.subject ?? template.body.slice(0, 60)}
+        description={`v${template.version} · ${covered.length} channel${covered.length === 1 ? "" : "s"}`}
         breadcrumbs={[
           { label: "Dashboard", href: "/" },
           { label: "Templates", href: "/templates" },
@@ -315,83 +337,350 @@ function TemplateDetail({ id }: { id: string }) {
             <Badge variant="secondary" className="gap-1">
               <Clock className="size-3" /> v{template.version}
             </Badge>
-            {template.isDraft && (
-              <Badge variant="outline" className="gap-1 text-warning border-warning/30">
-                Draft
-              </Badge>
-            )}
-            <ChannelBadge channel={template.channel} showIcon />
-            <Button size="sm" variant="outline" className="gap-1.5">
-              <Copy className="size-3.5" /> Duplicate
-            </Button>
-            <Button size="sm" variant="outline" className="gap-1.5 text-destructive">
+            <div className="flex flex-wrap items-center gap-1">
+              {covered.map((c) => {
+                const model = templateChannelModel(c);
+                const Icon = model.icon;
+                return (
+                  <Badge key={c} variant="outline" className="gap-1">
+                    <Icon className="size-3" /> {model.label}
+                  </Badge>
+                );
+              })}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-destructive"
+              onClick={() => setConfirmDelete(true)}
+            >
               <Trash2 className="size-3.5" /> Delete
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Save className="size-3.5" />
+              )}
+              {saving ? "Saving…" : "Save changes"}
             </Button>
           </div>
         }
       />
 
-      <Tabs defaultValue="editor">
-        <TabsList>
-          <TabsTrigger value="editor">Editor</TabsTrigger>
-          <TabsTrigger value="versions">Version History</TabsTrigger>
-          <TabsTrigger value="usage">Usage</TabsTrigger>
-        </TabsList>
+      <div className="flex items-start gap-2">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted">
+          <FileText className="size-4 text-muted-foreground" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{template.name}</p>
+          <p className="text-sm text-muted-foreground">
+            {template.description || "One template, multiple channels"}
+          </p>
+        </div>
+      </div>
 
-        <TabsContent value="editor" className="mt-4">
-          <TemplateEditor template={template} />
-        </TabsContent>
+      {/* Channel tabs */}
+      <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1 rounded-lg border bg-card p-1">
+          {covered.length === 0 && (
+            <span className="px-3 py-1.5 text-sm text-muted-foreground">
+              No channels yet — add one below.
+            </span>
+          )}
+          {covered.map((c) => (
+            <ChannelTab
+              key={c}
+              channel={c}
+              active={active === c}
+              onClick={() => setActiveChannel(c)}
+            />
+          ))}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1"
+          onClick={() => setManageOpen(true)}
+        >
+          <Settings2 className="size-3.5" /> Manage channels
+        </Button>
+      </div>
 
-        <TabsContent value="versions" className="mt-4">
-          <VersionHistory template={template} />
-        </TabsContent>
-
-        <TabsContent value="usage" className="mt-4">
+      {!activeModel ? (
+        <div className="overflow-hidden rounded-lg border bg-white">
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-muted-foreground">
+            <Settings2 className="size-8" />
+            <p className="text-sm">
+              This template doesn&apos;t cover any channels yet. Add channels to
+              start authoring content.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
           <Card>
             <CardHeader>
-              <CardTitle>Template Usage</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                {activeModel.icon && (
+                  <activeModel.icon className="size-4" />
+                )}
+                {activeModel.label} content
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="text-center p-4 rounded-lg bg-muted/50">
-                  <div className="text-2xl font-bold">1,247</div>
-                  <div className="text-xs text-muted-foreground mt-1">Total sends</div>
-                </div>
-                <div className="text-center p-4 rounded-lg bg-muted/50">
-                  <div className="text-2xl font-bold">98.2%</div>
-                  <div className="text-xs text-muted-foreground mt-1">Delivery rate</div>
-                </div>
-                <div className="text-center p-4 rounded-lg bg-muted/50">
-                  <div className="text-2xl font-bold">34.5%</div>
-                  <div className="text-xs text-muted-foreground mt-1">Open rate</div>
-                </div>
-              </div>
-              <Separator />
-              <div>
-                <h4 className="text-sm font-medium mb-2">Last 5 sends</h4>
-                <div className="space-y-2">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="size-3.5 text-success" />
-                        <span className="font-mono text-xs">ntf_{String(i).padStart(4, "0")}</span>
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {format(new Date(new Date(template.updatedAt).getTime() - i * 3600000), "MMM d, HH:mm")}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {active === "email" ? (
+                <>
+                  <ChannelFieldInput
+                    id="email-subject"
+                    field={activeModel.fields.find((f) => f.key === "subject")!}
+                    value={getChannelField(draft, active, "subject")}
+                    onChange={(v) => setField(active, "subject", v)}
+                  />
+                  <div className="space-y-2">
+                    <Label>Content format</Label>
+                    <EmailFormatTabs value={emailFormat} onChange={setEmailFormat} />
+                  </div>
+                  {(() => {
+                    const field = activeModel.fields.find(
+                      (f) => f.key === emailFormat,
+                    );
+                    return field ? (
+                      <ChannelFieldInput
+                        id={`email-${emailFormat}`}
+                        field={field}
+                        value={getChannelField(draft, active, emailFormat)}
+                        onChange={(v) => setField(active, emailFormat, v)}
+                      />
+                    ) : null;
+                  })()}
+                </>
+              ) : (
+                activeModel.fields.map((field) => (
+                  <ChannelFieldInput
+                    key={field.key}
+                    id={`field-${field.key}`}
+                    field={field}
+                    value={getChannelField(draft, active, field.key)}
+                    onChange={(v) => setField(active, field.key, v)}
+                  />
+                ))
+              )}
+              {saveError && <p className="text-sm text-destructive">{saveError}</p>}
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Paperclip className="size-3.5" /> Attachments
+                  </CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1"
+                    onClick={() => setAddOpen(true)}
+                  >
+                    <Plus className="size-3.5" /> Add
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {drafts.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No attachments. Attachments are metadata only (name, type,
+                    size, URL) — no file upload yet.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {drafts.map((a, i) => (
+                      <AttachmentRow
+                        key={a.id ?? `${a.name}-${i}`}
+                        attachment={a}
+                        onRemove={() =>
+                          setDrafts((prev) => prev.filter((_, j) => j !== i))
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div>
+                  <dt className="text-muted-foreground">ID</dt>
+                  <dd className="mt-0.5 font-mono text-xs break-all">
+                    {template.id}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Project</dt>
+                  <dd className="mt-0.5 font-mono text-xs break-all">
+                    {template.projectId}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Created</dt>
+                  <dd className="mt-0.5">
+                    {format(new Date(template.createdAt), "MMM d, yyyy HH:mm")}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Updated</dt>
+                  <dd className="mt-0.5">
+                    {format(new Date(template.updatedAt), "MMM d, yyyy HH:mm")}
+                  </dd>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* Manage channels */}
+      <Dialog open={manageOpen} onOpenChange={setManageOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Manage channels</DialogTitle>
+            <DialogDescription>
+              Choose which channels this template covers. You can add them now
+              or later — each tab is authored separately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            {TEMPLATE_CHANNELS.map((c) => {
+              const checked = covered.includes(c.value);
+              const Icon = c.icon;
+              return (
+                <label
+                  key={c.value}
+                  className="flex items-center gap-3 rounded-md border px-3 py-2 cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={(value) => toggleChannel(c.value, !!value)}
+                  />
+                  <Icon className="size-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">{c.label}</span>
+                </label>
+              );
+            })}
+          </div>
+          <Separator />
+          <DialogFooter>
+            <Button onClick={() => setManageOpen(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add attachment</DialogTitle>
+            <DialogDescription>
+              Attach a file reference (metadata only) to this template.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="att-name">Name</Label>
+              <Input
+                id="att-name"
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="invoice.pdf"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="att-mime">MIME type</Label>
+              <Input
+                id="att-mime"
+                value={addMime}
+                onChange={(e) => setAddMime(e.target.value)}
+                placeholder="application/pdf"
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="att-size">Size (bytes)</Label>
+                <Input
+                  id="att-size"
+                  value={addSize}
+                  onChange={(e) => setAddSize(e.target.value)}
+                  placeholder="1024"
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="att-url">URL</Label>
+              <Input
+                id="att-url"
+                value={addUrl}
+                onChange={(e) => setAddUrl(e.target.value)}
+                placeholder="https://cdn.example.com/files/invoice.pdf"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddAttachment}
+              disabled={!addName.trim() || !addUrl.trim()}
+            >
+              Add attachment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete template</DialogTitle>
+            <DialogDescription>
+              Permanently delete {template.name} ({template.id})? This cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDelete(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-export default function TemplateDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function TemplateDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
-  return <TemplateDetail id={id} />;
+  return <TemplateEditor id={id} />;
 }

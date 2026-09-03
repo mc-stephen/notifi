@@ -18,7 +18,8 @@ New to this codebase? Follow this order:
    plugin crates.
 
 Quick references: [`OAUTH_SETUP.md`](./OAUTH_SETUP.md) for GitHub/Google
-app registration, [`COMMANDS.md`](./COMMANDS.md) for the full command list.
+app registration, [`COMMANDS.md`](./COMMANDS.md) for the full command list,
+[`PROVIDERS.md`](./PROVIDERS.md) for provider registry & channel configs API.
 
 ## Layout
 
@@ -29,16 +30,17 @@ src/
 ├── api/              # HTTP presentation layer
 │   ├── project/      # PROJECT surface — product API at the root (API-key auth, M6+)
 │   └── user/         # USER surface — dashboard backend under /v1 (session auth)
-├── domain/           # business logic & models (auth today; more slices next)
-│   └── auth/
-├── ports/            # trait contracts (AuthStore, OAuthIdentityProvider, ...)
+├── domain/           # business logic & models
+│   ├── auth/
+│   └── channels/     # provider registry types (ProviderRegistry, etc.)
+├── ports/            # trait contracts (AuthStore, ChannelProviderStore, ...)
 ├── infra/            # concrete drivers: Postgres repos, OAuth client, config, telemetry
 └── testing.rs        # in-memory fakes shared with integration tests
 assets/               # server-owned data & docs
 ├── brands/           # tenant channel configs + templates (NOTIFI_CONFIG_ROOT)
 ├── docs/             # ARCHITECTURE.md, SERVER.md, this README, COMMANDS.md
-└── migrations/       # sqlx migrations (PostgreSQL schemas)
-channels/             # 13 channel plugin crates (email, sms, telegram, ...)
+└── migrations/       # sqlx migrations (0001_initial_schema.sql)
+channels/             # channel plugin crates (email, sms, push, chat)
 ```
 
 Other root files: `Cargo.toml` (package + workspace index), `rust-toolchain.toml`
@@ -80,11 +82,16 @@ cargo run
 | `GET /readyz` | ops | Readiness — Postgres + Redis reachable (503 problem doc otherwise) |
 | `GET /routes` | ops | Route catalog — every endpoint across all surfaces |
 | project surface | project | *(empty until M2 — product endpoints mount at the root)* |
-| `/v1/auth/*` | user/v1 | Auth feature: signup, login, logout, me, OAuth, password flows, verify-email, onboarding-complete (see `app/dashboard/app/auth/API_CONTRACT.md`) |
+| `/v1/auth/*` | user/v1 | Auth: signup, login, logout, me, OAuth, password flows, verify-email, onboarding-complete |
+| `/v1/providers` | user/v1 | Provider registry — all channels + providers + config fields (GET) |
+| `/v1/projects/{id}/channel-configs` | user/v1 | Channel configs CRUD (list, create, update, delete) |
 | any other path | — | RFC 9457 `application/problem+json` 404 |
 
 Every response carries a `x-request-id` header for log correlation.
 Errors are RFC 9457 problem documents: `{type, title, status, detail, correlation_id}`.
+
+See [`PROVIDERS.md`](./PROVIDERS.md) for the full provider registry & channel
+configs API contract.
 
 ## Configuration
 
@@ -114,3 +121,15 @@ Errors are RFC 9457 problem documents: `{type, title, status, detail, correlatio
   The config root is overridable via `NOTIFI_CONFIG_ROOT`.
   `infrastructure/.cargo/config.toml` sets it to `./assets` for local
   development, so `cargo run`/`cargo test` work without flags.
+
+## Database reset
+
+Nuke the database and re-apply migrations from scratch:
+
+```shell
+cargo run -- --reset-db    # drops public schema, re-applies 0001_initial_schema.sql, exits
+cargo run                  # normal server start
+```
+
+> Use this when migration history is stale (e.g., after deleting migration files)
+> or when you want a clean dev start without touching Docker volumes.

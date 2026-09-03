@@ -5,8 +5,9 @@ import { useEnvironmentStore } from "@/store/environment-store";
 
 export function EnvironmentBanner() {
   const currentEnvironment = useEnvironmentStore((s) => s.currentEnvironment);
+  const hydrated = useEnvironmentStore((s) => s.hydrated);
 
-  if (currentEnvironment !== "development") return null;
+  if (!hydrated || currentEnvironment !== "development") return null;
 
   return (
     <div className="flex items-center gap-3 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2.5 lg:px-6">

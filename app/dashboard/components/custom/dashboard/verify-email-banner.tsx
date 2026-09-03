@@ -10,11 +10,12 @@ type Feedback = { kind: "ok" | "error"; text: string } | null;
 
 export function VerifyEmailBanner() {
   const user = useAuthStore((s) => s.user);
+  const authHydrated = useAuthStore((s) => s.authHydrated);
   const resendVerification = useAuthStore((s) => s.resendVerification);
   const [sending, setSending] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
 
-  if (!user || user.emailVerified) return null;
+  if (!authHydrated || !user || user.emailVerified) return null;
 
   const handleResend = async () => {
     setSending(true);

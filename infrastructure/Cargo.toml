@@ -6,6 +6,7 @@ description = "Notifi server — HTTP API, domain logic, and infrastructure in o
 
 [dependencies]
 argon2 = { workspace = true }
+async-trait = { workspace = true }
 axum = { workspace = true }
 axum-extra = { workspace = true }
 chrono = { workspace = true }
@@ -36,11 +37,13 @@ http-body-util = "0.1"
 resolver = "2"
 members = [
   "channels/android_channel",
+  "channels/chat_channel",
   "channels/discord_channel",
   "channels/email_channel",
   "channels/ios_channel",
   "channels/linux_channel",
   "channels/macos_channel",
+  "channels/push_channel",
   "channels/slack_channel",
   "channels/sms_channel",
   "channels/telegram_channel",
@@ -57,6 +60,7 @@ license = "MIT"
 
 [workspace.dependencies]
 argon2 = "0.5"
+async-trait = "0.1"
 axum = "0.8"
 axum-extra = { version = "0.10", features = ["cookie"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }

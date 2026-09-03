@@ -33,8 +33,12 @@ type DataTableProps<TData, TValue> = {
   searchPlaceholder?: string;
   searchKey?: string;
   pageSize?: number;
-  bulkActions?: React.ReactNode;
+  bulkActions?: React.ReactNode | ((selectedRows: TData[]) => React.ReactNode);
   emptyMessage?: string;
+  onRowClick?: (row: TData) => void;
+  rowActions?: (row: TData) => React.ReactNode;
+  stripeRows?: boolean;
+  tableClassName?: string;
 };
 
 function SortIcon({ sorted }: { sorted: false | "asc" | "desc" }) {
@@ -51,6 +55,10 @@ export function DataTable<TData, TValue>({
   pageSize: initialPageSize = 20,
   bulkActions,
   emptyMessage = "No results found.",
+  onRowClick,
+  rowActions,
+  stripeRows = false,
+  tableClassName,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -117,7 +125,12 @@ export function DataTable<TData, TValue>({
         </div>
 
         <div className="flex items-center gap-2">
-          {selectedCount > 0 && bulkActions}
+          {selectedCount > 0 &&
+            (typeof bulkActions === "function"
+              ? bulkActions(
+                  table.getSelectedRowModel().rows.map((row) => row.original),
+                )
+              : bulkActions)}
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="gap-1.5" />}>
               <Columns3 className="size-3.5" />
@@ -143,7 +156,7 @@ export function DataTable<TData, TValue>({
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border">
+      <div className={cn("overflow-hidden rounded-lg border", tableClassName)}>
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -170,7 +183,7 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {table.getRowModel().rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={columns.length + (rowActions ? 1 : 0)} className="h-24 text-center text-muted-foreground">
                   {emptyMessage}
                 </TableCell>
               </TableRow>
@@ -179,13 +192,22 @@ export function DataTable<TData, TValue>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  className="cursor-pointer"
+                  className={cn(
+                    onRowClick && "cursor-pointer",
+                    stripeRows && (row.index % 2 === 0 ? "bg-white" : "bg-muted/40"),
+                  )}
+                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
+                  {rowActions && (
+                    <TableCell className="w-[72px] text-right">
+                      {rowActions(row.original)}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))
             )}

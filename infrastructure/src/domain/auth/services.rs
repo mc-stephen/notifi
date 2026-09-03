@@ -14,6 +14,8 @@ use rand::RngCore;
 
 use crate::domain::auth::entities::{AuthToken, Session, SessionId, TokenPurpose, User, UserId};
 use crate::domain::auth::errors::AuthError;
+use crate::domain::audit::entities::{AuditAction, AuditEvent};
+use crate::domain::audit::AuditService;
 use crate::ports::oauth::OAuthProfile;
 use crate::ports::auth_store::{AuthStore, OnboardingInput};
 use crate::domain::auth::value_objects::{Email, hash_token, new_token, validate_password};
@@ -44,13 +46,19 @@ pub struct IssuedSession {
 
 pub struct AuthService {
     store: Arc<dyn AuthStore>,
+    audit: Arc<AuditService>,
     expose_dev_tokens: bool,
 }
 
 impl AuthService {
-    pub fn new(store: Arc<dyn AuthStore>, expose_dev_tokens: bool) -> Self {
+    pub fn new(
+        store: Arc<dyn AuthStore>,
+        expose_dev_tokens: bool,
+        audit: Arc<AuditService>,
+    ) -> Self {
         Self {
             store,
+            audit,
             expose_dev_tokens,
         }
     }
@@ -113,6 +121,20 @@ impl AuthService {
             .issue_session(user.id, SESSION_TTL_SHORT)
             .await?;
 
+        self.audit
+            .record(
+                now,
+                &AuditEvent::new(
+                    AuditAction::UserSignup,
+                    Some(&user.id.to_string()),
+                    Some(&user.name),
+                    None,
+                    "account created".to_string(),
+                    Some(serde_json::json!({ "email": user.email.as_str() })),
+                ),
+            )
+            .await;
+
         Ok(SignupOutcome {
             user,
             session,
@@ -154,6 +176,20 @@ impl AuthService {
         };
         let (session, raw_token) = self.issue_session(user.id, ttl).await?;
 
+        self.audit
+            .record(
+                Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::UserLogin,
+                    Some(&user.id.to_string()),
+                    Some(&user.name),
+                    None,
+                    format!("{} signed in", user.name),
+                    None,
+                ),
+            )
+            .await;
+
         Ok(IssuedSession {
             user,
             session,
@@ -185,6 +221,19 @@ impl AuthService {
             .await?
         {
             self.store.revoke_session(session.id).await?;
+            self.audit
+                .record(
+                    Utc::now(),
+                    &AuditEvent::new(
+                        AuditAction::UserLogout,
+                        Some(&session.user_id.to_string()),
+                        None,
+                        None,
+                        "signed out".to_string(),
+                        None,
+                    ),
+                )
+                .await;
         }
         Ok(())
     }
@@ -220,6 +269,20 @@ impl AuthService {
 
         self.store.consume_token(token.id).await?;
         self.store.set_email_verified(token.user_id, now).await?;
+
+        self.audit
+            .record(
+                now,
+                &AuditEvent::new(
+                    AuditAction::UserEmailVerified,
+                    Some(&token.user_id.to_string()),
+                    None,
+                    None,
+                    "email address verified".to_string(),
+                    None,
+                ),
+            )
+            .await;
         Ok(())
     }
 
@@ -286,6 +349,20 @@ impl AuthService {
         self.store
             .revoke_all_sessions_for_user(token.user_id)
             .await?;
+
+        self.audit
+            .record(
+                Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::UserPasswordReset,
+                    Some(&token.user_id.to_string()),
+                    None,
+                    None,
+                    "password reset".to_string(),
+                    None,
+                ),
+            )
+            .await;
         Ok(())
     }
 
@@ -354,6 +431,20 @@ impl AuthService {
         self.store.touch_last_login(user.id, Utc::now()).await?;
         let (session, raw_token) = self.issue_session(user.id, SESSION_TTL_SHORT).await?;
 
+        self.audit
+            .record(
+                Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::UserLogin,
+                    Some(&user.id.to_string()),
+                    Some(&user.name),
+                    None,
+                    format!("{} signed in with {provider}", user.name),
+                    None,
+                ),
+            )
+            .await;
+
         Ok(IssuedSession {
             user,
             session,
@@ -388,6 +479,20 @@ impl AuthService {
         }
 
         self.store.complete_onboarding(user_id, input).await?;
+
+        self.audit
+            .record(
+                Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::UserOnboardingCompleted,
+                    Some(&user_id.to_string()),
+                    None,
+                    None,
+                    "completed onboarding".to_string(),
+                    None,
+                ),
+            )
+            .await;
         Ok(())
     }
 

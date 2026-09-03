@@ -58,12 +58,21 @@ fn run_inner() -> Result<(), String> {
         let db = infra::db::connect(&config).await;
         let redis_conn = infra::redis::connect(&config);
 
+        // Audit log listener: built from the same DB, shared by auth/projects
+        // (they emit actions) and the /v1/logs query surface.
+        let audit = db.as_ref().map(|pool| {
+            std::sync::Arc::new(domain::audit::AuditService::new(
+                std::sync::Arc::new(infra::audit_repository_pg::PgAuditStore::new(pool.clone())),
+            ))
+        });
+
         // Auth is wired only when a database exists; its routes answer 503
         // otherwise (composition root wires the sqlx store into the service).
         let auth = db.as_ref().map(|pool| {
             std::sync::Arc::new(domain::auth::AuthService::new(
                 std::sync::Arc::new(infra::PgAuthStore::new(pool.clone())),
                 config.auth.expose_dev_tokens,
+                audit.clone().expect("audit service built with db"),
             ))
         });
 
@@ -71,7 +80,30 @@ fn run_inner() -> Result<(), String> {
         let projects = db.as_ref().map(|pool| {
             std::sync::Arc::new(domain::projects::ProjectService::new(
                 std::sync::Arc::new(infra::PgAuthStore::new(pool.clone())),
+                audit.clone().expect("audit service built with db"),
             ))
+        });
+
+        // Recipients slice: brand end-users, scoped to a project the caller
+        // belongs to. Shares the audit service for create/delete events.
+        let recipients = db.as_ref().map(|pool| {
+            std::sync::Arc::new(domain::recipients::RecipientService::new(
+                std::sync::Arc::new(infra::PgRecipientsStore::new(pool.clone())),
+                audit.clone().expect("audit service built with db"),
+            ))
+        });
+
+        // Templates slice: per-channel message definitions with attachments.
+        let templates = db.as_ref().map(|pool| {
+            std::sync::Arc::new(domain::templates::TemplateService::new(
+                std::sync::Arc::new(infra::PgTemplatesStore::new(pool.clone())),
+                audit.clone().expect("audit service built with db"),
+            ))
+        });
+
+        // Channel providers: per-project provider configurations (API keys, secrets).
+        let channel_providers: Option<std::sync::Arc<dyn ports::ChannelProviderStore + Send + Sync>> = db.as_ref().map(|pool| {
+            std::sync::Arc::new(infra::PgChannelProviderStore::new(pool.clone())) as std::sync::Arc<dyn ports::ChannelProviderStore + Send + Sync>
         });
 
         // OAuth sign-in is wired when at least one provider has credentials.
@@ -118,6 +150,24 @@ fn run_inner() -> Result<(), String> {
         if projects.is_none() {
             tracing::warn!("projects disabled (needs database); /v1/projects routes will answer 503");
         }
+        if audit.is_none() {
+            tracing::warn!("audit log disabled (needs database); /v1/logs routes will answer 503");
+        }
+        if recipients.is_none() {
+            tracing::warn!(
+                "recipients disabled (needs database); /v1/projects/{{project_id}}/recipients routes will answer 503"
+            );
+        }
+        if templates.is_none() {
+            tracing::warn!(
+                "templates disabled (needs database); /v1/projects/{{project_id}}/templates routes will answer 503"
+            );
+        }
+        if channel_providers.is_none() {
+            tracing::warn!(
+                "channel_providers disabled (needs database); /v1/projects/{{project_id}}/channel-configs routes will answer 503"
+            );
+        }
         if oauth.is_none() {
             tracing::warn!(
                 "oauth disabled (no provider credentials); /v1/auth/oauth routes will answer 503"
@@ -131,6 +181,10 @@ fn run_inner() -> Result<(), String> {
                 auth,
                 oauth,
                 projects,
+                audit,
+                recipients,
+                templates,
+                channel_providers,
             },
             &config,
         );

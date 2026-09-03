@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 use crate::domain::auth::entities::UserId;
 use crate::domain::auth::errors::AuthError;
+use crate::domain::audit::entities::{AuditAction, AuditEvent};
+use crate::domain::audit::AuditService;
 use crate::domain::projects::entities::Project;
 use crate::ports::projects_store::ProjectsStore;
 
@@ -12,11 +14,12 @@ pub const ENVIRONMENTS: [&str; 2] = ["development", "production"];
 
 pub struct ProjectService {
     store: Arc<dyn ProjectsStore>,
+    audit: Arc<AuditService>,
 }
 
 impl ProjectService {
-    pub fn new(store: Arc<dyn ProjectsStore>) -> Self {
-        Self { store }
+    pub fn new(store: Arc<dyn ProjectsStore>, audit: Arc<AuditService>) -> Self {
+        Self { store, audit }
     }
 
     /// Projects the user owns or belongs to, oldest first.
@@ -44,10 +47,27 @@ impl ProjectService {
             )));
         }
 
-        self.store
+        let project = self
+            .store
             .set_project_environment(user_id, project_id, environment)
             .await?
             .map(Project::from)
-            .ok_or_else(|| AuthError::NotFound("project not found".to_string()))
+            .ok_or_else(|| AuthError::NotFound("project not found".to_string()))?;
+
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::ProjectEnvironmentChanged,
+                    Some(&user_id.to_string()),
+                    None,
+                    Some(project_id),
+                    format!("environment switched to {environment}"),
+                    None,
+                ),
+            )
+            .await;
+
+        Ok(project)
     }
 }

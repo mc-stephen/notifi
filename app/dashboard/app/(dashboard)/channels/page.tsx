@@ -16,6 +16,7 @@ import {
   Zap,
   TrendingUp,
   AlertTriangle,
+  Shield,
 } from "lucide-react";
 
 export default function ChannelsPage() {
@@ -24,9 +25,24 @@ export default function ChannelsPage() {
   const providers = useProviders();
 
   const enabledCount = channels.filter((c) => c.enabled).length;
-  const healthyProviders = providers.filter((p) => p.health === "healthy").length;
-  const avgLatency = Math.round(providers.reduce((acc, p) => acc + p.latencyMs, 0) / providers.length);
-  const avgSuccessRate = (providers.reduce((acc, p) => acc + p.successRate, 0) / providers.length).toFixed(1);
+  const healthyProviders = providers.filter(
+    (p) => p.connected && p.health === "healthy",
+  ).length;
+  const connectedProviders = providers.filter((p) => p.connected);
+  const avgLatency =
+    connectedProviders.length > 0
+      ? Math.round(
+          connectedProviders.reduce((acc, p) => acc + p.latencyMs, 0) /
+            connectedProviders.length,
+        )
+      : 0;
+  const avgSuccessRate =
+    connectedProviders.length > 0
+      ? (
+          connectedProviders.reduce((acc, p) => acc + p.successRate, 0) /
+          connectedProviders.length
+        ).toFixed(1)
+      : "0";
 
   return (
     <div className="space-y-6">
@@ -46,21 +62,31 @@ export default function ChannelsPage() {
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Active Channels</span>
+              <span className="text-sm text-muted-foreground">
+                Active Channels
+              </span>
               <Radio className="size-4 text-muted-foreground" />
             </div>
             <div className="text-2xl font-bold mt-1">{enabledCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">of {channels.length} configured</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              of {channels.length} configured
+            </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Healthy Providers</span>
+              <span className="text-sm text-muted-foreground">
+                Healthy Providers
+              </span>
               <Zap className="size-4 text-muted-foreground" />
             </div>
-            <div className="text-2xl font-bold mt-1">{healthyProviders}/{providers.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">all systems operational</p>
+            <div className="text-2xl font-bold mt-1">
+              {healthyProviders}/{connectedProviders.length}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              all systems operational
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -76,7 +102,9 @@ export default function ChannelsPage() {
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Success Rate</span>
+              <span className="text-sm text-muted-foreground">
+                Success Rate
+              </span>
               <AlertTriangle className="size-4 text-muted-foreground" />
             </div>
             <div className="text-2xl font-bold mt-1">{avgSuccessRate}%</div>
@@ -88,8 +116,11 @@ export default function ChannelsPage() {
       {/* Channel cards */}
       <div className="grid gap-4 md:grid-cols-2">
         {channels.map((channel) => {
-          const channelProviders = providers.filter((p) => p.channelId === channel.id);
-          const bestProvider = channelProviders.sort((a, b) => a.priority - b.priority)[0];
+          const channelProviders = channel.providerIds
+            .map((id) => providers.find((p) => p.id === id))
+            .filter((p): p is NonNullable<typeof p> => !!p);
+          const primary = channelProviders[0];
+          const fallbacks = channelProviders.slice(1);
           const ChannelIcon = CHANNEL_ICON_MAP[channel.type];
 
           return (
@@ -105,14 +136,24 @@ export default function ChannelsPage() {
                       <ChannelIcon className="size-4" />
                     </div>
                     <div>
-                      <CardTitle className="text-sm">{CHANNEL_LABELS[channel.type]}</CardTitle>
+                      <CardTitle className="text-sm">
+                        {CHANNEL_LABELS[channel.type]}
+                      </CardTitle>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <Badge variant={channel.enabled ? "default" : "secondary"} className={channel.enabled ? "bg-success/15 text-success border-success/20" : ""}>
+                        <Badge
+                          variant={channel.enabled ? "default" : "secondary"}
+                          className={
+                            channel.enabled
+                              ? "bg-success/15 text-success border-success/20"
+                              : ""
+                          }
+                        >
                           {channel.enabled ? "Enabled" : "Disabled"}
                         </Badge>
                         {channelProviders.length > 0 && (
                           <span className="text-xs text-muted-foreground">
-                            {channelProviders.length} provider{channelProviders.length > 1 ? "s" : ""}
+                            {channelProviders.length} provider
+                            {channelProviders.length > 1 ? "s" : ""}
                           </span>
                         )}
                       </div>
@@ -128,24 +169,38 @@ export default function ChannelsPage() {
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                {bestProvider && (
+                {primary ? (
                   <div className="space-y-2">
                     <Separator />
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Primary: {bestProvider.name}</span>
-                      <HealthIndicator status={bestProvider.health} />
+                      <span className="text-muted-foreground">
+                        Primary: {primary.name}
+                      </span>
+                      <HealthIndicator status={primary.health} />
                     </div>
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Latency: {bestProvider.latencyMs}ms</span>
-                      <span className="text-muted-foreground">Success: {bestProvider.successRate}%</span>
+                      <span className="text-muted-foreground">
+                        Latency: {primary.latencyMs}ms
+                      </span>
+                      <span className="text-muted-foreground">
+                        Success: {primary.successRate}%
+                      </span>
                     </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Quota: {bestProvider.quotaUsed.toLocaleString()} / {bestProvider.quotaLimit.toLocaleString()}</span>
-                    </div>
+                    {fallbacks.length > 0 && (
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <Shield className="size-3 text-muted-foreground" />
+                        <span className="text-muted-foreground">
+                          Fallback:{" "}
+                          {fallbacks.map((f) => f.name).join(", ")}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                )}
-                {channelProviders.length === 0 && (
-                  <p className="text-xs text-muted-foreground">No providers configured</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    No providers assigned.{" "}
+                    <span className="text-primary">Add one →</span>
+                  </p>
                 )}
               </CardContent>
             </Card>

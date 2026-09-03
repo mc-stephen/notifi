@@ -55,6 +55,10 @@ mod tests {
                 auth: None,
                 oauth: None,
                 projects: None,
+                audit: None,
+                recipients: None,
+                templates: None,
+                channel_providers: None,
             },
             &AppConfig::default(),
         )
