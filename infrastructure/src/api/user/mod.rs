@@ -10,6 +10,7 @@ pub mod logs;
 pub mod projects;
 pub mod providers;
 pub mod recipients;
+pub mod support;
 pub mod templates;
 
 use axum::Router;
@@ -77,6 +78,15 @@ pub fn v1_router(state: &AppState) -> Router<AppState> {
     if let Some(store) = state.channel_providers.clone() {
         channel_config_routes = channel_config_routes.layer(axum::Extension(store));
     }
+    channel_config_routes = channel_config_routes.layer(axum::Extension(state.provider_tester.clone()));
+
+    let mut support_routes = support::routes::router();
+    if let Some(auth_service) = state.auth.clone() {
+        support_routes = support_routes.layer(axum::Extension(auth_service));
+    }
+    if let Some(service) = state.tickets.clone() {
+        support_routes = support_routes.layer(axum::Extension(service));
+    }
 
     Router::new()
         .nest("/auth", auth_routes)
@@ -85,5 +95,6 @@ pub fn v1_router(state: &AppState) -> Router<AppState> {
         .nest("/projects/{project_id}/recipients", recipient_routes)
         .nest("/projects/{project_id}/templates", template_routes)
         .nest("/projects/{project_id}/channel-configs", channel_config_routes)
+        .nest("/support", support_routes)
         .nest("/logs", log_routes)
 }

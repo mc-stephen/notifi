@@ -26,4 +26,8 @@ pub struct AppState {
     pub templates: Option<Arc<crate::domain::templates::TemplateService>>,
     /// Per-project provider configurations (API keys, secrets) — wired alongside auth/db.
     pub channel_providers: Option<Arc<dyn crate::ports::ChannelProviderStore + Send + Sync>>,
+    /// Support tickets — wired alongside auth/db.
+    pub tickets: Option<Arc<crate::domain::support::TicketService>>,
+    /// Provider connection tester — always available.
+    pub provider_tester: Arc<dyn crate::ports::ProviderTester + Send + Sync>,
 }

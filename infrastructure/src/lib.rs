@@ -106,6 +106,17 @@ fn run_inner() -> Result<(), String> {
             std::sync::Arc::new(infra::PgChannelProviderStore::new(pool.clone())) as std::sync::Arc<dyn ports::ChannelProviderStore + Send + Sync>
         });
 
+        // Support tickets: personal or project-scoped tickets with status.
+        let tickets = db.as_ref().map(|pool| {
+            std::sync::Arc::new(domain::support::TicketService::new(
+                std::sync::Arc::new(infra::PgTicketsStore::new(pool.clone())),
+                audit.clone().expect("audit service built with db"),
+            ))
+        });
+
+        // Provider tester: always available (validates credentials before saving).
+        let provider_tester: std::sync::Arc<dyn ports::ProviderTester + Send + Sync> = std::sync::Arc::new(infra::ConfigProviderTester::new());
+
         // OAuth sign-in is wired when at least one provider has credentials.
         let github = match (
             config.oauth.github_client_id.clone(),
@@ -168,6 +179,11 @@ fn run_inner() -> Result<(), String> {
                 "channel_providers disabled (needs database); /v1/projects/{{project_id}}/channel-configs routes will answer 503"
             );
         }
+        if tickets.is_none() {
+            tracing::warn!(
+                "support tickets disabled (needs database); /v1/support/tickets routes will answer 503"
+            );
+        }
         if oauth.is_none() {
             tracing::warn!(
                 "oauth disabled (no provider credentials); /v1/auth/oauth routes will answer 503"
@@ -185,6 +201,8 @@ fn run_inner() -> Result<(), String> {
                 recipients,
                 templates,
                 channel_providers,
+                tickets,
+                provider_tester,
             },
             &config,
         );

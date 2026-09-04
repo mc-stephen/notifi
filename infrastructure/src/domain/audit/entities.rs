@@ -22,6 +22,8 @@ pub enum AuditAction {
     TemplateCreated,
     TemplateUpdated,
     TemplateDeleted,
+    SupportTicketCreated,
+    SupportTicketReplied,
 }
 
 impl AuditAction {
@@ -40,6 +42,8 @@ impl AuditAction {
             Self::TemplateCreated => "template.created",
             Self::TemplateUpdated => "template.updated",
             Self::TemplateDeleted => "template.deleted",
+            Self::SupportTicketCreated => "support.ticket_created",
+            Self::SupportTicketReplied => "support.ticket_replied",
         }
     }
 }

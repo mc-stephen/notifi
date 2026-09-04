@@ -186,7 +186,7 @@ export default function LogsPage() {
                   return (
                     <TableRow
                       key={log.id}
-                      className="cursor-pointer odd:bg-white even:bg-muted/40 hover:bg-muted/70"
+                      className="cursor-pointer odd:bg-card even:bg-muted/40 hover:bg-muted/70"
                       onClick={() => setSelectedLog(log)}
                     >
                       <TableCell className="pl-4">
@@ -208,7 +208,7 @@ export default function LogsPage() {
                   );
                 })}
                 {filteredLogs.length === 0 && (
-                  <TableRow className="odd:bg-white even:bg-muted/40 hover:bg-transparent">
+                  <TableRow className="odd:bg-card even:bg-muted/40 hover:bg-transparent">
                     <TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
                       No log entries match.
                     </TableCell>

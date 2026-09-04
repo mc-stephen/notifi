@@ -7,5 +7,6 @@ where
 {
     Router::new()
         .route("/", axum::routing::get(handlers::list_configs).post(handlers::create_config))
+        .route("/test", axum::routing::post(handlers::test_config))
         .route("/{config_id}", axum::routing::patch(handlers::update_config).delete(handlers::delete_config))
 }

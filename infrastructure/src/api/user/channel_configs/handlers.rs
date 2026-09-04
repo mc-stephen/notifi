@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crate::domain::channels::{ProjectProviderConfig, ProjectProviderConfigInput};
 use crate::domain::auth::errors::AuthError;
 use crate::ports::channel_provider_store::ChannelProviderStore;
+use crate::ports::provider_tester::ProviderTester;
 
 use super::super::auth::{CurrentUser, Problem};
 
@@ -19,6 +20,21 @@ pub struct CreateProviderConfigRequest {
     pub smtp_fallback: Option<serde_json::Value>,
     #[serde(default = "default_true")]
     pub enabled: bool,
+}
+
+/// Request body for testing a provider connection.
+#[derive(Debug, Deserialize)]
+pub struct TestProviderConfigRequest {
+    pub channel_id: String,
+    pub provider_id: String,
+    pub config: serde_json::Value,
+}
+
+/// Response type for provider test endpoints.
+#[derive(Debug, Serialize)]
+pub struct TestProviderConfigResponse {
+    pub success: bool,
+    pub message: String,
 }
 
 fn default_true() -> bool {
@@ -52,6 +68,21 @@ pub async fn list_configs(
         .map_err(|e| Problem::from(AuthError::Storage(e)))?;
 
     Ok(Json(configs.into_iter().map(|c| c.into()).collect()))
+}
+
+/// POST /v1/projects/:project_id/channel-configs/test
+pub async fn test_config(
+    CurrentUser(_user): CurrentUser,
+    Extension(tester): Extension<Arc<dyn ProviderTester + Send + Sync>>,
+    Path(_project_id): Path<String>,
+    Json(req): Json<TestProviderConfigRequest>,
+) -> Result<Json<TestProviderConfigResponse>, Problem> {
+    let result = tester.test(&req.channel_id, &req.provider_id, &req.config).await;
+
+    Ok(Json(TestProviderConfigResponse {
+        success: result.success,
+        message: result.message,
+    }))
 }
 
 /// POST /v1/projects/:project_id/channel-configs

@@ -315,3 +315,31 @@ export type MetricCard = {
   changeLabel?: string;
   icon?: React.ComponentType<{ className?: string }>;
 };
+
+// ---------------------------------------------------------------------------
+// Support tickets
+// ---------------------------------------------------------------------------
+
+export type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
+
+export type SupportTicket = {
+  id: string;
+  projectId?: string | null;
+  subject: string;
+  category: string;
+  priority: string;
+  description: string;
+  status: TicketStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TicketMessageAuthor = "customer" | "support";
+
+export type TicketMessage = {
+  id: string;
+  ticketId: string;
+  author: TicketMessageAuthor;
+  body: string;
+  createdAt: string;
+};

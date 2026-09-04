@@ -194,7 +194,7 @@ export function DataTable<TData, TValue>({
                   data-state={row.getIsSelected() && "selected"}
                   className={cn(
                     onRowClick && "cursor-pointer",
-                    stripeRows && (row.index % 2 === 0 ? "bg-white" : "bg-muted/40"),
+                    stripeRows && (row.index % 2 === 0 ? "bg-card" : "bg-muted/40"),
                   )}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                 >

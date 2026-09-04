@@ -243,13 +243,13 @@ export default function RecipientsPage() {
       <div className="flex items-start gap-6">
         <div className="min-w-0 flex-1">
           {loading ? (
-            <div className="overflow-hidden rounded-lg border bg-white">
+            <div className="overflow-hidden rounded-lg border bg-card">
               <div className="flex items-center justify-center py-16 text-muted-foreground">
                 <Loader2 className="size-5 animate-spin mr-2" /> Loading recipients…
               </div>
             </div>
           ) : error ? (
-            <div className="overflow-hidden rounded-lg border bg-white">
+            <div className="overflow-hidden rounded-lg border bg-card">
               <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
                 <AlertTriangle className="size-8 text-warning" />
                 <p className="text-sm text-muted-foreground">{error}</p>
@@ -265,7 +265,7 @@ export default function RecipientsPage() {
               searchKey="name"
               searchPlaceholder="Search by name or user ID..."
               pageSize={10}
-              tableClassName="bg-white"
+              tableClassName="bg-card"
               stripeRows
               onRowClick={(r) => setDetails(r)}
               bulkActions={(selected) => (

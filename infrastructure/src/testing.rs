@@ -19,6 +19,7 @@ use crate::ports::recipients_store::{RecipientRecord, RecipientsStore};
 use crate::ports::templates_store::{
     AttachmentInput, AttachmentRecord, TemplateRecord, TemplatesStore,
 };
+use crate::ports::tickets_store::{TicketMessageRecord, TicketRecord, TicketsStore};
 
 /// Thread-safe in-memory store.
 #[derive(Default)]
@@ -856,6 +857,274 @@ impl TemplatesStore for FakeTemplatesStore {
             let before = list.len();
             list.retain(|t| !(t.id == template_id && t.project_id == project_id));
             Ok(list.len() != before)
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FakeTicketsStore — in-memory [`TicketsStore`] for tests.
+// ---------------------------------------------------------------------------
+
+#[derive(Default)]
+pub struct FakeTicketsStore {
+    tickets: RwLock<Vec<TicketRecord>>,
+    messages: RwLock<Vec<TicketMessageRecord>>,
+    /// (user_id, project_id) pairs the actor may access (project visibility).
+    visible: RwLock<Vec<(String, String)>>,
+}
+
+impl FakeTicketsStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Grants `user_id` access to `project_id`.
+    pub fn seed_visible(&self, user_id: &str, project_id: &str) {
+        self.visible
+            .write()
+            .unwrap()
+            .push((user_id.to_string(), project_id.to_string()));
+    }
+
+    pub fn all(&self) -> Vec<TicketRecord> {
+        let mut all = self.tickets.read().unwrap().clone();
+        all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        all
+    }
+}
+
+impl TicketsStore for FakeTicketsStore {
+    fn create(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: Option<&str>,
+        subject: &str,
+        category: &str,
+        priority: &str,
+        description: &str,
+    ) -> BoxFut<'_, Result<TicketRecord, StoreError>> {
+        let actor_str = actor.to_string();
+        let project_id_owned = project_id.map(str::to_owned);
+        let subject = subject.to_string();
+        let category = category.to_string();
+        let priority = priority.to_string();
+        let description = description.to_string();
+        let visible = self.visible.read().unwrap().clone();
+        let tickets = &self.tickets;
+
+        Box::pin(async move {
+            // Validate project visibility when project_id is provided.
+            if let Some(ref pid) = project_id_owned
+                && !visible.iter().any(|(u, p)| *u == actor_str && *p == *pid)
+            {
+                return Err(StoreError::Storage(
+                    "project not found or not visible".to_string(),
+                ));
+            }
+
+            let record = TicketRecord {
+                id: Ulid::new().to_string(),
+                project_id: project_id_owned,
+                created_by: actor_str,
+                subject,
+                category,
+                priority,
+                description,
+                status: crate::domain::support::entities::TicketStatus::Open,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                deleted_at: None,
+            };
+
+            tickets
+                .write()
+                .map_err(lock_err)?
+                .push(record.clone());
+
+            Ok(record)
+        })
+    }
+
+    fn list(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        status: Option<&str>,
+        limit: i64,
+        before: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<TicketRecord>, StoreError>> {
+        let actor_str = actor.to_string();
+        let status_owned = status.map(str::to_owned);
+        let before_owned = before.map(str::to_owned);
+        let visible = self.visible.read().unwrap().clone();
+        let tickets = &self.tickets;
+
+        Box::pin(async move {
+            let all = tickets.read().map_err(lock_err)?;
+            let filtered: Vec<TicketRecord> = all
+                .iter()
+                .filter(|t| {
+                    if t.deleted_at.is_some() {
+                        return false;
+                    }
+                    // Personal: project_id is None and created_by is actor.
+                    // Project: visible to actor.
+                    let matches_creator = t.created_by == actor_str;
+                    let matches_project = t.project_id.is_some()
+                        && visible.iter().any(|(u, p)| *u == actor_str && p.as_str() == t.project_id.as_deref().unwrap_or(""));
+                    let visible_to_actor = (t.project_id.is_none() && matches_creator) || matches_project;
+
+                    if !visible_to_actor {
+                        return false;
+                    }
+
+                    if let Some(ref s) = status_owned
+                        && t.status.as_str() != s.as_str()
+                    {
+                        return false;
+                    }
+                    if let Some(ref b) = before_owned
+                        && t.id >= *b
+                    {
+                        return false;
+                    }
+                    true
+                })
+                .cloned()
+                .collect();
+
+            let mut result: Vec<TicketRecord> = filtered
+                .into_iter()
+                .take(limit as usize)
+                .collect();
+            result.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
+            Ok(result)
+        })
+    }
+
+    fn get(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        ticket_id: &str,
+    ) -> BoxFut<'_, Result<Option<TicketRecord>, StoreError>> {
+        let actor_str = actor.to_string();
+        let ticket_id = ticket_id.to_string();
+        let visible = self.visible.read().unwrap().clone();
+        let tickets = &self.tickets;
+
+        Box::pin(async move {
+            let all = tickets.read().map_err(lock_err)?;
+            let found = all.iter().find(|t| {
+                if t.id != ticket_id || t.deleted_at.is_some() {
+                    return false;
+                }
+                if t.project_id.is_none() {
+                    return t.created_by == actor_str;
+                }
+                visible.iter().any(|(u, p)| *u == actor_str && p.as_str() == t.project_id.as_deref().unwrap_or(""))
+            });
+            Ok(found.cloned())
+        })
+    }
+
+    fn list_messages(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        ticket_id: &str,
+    ) -> BoxFut<'_, Result<Vec<TicketMessageRecord>, StoreError>> {
+        let actor_str = actor.to_string();
+        let ticket_id = ticket_id.to_string();
+        let visible = self.visible.read().unwrap().clone();
+        let tickets = self.tickets.read().unwrap().clone();
+        let messages = self.messages.read().unwrap().clone();
+
+        Box::pin(async move {
+            let ticket = tickets.iter().find(|t| {
+                t.id == ticket_id
+                    && t.deleted_at.is_none()
+                    && (t.project_id.is_none()
+                        && t.created_by == actor_str
+                        || t.project_id.is_some()
+                            && visible.iter().any(|(u, p)| *u == actor_str && p.as_str() == t.project_id.as_deref().unwrap_or("")))
+            });
+            if ticket.is_none() {
+                return Err(StoreError::Storage("ticket not found or not visible".to_string()));
+            }
+            let mut result: Vec<TicketMessageRecord> = messages
+                .into_iter()
+                .filter(|m| m.ticket_id == ticket_id)
+                .collect();
+            result.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
+            Ok(result)
+        })
+    }
+
+    fn add_message(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        ticket_id: &str,
+        body: &str,
+    ) -> BoxFut<'_, Result<Option<TicketMessageRecord>, StoreError>> {
+        let actor_str = actor.to_string();
+        let ticket_id = ticket_id.to_string();
+        let body = body.to_string();
+        let visible = self.visible.read().unwrap().clone();
+        let tickets = self.tickets.read().unwrap().clone();
+
+        Box::pin(async move {
+            let ticket = tickets.iter().find(|t| {
+                t.id == ticket_id
+                    && t.deleted_at.is_none()
+                    && (t.project_id.is_none()
+                        && t.created_by == actor_str
+                        || t.project_id.is_some()
+                            && visible.iter().any(|(u, p)| *u == actor_str && p.as_str() == t.project_id.as_deref().unwrap_or("")))
+            });
+            if ticket.is_none() {
+                return Ok(None);
+            }
+            let record = TicketMessageRecord {
+                id: Ulid::new().to_string(),
+                ticket_id: ticket_id.clone(),
+                author: crate::domain::support::entities::MessageAuthor::Customer,
+                author_id: Some(actor_str),
+                body,
+                created_at: Utc::now(),
+            };
+            self.messages.write().unwrap().push(record.clone());
+            // Touch updated_at on the ticket.
+            if let Some(t) = self.tickets.write().unwrap().iter_mut().find(|t| t.id == ticket_id) {
+                t.updated_at = Utc::now();
+            }
+            Ok(Some(record))
+        })
+    }
+
+    fn reopen(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        ticket_id: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let actor_str = actor.to_string();
+        let ticket_id = ticket_id.to_string();
+        let visible = self.visible.read().unwrap().clone();
+
+        Box::pin(async move {
+            let mut tickets = self.tickets.write().unwrap();
+            if let Some(t) = tickets.iter_mut().find(|t| {
+                t.id == ticket_id
+                    && t.deleted_at.is_none()
+                    && (t.project_id.is_none()
+                        && t.created_by == actor_str
+                        || t.project_id.is_some()
+                            && visible.iter().any(|(u, p)| *u == actor_str && p.as_str() == t.project_id.as_deref().unwrap_or("")))
+            })
+            && t.status == crate::domain::support::entities::TicketStatus::Resolved
+            {
+                t.status = crate::domain::support::entities::TicketStatus::Open;
+                t.updated_at = Utc::now();
+                return Ok(true);
+            }
+            Ok(false)
         })
     }
 }

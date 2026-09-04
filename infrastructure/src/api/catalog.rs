@@ -259,6 +259,28 @@ pub const USER_V1_ROUTES: &[RouteInfo] = &[
         feature: "channel_configs",
         description: "disconnect a provider",
     },
+    // -- support feature ----------------------------------------------------
+    RouteInfo {
+        method: "POST",
+        path: "/v1/support/tickets",
+        surface: Surface::UserV1,
+        feature: "support",
+        description: "submit a support ticket (personal or project-scoped)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/v1/support/tickets",
+        surface: Surface::UserV1,
+        feature: "support",
+        description: "list tickets visible to the caller (personal + project)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/v1/support/tickets/{ticket_id}",
+        surface: Surface::UserV1,
+        feature: "support",
+        description: "fetch a single support ticket",
+    },
 ];
 
 /// Ops/infrastructure routes (absolute root, outside both surfaces).

@@ -5,6 +5,7 @@ pub mod auth;
 pub mod channels;
 pub mod projects;
 pub mod recipients;
+pub mod support;
 pub mod templates;
 
 /// Re-exported so the rest of the crate can `use crate::domain::AuthService`.

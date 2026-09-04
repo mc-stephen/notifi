@@ -280,13 +280,13 @@ export default function TemplatesPage() {
       />
 
       {loading ? (
-        <div className="overflow-hidden rounded-lg border bg-white">
+        <div className="overflow-hidden rounded-lg border bg-card">
           <div className="flex items-center justify-center py-16 text-muted-foreground">
             <Loader2 className="size-5 animate-spin mr-2" /> Loading templates…
           </div>
         </div>
       ) : error ? (
-        <div className="overflow-hidden rounded-lg border bg-white">
+        <div className="overflow-hidden rounded-lg border bg-card">
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
             <AlertTriangle className="size-8 text-warning" />
             <p className="text-sm text-muted-foreground">{error}</p>
@@ -302,7 +302,7 @@ export default function TemplatesPage() {
           searchKey="name"
           searchPlaceholder="Search templates..."
           pageSize={10}
-          tableClassName="bg-white"
+          tableClassName="bg-card"
           stripeRows
           onRowClick={(t) => router.push(`/templates/${t.id}`)}
           rowActions={(t) => (

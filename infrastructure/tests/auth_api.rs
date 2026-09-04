@@ -26,6 +26,8 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use server::infra::config::AppConfig;
+use server::infra::provider_tester::ConfigProviderTester;
+use server::ports::ProviderTester;
 
 /// App wired with a fake-backed auth service (dev tokens exposed).
 fn app() -> (Router, Arc<FakeAuthStore>) {
@@ -44,6 +46,8 @@ fn app() -> (Router, Arc<FakeAuthStore>) {
                 recipients: None,
                 templates: None,
                 channel_providers: None,
+                tickets: None,
+                provider_tester: std::sync::Arc::new(ConfigProviderTester::new()) as std::sync::Arc<dyn ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
         ),
@@ -64,6 +68,8 @@ fn app_without_auth() -> Router {
             recipients: None,
             templates: None,
             channel_providers: None,
+                tickets: None,
+            provider_tester: std::sync::Arc::new(ConfigProviderTester::new()) as std::sync::Arc<dyn ProviderTester + Send + Sync>,
         },
         &AppConfig::default(),
     )
@@ -92,6 +98,8 @@ fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
                 recipients: None,
                 templates: None,
                 channel_providers: None,
+                tickets: None,
+                provider_tester: std::sync::Arc::new(ConfigProviderTester::new()) as std::sync::Arc<dyn ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
         ),
@@ -814,6 +822,8 @@ fn app_with_projects() -> (Router, Arc<FakeAuthStore>) {
                 recipients: None,
                 templates: None,
                 channel_providers: None,
+                tickets: None,
+                provider_tester: std::sync::Arc::new(ConfigProviderTester::new()) as std::sync::Arc<dyn ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
         ),

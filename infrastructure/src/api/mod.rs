@@ -59,6 +59,8 @@ mod tests {
                 recipients: None,
                 templates: None,
                 channel_providers: None,
+                tickets: None,
+                provider_tester: std::sync::Arc::new(crate::infra::ConfigProviderTester::new()) as std::sync::Arc<dyn crate::ports::ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
         )

@@ -17,6 +17,8 @@ use server::domain::auth::AuthService;
 use server::domain::projects::ProjectService;
 use server::domain::templates::TemplateService;
 use server::infra::config::AppConfig;
+use server::infra::provider_tester::ConfigProviderTester;
+use server::ports::ProviderTester;
 use server::testing::{FakeAuditStore, FakeAuthStore, FakeTemplatesStore};
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -41,6 +43,8 @@ fn app_with_templates() -> (Router, Arc<FakeTemplatesStore>) {
                 recipients: None,
                 templates: Some(templates),
                 channel_providers: None,
+                tickets: None,
+                provider_tester: std::sync::Arc::new(ConfigProviderTester::new()) as std::sync::Arc<dyn ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
         ),
