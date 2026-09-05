@@ -1,0 +1,104 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { mockTickets } from "../../data/tickets";
+---
+
+<AdminLayout title="Support Tickets">
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+        <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+        <span>/</span>
+        <span class="text-foreground font-medium">Support</span>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Support Tickets</h1>
+      <p class="text-sm text-muted-foreground">Manage customer support requests and conversations.</p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3">
+      <div class="relative flex-1 min-w-[200px] max-w-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" placeholder="Search tickets..." class="flex h-9 w-full rounded-lg border border-input bg-transparent pl-8 pr-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
+      </div>
+      <select class="flex h-9 rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+        <option value="">All Status</option>
+        <option value="open">Open</option>
+        <option value="pending">Pending</option>
+        <option value="waiting">Waiting</option>
+        <option value="resolved">Resolved</option>
+        <option value="closed">Closed</option>
+      </select>
+      <select class="flex h-9 rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+        <option value="">All Priority</option>
+        <option value="low">Low</option>
+        <option value="normal">Normal</option>
+        <option value="high">High</option>
+        <option value="urgent">Urgent</option>
+      </select>
+    </div>
+
+    <div class="rounded-xl border bg-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border bg-muted/30">
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Ticket</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Customer</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Priority</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Assigned</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Updated</th>
+              <th class="text-right py-3 px-4 font-medium text-muted-foreground"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {mockTickets.map((ticket) => (
+              <tr class="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
+                <td class="py-3 px-4">
+                  <a href={`/support/${ticket.id}`} class="font-medium text-foreground hover:underline block">
+                    {ticket.subject}
+                  </a>
+                  <p class="text-xs text-muted-foreground mt-0.5">{ticket.id}</p>
+                </td>
+                <td class="py-3 px-4">
+                  <p class="text-foreground">{ticket.customerName}</p>
+                  <p class="text-xs text-muted-foreground">{ticket.organization}</p>
+                </td>
+                <td class="py-3 px-4">
+                  <span class:list={[
+                    "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+                    ticket.status === "open" && "bg-info/10 text-info border-info/20",
+                    ticket.status === "pending" && "bg-warning/10 text-warning border-warning/20",
+                    ticket.status === "waiting" && "bg-muted text-muted-foreground border-border",
+                    ticket.status === "resolved" && "bg-success/10 text-success border-success/20",
+                    ticket.status === "closed" && "bg-muted text-muted-foreground border-border",
+                  ]}>
+                    {ticket.status}
+                  </span>
+                </td>
+                <td class="py-3 px-4">
+                  <span class:list={[
+                    "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+                    ticket.priority === "low" && "bg-muted text-muted-foreground border-border",
+                    ticket.priority === "normal" && "bg-info/10 text-info border-info/20",
+                    ticket.priority === "high" && "bg-warning/10 text-warning border-warning/20",
+                    ticket.priority === "urgent" && "bg-destructive/10 text-destructive border-destructive/20",
+                  ]}>
+                    {ticket.priority}
+                  </span>
+                </td>
+                <td class="py-3 px-4 text-foreground hidden md:table-cell">{ticket.assignedAdmin || "—"}</td>
+                <td class="py-3 px-4 text-muted-foreground text-xs hidden lg:table-cell">
+                  {new Date(ticket.updatedAt).toLocaleDateString()}
+                </td>
+                <td class="py-3 px-4 text-right">
+                  <a href={`/support/${ticket.id}`} class="text-xs text-primary hover:underline">View</a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

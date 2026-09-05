@@ -12,6 +12,8 @@ type ListState = {
 };
 
 export function useSupportTickets() {
+  const projectId = useProjectStore((s) => s.currentProject?.id);
+
   const [state, setState] = useState<ListState>({
     tickets: [],
     loading: true,
@@ -22,9 +24,10 @@ export function useSupportTickets() {
     let ignore = false;
     (async () => {
       try {
-        const res = await api<{ tickets: SupportTicket[] }>(
-          "/v1/support/tickets",
-        );
+        const url = projectId
+          ? `/v1/support/tickets?project_id=${encodeURIComponent(projectId)}`
+          : "/v1/support/tickets";
+        const res = await api<{ tickets: SupportTicket[] }>(url);
         if (ignore) return;
         setState({ tickets: res.tickets, loading: false, error: null });
       } catch (e) {
@@ -39,14 +42,15 @@ export function useSupportTickets() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [projectId]);
 
   const refresh = useCallback(async () => {
     setState((prev) => ({ ...prev, loading: true }));
     try {
-      const res = await api<{ tickets: SupportTicket[] }>(
-        "/v1/support/tickets",
-      );
+      const url = projectId
+        ? `/v1/support/tickets?project_id=${encodeURIComponent(projectId)}`
+        : "/v1/support/tickets";
+      const res = await api<{ tickets: SupportTicket[] }>(url);
       setState({ tickets: res.tickets, loading: false, error: null });
     } catch (e) {
       setState({
@@ -55,7 +59,7 @@ export function useSupportTickets() {
         error: e instanceof Error ? e.message : "Failed to load tickets",
       });
     }
-  }, []);
+  }, [projectId]);
 
   return {
     tickets: state.tickets,

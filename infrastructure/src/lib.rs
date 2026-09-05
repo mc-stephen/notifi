@@ -66,14 +66,29 @@ fn run_inner() -> Result<(), String> {
             ))
         });
 
+        // In-app notifications: personal, per-user. No project scope.
+        // Built before auth so the auth service can capture it.
+        let notifications = db.as_ref().map(|pool| {
+            std::sync::Arc::new(domain::notifications::NotificationService::new(
+                std::sync::Arc::new(infra::PgNotificationsStore::new(pool.clone())),
+            ))
+        });
+
         // Auth is wired only when a database exists; its routes answer 503
         // otherwise (composition root wires the sqlx store into the service).
         let auth = db.as_ref().map(|pool| {
-            std::sync::Arc::new(domain::auth::AuthService::new(
+            let svc = domain::auth::AuthService::new(
                 std::sync::Arc::new(infra::PgAuthStore::new(pool.clone())),
                 config.auth.expose_dev_tokens,
                 audit.clone().expect("audit service built with db"),
-            ))
+            );
+            // Wire notifications if available (fire-and-forget on emit).
+            let svc = if let Some(n) = notifications.clone() {
+                svc.with_notifications(n)
+            } else {
+                svc
+            };
+            std::sync::Arc::new(svc)
         });
 
         // Projects slice: same store backing, separate service instance.
@@ -184,6 +199,11 @@ fn run_inner() -> Result<(), String> {
                 "support tickets disabled (needs database); /v1/support/tickets routes will answer 503"
             );
         }
+        if notifications.is_none() {
+            tracing::warn!(
+                "in-app notifications disabled (needs database); /v1/notifications routes will answer 503"
+            );
+        }
         if oauth.is_none() {
             tracing::warn!(
                 "oauth disabled (no provider credentials); /v1/auth/oauth routes will answer 503"
@@ -202,6 +222,7 @@ fn run_inner() -> Result<(), String> {
                 templates,
                 channel_providers,
                 tickets,
+                notifications,
                 provider_tester,
             },
             &config,

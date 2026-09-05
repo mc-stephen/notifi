@@ -1,4 +1,5 @@
 import type { MetricCard, ChartDataPoint } from "@/lib/types";
+import type { DateRange } from "@/components/custom/date-range-filter";
 import { createRng } from "@/lib/random";
 import {
   Bell,
@@ -9,7 +10,7 @@ import {
   Timer,
 } from "lucide-react";
 
-export function useMetrics(): MetricCard[] {
+export function useMetrics(_range: DateRange = "30d"): MetricCard[] {
   return [
     {
       title: "Sent Today",

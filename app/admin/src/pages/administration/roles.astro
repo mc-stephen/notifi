@@ -1,0 +1,42 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+---
+
+<AdminLayout title="Roles & Permissions">
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+        <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+        <span>/</span>
+        <a href="/administration" class="hover:text-foreground transition-colors">Administration</a>
+        <span>/</span>
+        <span class="text-foreground font-medium">Roles</span>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Roles & Permissions</h1>
+      <p class="text-sm text-muted-foreground">Configure admin roles and their permissions.</p>
+    </div>
+
+    <div class="space-y-4">
+      {["Super Admin", "Admin", "Support Admin", "Billing Admin", "Operations Admin", "Read Only"].map((role) => (
+        <div class="rounded-xl border bg-card p-5">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="font-semibold text-foreground">{role}</h3>
+              <p class="text-sm text-muted-foreground mt-0.5">
+                {role === "Super Admin" && "Full access to all features"}
+                {role === "Admin" && "Access to most features, limited admin management"}
+                {role === "Support Admin" && "Focus on support tickets and customer communication"}
+                {role === "Billing Admin" && "Access to billing, subscriptions, and payments"}
+                {role === "Operations Admin" && "Access to platform health and provider management"}
+                {role === "Read Only" && "View-only access to dashboard data"}
+              </p>
+            </div>
+            <span class="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+              {role === "Super Admin" ? "1" : role === "Admin" ? "1" : role === "Support Admin" ? "1" : "0"} user{role !== "Super Admin" ? "s" : ""}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</AdminLayout>

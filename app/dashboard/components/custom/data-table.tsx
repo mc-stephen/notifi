@@ -11,6 +11,7 @@ import {
   type ColumnDef,
   type SortingState,
   type ColumnFiltersState,
+  type Table as ReactTable,
 } from "@tanstack/react-table";
 import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -39,6 +40,8 @@ type DataTableProps<TData, TValue> = {
   rowActions?: (row: TData) => React.ReactNode;
   stripeRows?: boolean;
   tableClassName?: string;
+  hideToolbar?: boolean;
+  renderToolbar?: (table: ReactTable<TData>) => React.ReactNode;
 };
 
 function SortIcon({ sorted }: { sorted: false | "asc" | "desc" }) {
@@ -59,6 +62,8 @@ export function DataTable<TData, TValue>({
   rowActions,
   stripeRows = false,
   tableClassName,
+  hideToolbar = false,
+  renderToolbar,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -98,62 +103,65 @@ export function DataTable<TData, TValue>({
   return (
     <div className="space-y-3">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-1">
-          {searchKey && (
-            <div className="relative max-w-sm flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-              <Input
-                placeholder={searchPlaceholder}
-                value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
-                onChange={(e) => table.getColumn(searchKey)?.setFilterValue(e.target.value)}
-                className="pl-8 h-8 text-sm"
-              />
-            </div>
-          )}
-          {!searchKey && (
-            <div className="relative max-w-sm flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-              <Input
-                placeholder={searchPlaceholder}
-                value={globalFilter}
-                onChange={(e) => setGlobalFilter(e.target.value)}
-                className="pl-8 h-8 text-sm"
-              />
-            </div>
-          )}
-        </div>
+      {renderToolbar && renderToolbar(table)}
+      {!hideToolbar && !renderToolbar && (
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-1">
+            {searchKey && (
+              <div className="relative max-w-sm flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                <Input
+                  placeholder={searchPlaceholder}
+                  value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
+                  onChange={(e) => table.getColumn(searchKey)?.setFilterValue(e.target.value)}
+                  className="pl-8 h-8 text-sm"
+                />
+              </div>
+            )}
+            {!searchKey && (
+              <div className="relative max-w-sm flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                <Input
+                  placeholder={searchPlaceholder}
+                  value={globalFilter}
+                  onChange={(e) => setGlobalFilter(e.target.value)}
+                  className="pl-8 h-8 text-sm"
+                />
+              </div>
+            )}
+          </div>
 
-        <div className="flex items-center gap-2">
-          {selectedCount > 0 &&
-            (typeof bulkActions === "function"
-              ? bulkActions(
-                  table.getSelectedRowModel().rows.map((row) => row.original),
-                )
-              : bulkActions)}
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="gap-1.5" />}>
-              <Columns3 className="size-3.5" />
-              <span className="hidden sm:inline">Columns</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {table.getAllLeafColumns()
-                .filter((col) => col.id !== "select")
-                .map((col) => (
-                  <DropdownMenuCheckboxItem
-                    key={col.id}
-                    checked={col.getIsVisible()}
-                    onCheckedChange={(value) => col.toggleVisibility(!!value)}
-                  >
-                    {typeof col.columnDef.header === "string" ? col.columnDef.header : col.id}
-                  </DropdownMenuCheckboxItem>
-                ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-2">
+            {selectedCount > 0 &&
+              (typeof bulkActions === "function"
+                ? bulkActions(
+                    table.getSelectedRowModel().rows.map((row) => row.original),
+                  )
+                : bulkActions)}
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="gap-1.5" />}>
+                <Columns3 className="size-3.5" />
+                <span className="hidden sm:inline">Columns</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {table.getAllLeafColumns()
+                  .filter((col) => col.id !== "select")
+                  .map((col) => (
+                    <DropdownMenuCheckboxItem
+                      key={col.id}
+                      checked={col.getIsVisible()}
+                      onCheckedChange={(value) => col.toggleVisibility(!!value)}
+                    >
+                      {typeof col.columnDef.header === "string" ? col.columnDef.header : col.id}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Table */}
       <div className={cn("overflow-hidden rounded-lg border", tableClassName)}>

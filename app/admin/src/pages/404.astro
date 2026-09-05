@@ -1,0 +1,21 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="404 — Not Found">
+  <div class="flex min-h-screen items-center justify-center bg-background p-6">
+    <div class="text-center space-y-4">
+      <p class="text-6xl font-bold text-foreground">404</p>
+      <h1 class="text-xl font-semibold text-foreground">Page not found</h1>
+      <p class="text-sm text-muted-foreground max-w-sm mx-auto">
+        The page you're looking for doesn't exist or has been moved.
+      </p>
+      <a
+        href="/overview"
+        class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80"
+      >
+        Back to Dashboard
+      </a>
+    </div>
+  </div>
+</BaseLayout>

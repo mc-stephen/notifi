@@ -1,0 +1,91 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { mockAuditLogs } from "../../data/audit-logs";
+---
+
+<AdminLayout title="Audit Logs">
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+        <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+        <span>/</span>
+        <a href="/security" class="hover:text-foreground transition-colors">Security</a>
+        <span>/</span>
+        <span class="text-foreground font-medium">Audit Logs</span>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Audit Logs</h1>
+      <p class="text-sm text-muted-foreground">Immutable record of all administrative actions.</p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3">
+      <div class="relative flex-1 min-w-[200px] max-w-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" placeholder="Search logs..." class="flex h-9 w-full rounded-lg border border-input bg-transparent pl-8 pr-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
+      </div>
+      <select class="flex h-9 rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+        <option value="">All Actions</option>
+        <option value="user.suspend">User Suspend</option>
+        <option value="user.ban">User Ban</option>
+        <option value="admin.login">Admin Login</option>
+        <option value="notification.send">Notification Send</option>
+        <option value="subscription.update">Subscription Update</option>
+      </select>
+      <select class="flex h-9 rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+        <option value="">All Results</option>
+        <option value="success">Success</option>
+        <option value="failure">Failure</option>
+      </select>
+    </div>
+
+    <div class="rounded-xl border bg-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border bg-muted/30">
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Timestamp</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Actor</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Action</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Target</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Result</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">IP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mockAuditLogs.map((log) => (
+              <tr class="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
+                <td class="py-3 px-4 text-xs text-muted-foreground">
+                  {new Date(log.timestamp).toLocaleString()}
+                </td>
+                <td class="py-3 px-4">
+                  <p class="font-medium text-foreground">{log.actor}</p>
+                  <p class="text-xs text-muted-foreground">{log.actorEmail}</p>
+                </td>
+                <td class="py-3 px-4">
+                  <span class="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-mono font-medium text-secondary-foreground">
+                    {log.action}
+                  </span>
+                </td>
+                <td class="py-3 px-4">
+                  <p class="text-foreground">{log.target}</p>
+                  <p class="text-xs text-muted-foreground capitalize">{log.targetType}</p>
+                </td>
+                <td class="py-3 px-4">
+                  <span class:list={[
+                    "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+                    log.result === "success" && "bg-success/10 text-success border-success/20",
+                    log.result === "failure" && "bg-destructive/10 text-destructive border-destructive/20",
+                  ]}>
+                    {log.result}
+                  </span>
+                </td>
+                <td class="py-3 px-4 text-xs text-muted-foreground font-mono hidden lg:table-cell">
+                  {log.ipAddress || "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

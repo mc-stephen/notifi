@@ -33,16 +33,24 @@ export type InAppNotificationType =
   | "api_key_revoked"
   | "project_created"
   | "billing_change"
-  | "system";
+  | "system"
+  | "new_login"
+  | "marketing"
+  | "billing"
+  | "welcome"
+  | "update";
+
+export type NotificationOrigin = "system" | "admin";
 
 export type InAppNotification = {
   id: string;
+  userId: string;
   type: InAppNotificationType;
+  origin: NotificationOrigin;
   title: string;
-  message: string;
-  actorName?: string;
-  projectName: string;
+  content: string;
   read: boolean;
+  readAt: string | null;
   createdAt: string;
 };
 

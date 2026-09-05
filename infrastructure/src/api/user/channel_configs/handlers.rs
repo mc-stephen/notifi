@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use crate::domain::channels::{ProjectProviderConfig, ProjectProviderConfigInput};
 use crate::domain::auth::errors::AuthError;
+use crate::domain::notifications::{NotificationService, NotificationType};
 use crate::ports::channel_provider_store::ChannelProviderStore;
 use crate::ports::provider_tester::ProviderTester;
 
@@ -87,14 +88,15 @@ pub async fn test_config(
 
 /// POST /v1/projects/:project_id/channel-configs
 pub async fn create_config(
-    CurrentUser(_user): CurrentUser,
+    CurrentUser(user): CurrentUser,
     Extension(store): Extension<Arc<dyn ChannelProviderStore + Send + Sync>>,
+    Extension(notifications): Extension<Arc<NotificationService>>,
     Path(project_id): Path<String>,
     Json(req): Json<CreateProviderConfigRequest>,
 ) -> Result<Json<ProviderConfigResponse>, Problem> {
     let input = ProjectProviderConfigInput {
-        channel_id: req.channel_id,
-        provider_id: req.provider_id,
+        channel_id: req.channel_id.clone(),
+        provider_id: req.provider_id.clone(),
         config: req.config,
         smtp_fallback: req.smtp_fallback,
         enabled: req.enabled,
@@ -104,6 +106,18 @@ pub async fn create_config(
         .create(input, &project_id)
         .await
         .map_err(|e| Problem::from(AuthError::Storage(e)))?;
+
+    let _ = notifications
+        .create_system(
+            user.id,
+            NotificationType::ProviderAdd,
+            "Provider connected",
+            &format!(
+                "A {} provider ({}) was connected to project.",
+                req.channel_id, req.provider_id
+            ),
+        )
+        .await;
 
     Ok(Json(config.into()))
 }
@@ -133,14 +147,35 @@ pub async fn update_config(
 
 /// DELETE /v1/projects/:project_id/channel-configs/:config_id
 pub async fn delete_config(
-    CurrentUser(_user): CurrentUser,
+    CurrentUser(user): CurrentUser,
     Extension(store): Extension<Arc<dyn ChannelProviderStore + Send + Sync>>,
+    Extension(notifications): Extension<Arc<NotificationService>>,
     Path((_project_id, config_id)): Path<(String, String)>,
 ) -> Result<(), Problem> {
+    // Fetch the config before deleting so we can mention the provider in the notification.
+    let existing = store
+        .get(&config_id)
+        .await
+        .map_err(|e| Problem::from(AuthError::Storage(e)))?;
+
     store
         .delete(&config_id)
         .await
         .map_err(|e| Problem::from(AuthError::Storage(e)))?;
+
+    if let Some(cfg) = existing {
+        let _ = notifications
+            .create_system(
+                user.id,
+                NotificationType::ProviderDelete,
+                "Provider disconnected",
+                &format!(
+                    "A {} provider ({}) was disconnected from project.",
+                    cfg.channel_id, cfg.provider_id
+                ),
+            )
+            .await;
+    }
 
     Ok(())
 }

@@ -12,8 +12,10 @@ use notifi_core::Ulid;
 
 use crate::domain::auth::entities::{AuthToken, Session, TokenPurpose, User, UserId};
 use crate::domain::audit::entities::AuditEntry;
+use crate::domain::notifications::entities::{NotificationOrigin, NotificationType};
 use crate::ports::audit_store::{AuditFilters, AuditStore};
 use crate::ports::auth_store::{AuthStore, BoxFut, StoreError};
+use crate::ports::notifications_store::{NotificationRecord, NotificationsStore};
 use crate::ports::projects_store::{ProjectSummary, ProjectsStore};
 use crate::ports::recipients_store::{RecipientRecord, RecipientsStore};
 use crate::ports::templates_store::{
@@ -335,39 +337,25 @@ impl AuthStore for FakeAuthStore {
         input: crate::ports::auth_store::OnboardingInput,
     ) -> BoxFut<'_, Result<(), StoreError>> {
         let onboarded = &self.onboarded;
-        let projects = &self.projects;
+        let id = user_id.to_string();
+        let name = input.project_name;
+        let description = input.project_description;
         Box::pin(async move {
-            // Mark onboarded.
             {
                 let mut list = onboarded.write().map_err(lock_err)?;
-                let id = user_id.to_string();
                 if !list.contains(&id) {
                     list.push(id);
                 }
             }
-            // Seed a real project so GET /v1/projects returns data.
-            {
-                let mut list = projects.write().map_err(lock_err)?;
-                let slug = input
-                    .project_name
-                    .to_lowercase()
-                    .replace(' ', "-")
-                    .chars()
-                    .filter(|c| c.is_alphanumeric() || *c == '-')
-                    .take(40)
-                    .collect::<String>();
-                list.push((
-                    user_id.to_string(),
-                    ProjectSummary {
-                        id: ulid::Ulid::new().to_string(),
-                        name: input.project_name,
-                        slug,
-                        description: input.project_description,
-                        environment: "development".to_string(),
-                        created_at: chrono::Utc::now(),
-                    },
-                ));
-            }
+            // Delegate project creation to the ProjectsStore implementation —
+            // single source of truth for the fake's project-seeding logic.
+            crate::ports::projects_store::ProjectsStore::create_project(
+                self,
+                user_id,
+                &name,
+                description.as_deref(),
+            )
+            .await?;
             Ok(())
         })
     }
@@ -405,6 +393,48 @@ impl ProjectsStore for FakeAuthStore {
                     p.environment = environment;
                     p.clone()
                 }))
+        })
+    }
+
+    fn create_project(
+        &self,
+        user_id: UserId,
+        name: &str,
+        description: Option<&str>,
+    ) -> BoxFut<'_, Result<ProjectSummary, StoreError>> {
+        let name = name.trim().to_string();
+        let description = description.map(str::to_owned);
+        let user_id_str = user_id.to_string();
+        let projects = &self.projects;
+        Box::pin(async move {
+            let mut projects = projects.write().map_err(lock_err)?;
+            let slug = name
+                .to_lowercase()
+                .replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "")
+                .replace(char::is_whitespace, "-")
+                .trim_matches('-')
+                .to_string();
+            let slug = if slug.is_empty() {
+                "project".to_string()
+            } else {
+                slug
+            };
+            // Ensure uniqueness
+            let slug = if projects.iter().any(|(_, p)| p.slug == slug) {
+                format!("{slug}-{}", projects.len() + 1)
+            } else {
+                slug
+            };
+            let record = ProjectSummary {
+                id: notifi_core::Ulid::new().to_string(),
+                name,
+                slug,
+                description,
+                environment: "development".to_string(),
+                created_at: chrono::Utc::now(),
+            };
+            projects.push((user_id_str, record.clone()));
+            Ok(record)
         })
     }
 }
@@ -948,11 +978,13 @@ impl TicketsStore for FakeTicketsStore {
     fn list(
         &self,
         actor: crate::domain::auth::entities::UserId,
+        project_id: Option<&str>,
         status: Option<&str>,
         limit: i64,
         before: Option<&str>,
     ) -> BoxFut<'_, Result<Vec<TicketRecord>, StoreError>> {
         let actor_str = actor.to_string();
+        let project_id_owned = project_id.map(str::to_owned);
         let status_owned = status.map(str::to_owned);
         let before_owned = before.map(str::to_owned);
         let visible = self.visible.read().unwrap().clone();
@@ -966,28 +998,31 @@ impl TicketsStore for FakeTicketsStore {
                     if t.deleted_at.is_some() {
                         return false;
                     }
-                    // Personal: project_id is None and created_by is actor.
-                    // Project: visible to actor.
+                    // When project_id is provided, only show tickets for that
+                    // specific project — and only if the actor has visibility.
+                    if let Some(ref pid) = project_id_owned {
+                        return t.project_id.as_deref() == Some(pid.as_str())
+                            && visible.iter().any(|(u, p)| *u == actor_str && p.as_str() == pid.as_str());
+                    }
+                    // No project filter — show all tickets visible to the actor.
                     let matches_creator = t.created_by == actor_str;
                     let matches_project = t.project_id.is_some()
                         && visible.iter().any(|(u, p)| *u == actor_str && p.as_str() == t.project_id.as_deref().unwrap_or(""));
-                    let visible_to_actor = (t.project_id.is_none() && matches_creator) || matches_project;
-
-                    if !visible_to_actor {
-                        return false;
+                    (t.project_id.is_none() && matches_creator) || matches_project
+                })
+                .filter(|t| {
+                    if let Some(ref s) = status_owned {
+                        t.status.as_str() == s.as_str()
+                    } else {
+                        true
                     }
-
-                    if let Some(ref s) = status_owned
-                        && t.status.as_str() != s.as_str()
-                    {
-                        return false;
+                })
+                .filter(|t| {
+                    if let Some(ref b) = before_owned {
+                        t.id < *b
+                    } else {
+                        true
                     }
-                    if let Some(ref b) = before_owned
-                        && t.id >= *b
-                    {
-                        return false;
-                    }
-                    true
                 })
                 .cloned()
                 .collect();
@@ -1125,6 +1160,177 @@ impl TicketsStore for FakeTicketsStore {
                 return Ok(true);
             }
             Ok(false)
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FakeNotificationsStore — in-memory [`NotificationsStore`] for tests.
+// ---------------------------------------------------------------------------
+
+#[derive(Default)]
+pub struct FakeNotificationsStore {
+    notifications: RwLock<Vec<NotificationRecord>>,
+}
+
+impl FakeNotificationsStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn all(&self) -> Vec<NotificationRecord> {
+        let mut all = self.notifications.read().unwrap().clone();
+        all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        all
+    }
+}
+
+impl NotificationsStore for FakeNotificationsStore {
+    fn create(
+        &self,
+        user_id: UserId,
+        notification_type: NotificationType,
+        origin: NotificationOrigin,
+        title: &str,
+        content: &str,
+    ) -> BoxFut<'_, Result<NotificationRecord, StoreError>> {
+        let notifications = &self.notifications;
+        let user_str = user_id.to_string();
+        let title = title.to_string();
+        let content = content.to_string();
+        Box::pin(async move {
+            let record = NotificationRecord {
+                id: notifi_core::Ulid::new().to_string(),
+                user_id: user_str,
+                notification_type,
+                origin,
+                title,
+                content,
+                read_at: None,
+                created_at: Utc::now(),
+                deleted_at: None,
+            };
+            notifications.write().map_err(lock_err)?.push(record.clone());
+            Ok(record)
+        })
+    }
+
+    fn list(
+        &self,
+        user_id: UserId,
+        unread_only: bool,
+        limit: i64,
+        before: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<NotificationRecord>, StoreError>> {
+        let user_str = user_id.to_string();
+        let before_owned = before.map(str::to_owned);
+        let all = self.notifications.read().unwrap().clone();
+        Box::pin(async move {
+            let mut list: Vec<_> = all
+                .into_iter()
+                .filter(|n| n.user_id == user_str && n.deleted_at.is_none())
+                .filter(|n| !unread_only || n.read_at.is_none())
+                .filter(|n| before_owned.as_deref().is_none_or(|b| n.id.as_str() < b))
+                .collect();
+            list.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            list.truncate(limit.max(0) as usize);
+            Ok(list)
+        })
+    }
+
+    fn count_unread(
+        &self,
+        user_id: UserId,
+    ) -> BoxFut<'_, Result<i64, StoreError>> {
+        let user_str = user_id.to_string();
+        let all = self.notifications.read().unwrap().clone();
+        Box::pin(async move {
+            let count = all
+                .iter()
+                .filter(|n| n.user_id == user_str && n.read_at.is_none() && n.deleted_at.is_none())
+                .count() as i64;
+            Ok(count)
+        })
+    }
+
+    fn get(
+        &self,
+        user_id: UserId,
+        notification_id: &str,
+    ) -> BoxFut<'_, Result<Option<NotificationRecord>, StoreError>> {
+        let user_str = user_id.to_string();
+        let id = notification_id.to_string();
+        let all = self.notifications.read().unwrap().clone();
+        Box::pin(async move {
+            Ok(all
+                .into_iter()
+                .find(|n| n.id == id && n.user_id == user_str && n.deleted_at.is_none()))
+        })
+    }
+
+    fn set_read(
+        &self,
+        user_id: UserId,
+        notification_id: &str,
+        read: bool,
+    ) -> BoxFut<'_, Result<Option<NotificationRecord>, StoreError>> {
+        let user_str = user_id.to_string();
+        let id = notification_id.to_string();
+        let notifications = &self.notifications;
+        Box::pin(async move {
+            let mut list = notifications.write().map_err(lock_err)?;
+            if let Some(record) = list
+                .iter_mut()
+                .find(|n| n.id == id && n.user_id == user_str && n.deleted_at.is_none())
+            {
+                record.read_at = if read { Some(Utc::now()) } else { None };
+                Ok(Some(record.clone()))
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
+    fn mark_all_read(
+        &self,
+        user_id: UserId,
+    ) -> BoxFut<'_, Result<i64, StoreError>> {
+        let user_str = user_id.to_string();
+        let notifications = &self.notifications;
+        Box::pin(async move {
+            let mut list = notifications.write().map_err(lock_err)?;
+            let now = Utc::now();
+            let count = list
+                .iter_mut()
+                .filter(|n| n.user_id == user_str && n.read_at.is_none() && n.deleted_at.is_none())
+                .map(|n| {
+                    n.read_at = Some(now);
+                    1
+                })
+                .sum::<i64>();
+            Ok(count)
+        })
+    }
+
+    fn delete(
+        &self,
+        user_id: UserId,
+        notification_id: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let user_str = user_id.to_string();
+        let id = notification_id.to_string();
+        let notifications = &self.notifications;
+        Box::pin(async move {
+            let mut list = notifications.write().map_err(lock_err)?;
+            if let Some(record) = list
+                .iter_mut()
+                .find(|n| n.id == id && n.user_id == user_str && n.deleted_at.is_none())
+            {
+                record.deleted_at = Some(Utc::now());
+                Ok(true)
+            } else {
+                Ok(false)
+            }
         })
     }
 }

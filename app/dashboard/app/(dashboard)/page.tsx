@@ -1,15 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { DataTable } from "@/components/custom/data-table";
 import { MetricCard } from "@/components/custom/metric-card";
+import { DateRangeFilter } from "@/components/custom/date-range-filter";
 import { StatusBadge } from "@/components/custom/status-badge";
 import { ChannelBadge } from "@/components/custom/channel-badge";
 import { AreaChart } from "@/components/custom/charts/area-chart";
 import { PriorityBadge } from "@/components/custom/priority-badge";
 import { HealthIndicator } from "@/components/custom/health-indicator";
 import { useMetrics, useNotificationTimeline, useNotifications } from "@/hooks";
+import type { DateRange } from "@/components/custom/date-range-filter";
 import {
   Card,
   CardContent,
@@ -27,8 +30,8 @@ import { type ColumnDef } from "@tanstack/react-table";
 //===================================
 //
 //===================================
-function MetricCards() {
-  const metrics = useMetrics();
+function MetricCards({ range }: { range: DateRange }) {
+  const metrics = useMetrics(range);
 
   return (
     <div className="grid gap-4 grid-cols-2 md:grid-cols-6">
@@ -214,16 +217,21 @@ function RecentNotificationsTable() {
 //
 //===================================
 export default function DashboardPage() {
+  const [dateRange, setDateRange] = useState<DateRange>("30d");
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Overview of your notification system.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Overview of your notification system.
+          </p>
+        </div>
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
       </div>
 
-      <MetricCards />
+      <MetricCards range={dateRange} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">

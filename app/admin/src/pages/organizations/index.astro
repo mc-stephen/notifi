@@ -1,0 +1,69 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { mockOrganizations } from "../../data/organizations";
+---
+
+<AdminLayout title="Organizations">
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+        <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+        <span>/</span>
+        <span class="text-foreground font-medium">Organizations</span>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Organizations</h1>
+      <p class="text-sm text-muted-foreground">Manage customer organizations and their projects.</p>
+    </div>
+
+    <div class="rounded-xl border bg-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border bg-muted/30">
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Organization</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Plan</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Members</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Projects</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Monthly Notifications</th>
+              <th class="text-right py-3 px-4 font-medium text-muted-foreground"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {mockOrganizations.map((org) => (
+              <tr class="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
+                <td class="py-3 px-4">
+                  <a href={`/organizations/${org.id}`} class="font-medium text-foreground hover:underline">
+                    {org.name}
+                  </a>
+                  <p class="text-xs text-muted-foreground">{org.slug}</p>
+                </td>
+                <td class="py-3 px-4">
+                  <span class:list={[
+                    "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+                    org.status === "active" && "bg-success/10 text-success border-success/20",
+                    org.status === "suspended" && "bg-destructive/10 text-destructive border-destructive/20",
+                    org.status === "restricted" && "bg-warning/10 text-warning border-warning/20",
+                  ]}>
+                    {org.status}
+                  </span>
+                </td>
+                <td class="py-3 px-4">
+                  <span class="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground capitalize">
+                    {org.plan}
+                  </span>
+                </td>
+                <td class="py-3 px-4 text-foreground hidden md:table-cell">{org.memberCount}</td>
+                <td class="py-3 px-4 text-foreground hidden md:table-cell">{org.projectCount}</td>
+                <td class="py-3 px-4 text-foreground hidden lg:table-cell">{org.monthlyNotifications.toLocaleString()}</td>
+                <td class="py-3 px-4 text-right">
+                  <a href={`/organizations/${org.id}`} class="text-xs text-primary hover:underline">View</a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

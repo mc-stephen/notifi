@@ -1,0 +1,58 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+import ThemeToggle from "../components/admin/ThemeToggle.astro";
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<BaseLayout title={title}>
+  <div class="relative min-h-screen bg-background">
+    <div class="absolute top-4 right-4 z-20">
+      <ThemeToggle />
+    </div>
+    <div class="hidden lg:block absolute inset-0 overflow-hidden pointer-events-none">
+      <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,oklch(0.384_0.062_202.8/0.05),transparent_50%)]"></div>
+      <div class="absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,oklch(0.623_0.155_250/0.03),transparent_40%)]"></div>
+      <div class="absolute inset-0" style="background-image: radial-gradient(oklch(0.384 0.062 202.8 / 0.08) 1px, transparent 1px); background-size: 24px 24px;"></div>
+    </div>
+    <div class="relative z-10 flex min-h-screen">
+      <!-- Left: Branding -->
+      <div class="hidden lg:flex lg:w-1/2 flex-col items-center justify-center p-12 bg-card border-r border-border">
+        <div class="max-w-md text-center space-y-6">
+          <div class="flex items-center justify-center gap-3">
+            <div class="size-10 rounded-lg bg-primary flex items-center justify-center">
+              <span class="text-primary-foreground font-bold text-lg">N</span>
+            </div>
+            <span class="text-2xl font-bold text-foreground">Notifi</span>
+          </div>
+          <h1 class="text-3xl font-bold text-foreground">Admin Control Plane</h1>
+          <p class="text-muted-foreground text-lg leading-relaxed">
+            Internal administration system for managing users, organizations, billing, and platform operations.
+          </p>
+          <div class="flex items-center justify-center gap-6 pt-4 text-sm text-muted-foreground">
+            <div class="flex items-center gap-2">
+              <div class="size-2 rounded-full bg-success"></div>
+              <span>All Systems Operational</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Right: Form -->
+      <div class="flex-1 flex items-center justify-center p-6 lg:p-12">
+        <div class="w-full max-w-sm">
+          <div class="lg:hidden flex items-center justify-center gap-3 mb-8">
+            <div class="size-8 rounded-lg bg-primary flex items-center justify-center">
+              <span class="text-primary-foreground font-bold">N</span>
+            </div>
+            <span class="text-xl font-bold text-foreground">Notifi Admin</span>
+          </div>
+          <slot />
+        </div>
+      </div>
+    </div>
+  </div>
+</BaseLayout>

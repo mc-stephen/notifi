@@ -11,6 +11,13 @@ pub struct UpdateEnvironmentRequest {
     pub environment: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProjectRequest {
+    pub name: String,
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectDto {

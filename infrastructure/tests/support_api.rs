@@ -40,6 +40,7 @@ fn app_with_tickets() -> (Router, Arc<FakeTicketsStore>, Arc<FakeRecipientsStore
                 templates: None,
                 channel_providers: None,
                 tickets: Some(tickets),
+                notifications: None,
                 provider_tester: Arc::new(ConfigProviderTester::new()) as Arc<dyn ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
@@ -413,6 +414,80 @@ async fn list_messages_and_send_reply() {
     .await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res).await["messages"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn project_tickets_are_isolated_by_project_id() {
+    let (app, tickets_store, recipients_store) = app_with_tickets();
+
+    // Two users, each with their own project.
+    let (token_a, _uid_a, pid_a) =
+        onboard_project_on(app.clone(), &recipients_store, &tickets_store, "iso1@example.com", "Project A").await;
+    let (token_b, _uid_b, pid_b) =
+        onboard_project_on(app.clone(), &recipients_store, &tickets_store, "iso2@example.com", "Project B").await;
+
+    // A creates a ticket scoped to project A.
+    let res = post_with_cookie(
+        app.clone(),
+        "/v1/support/tickets",
+        json!({
+            "projectId": pid_a,
+            "subject": "A's issue",
+            "category": "Technical Issue",
+            "priority": "High",
+            "description": "Problem in A."
+        }),
+        &token_a,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+
+    // B creates a ticket scoped to project B.
+    let res = post_with_cookie(
+        app.clone(),
+        "/v1/support/tickets",
+        json!({
+            "projectId": pid_b,
+            "subject": "B's issue",
+            "category": "Billing",
+            "priority": "Medium",
+            "description": "Problem in B."
+        }),
+        &token_b,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+
+    // B lists with project_id=B — should only see B's ticket.
+    let res = get_with_cookie(
+        app.clone(),
+        &format!("/v1/support/tickets?project_id={pid_b}"),
+        &token_b,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let tickets = body_json(res).await["tickets"].as_array().unwrap().clone();
+    assert_eq!(tickets.len(), 1);
+    assert_eq!(tickets[0]["subject"], "B's issue");
+
+    // B lists with project_id=A — should see A's ticket (B is a member via visibility).
+    let res = get_with_cookie(
+        app.clone(),
+        &format!("/v1/support/tickets?project_id={pid_a}"),
+        &token_b,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let tickets = body_json(res).await["tickets"].as_array().unwrap().clone();
+    // B has no visibility to project A, so this should be empty.
+    assert_eq!(tickets.len(), 0);
+
+    // B lists without project_id — backward compat: all visible tickets.
+    let res = get_with_cookie(app.clone(), "/v1/support/tickets", &token_b).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let tickets = body_json(res).await["tickets"].as_array().unwrap().clone();
+    assert_eq!(tickets.len(), 1);
+    assert_eq!(tickets[0]["subject"], "B's issue");
 }
 
 #[tokio::test]

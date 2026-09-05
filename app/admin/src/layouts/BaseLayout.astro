@@ -1,0 +1,42 @@
+---
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description?: string;
+  path?: string;
+}
+
+const { title, description = "Notifi Admin Dashboard", path = "/" } = Astro.props;
+const canonicalUrl = new URL(path, Astro.site).href;
+---
+
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title} — Notifi Admin</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalUrl} />
+    <script is:inline>
+      (function () {
+        const stored = localStorage.getItem("theme");
+        const theme =
+          stored || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        document.documentElement.setAttribute("data-theme", theme);
+        document.documentElement.classList.toggle("dark", theme === "dark");
+      })();
+    </script>
+  </head>
+  <body>
+    <a href="#main-content" class="skip-link sr-only focus:not-sr-only focus:fixed focus:z-[999] focus:p-4 focus:bg-background focus:text-foreground focus:ring-2 focus:ring-ring">
+      Skip to content
+    </a>
+    <slot />
+  </body>
+</html>

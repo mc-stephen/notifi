@@ -1,0 +1,43 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+---
+
+<AdminLayout title="Administration">
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+        <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+        <span>/</span>
+        <span class="text-foreground font-medium">Administration</span>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Administration</h1>
+      <p class="text-sm text-muted-foreground">Manage admin users, roles, and platform settings.</p>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <a href="/administration/admins" class="rounded-xl border bg-card p-5 hover:bg-muted/50 transition-colors group">
+        <div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3 group-hover:bg-primary/20 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <h3 class="font-semibold text-foreground">Admin Users</h3>
+        <p class="text-sm text-muted-foreground mt-1">Manage administrator accounts</p>
+      </a>
+
+      <a href="/administration/roles" class="rounded-xl border bg-card p-5 hover:bg-muted/50 transition-colors group">
+        <div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3 group-hover:bg-primary/20 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+        </div>
+        <h3 class="font-semibold text-foreground">Roles & Permissions</h3>
+        <p class="text-sm text-muted-foreground mt-1">Configure access control</p>
+      </a>
+
+      <a href="/administration/settings" class="rounded-xl border bg-card p-5 hover:bg-muted/50 transition-colors group">
+        <div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3 group-hover:bg-primary/20 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <h3 class="font-semibold text-foreground">Settings</h3>
+        <p class="text-sm text-muted-foreground mt-1">Platform configuration</p>
+      </a>
+    </div>
+  </div>
+</AdminLayout>

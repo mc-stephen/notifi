@@ -47,6 +47,7 @@ fn app_with_recipients() -> (Router, Arc<FakeRecipientsStore>) {
                 templates: None,
                 channel_providers: None,
                 tickets: None,
+                notifications: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new()) as std::sync::Arc<dyn ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),

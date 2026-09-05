@@ -1,0 +1,138 @@
+---
+import AuthLayout from "../../layouts/AuthLayout.astro";
+---
+
+<AuthLayout title="Reset Password">
+  <div class="space-y-6">
+    <div class="space-y-2 text-center">
+      <h1 class="text-2xl font-bold text-foreground">Set new password</h1>
+      <p class="text-sm text-muted-foreground">
+        Enter your new password below.
+      </p>
+    </div>
+
+    <form id="reset-form" class="space-y-4">
+      <div class="space-y-2">
+        <label for="password" class="text-sm font-medium text-foreground">New Password</label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          required
+          autocomplete="new-password"
+          placeholder="Enter new password"
+          class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+        />
+      </div>
+
+      <div class="space-y-2">
+        <label for="confirm" class="text-sm font-medium text-foreground">Confirm Password</label>
+        <input
+          type="password"
+          id="confirm"
+          name="confirm"
+          required
+          autocomplete="new-password"
+          placeholder="Confirm new password"
+          class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+        />
+      </div>
+
+      <div class="space-y-1.5 text-xs text-muted-foreground">
+        <p>Password must contain:</p>
+        <ul class="list-none space-y-1">
+          <li class="flex items-center gap-1.5" id="req-length">
+            <span class="size-1.5 rounded-full bg-muted-foreground/40"></span>
+            At least 8 characters
+          </li>
+          <li class="flex items-center gap-1.5" id="req-upper">
+            <span class="size-1.5 rounded-full bg-muted-foreground/40"></span>
+            One uppercase letter
+          </li>
+          <li class="flex items-center gap-1.5" id="req-number">
+            <span class="size-1.5 rounded-full bg-muted-foreground/40"></span>
+            One number
+          </li>
+        </ul>
+      </div>
+
+      <div id="error-message" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
+        Passwords do not meet requirements.
+      </div>
+
+      <button
+        type="submit"
+        id="submit-btn"
+        class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 w-full"
+      >
+        <span id="btn-text">Reset Password</span>
+        <svg id="btn-spinner" class="hidden size-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+      </button>
+    </form>
+
+    <div class="text-center">
+      <a href="/login" class="text-sm text-primary hover:underline">
+        ← Back to sign in
+      </a>
+    </div>
+  </div>
+</AuthLayout>
+
+<script>
+  const form = document.getElementById("reset-form") as HTMLFormElement;
+  const password = document.getElementById("password") as HTMLInputElement;
+  const confirm = document.getElementById("confirm") as HTMLInputElement;
+  const errorDiv = document.getElementById("error-message");
+  const submitBtn = document.getElementById("submit-btn") as HTMLButtonElement;
+  const btnText = document.getElementById("btn-text");
+  const btnSpinner = document.getElementById("btn-spinner");
+
+  function checkRequirements() {
+    const len = document.getElementById("req-length");
+    const upper = document.getElementById("req-upper");
+    const num = document.getElementById("req-number");
+    const v = password.value;
+
+    function setMet(el: HTMLElement | null, met: boolean) {
+      if (!el) return;
+      const dot = el.querySelector("span");
+      if (dot) {
+        dot.className = met ? "size-1.5 rounded-full bg-success" : "size-1.5 rounded-full bg-muted-foreground/40";
+      }
+    }
+
+    setMet(len, v.length >= 8);
+    setMet(upper, /[A-Z]/.test(v));
+    setMet(num, /[0-9]/.test(v));
+  }
+
+  password?.addEventListener("input", checkRequirements);
+
+  form?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    errorDiv?.classList.add("hidden");
+
+    if (password.value.length < 8 || !/[A-Z]/.test(password.value) || !/[0-9]/.test(password.value)) {
+      errorDiv?.classList.remove("hidden");
+      return;
+    }
+
+    if (password.value !== confirm.value) {
+      errorDiv?.classList.remove("hidden");
+      return;
+    }
+
+    btnText && (btnText.textContent = "");
+    btnSpinner?.classList.remove("hidden");
+    submitBtn.disabled = true;
+
+    setTimeout(() => {
+      btnSpinner?.classList.add("hidden");
+      submitBtn.disabled = false;
+      window.location.href = "/login";
+    }, 1500);
+  });
+</script>

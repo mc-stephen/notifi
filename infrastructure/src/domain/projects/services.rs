@@ -7,6 +7,7 @@ use crate::domain::auth::errors::AuthError;
 use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::audit::AuditService;
 use crate::domain::projects::entities::Project;
+use crate::ports::auth_store::StoreError;
 use crate::ports::projects_store::ProjectsStore;
 
 /// Allowed project gate values (mirrors the schema CHECK).
@@ -31,6 +32,44 @@ impl ProjectService {
             .into_iter()
             .map(Project::from)
             .collect())
+    }
+
+    /// Creates a new project.
+    pub async fn create(
+        &self,
+        user_id: UserId,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<Project, AuthError> {
+        if name.trim().is_empty() {
+            return Err(AuthError::Validation("project name is required".into()));
+        }
+        let record = self
+            .store
+            .create_project(user_id, name, description)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("a project with this name already exists".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?;
+
+        let project = Project::from(record);
+
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::ProjectCreated,
+                    Some(&user_id.to_string()),
+                    None,
+                    Some(&project.id),
+                    format!("project '{}' created", project.name),
+                    None,
+                ),
+            )
+            .await;
+
+        Ok(project)
     }
 
     /// Switches the project's environment gate.

@@ -148,12 +148,14 @@ impl TicketsStore for PgTicketsStore {
     fn list(
         &self,
         actor: UserId,
+        project_id: Option<&str>,
         status: Option<&str>,
         limit: i64,
         before: Option<&str>,
     ) -> BoxFut<'_, Result<Vec<TicketRecord>, StoreError>> {
         let pool = self.pool.clone();
         let actor_str = actor.to_string();
+        let project_id_owned = project_id.map(str::to_owned);
         let status_owned = status.map(str::to_owned);
         let before_owned = before.map(str::to_owned);
 
@@ -164,6 +166,7 @@ impl TicketsStore for PgTicketsStore {
                  WHERE deleted_at IS NULL
                    AND ($2::text IS NULL OR status = $2)
                    AND ($3::text IS NULL OR id < $3)
+                   AND ($5::text IS NULL OR project_id = $5)
                    AND (
                         project_id IS NULL AND created_by = $1
                         OR (
@@ -191,6 +194,7 @@ impl TicketsStore for PgTicketsStore {
             .bind(&status_owned)
             .bind(&before_owned)
             .bind(limit)
+            .bind(&project_id_owned)
             .fetch_all(&pool)
             .await
             .map_err(map_err)?;

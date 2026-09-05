@@ -1,0 +1,65 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { mockInvoices } from "../../data/billing";
+---
+
+<AdminLayout title="Invoices">
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+        <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+        <span>/</span>
+        <a href="/billing" class="hover:text-foreground transition-colors">Billing</a>
+        <span>/</span>
+        <span class="text-foreground font-medium">Invoices</span>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Invoices</h1>
+      <p class="text-sm text-muted-foreground">View and manage customer invoices.</p>
+    </div>
+
+    <div class="rounded-xl border bg-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border bg-muted/30">
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Invoice</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Customer</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Amount</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Period</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Created</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Paid</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mockInvoices.map((inv) => (
+              <tr class="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
+                <td class="py-3 px-4 font-mono text-xs text-foreground">{inv.id}</td>
+                <td class="py-3 px-4 font-medium text-foreground">{inv.customerName}</td>
+                <td class="py-3 px-4 text-foreground">${inv.amount}</td>
+                <td class="py-3 px-4">
+                  <span class:list={[
+                    "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+                    inv.status === "paid" && "bg-success/10 text-success border-success/20",
+                    inv.status === "open" && "bg-info/10 text-info border-info/20",
+                    inv.status === "void" && "bg-muted text-muted-foreground border-border",
+                    inv.status === "uncollectible" && "bg-destructive/10 text-destructive border-destructive/20",
+                  ]}>
+                    {inv.status}
+                  </span>
+                </td>
+                <td class="py-3 px-4 text-muted-foreground hidden md:table-cell">{inv.period}</td>
+                <td class="py-3 px-4 text-muted-foreground text-xs hidden lg:table-cell">
+                  {new Date(inv.createdAt).toLocaleDateString()}
+                </td>
+                <td class="py-3 px-4 text-muted-foreground text-xs hidden lg:table-cell">
+                  {inv.paidAt ? new Date(inv.paidAt).toLocaleDateString() : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

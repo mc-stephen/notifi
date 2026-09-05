@@ -5,6 +5,7 @@
 pub mod audit_store;
 pub mod auth_store;
 pub mod channel_provider_store;
+pub mod notifications_store;
 pub mod oauth;
 pub mod projects_store;
 pub mod provider_tester;

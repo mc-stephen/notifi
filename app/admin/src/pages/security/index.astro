@@ -1,0 +1,35 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+---
+
+<AdminLayout title="Security">
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+        <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+        <span>/</span>
+        <span class="text-foreground font-medium">Security</span>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Security</h1>
+      <p class="text-sm text-muted-foreground">Monitor security events and platform abuse.</p>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <a href="/security/audit-logs" class="rounded-xl border bg-card p-5 hover:bg-muted/50 transition-colors group">
+        <div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3 group-hover:bg-primary/20 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+        </div>
+        <h3 class="font-semibold text-foreground">Audit Logs</h3>
+        <p class="text-sm text-muted-foreground mt-1">Immutable action history</p>
+      </a>
+
+      <a href="/security/abuse-reports" class="rounded-xl border bg-card p-5 hover:bg-muted/50 transition-colors group">
+        <div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3 group-hover:bg-primary/20 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+        </div>
+        <h3 class="font-semibold text-foreground">Abuse Reports</h3>
+        <p class="text-sm text-muted-foreground mt-1">Review and handle abuse cases</p>
+      </a>
+    </div>
+  </div>
+</AdminLayout>

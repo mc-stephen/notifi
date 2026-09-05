@@ -9,6 +9,6 @@ where
     S: Clone + Send + Sync + 'static,
 {
     Router::new()
-        .route("/", get(handlers::list_projects))
+        .route("/", get(handlers::list_projects).post(handlers::create_project))
         .route("/{id}/environment", patch(handlers::update_environment))
 }

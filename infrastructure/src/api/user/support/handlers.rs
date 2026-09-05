@@ -49,6 +49,7 @@ pub async fn list_tickets(
     let tickets = service
         .list(
             user.id,
+            query.get("project_id").map(String::as_str),
             query.get("status").map(String::as_str),
             limit + 1,
             query.get("before").map(String::as_str),

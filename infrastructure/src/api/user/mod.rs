@@ -7,6 +7,7 @@
 pub mod auth;
 pub mod channel_configs;
 pub mod logs;
+pub mod notifications;
 pub mod projects;
 pub mod providers;
 pub mod recipients;
@@ -78,6 +79,9 @@ pub fn v1_router(state: &AppState) -> Router<AppState> {
     if let Some(store) = state.channel_providers.clone() {
         channel_config_routes = channel_config_routes.layer(axum::Extension(store));
     }
+    if let Some(svc) = state.notifications.clone() {
+        channel_config_routes = channel_config_routes.layer(axum::Extension(svc));
+    }
     channel_config_routes = channel_config_routes.layer(axum::Extension(state.provider_tester.clone()));
 
     let mut support_routes = support::routes::router();
@@ -88,6 +92,14 @@ pub fn v1_router(state: &AppState) -> Router<AppState> {
         support_routes = support_routes.layer(axum::Extension(service));
     }
 
+    let mut notification_routes = notifications::routes::router();
+    if let Some(auth_service) = state.auth.clone() {
+        notification_routes = notification_routes.layer(axum::Extension(auth_service));
+    }
+    if let Some(service) = state.notifications.clone() {
+        notification_routes = notification_routes.layer(axum::Extension(service));
+    }
+
     Router::new()
         .nest("/auth", auth_routes)
         .nest("/providers", provider_routes)
@@ -96,5 +108,6 @@ pub fn v1_router(state: &AppState) -> Router<AppState> {
         .nest("/projects/{project_id}/templates", template_routes)
         .nest("/projects/{project_id}/channel-configs", channel_config_routes)
         .nest("/support", support_routes)
+        .nest("/notifications", notification_routes)
         .nest("/logs", log_routes)
 }

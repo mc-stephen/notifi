@@ -3,6 +3,7 @@
 pub mod audit;
 pub mod auth;
 pub mod channels;
+pub mod notifications;
 pub mod projects;
 pub mod recipients;
 pub mod support;

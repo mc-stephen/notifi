@@ -89,13 +89,14 @@ impl TicketService {
     pub async fn list(
         &self,
         actor: UserId,
+        project_id: Option<&str>,
         status: Option<&str>,
         limit: i64,
         before: Option<&str>,
     ) -> Result<Vec<Ticket>, AuthError> {
         Ok(self
             .store
-            .list(actor, status, limit, before)
+            .list(actor, project_id, status, limit, before)
             .await
             .map_err(map_store_error)?
             .into_iter()

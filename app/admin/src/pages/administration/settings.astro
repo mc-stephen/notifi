@@ -1,0 +1,113 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+---
+
+<AdminLayout title="Settings">
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+        <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+        <span>/</span>
+        <a href="/administration" class="hover:text-foreground transition-colors">Administration</a>
+        <span>/</span>
+        <span class="text-foreground font-medium">Settings</span>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Platform Settings</h1>
+      <p class="text-sm text-muted-foreground">Configure platform-wide settings and preferences.</p>
+    </div>
+
+    <div class="space-y-6">
+      <!-- General -->
+      <div class="rounded-xl border bg-card">
+        <div class="p-5 border-b border-border">
+          <h2 class="font-semibold text-foreground">General</h2>
+          <p class="text-sm text-muted-foreground mt-0.5">Basic platform configuration</p>
+        </div>
+        <div class="p-5 space-y-4">
+          <div class="space-y-2">
+            <label class="text-sm font-medium text-foreground">Platform Name</label>
+            <input type="text" value="Notifi" class="flex h-9 w-full max-w-md rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
+          </div>
+          <div class="space-y-2">
+            <label class="text-sm font-medium text-foreground">Support Email</label>
+            <input type="email" value="support@notifi.dev" class="flex h-9 w-full max-w-md rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Notifications -->
+      <div class="rounded-xl border bg-card">
+        <div class="p-5 border-b border-border">
+          <h2 class="font-semibold text-foreground">Notification Defaults</h2>
+          <p class="text-sm text-muted-foreground mt-0.5">Default settings for new projects</p>
+        </div>
+        <div class="p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-foreground">Email Notifications</p>
+              <p class="text-xs text-muted-foreground">Enable email channel by default</p>
+            </div>
+            <button class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-primary transition-colors" role="switch" aria-checked="true">
+              <span class="pointer-events-none block size-4 rounded-full bg-background shadow-lg ring-0 translate-x-4"></span>
+            </button>
+          </div>
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-foreground">Push Notifications</p>
+              <p class="text-xs text-muted-foreground">Enable push channel by default</p>
+            </div>
+            <button class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-primary transition-colors" role="switch" aria-checked="true">
+              <span class="pointer-events-none block size-4 rounded-full bg-background shadow-lg ring-0 translate-x-4"></span>
+            </button>
+          </div>
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-foreground">SMS Notifications</p>
+              <p class="text-xs text-muted-foreground">Enable SMS channel by default</p>
+            </div>
+            <button class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-muted transition-colors" role="switch" aria-checked="false">
+              <span class="pointer-events-none block size-4 rounded-full bg-background shadow-lg ring-0 translate-x-0"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Security -->
+      <div class="rounded-xl border bg-card">
+        <div class="p-5 border-b border-border">
+          <h2 class="font-semibold text-foreground">Security</h2>
+          <p class="text-sm text-muted-foreground mt-0.5">Admin security settings</p>
+        </div>
+        <div class="p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-foreground">Require 2FA for Admins</p>
+              <p class="text-xs text-muted-foreground">Enforce two-factor authentication</p>
+            </div>
+            <button class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-primary transition-colors" role="switch" aria-checked="true">
+              <span class="pointer-events-none block size-4 rounded-full bg-background shadow-lg ring-0 translate-x-4"></span>
+            </button>
+          </div>
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-foreground">Session Timeout</p>
+              <p class="text-xs text-muted-foreground">Auto-logout after inactivity</p>
+            </div>
+            <select class="flex h-9 rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+              <option value="30">30 minutes</option>
+              <option value="60" selected>1 hour</option>
+              <option value="120">2 hours</option>
+              <option value="480">8 hours</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end">
+        <button class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80">
+          Save Settings
+        </button>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

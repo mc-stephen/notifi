@@ -1,0 +1,117 @@
+---
+import AuthLayout from "../layouts/AuthLayout.astro";
+---
+
+<AuthLayout title="Sign In">
+  <div class="space-y-6">
+    <div class="space-y-2 text-center">
+      <h1 class="text-2xl font-bold text-foreground">Sign in to Admin</h1>
+      <p class="text-sm text-muted-foreground">
+        Enter your credentials to access the admin dashboard.
+      </p>
+    </div>
+
+    <form id="login-form" class="space-y-4">
+      <div class="space-y-2">
+        <label for="email" class="text-sm font-medium text-foreground">Email</label>
+        <input
+          type="email"
+          id="email"
+          name="email"
+          required
+          autocomplete="email"
+          placeholder="admin@notifi.dev"
+          class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+        />
+      </div>
+
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <label for="password" class="text-sm font-medium text-foreground">Password</label>
+          <a href="/password/forgot" class="text-xs text-primary hover:underline">Forgot password?</a>
+        </div>
+        <div class="relative">
+          <input
+            type="password"
+            id="password"
+            name="password"
+            required
+            autocomplete="current-password"
+            placeholder="Enter your password"
+            class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 pr-10"
+          />
+          <button
+            type="button"
+            id="toggle-password"
+            class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Toggle password visibility"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="eye-icon"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="error-message" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
+        Invalid email or password.
+      </div>
+
+      <button
+        type="submit"
+        id="submit-btn"
+        class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 w-full"
+      >
+        <span id="btn-text">Sign In</span>
+        <svg id="btn-spinner" class="hidden size-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+      </button>
+    </form>
+
+    <div class="text-center">
+      <p class="text-xs text-muted-foreground">
+        Authorized administrators only. Public registration is not available.
+      </p>
+    </div>
+  </div>
+</AuthLayout>
+
+<script>
+  const form = document.getElementById("login-form") as HTMLFormElement;
+  const toggleBtn = document.getElementById("toggle-password");
+  const passwordInput = document.getElementById("password") as HTMLInputElement;
+  const eyeIcon = document.getElementById("eye-icon");
+  const errorDiv = document.getElementById("error-message");
+  const submitBtn = document.getElementById("submit-btn") as HTMLButtonElement;
+  const btnText = document.getElementById("btn-text");
+  const btnSpinner = document.getElementById("btn-spinner");
+
+  let showPassword = false;
+
+  toggleBtn?.addEventListener("click", () => {
+    showPassword = !showPassword;
+    passwordInput.type = showPassword ? "text" : "password";
+    if (eyeIcon) {
+      eyeIcon.innerHTML = showPassword
+        ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" x2="23" y1="1" y2="23"/>'
+        : '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>';
+    }
+  });
+
+  form?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    errorDiv?.classList.add("hidden");
+    btnText && (btnText.textContent = "");
+    btnSpinner?.classList.remove("hidden");
+    submitBtn.disabled = true;
+
+    // Simulate login
+    setTimeout(() => {
+      btnText && (btnText.textContent = "Sign In");
+      btnSpinner?.classList.add("hidden");
+      submitBtn.disabled = false;
+      // Redirect to overview
+      window.location.href = "/overview";
+    }, 1500);
+  });
+</script>

@@ -12,7 +12,7 @@ use axum::extract::{Extension, Path};
 use axum::http::StatusCode;
 
 use crate::domain::projects::ProjectService;
-use super::dto::{ProjectDto, UpdateEnvironmentRequest};
+use super::dto::{CreateProjectRequest, ProjectDto, UpdateEnvironmentRequest};
 use super::super::auth::{CurrentUser, Problem};
 
 /// `GET /v1/projects` — list all projects the current user owns or belongs to.
@@ -25,6 +25,21 @@ pub async fn list_projects(
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "projects": dtos })),
+    ))
+}
+
+/// `POST /v1/projects` — create a new project.
+pub async fn create_project(
+    CurrentUser(user): CurrentUser,
+    Extension(service): Extension<Arc<ProjectService>>,
+    Json(body): Json<CreateProjectRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
+    let project = service
+        .create(user.id, &body.name, body.description.as_deref())
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "project": ProjectDto::from(project) })),
     ))
 }
 

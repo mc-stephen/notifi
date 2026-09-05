@@ -28,6 +28,8 @@ pub struct AppState {
     pub channel_providers: Option<Arc<dyn crate::ports::ChannelProviderStore + Send + Sync>>,
     /// Support tickets — wired alongside auth/db.
     pub tickets: Option<Arc<crate::domain::support::TicketService>>,
+    /// In-app notifications (personal, per-user) — wired alongside auth/db.
+    pub notifications: Option<Arc<crate::domain::notifications::NotificationService>>,
     /// Provider connection tester — always available.
     pub provider_tester: Arc<dyn crate::ports::ProviderTester + Send + Sync>,
 }

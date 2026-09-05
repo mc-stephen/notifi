@@ -1,0 +1,64 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { mockProviders } from "../../data/platform";
+---
+
+<AdminLayout title="Providers">
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+        <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+        <span>/</span>
+        <a href="/platform" class="hover:text-foreground transition-colors">Platform</a>
+        <span>/</span>
+        <span class="text-foreground font-medium">Providers</span>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Notification Providers</h1>
+      <p class="text-sm text-muted-foreground">Manage and monitor notification provider integrations.</p>
+    </div>
+
+    <div class="rounded-xl border bg-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border bg-muted/30">
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Provider</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Channel</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Success Rate</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Failure Rate</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Latency</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Region</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden xl:table-cell">Last Health Check</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mockProviders.map((provider) => (
+              <tr class="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
+                <td class="py-3 px-4 font-medium text-foreground">{provider.name}</td>
+                <td class="py-3 px-4 capitalize text-foreground">{provider.channel}</td>
+                <td class="py-3 px-4">
+                  <span class:list={[
+                    "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+                    provider.status === "healthy" && "bg-success/10 text-success border-success/20",
+                    provider.status === "degraded" && "bg-warning/10 text-warning border-warning/20",
+                    provider.status === "down" && "bg-destructive/10 text-destructive border-destructive/20",
+                  ]}>
+                    {provider.status}
+                  </span>
+                </td>
+                <td class="py-3 px-4 text-foreground hidden md:table-cell">{provider.successRate}%</td>
+                <td class="py-3 px-4 text-foreground hidden md:table-cell">{provider.failureRate}%</td>
+                <td class="py-3 px-4 text-foreground hidden lg:table-cell">{provider.latencyMs}ms</td>
+                <td class="py-3 px-4 text-muted-foreground hidden lg:table-cell">{provider.region}</td>
+                <td class="py-3 px-4 text-muted-foreground text-xs hidden xl:table-cell">
+                  {new Date(provider.lastHealthCheck).toLocaleString()}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

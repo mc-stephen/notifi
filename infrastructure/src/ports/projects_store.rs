@@ -28,6 +28,14 @@ pub trait ProjectsStore: Send + Sync {
     /// All projects the user owns or belongs to, oldest first.
     fn list_projects(&self, user_id: UserId) -> BoxFut<'_, Result<Vec<ProjectSummary>, StoreError>>;
 
+    /// Creates a new project owned by the user.
+    fn create_project(
+        &self,
+        user_id: UserId,
+        name: &str,
+        description: Option<&str>,
+    ) -> BoxFut<'_, Result<ProjectSummary, StoreError>>;
+
     /// Updates the environment gate on a project the user owns or belongs
     /// to; `None` when the project doesn't exist or isn't visible to them
     /// (indistinguishable on purpose — no resource enumeration).

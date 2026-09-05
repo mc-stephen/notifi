@@ -16,6 +16,7 @@ use crate::domain::auth::entities::{AuthToken, Session, SessionId, TokenPurpose,
 use crate::domain::auth::errors::AuthError;
 use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::audit::AuditService;
+use crate::domain::notifications::{NotificationService, NotificationType};
 use crate::ports::oauth::OAuthProfile;
 use crate::ports::auth_store::{AuthStore, OnboardingInput};
 use crate::domain::auth::value_objects::{Email, hash_token, new_token, validate_password};
@@ -48,6 +49,7 @@ pub struct AuthService {
     store: Arc<dyn AuthStore>,
     audit: Arc<AuditService>,
     expose_dev_tokens: bool,
+    notifications: Option<Arc<NotificationService>>,
 }
 
 impl AuthService {
@@ -60,7 +62,15 @@ impl AuthService {
             store,
             audit,
             expose_dev_tokens,
+            notifications: None,
         }
+    }
+
+    /// Wires the notification service after construction (avoids changing
+    /// every call site that builds `AuthService`).
+    pub fn with_notifications(mut self, svc: Arc<NotificationService>) -> Self {
+        self.notifications = Some(svc);
+        self
     }
 
     /// Whether raw one-time tokens may appear in API responses.
@@ -189,6 +199,17 @@ impl AuthService {
                 ),
             )
             .await;
+
+        if let Some(ref svc) = self.notifications {
+            let _ = svc
+                .create_system(
+                    user.id,
+                    NotificationType::NewLogin,
+                    "New login",
+                    "A new sign-in to your account was detected.",
+                )
+                .await;
+        }
 
         Ok(IssuedSession {
             user,
@@ -444,6 +465,17 @@ impl AuthService {
                 ),
             )
             .await;
+
+        if let Some(ref svc) = self.notifications {
+            let _ = svc
+                .create_system(
+                    user.id,
+                    NotificationType::NewLogin,
+                    "New login",
+                    &format!("A new sign-in via {provider} was detected."),
+                )
+                .await;
+        }
 
         Ok(IssuedSession {
             user,

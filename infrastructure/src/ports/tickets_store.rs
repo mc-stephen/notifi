@@ -46,6 +46,7 @@ pub trait TicketsStore: Send + Sync {
     fn list(
         &self,
         actor: UserId,
+        project_id: Option<&str>,
         status: Option<&str>,
         limit: i64,
         before: Option<&str>,

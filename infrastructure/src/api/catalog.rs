@@ -281,6 +281,49 @@ pub const USER_V1_ROUTES: &[RouteInfo] = &[
         feature: "support",
         description: "fetch a single support ticket",
     },
+    // -- notifications feature ------------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/v1/notifications",
+        surface: Surface::UserV1,
+        feature: "notifications",
+        description: "list in-app notifications (newest first)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/v1/notifications/count",
+        surface: Surface::UserV1,
+        feature: "notifications",
+        description: "unread notification count for the bell badge",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/v1/notifications/{notification_id}",
+        surface: Surface::UserV1,
+        feature: "notifications",
+        description: "fetch a single notification",
+    },
+    RouteInfo {
+        method: "PATCH",
+        path: "/v1/notifications/{notification_id}/read",
+        surface: Surface::UserV1,
+        feature: "notifications",
+        description: "mark a notification read/unread",
+    },
+    RouteInfo {
+        method: "PATCH",
+        path: "/v1/notifications/read-all",
+        surface: Surface::UserV1,
+        feature: "notifications",
+        description: "mark all notifications as read",
+    },
+    RouteInfo {
+        method: "DELETE",
+        path: "/v1/notifications/{notification_id}",
+        surface: Surface::UserV1,
+        feature: "notifications",
+        description: "soft-delete a notification",
+    },
 ];
 
 /// Ops/infrastructure routes (absolute root, outside both surfaces).

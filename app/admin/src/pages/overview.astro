@@ -1,0 +1,186 @@
+---
+import AdminLayout from "../layouts/AdminLayout.astro";
+import { mockMetrics, mockSystemHealth, mockProviders } from "../data/platform";
+import { StatusDot } from "../components/shared/status";
+---
+
+<AdminLayout title="Overview">
+  <div class="space-y-6">
+    <!-- Metrics Grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {mockMetrics.slice(0, 4).map((metric) => (
+        <div class="rounded-xl border bg-card p-4 space-y-2">
+          <p class="text-sm text-muted-foreground font-medium">{metric.title}</p>
+          <div class="flex items-baseline gap-2">
+            <p class="text-2xl font-bold text-foreground tracking-tight">{metric.value}</p>
+            {metric.change !== 0 && metric.change !== undefined && (
+              <span class:list={[
+                "text-xs font-medium",
+                metric.change > 0 ? "text-success" : "text-destructive",
+              ]}>
+                {metric.change > 0 ? "+" : ""}{metric.change}%
+              </span>
+            )}
+          </div>
+          {metric.changeLabel && (
+            <p class="text-xs text-muted-foreground">{metric.changeLabel}</p>
+          )}
+        </div>
+      ))}
+    </div>
+
+    <!-- Second row metrics -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {mockMetrics.slice(4).map((metric) => (
+        <div class="rounded-xl border bg-card p-4 space-y-2">
+          <p class="text-sm text-muted-foreground font-medium">{metric.title}</p>
+          <div class="flex items-baseline gap-2">
+            <p class="text-2xl font-bold text-foreground tracking-tight">{metric.value}</p>
+            {metric.change !== 0 && metric.change !== undefined && (
+              <span class:list={[
+                "text-xs font-medium",
+                metric.change > 0 ? "text-success" : "text-destructive",
+              ]}>
+                {metric.change > 0 ? "+" : ""}{metric.change}%
+              </span>
+            )}
+          </div>
+          {metric.changeLabel && (
+            <p class="text-xs text-muted-foreground">{metric.changeLabel}</p>
+          )}
+        </div>
+      ))}
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- System Health -->
+      <div class="lg:col-span-2 rounded-xl border bg-card">
+        <div class="p-5 border-b border-border">
+          <h2 class="font-semibold text-foreground">System Health</h2>
+          <p class="text-sm text-muted-foreground mt-0.5">Real-time platform status</p>
+        </div>
+        <div class="p-5">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {mockSystemHealth.map((item) => (
+              <div class="flex items-center justify-between p-3 rounded-lg border border-border/50">
+                <div class="flex items-center gap-2.5">
+                  <StatusDot status={item.status} />
+                  <span class="text-sm font-medium text-foreground">{item.service}</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  {item.latencyMs !== undefined && (
+                    <span class="text-xs text-muted-foreground">{item.latencyMs}ms</span>
+                  )}
+                  <span class:list={[
+                    "text-xs font-medium capitalize",
+                    item.status === "operational" ? "text-success" : "",
+                    item.status === "degraded" ? "text-warning" : "",
+                    item.status === "down" ? "text-destructive" : "",
+                  ]}>
+                    {item.status}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Activity -->
+      <div class="rounded-xl border bg-card">
+        <div class="p-5 border-b border-border">
+          <h2 class="font-semibold text-foreground">Recent Activity</h2>
+          <p class="text-sm text-muted-foreground mt-0.5">Latest admin actions</p>
+        </div>
+        <div class="p-5">
+          <div class="space-y-4">
+            <div class="flex gap-3">
+              <div class="size-8 rounded-full bg-destructive/10 flex items-center justify-center shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-destructive"><circle cx="12" cy="12" r="10"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm text-foreground">Suspended user <span class="font-medium">Emily Rodriguez</span></p>
+                <p class="text-xs text-muted-foreground mt-0.5">2 hours ago</p>
+              </div>
+            </div>
+            <div class="flex gap-3">
+              <div class="size-8 rounded-full bg-destructive/10 flex items-center justify-center shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-destructive"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm text-foreground">Banned user <span class="font-medium">Casey Brown</span></p>
+                <p class="text-xs text-muted-foreground mt-0.5">1 day ago</p>
+              </div>
+            </div>
+            <div class="flex gap-3">
+              <div class="size-8 rounded-full bg-info/10 flex items-center justify-center shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-info"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm text-foreground">Sent system notification</p>
+                <p class="text-xs text-muted-foreground mt-0.5">2 days ago</p>
+              </div>
+            </div>
+            <div class="flex gap-3">
+              <div class="size-8 rounded-full bg-success/10 flex items-center justify-center shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-success"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm text-foreground">Updated subscription for <span class="font-medium">MegaCorp</span></p>
+                <p class="text-xs text-muted-foreground mt-0.5">3 days ago</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Provider Status -->
+    <div class="rounded-xl border bg-card">
+      <div class="p-5 border-b border-border">
+        <h2 class="font-semibold text-foreground">Provider Status</h2>
+        <p class="text-sm text-muted-foreground mt-0.5">Notification provider health and performance</p>
+      </div>
+      <div class="p-5">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-2 px-3 font-medium text-muted-foreground">Provider</th>
+                <th class="text-left py-2 px-3 font-medium text-muted-foreground">Channel</th>
+                <th class="text-left py-2 px-3 font-medium text-muted-foreground">Status</th>
+                <th class="text-left py-2 px-3 font-medium text-muted-foreground">Success Rate</th>
+                <th class="text-left py-2 px-3 font-medium text-muted-foreground">Latency</th>
+                <th class="text-left py-2 px-3 font-medium text-muted-foreground">Region</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mockProviders.map((provider) => (
+                <tr class="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
+                  <td class="py-3 px-3 font-medium text-foreground">{provider.name}</td>
+                  <td class="py-3 px-3 capitalize text-foreground">{provider.channel}</td>
+                  <td class="py-3 px-3">
+                    <div class="flex items-center gap-2">
+                      <StatusDot status={provider.status} />
+                      <span class:list={[
+                        "text-xs font-medium capitalize",
+                        provider.status === "healthy" ? "text-success" : "",
+                        provider.status === "degraded" ? "text-warning" : "",
+                        provider.status === "down" ? "text-destructive" : "",
+                      ]}>
+                        {provider.status}
+                      </span>
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-foreground">{provider.successRate}%</td>
+                  <td class="py-3 px-3 text-foreground">{provider.latencyMs}ms</td>
+                  <td class="py-3 px-3 text-muted-foreground">{provider.region}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

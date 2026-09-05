@@ -118,6 +118,36 @@ async fn unique_project_slug(tx: &mut PgConnection, base: &str) -> Result<String
     Ok(format!("{base}-{}", Ulid::new()))
 }
 
+/// Insert a new project and return the created record.
+///
+/// Called by both `AuthStore::complete_onboarding` and
+/// `ProjectsStore::create_project` to avoid duplicating the
+/// slug-unique + INSERT logic.
+async fn insert_project(
+    conn: &mut PgConnection,
+    name: &str,
+    description: Option<&str>,
+    created_by: &str,
+) -> Result<ProjectSummary, StoreError> {
+    let project_id = Ulid::new().to_string();
+    let project_base = slugify(name);
+    let project_slug = unique_project_slug(conn, &project_base).await?;
+    let row = sqlx::query_as::<_, ProjectRow>(
+        "INSERT INTO platform_projects (id, name, slug, description, created_by)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, name, slug, description, environment, created_at",
+    )
+    .bind(&project_id)
+    .bind(name)
+    .bind(&project_slug)
+    .bind(description)
+    .bind(created_by)
+    .fetch_one(&mut *conn)
+    .await
+    .map_err(map_err)?;
+    ProjectSummary::try_from(row)
+}
+
 impl AuthStore for PgAuthStore {
     // -- users ------------------------------------------------------------
 
@@ -467,25 +497,13 @@ impl AuthStore for PgAuthStore {
         let pool = self.pool.clone();
         Box::pin(async move {
             let mut tx = pool.begin().await.map_err(map_err)?;
-
-            let project_id = Ulid::new().to_string();
-            let project_base = slugify(&input.project_name);
-            let project_slug = unique_project_slug(&mut tx, &project_base).await?;
-            // The project-level environment gate defaults to 'development'
-            // via the schema — new projects are test-mode only.
-            sqlx::query(
-                "INSERT INTO platform_projects (id, name, slug, description, created_by)
-                 VALUES ($1, $2, $3, $4, $5)",
+            let _ = insert_project(
+                &mut tx,
+                input.project_name.trim(),
+                input.project_description.as_deref(),
+                &user_id.to_string(),
             )
-            .bind(&project_id)
-            .bind(input.project_name.trim())
-            .bind(&project_slug)
-            .bind(&input.project_description)
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(map_err)?;
-
+            .await?;
             tx.commit().await.map_err(map_err)?;
             Ok(())
         })
@@ -549,6 +567,25 @@ impl ProjectsStore for PgAuthStore {
             rows.into_iter()
                 .map(ProjectSummary::try_from)
                 .collect::<Result<Vec<_>, _>>()
+        })
+    }
+
+    fn create_project(
+        &self,
+        user_id: UserId,
+        name: &str,
+        description: Option<&str>,
+    ) -> BoxFut<'_, Result<ProjectSummary, StoreError>> {
+        let pool = self.pool.clone();
+        let name = name.trim().to_string();
+        let description = description.map(str::to_owned);
+        Box::pin(async move {
+            let mut tx = pool.begin().await.map_err(map_err)?;
+            let project =
+                insert_project(&mut tx, &name, description.as_deref(), &user_id.to_string())
+                    .await?;
+            tx.commit().await.map_err(map_err)?;
+            Ok(project)
         })
     }
 

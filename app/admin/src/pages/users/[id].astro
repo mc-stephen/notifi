@@ -1,0 +1,178 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { mockUsers } from "../../data/users";
+
+export function getStaticPaths() {
+  return mockUsers.map((user) => ({
+    params: { id: user.id },
+  }));
+}
+
+const { id } = Astro.params;
+const user = mockUsers.find((u) => u.id === id) || mockUsers[0];
+---
+
+<AdminLayout title={`User: ${user.name}`}>
+  <div class="space-y-6">
+    <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+      <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+      <span>/</span>
+      <a href="/users" class="hover:text-foreground transition-colors">Users</a>
+      <span>/</span>
+      <span class="text-foreground font-medium">{user.name}</span>
+    </nav>
+
+    <div class="flex items-start justify-between gap-4">
+      <div class="flex items-center gap-4">
+        <div class="size-12 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary">
+          {user.name.split(" ").map(n => n[0]).join("")}
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight text-foreground">{user.name}</h1>
+          <p class="text-sm text-muted-foreground">{user.email}</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class:list={[
+          "inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-medium capitalize",
+          user.status === "active" && "bg-success/10 text-success border-success/20",
+          user.status === "suspended" && "bg-destructive/10 text-destructive border-destructive/20",
+          user.status === "banned" && "bg-destructive/10 text-destructive border-destructive/20",
+          user.status === "restricted" && "bg-warning/10 text-warning border-warning/20",
+        ]}>
+          {user.status}
+        </span>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Overview -->
+      <div class="lg:col-span-2 space-y-6">
+        <div class="rounded-xl border bg-card">
+          <div class="p-5 border-b border-border">
+            <h2 class="font-semibold text-foreground">Overview</h2>
+          </div>
+          <div class="p-5">
+            <dl class="grid grid-cols-2 gap-4">
+              <div>
+                <dt class="text-xs text-muted-foreground">Organization</dt>
+                <dd class="text-sm font-medium text-foreground mt-0.5">{user.organization || "None"}</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-muted-foreground">Plan</dt>
+                <dd class="text-sm font-medium text-foreground mt-0.5 capitalize">{user.plan}</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-muted-foreground">Created</dt>
+                <dd class="text-sm font-medium text-foreground mt-0.5">{new Date(user.createdAt).toLocaleDateString()}</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-muted-foreground">Last Active</dt>
+                <dd class="text-sm font-medium text-foreground mt-0.5">{new Date(user.lastActiveAt).toLocaleDateString()}</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-muted-foreground">Notifications Sent</dt>
+                <dd class="text-sm font-medium text-foreground mt-0.5">{user.notificationCount.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-muted-foreground">Billing Status</dt>
+                <dd class="text-sm font-medium text-foreground mt-0.5 capitalize">{user.billingStatus.replace("_", " ")}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="rounded-xl border bg-card">
+          <div class="p-5 border-b border-border">
+            <h2 class="font-semibold text-foreground">Recent Activity</h2>
+          </div>
+          <div class="p-5">
+            <div class="space-y-4">
+              <div class="flex gap-3">
+                <div class="size-2 rounded-full bg-success mt-2 shrink-0"></div>
+                <div>
+                  <p class="text-sm text-foreground">Logged in</p>
+                  <p class="text-xs text-muted-foreground mt-0.5">{new Date(user.lastActiveAt).toLocaleString()}</p>
+                </div>
+              </div>
+              <div class="flex gap-3">
+                <div class="size-2 rounded-full bg-info mt-2 shrink-0"></div>
+                <div>
+                  <p class="text-sm text-foreground">Sent 245 notifications</p>
+                  <p class="text-xs text-muted-foreground mt-0.5">1 day ago</p>
+                </div>
+              </div>
+              <div class="flex gap-3">
+                <div class="size-2 rounded-full bg-info mt-2 shrink-0"></div>
+                <div>
+                  <p class="text-sm text-foreground">Created project "Main App"</p>
+                  <p class="text-xs text-muted-foreground mt-0.5">3 days ago</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="space-y-6">
+        <!-- Actions -->
+        <div class="rounded-xl border bg-card">
+          <div class="p-5 border-b border-border">
+            <h2 class="font-semibold text-foreground">Actions</h2>
+          </div>
+          <div class="p-5 space-y-2">
+            {user.status === "active" && (
+              <>
+                <button class="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>
+                  Suspend Account
+                </button>
+                <button class="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+                  Ban User
+                </button>
+              </>
+            )}
+            {(user.status === "suspended" || user.status === "banned") && (
+              <button class="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-success/30 bg-success/5 px-3 py-2 text-sm font-medium text-success hover:bg-success/10 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                Restore Account
+              </button>
+            )}
+            <button class="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Force Password Reset
+            </button>
+            <button class="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" x2="12" y1="2" y2="22"/></svg>
+              Revoke Sessions
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="rounded-xl border bg-card">
+          <div class="p-5 border-b border-border">
+            <h2 class="font-semibold text-foreground">Quick Stats</h2>
+          </div>
+          <div class="p-5 space-y-3">
+            <div class="flex justify-between">
+              <span class="text-sm text-muted-foreground">Total Notifications</span>
+              <span class="text-sm font-medium text-foreground">{user.notificationCount.toLocaleString()}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-sm text-muted-foreground">API Calls (30d)</span>
+              <span class="text-sm font-medium text-foreground">12,456</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-sm text-muted-foreground">Support Tickets</span>
+              <span class="text-sm font-medium text-foreground">2</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

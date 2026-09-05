@@ -7,6 +7,7 @@ import type {
   Plan,
   HealthStatus,
   DevicePlatform,
+  InAppNotificationType,
   NotificationSettingsCategory,
 } from "./types";
 import {
@@ -27,7 +28,6 @@ import {
   Link,
   Settings,
   HelpCircle,
-  Inbox,
   type LucideIcon,
 } from "lucide-react";
 
@@ -93,7 +93,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "System",
     items: [
       { label: "Settings", href: "/settings", icon: Settings },
-      { label: "Notifications", href: "/notifications", icon: Inbox },
       { label: "Support", href: "/support", icon: HelpCircle },
     ],
   },
@@ -299,6 +298,60 @@ export const DEVICE_PLATFORM_LABELS: Record<DevicePlatform, string> = {
   linux: "Linux",
   windows: "Windows",
   browser: "Browser",
+};
+
+export const NOTIFICATION_TYPE_LABELS: Record<InAppNotificationType, string> = {
+  team_add: "Team member added",
+  team_remove: "Team member removed",
+  role_change: "Role changed",
+  provider_add: "Provider connected",
+  provider_delete: "Provider disconnected",
+  api_key_created: "API key created",
+  api_key_revoked: "API key revoked",
+  project_created: "Project created",
+  billing_change: "Plan updated",
+  system: "System event",
+  new_login: "New sign-in",
+  marketing: "Marketing",
+  billing: "Billing",
+  welcome: "Welcome",
+  update: "Product update",
+};
+
+export const NOTIFICATION_TYPE_COLORS: Record<InAppNotificationType, string> = {
+  team_add: "bg-success/10 text-success",
+  team_remove: "bg-destructive/10 text-destructive",
+  role_change: "bg-info/10 text-info",
+  provider_add: "bg-primary/10 text-primary",
+  provider_delete: "bg-destructive/10 text-destructive",
+  api_key_created: "bg-warning/10 text-warning",
+  api_key_revoked: "bg-muted-foreground/10 text-muted-foreground",
+  project_created: "bg-info/10 text-info",
+  billing_change: "bg-warning/10 text-warning",
+  system: "bg-muted text-muted-foreground",
+  new_login: "bg-info/10 text-info",
+  marketing: "bg-primary/10 text-primary",
+  billing: "bg-warning/10 text-warning",
+  welcome: "bg-success/10 text-success",
+  update: "bg-info/10 text-info",
+};
+
+export const NOTIFICATION_TYPE_ICONS: Record<InAppNotificationType, string> = {
+  team_add: "UserPlus",
+  team_remove: "UserMinus",
+  role_change: "UserCog",
+  provider_add: "Link",
+  provider_delete: "Link2Off",
+  api_key_created: "KeyRound",
+  api_key_revoked: "KeyRound",
+  project_created: "FolderPlus",
+  billing_change: "CreditCard",
+  system: "Check",
+  new_login: "LogIn",
+  marketing: "Megaphone",
+  billing: "CreditCard",
+  welcome: "Sparkles",
+  update: "Rocket",
 };
 
 export const TABLE_PAGE_SIZES = [10, 20, 50, 100] as const;

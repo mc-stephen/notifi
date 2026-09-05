@@ -1,0 +1,485 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import RichTextEditor from "../../components/admin/RichTextEditor.tsx";
+import { mockNotifications } from "../../data/notifications";
+import { mockUsers } from "../../data/users";
+---
+
+<AdminLayout title="Notifications">
+  <div class="space-y-6">
+    <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+      <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+      <span>/</span>
+      <span class="text-foreground font-medium">Notifications</span>
+    </nav>
+
+    <div class="border-b border-border">
+      <div class="flex gap-0 -mb-px">
+        <button class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-primary text-primary" data-tab="history">History</button>
+        <button class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors" data-tab="compose">Compose</button>
+        <button class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors" data-tab="scheduled">Scheduled</button>
+      </div>
+    </div>
+
+    <!-- Tab: History -->
+    <div id="tab-history" class="tab-content space-y-4">
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="relative flex-1 min-w-[200px] max-w-sm">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" placeholder="Search by ID, email..." class="flex h-9 w-full rounded-lg border border-input bg-transparent pl-8 pr-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
+        </div>
+        <select class="flex h-9 rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+          <option value="">All Channels</option>
+          <option value="email">Email</option>
+          <option value="push">Push</option>
+        </select>
+        <select class="flex h-9 rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+          <option value="">All Status</option>
+          <option value="delivered">Delivered</option>
+          <option value="sent">Sent</option>
+          <option value="failed">Failed</option>
+          <option value="queued">Queued</option>
+        </select>
+      </div>
+
+      <div class="rounded-xl border bg-card overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border bg-muted/30">
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground">ID</th>
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground">Channel</th>
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Recipient</th>
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Provider</th>
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mockNotifications.map((ntf) => (
+                <tr class="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
+                  <td class="py-3 px-4"><span class="font-mono text-xs text-foreground">{ntf.id}</span></td>
+                  <td class="py-3 px-4">
+                    <span class="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground capitalize">{ntf.channel}</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class:list={[
+                      "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+                      ntf.status === "delivered" && "bg-success/10 text-success border-success/20",
+                      ntf.status === "sent" && "bg-info/10 text-info border-info/20",
+                      ntf.status === "failed" && "bg-destructive/10 text-destructive border-destructive/20",
+                      ntf.status === "queued" && "bg-muted text-muted-foreground border-border",
+                    ]}>{ntf.status}</span>
+                    {ntf.failureReason && <p class="text-xs text-destructive mt-1">{ntf.failureReason}</p>}
+                  </td>
+                  <td class="py-3 px-4 text-foreground hidden md:table-cell">{ntf.recipientEmail}</td>
+                  <td class="py-3 px-4 text-muted-foreground hidden md:table-cell">{ntf.provider}</td>
+                  <td class="py-3 px-4 text-muted-foreground text-xs hidden lg:table-cell">{new Date(ntf.createdAt).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Compose -->
+    <div id="tab-compose" class="tab-content hidden space-y-4">
+      <div class="rounded-xl border bg-card">
+        <div class="p-5 space-y-5">
+
+          <!-- Target -->
+          <div class="space-y-2.5">
+            <label class="text-sm font-medium text-foreground">Target</label>
+            <div class="flex flex-wrap gap-2">
+              <label class="target-option flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm cursor-pointer hover:bg-muted transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:text-primary">
+                <input type="radio" name="target" value="specific" class="sr-only" />
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Specific Users
+              </label>
+              <label class="target-option flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm cursor-pointer hover:bg-muted transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:text-primary">
+                <input type="radio" name="target" value="all" class="sr-only" checked />
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                All Users
+              </label>
+              <label class="target-option flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm cursor-pointer hover:bg-muted transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:text-primary">
+                <input type="radio" name="target" value="org" class="sr-only" />
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
+                By Organization
+              </label>
+            </div>
+
+            <div id="user-selector" class="hidden mt-3">
+              <button id="open-user-modal" type="button" class="inline-flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-2.5 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                Select users
+              </button>
+              <div id="selected-users" class="flex flex-wrap gap-1.5 mt-2"></div>
+            </div>
+
+            <div id="org-selector" class="hidden mt-3">
+              <div class="flex flex-wrap items-center gap-3">
+                <button id="open-org-modal" type="button" class="inline-flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-2.5 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                  Select organizations
+                </button>
+                <div id="selected-orgs" class="flex flex-wrap gap-1.5"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Channel -->
+          <div class="space-y-2.5">
+            <label class="text-sm font-medium text-foreground">Channel</label>
+            <div class="flex gap-2">
+              <label class="channel-option flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm cursor-pointer hover:bg-muted transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:text-primary">
+                <input type="radio" name="channel" value="email" class="sr-only" checked />
+                Email
+              </label>
+              <label class="channel-option flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm cursor-pointer hover:bg-muted transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:text-primary">
+                <input type="radio" name="channel" value="push" class="sr-only" />
+                Push (In-App)
+              </label>
+              <label class="channel-option flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm cursor-pointer hover:bg-muted transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:text-primary">
+                <input type="radio" name="channel" value="both" class="sr-only" />
+                Email + Push
+              </label>
+            </div>
+          </div>
+
+          <!-- Compose: WYSIWYG with inline preview -->
+          <div class="space-y-2.5">
+            <label class="text-sm font-medium text-foreground">Message</label>
+            <RichTextEditor client:load placeholder="Write your notification message..." />
+          </div>
+
+          <!-- Actions (inline) -->
+          <div class="flex items-center gap-3 pt-2">
+            <button type="button" id="btn-send" class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80">
+              Send Now
+            </button>
+            <button type="button" id="btn-schedule" class="inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors">
+              Schedule
+            </button>
+            <span id="send-status" class="text-xs text-muted-foreground ml-2 hidden"></span>
+          </div>
+
+          <!-- Schedule picker -->
+          <div id="schedule-picker" class="hidden space-y-3 rounded-lg border border-border bg-muted/30 p-4">
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1.5">
+                <label class="text-xs font-medium text-foreground">Date</label>
+                <input type="date" class="flex h-9 w-full rounded-lg border border-input bg-background px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-xs font-medium text-foreground">Time</label>
+                <input type="time" class="flex h-9 w-full rounded-lg border border-input bg-background px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
+              </div>
+            </div>
+            <button type="button" class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80">
+              Confirm Schedule
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Scheduled -->
+    <div id="tab-scheduled" class="tab-content hidden">
+      <div class="rounded-xl border bg-card">
+        <div class="p-8 text-center">
+          <div class="size-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <h3 class="text-lg font-semibold text-foreground">No scheduled notifications</h3>
+          <p class="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+            Scheduled notifications will appear here. Use the Compose tab to schedule one.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- User search modal -->
+  <div id="user-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+    <div class="fixed inset-0 bg-black/50" id="user-modal-backdrop"></div>
+    <div class="relative z-10 w-full max-w-md rounded-xl border bg-card shadow-xl mx-4">
+      <div class="flex items-center justify-between p-4 border-b border-border">
+        <h3 class="font-semibold text-foreground">Select Users</h3>
+        <button id="close-user-modal" class="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+      <div class="p-4">
+        <input type="text" id="user-search" placeholder="Search users..." class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 mb-3" />
+        <div id="user-list" class="max-h-[300px] overflow-y-auto space-y-1">
+          {mockUsers.filter(u => u.status === "active").map((user) => (
+            <label class="user-row flex items-center gap-3 rounded-lg border border-transparent px-3 py-2 cursor-pointer hover:bg-muted transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+              <input type="checkbox" value={user.id} class="user-checkbox rounded border-input" />
+              <div class="size-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-medium text-primary shrink-0">
+                {user.name.split(" ").map(n => n[0]).join("")}
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-foreground truncate">{user.name}</p>
+                <p class="text-xs text-muted-foreground truncate">{user.email}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 p-4 border-t border-border">
+        <button id="cancel-user-modal" class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors">Cancel</button>
+        <button id="confirm-users" class="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Org search modal -->
+  <div id="org-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+    <div class="fixed inset-0 bg-black/50" id="org-modal-backdrop"></div>
+    <div class="relative z-10 w-full max-w-md rounded-xl border bg-card shadow-xl mx-4">
+      <div class="flex items-center justify-between p-4 border-b border-border">
+        <h3 class="font-semibold text-foreground">Select Organizations</h3>
+        <button id="close-org-modal" class="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+      <div class="p-4">
+        <input type="text" id="org-search" placeholder="Search organizations..." class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 mb-3" />
+        <div id="org-list" class="max-h-[300px] overflow-y-auto space-y-1"></div>
+      </div>
+      <div class="flex justify-end gap-2 p-4 border-t border-border">
+        <button id="cancel-org-modal" class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors">Cancel</button>
+        <button id="confirm-orgs" class="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TAB_KEY = "notifications-active-tab";
+
+    // Tab switching
+    const tabBtns = document.querySelectorAll(".tab-btn");
+    const tabContents = document.querySelectorAll(".tab-content");
+
+    function switchTab(tab: string) {
+      tabBtns.forEach((b) => {
+        const btn = b as HTMLButtonElement;
+        const isActive = btn.dataset.tab === tab;
+        btn.classList.toggle("border-primary", isActive);
+        btn.classList.toggle("text-primary", isActive);
+        btn.classList.toggle("border-transparent", !isActive);
+        btn.classList.toggle("text-muted-foreground", !isActive);
+      });
+      tabContents.forEach((c) => {
+        const el = c as HTMLElement;
+        el.classList.toggle("hidden", el.id !== `tab-${tab}`);
+      });
+      localStorage.setItem(TAB_KEY, tab);
+    }
+
+    tabBtns.forEach((btn) => {
+      btn.addEventListener("click", () => switchTab((btn as HTMLButtonElement).dataset.tab!));
+    });
+
+    const saved = localStorage.getItem(TAB_KEY);
+    if (saved) switchTab(saved);
+
+    // Target radio show/hide
+    const targetRadios = document.querySelectorAll('input[name="target"]');
+    const userSelector = document.getElementById("user-selector")!;
+    const orgSelector = document.getElementById("org-selector")!;
+
+    targetRadios.forEach((radio) => {
+      radio.addEventListener("change", () => {
+        const val = (radio as HTMLInputElement).value;
+        userSelector.classList.toggle("hidden", val !== "specific");
+        orgSelector.classList.toggle("hidden", val !== "org");
+      });
+    });
+
+    // User modal
+    const modal = document.getElementById("user-modal")!;
+    const backdrop = document.getElementById("user-modal-backdrop")!;
+    const openBtn = document.getElementById("open-user-modal")!;
+    const closeBtn = document.getElementById("close-user-modal")!;
+    const cancelBtn = document.getElementById("cancel-user-modal")!;
+    const confirmBtn = document.getElementById("confirm-users")!;
+    const searchInput = document.getElementById("user-search")!;
+    const userList = document.getElementById("user-list")!;
+    const selectedUsersEl = document.getElementById("selected-users")!;
+    const selectedIds = new Set<string>();
+
+    function openModal() {
+      modal.classList.remove("hidden");
+      searchInput.value = "";
+      filterUsers("");
+      searchInput.focus();
+    }
+
+    function closeModal() {
+      modal.classList.add("hidden");
+    }
+
+    function filterUsers(q: string) {
+      const lower = q.toLowerCase();
+      userList.querySelectorAll(".user-row").forEach((row) => {
+        const el = row as HTMLElement;
+        const text = el.textContent?.toLowerCase() || "";
+        el.style.display = text.includes(lower) ? "" : "none";
+      });
+    }
+
+    function renderSelectedUsers() {
+      selectedUsersEl.innerHTML = "";
+      selectedIds.forEach((id) => {
+        const user = (window as any).__mockUsers?.find((u: any) => u.id === id);
+        if (!user) return;
+        const tag = document.createElement("span");
+        tag.className = "inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 text-xs font-medium";
+        tag.innerHTML = `${user.name} <button type="button" data-remove="${id}" class="ml-0.5 hover:text-destructive">&times;</button>`;
+        selectedUsersEl.appendChild(tag);
+      });
+      selectedUsersEl.querySelectorAll("button[data-remove]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          selectedIds.delete((btn as HTMLButtonElement).dataset.remove!);
+          renderSelectedUsers();
+        });
+      });
+    }
+
+    openBtn.addEventListener("click", openModal);
+    closeBtn.addEventListener("click", closeModal);
+    cancelBtn.addEventListener("click", closeModal);
+    backdrop.addEventListener("click", closeModal);
+    searchInput.addEventListener("input", () => filterUsers(searchInput.value));
+
+    userList.querySelectorAll(".user-checkbox").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const val = (cb as HTMLInputElement).value;
+        if ((cb as HTMLInputElement).checked) selectedIds.add(val);
+        else selectedIds.delete(val);
+      });
+    });
+
+    confirmBtn.addEventListener("click", () => {
+      renderSelectedUsers();
+      closeModal();
+    });
+
+    // Actions
+    const btnSend = document.getElementById("btn-send")!;
+    const btnSchedule = document.getElementById("btn-schedule")!;
+    const schedulePicker = document.getElementById("schedule-picker")!;
+    const sendStatus = document.getElementById("send-status")!;
+
+    btnSend.addEventListener("click", () => {
+      sendStatus.textContent = "Sending...";
+      sendStatus.classList.remove("hidden");
+      btnSend.setAttribute("disabled", "true");
+      setTimeout(() => {
+        sendStatus.textContent = "Sent successfully";
+        sendStatus.className = "text-xs text-success ml-2";
+        btnSend.removeAttribute("disabled");
+        setTimeout(() => sendStatus.classList.add("hidden"), 2000);
+      }, 1200);
+    });
+
+    btnSchedule.addEventListener("click", () => {
+      schedulePicker.classList.toggle("hidden");
+    });
+
+    // Mock user data for modal
+    (window as any).__mockUsers = [
+      { id: "usr_01H8X9Z1K2L3M4N5P6Q7R8S9T", name: "Sarah Chen", email: "sarah.chen@techcorp.io", organization: "TechCorp", role: "admin" },
+      { id: "usr_02H8X9Z1K2L3M4N5P6Q7R8S9U", name: "Marcus Johnson", email: "marcus@startupxyz.com", organization: "StartupXYZ", role: "billing" },
+      { id: "usr_04H8X9Z1K2L3M4N5P6Q7R8S9W", name: "Alex Kim", email: "alex.kim@digitalagency.co", organization: "Digital Agency", role: "support" },
+      { id: "usr_06H8X9Z1K2L3M4N5P6Q7R8S9Y", name: "Taylor Swift", email: "taylor@musicapp.io", organization: "MusicApp", role: "readonly" },
+      { id: "usr_08H8X9Z1K2L3M4N5P6Q7R8SAA", name: "Morgan Davis", email: "morgan@healthtech.org", organization: "HealthTech", role: "super_admin" },
+      { id: "usr_09H8X9Z1K2L3M4N5P6Q7R8SAB", name: "Riley Wilson", email: "riley@fineducation.edu", organization: "FineEducation", role: "support" },
+      { id: "usr_10H8X9Z1K2L3M4N5P6Q7R8SAC", name: "Quinn Martinez", email: "quinn@logisticsplus.com", organization: "LogisticsPlus", role: "admin" },
+    ];
+
+    // Org modal
+    const orgModal = document.getElementById("org-modal")!;
+    const orgBackdrop = document.getElementById("org-modal-backdrop")!;
+    const openOrgBtn = document.getElementById("open-org-modal")!;
+    const closeOrgBtn = document.getElementById("close-org-modal")!;
+    const cancelOrgBtn = document.getElementById("cancel-org-modal")!;
+    const confirmOrgBtn = document.getElementById("confirm-orgs")!;
+    const orgSearchInput = document.getElementById("org-search")!;
+    const orgList = document.getElementById("org-list")!;
+    const selectedOrgsEl = document.getElementById("selected-orgs")!;
+    const selectedOrgNames = new Set<string>();
+
+    const allOrgNames = [...new Set((window as any).__mockUsers.map((u: any) => u.organization).filter(Boolean))] as string[];
+    allOrgNames.sort();
+
+    function populateOrgList() {
+      orgList.innerHTML = allOrgNames.map((name) => `
+        <label class="org-row flex items-center gap-3 rounded-lg border border-transparent px-3 py-2 cursor-pointer hover:bg-muted transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+          <input type="checkbox" value="${name}" class="org-checkbox rounded border-input" ${selectedOrgNames.has(name) ? "checked" : ""} />
+          <div class="size-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-medium text-primary shrink-0">${name.split(" ").map((n: string) => n[0]).join("").slice(0, 2)}</div>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-foreground truncate">${name}</p>
+          </div>
+        </label>
+      `).join("");
+      orgList.querySelectorAll(".org-checkbox").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const val = (cb as HTMLInputElement).value;
+          if ((cb as HTMLInputElement).checked) selectedOrgNames.add(val);
+          else selectedOrgNames.delete(val);
+        });
+      });
+    }
+
+    function openOrgModal() {
+      populateOrgList();
+      orgModal.classList.remove("hidden");
+      orgSearchInput.value = "";
+      filterOrgs("");
+      orgSearchInput.focus();
+    }
+
+    function closeOrgModal() {
+      orgModal.classList.add("hidden");
+    }
+
+    function filterOrgs(q: string) {
+      const lower = q.toLowerCase();
+      orgList.querySelectorAll(".org-row").forEach((row) => {
+        const el = row as HTMLElement;
+        const text = el.textContent?.toLowerCase() || "";
+        el.style.display = text.includes(lower) ? "" : "none";
+      });
+    }
+
+    function renderSelectedOrgs() {
+      selectedOrgsEl.innerHTML = "";
+      selectedOrgNames.forEach((name) => {
+        const tag = document.createElement("span");
+        tag.className = "inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 text-xs font-medium";
+        tag.innerHTML = `${name} <button type="button" data-remove-org="${name}" class="ml-0.5 hover:text-destructive">&times;</button>`;
+        selectedOrgsEl.appendChild(tag);
+      });
+      selectedOrgsEl.querySelectorAll("button[data-remove-org]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          selectedOrgNames.delete((btn as HTMLButtonElement).dataset.removeOrg!);
+          renderSelectedOrgs();
+        });
+      });
+    }
+
+    openOrgBtn.addEventListener("click", openOrgModal);
+    closeOrgBtn.addEventListener("click", closeOrgModal);
+    cancelOrgBtn.addEventListener("click", closeOrgModal);
+    orgBackdrop.addEventListener("click", closeOrgModal);
+    orgSearchInput.addEventListener("input", () => filterOrgs(orgSearchInput.value));
+
+    confirmOrgBtn.addEventListener("click", () => {
+      renderSelectedOrgs();
+      closeOrgModal();
+    });
+  </script>
+</AdminLayout>

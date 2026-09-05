@@ -1,0 +1,31 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+---
+
+<AdminLayout title="Abuse Reports">
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+        <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+        <span>/</span>
+        <a href="/security" class="hover:text-foreground transition-colors">Security</a>
+        <span>/</span>
+        <span class="text-foreground font-medium">Abuse Reports</span>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Abuse Reports</h1>
+      <p class="text-sm text-muted-foreground">Review and handle platform abuse cases.</p>
+    </div>
+
+    <div class="rounded-xl border bg-card">
+      <div class="p-8 text-center">
+        <div class="size-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+        </div>
+        <h3 class="text-lg font-semibold text-foreground">No abuse reports</h3>
+        <p class="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+          No abuse reports have been filed. This section will populate when users report suspicious activity.
+        </p>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

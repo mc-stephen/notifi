@@ -1,0 +1,79 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { mockSubscriptions } from "../../data/billing";
+---
+
+<AdminLayout title="Subscriptions">
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+        <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+        <span>/</span>
+        <a href="/billing" class="hover:text-foreground transition-colors">Billing</a>
+        <span>/</span>
+        <span class="text-foreground font-medium">Subscriptions</span>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Subscriptions</h1>
+      <p class="text-sm text-muted-foreground">Manage customer subscriptions and plans.</p>
+    </div>
+
+    <div class="rounded-xl border bg-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border bg-muted/30">
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Customer</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Plan</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Amount</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Usage</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Start</th>
+              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden xl:table-cell">Renewal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mockSubscriptions.map((sub) => (
+              <tr class="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
+                <td class="py-3 px-4">
+                  <p class="font-medium text-foreground">{sub.customerName}</p>
+                  <p class="text-xs text-muted-foreground">{sub.customerEmail}</p>
+                </td>
+                <td class="py-3 px-4">
+                  <span class="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">{sub.plan}</span>
+                </td>
+                <td class="py-3 px-4">
+                  <span class:list={[
+                    "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+                    sub.status === "active" && "bg-success/10 text-success border-success/20",
+                    sub.status === "past_due" && "bg-warning/10 text-warning border-warning/20",
+                    sub.status === "cancelled" && "bg-destructive/10 text-destructive border-destructive/20",
+                  ]}>
+                    {sub.status}
+                  </span>
+                </td>
+                <td class="py-3 px-4 text-foreground hidden md:table-cell">${sub.amount}</td>
+                <td class="py-3 px-4 hidden lg:table-cell">
+                  <div class="flex items-center gap-2">
+                    <div class="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
+                      <div class:list={[
+                        "h-full rounded-full",
+                        sub.usagePercent > 80 ? "bg-destructive" : sub.usagePercent > 50 ? "bg-warning" : "bg-success",
+                      ]} style={`width: ${sub.usagePercent}%`}></div>
+                    </div>
+                    <span class="text-xs text-muted-foreground">{sub.usagePercent}%</span>
+                  </div>
+                </td>
+                <td class="py-3 px-4 text-muted-foreground text-xs hidden lg:table-cell">
+                  {new Date(sub.startDate).toLocaleDateString()}
+                </td>
+                <td class="py-3 px-4 text-muted-foreground text-xs hidden xl:table-cell">
+                  {new Date(sub.renewalDate).toLocaleDateString()}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

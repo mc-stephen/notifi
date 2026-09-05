@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState, useCallback, useSyncExternalStore } from "react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useProjectStore } from "@/store/project-store";
 import { useEnvironmentStore } from "@/store/environment-store";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -13,13 +16,36 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { ChevronsUpDown } from "lucide-react";
+import { ChevronsUpDown, Plus, Loader2 } from "lucide-react";
 
 export function ProjectSwitcher({ collapsed = false }: { collapsed?: boolean }) {
-  const { projects, currentProject, setCurrentProject, loadProjects } =
+  const { projects, currentProject, setCurrentProject, loadProjects, createProject } =
     useProjectStore();
   const syncEnv = useEnvironmentStore((s) => s.syncFromProject);
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+
+  useEffect(() => {
+    useProjectStore.persist.rehydrate();
+  }, []);
 
   useEffect(() => {
     void loadProjects();
@@ -28,6 +54,24 @@ export function ProjectSwitcher({ collapsed = false }: { collapsed?: boolean }) 
   useEffect(() => {
     if (currentProject?.environment) syncEnv(currentProject.environment);
   }, [currentProject?.environment, syncEnv]);
+
+  const handleCreate = useCallback(async () => {
+    if (!newName.trim()) return;
+    setSubmitting(true);
+    try {
+      await createProject(newName.trim(), newDescription.trim() || undefined);
+      toast.success("Project created");
+      setCreateOpen(false);
+      setNewName("");
+      setNewDescription("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create project");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [newName, newDescription, createProject]);
+
+  if (!mounted) return null;
 
   const trigger = (
     <DropdownMenuTrigger
@@ -60,7 +104,7 @@ export function ProjectSwitcher({ collapsed = false }: { collapsed?: boolean }) 
   );
 
   const dropdown = (
-    <DropdownMenuContent align="start" side={collapsed ? "right" : "bottom"} className="w-64">
+    <DropdownMenuContent align="start" side="right" className="w-64">
       <DropdownMenuLabel>Project</DropdownMenuLabel>
       <DropdownMenuSeparator />
       {projects.map((project) => (
@@ -82,27 +126,132 @@ export function ProjectSwitcher({ collapsed = false }: { collapsed?: boolean }) 
           </div>
         </DropdownMenuItem>
       ))}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onClick={() => setCreateOpen(true)}>
+        <Plus className="size-4 mr-2" />
+        Create new project
+      </DropdownMenuItem>
     </DropdownMenuContent>
   );
 
   if (collapsed) {
     return (
-      <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger render={trigger} />
-          <TooltipContent side="right">
-            {currentProject?.name ?? "Select project"}
-          </TooltipContent>
-        </Tooltip>
-        {dropdown}
-      </DropdownMenu>
+      <>
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger render={trigger} />
+            <TooltipContent side="right">
+              {currentProject?.name ?? "Select project"}
+            </TooltipContent>
+          </Tooltip>
+          {dropdown}
+        </DropdownMenu>
+
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create new project</DialogTitle>
+              <DialogDescription>
+                Give your project a name to get started.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="project-name">Name</Label>
+                <Input
+                  id="project-name"
+                  placeholder="My App"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleCreate();
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="project-desc">Description (optional)</Label>
+                <Input
+                  id="project-desc"
+                  placeholder="What is this project for?"
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCreateOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreate}
+                disabled={submitting || !newName.trim()}
+              >
+                {submitting ? (
+                  <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                ) : null}
+                {submitting ? "Creating…" : "Create project"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
     );
   }
 
   return (
-    <DropdownMenu>
-      {trigger}
-      {dropdown}
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        {trigger}
+        {dropdown}
+      </DropdownMenu>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create new project</DialogTitle>
+              <DialogDescription>
+                Give your project a name to get started.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="project-name">Name</Label>
+                <Input
+                  id="project-name"
+                  placeholder="My App"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleCreate();
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="project-desc">Description (optional)</Label>
+                <Input
+                  id="project-desc"
+                  placeholder="What is this project for?"
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCreateOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreate}
+                disabled={submitting || !newName.trim()}
+              >
+                {submitting ? (
+                  <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                ) : null}
+                {submitting ? "Creating…" : "Create project"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+    </>
   );
 }

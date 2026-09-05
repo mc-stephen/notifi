@@ -1,57 +1,133 @@
-import { useMemo } from "react";
-import type { InAppNotification, InAppNotificationType } from "@/lib/types";
-import { createRng } from "@/lib/random";
+"use client";
 
-const TYPES: InAppNotificationType[] = [
-  "team_add",
-  "team_remove",
-  "role_change",
-  "provider_add",
-  "provider_delete",
-  "api_key_created",
-  "api_key_revoked",
-  "project_created",
-  "billing_change",
-];
+import { useCallback, useEffect, useState } from "react";
+import type { InAppNotification } from "@/lib/types";
 
-const TITLES: Record<InAppNotificationType, string> = {
-  team_add: "Team member added",
-  team_remove: "Team member removed",
-  role_change: "Role changed",
-  provider_add: "Provider connected",
-  provider_delete: "Provider disconnected",
-  api_key_created: "API key created",
-  api_key_revoked: "API key revoked",
-  project_created: "Project created",
-  billing_change: "Plan updated",
-  system: "System event",
+type FetchState = {
+  notifications: InAppNotification[];
+  hasMore: boolean;
+  unreadCount: number;
+  loading: boolean;
+  error: string | null;
 };
 
-const ACTORS = ["Alice Chen", "Bob Kim", "Carol Wu"];
-
-const REFERENCE_DATE = new Date("2026-08-20T12:00:00.000Z");
-
-function generate(count: number): InAppNotification[] {
-  const rng = createRng(7);
-  return Array.from({ length: count }, (_, i) => {
-    const type = TYPES[Math.floor(rng() * TYPES.length)];
-    const createdAt = new Date(REFERENCE_DATE);
-    createdAt.setMinutes(createdAt.getMinutes() - Math.floor(rng() * 4320));
-    return {
-      id: `app_${String(i + 1).padStart(3, "0")}`,
-      type,
-      title: TITLES[type],
-      message: `A new ${type.replace(/_/g, " ")} event was recorded for this project.`,
-      actorName: rng() > 0.3 ? ACTORS[Math.floor(rng() * ACTORS.length)] : undefined,
-      projectName: rng() > 0.5 ? "Notifie" : "Folded App",
-      read: rng() > 0.45,
-      createdAt: createdAt.toISOString(),
-    };
-  });
-}
-
-const ALL = generate(36).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-
 export function useInAppNotifications() {
-  return useMemo(() => ALL, []);
+  const [state, setState] = useState<FetchState>({
+    notifications: [],
+    hasMore: false,
+    unreadCount: 0,
+    loading: true,
+    error: null,
+  });
+
+  const fetchNotifications = useCallback(async (unreadOnly = false) => {
+    setState((s) => ({ ...s, loading: true, error: null }));
+    try {
+      const params = new URLSearchParams();
+      if (unreadOnly) params.set("unreadOnly", "true");
+      params.set("limit", "50");
+      const res = await fetch(`/v1/notifications?${params}`);
+      if (!res.ok) throw new Error(`${res.status}`);
+      const data = await res.json();
+      setState({
+        notifications: data.notifications ?? [],
+        hasMore: data.hasMore ?? false,
+        unreadCount: 0,
+        loading: false,
+        error: null,
+      });
+    } catch (e) {
+      setState((s) => ({
+        ...s,
+        loading: false,
+        error: e instanceof Error ? e.message : "Failed to load",
+      }));
+    }
+  }, []);
+
+  const fetchUnreadCount = useCallback(async () => {
+    try {
+      const res = await fetch("/v1/notifications/count");
+      if (!res.ok) return;
+      const data = await res.json();
+      setState((s) => ({ ...s, unreadCount: data.count ?? 0 }));
+    } catch {
+      // silent — badge just stays stale
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+    fetchUnreadCount();
+  }, [fetchNotifications, fetchUnreadCount]);
+
+  const markRead = useCallback(
+    async (id: string, read: boolean) => {
+      setState((s) => ({
+        ...s,
+        notifications: s.notifications.map((n) =>
+          n.id === id ? { ...n, read, readAt: read ? new Date().toISOString() : null } : n,
+        ),
+        unreadCount: read
+          ? Math.max(0, s.unreadCount - 1)
+          : s.unreadCount + 1,
+      }));
+      try {
+        await fetch(`/v1/notifications/${id}/read`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ read }),
+        });
+      } catch {
+        // revert on failure
+        setState((s) => ({
+          ...s,
+          notifications: s.notifications.map((n) =>
+            n.id === id ? { ...n, read: !read, readAt: !read ? new Date().toISOString() : null } : n,
+          ),
+          unreadCount: !read
+            ? Math.max(0, s.unreadCount - 1)
+            : s.unreadCount + 1,
+        }));
+      }
+    },
+    [],
+  );
+
+  const markAllRead = useCallback(async () => {
+    setState((s) => ({
+      ...s,
+      notifications: s.notifications.map((n) => ({ ...n, read: true, readAt: new Date().toISOString() })),
+      unreadCount: 0,
+    }));
+    try {
+      await fetch("/v1/notifications/read-all", { method: "PATCH" });
+    } catch {
+      // silent — optimistic update already applied
+    }
+  }, []);
+
+  const deleteNotification = useCallback(
+    async (id: string) => {
+      const prev = state.notifications;
+      setState((s) => ({
+        ...s,
+        notifications: s.notifications.filter((n) => n.id !== id),
+      }));
+      try {
+        await fetch(`/v1/notifications/${id}`, { method: "DELETE" });
+      } catch {
+        setState((s) => ({ ...s, notifications: prev }));
+      }
+    },
+    [state.notifications],
+  );
+
+  return {
+    ...state,
+    markRead,
+    markAllRead,
+    deleteNotification,
+    refresh: fetchNotifications,
+  };
 }
