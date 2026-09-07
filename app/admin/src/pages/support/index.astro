@@ -1,6 +1,46 @@
 ---
 import AdminLayout from "../../layouts/AdminLayout.astro";
-import { mockTickets } from "../../data/tickets";
+import { TICKET_STATUSES, TICKET_STATUS_COLORS, TICKET_STATUS_LABELS, PRIORITY_COLORS } from "../../lib/constants";
+import type { AdminTicket } from "../../lib/types";
+
+const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8080";
+const session = Astro.cookies.get("session_token")?.value;
+
+const statusFilter = Astro.url.searchParams.get("status") ?? "";
+const priorityFilter = Astro.url.searchParams.get("priority") ?? "";
+const searchQuery = Astro.url.searchParams.get("q") ?? "";
+
+let tickets: AdminTicket[] = [];
+let loadError: string | null = null;
+try {
+  const params = new URLSearchParams();
+  if (statusFilter) params.set("status", statusFilter);
+  params.set("limit", "100");
+  const res = await fetch(`${API_BASE}/v1/admin/support/tickets?${params.toString()}`, {
+    headers: { Cookie: `session_token=${session}` },
+  });
+  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  const data = await res.json();
+  tickets = data.tickets ?? [];
+} catch {
+  loadError = "Could not load tickets. Check that the API is running and try again.";
+}
+
+const q = searchQuery.trim().toLowerCase();
+const visible = tickets.filter((t) => {
+  if (priorityFilter && t.priority.toLowerCase() !== priorityFilter.toLowerCase()) return false;
+  if (!q) return true;
+  return (
+    t.subject.toLowerCase().includes(q) ||
+    t.customerName.toLowerCase().includes(q) ||
+    t.customerEmail.toLowerCase().includes(q) ||
+    t.id.toLowerCase().includes(q)
+  );
+});
+
+function priorityColor(priority: string) {
+  return PRIORITY_COLORS[priority.toLowerCase()] ?? "bg-muted text-muted-foreground border-border";
+}
 ---
 
 <AdminLayout title="Support Tickets">
@@ -15,27 +55,28 @@ import { mockTickets } from "../../data/tickets";
       <p class="text-sm text-muted-foreground">Manage customer support requests and conversations.</p>
     </div>
 
-    <div class="flex flex-wrap items-center gap-3">
+    <form method="get" class="flex flex-wrap items-center gap-3">
       <div class="relative flex-1 min-w-[200px] max-w-sm">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" placeholder="Search tickets..." class="flex h-9 w-full rounded-lg border border-input bg-transparent pl-8 pr-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
+        <input type="text" name="q" value={searchQuery} placeholder="Search tickets..." class="flex h-9 w-full rounded-lg border border-input bg-transparent pl-8 pr-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
       </div>
-      <select class="flex h-9 rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+      <select name="status" onchange="this.form.submit()" class="flex h-9 rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
         <option value="">All Status</option>
-        <option value="open">Open</option>
-        <option value="pending">Pending</option>
-        <option value="waiting">Waiting</option>
-        <option value="resolved">Resolved</option>
-        <option value="closed">Closed</option>
+        {TICKET_STATUSES.map((s) => (
+          <option value={s} selected={statusFilter === s}>{TICKET_STATUS_LABELS[s]}</option>
+        ))}
       </select>
-      <select class="flex h-9 rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+      <select name="priority" onchange="this.form.submit()" class="flex h-9 rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
         <option value="">All Priority</option>
-        <option value="low">Low</option>
-        <option value="normal">Normal</option>
-        <option value="high">High</option>
-        <option value="urgent">Urgent</option>
+        <option value="low" selected={priorityFilter === "low"}>Low</option>
+        <option value="medium" selected={priorityFilter === "medium"}>Medium</option>
+        <option value="high" selected={priorityFilter === "high"}>High</option>
+        <option value="urgent" selected={priorityFilter === "urgent"}>Urgent</option>
       </select>
-    </div>
+      <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors h-9">
+        Search
+      </button>
+    </form>
 
     <div class="rounded-xl border bg-card overflow-hidden">
       <div class="overflow-x-auto">
@@ -46,13 +87,12 @@ import { mockTickets } from "../../data/tickets";
               <th class="text-left py-3 px-4 font-medium text-muted-foreground">Customer</th>
               <th class="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
               <th class="text-left py-3 px-4 font-medium text-muted-foreground">Priority</th>
-              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Assigned</th>
               <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Updated</th>
               <th class="text-right py-3 px-4 font-medium text-muted-foreground"></th>
             </tr>
           </thead>
           <tbody>
-            {mockTickets.map((ticket) => (
+            {visible.map((ticket) => (
               <tr class="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
                 <td class="py-3 px-4">
                   <a href={`/support/${ticket.id}`} class="font-medium text-foreground hover:underline block">
@@ -62,32 +102,24 @@ import { mockTickets } from "../../data/tickets";
                 </td>
                 <td class="py-3 px-4">
                   <p class="text-foreground">{ticket.customerName}</p>
-                  <p class="text-xs text-muted-foreground">{ticket.organization}</p>
+                  <p class="text-xs text-muted-foreground">{ticket.customerEmail}</p>
                 </td>
                 <td class="py-3 px-4">
                   <span class:list={[
-                    "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
-                    ticket.status === "open" && "bg-info/10 text-info border-info/20",
-                    ticket.status === "pending" && "bg-warning/10 text-warning border-warning/20",
-                    ticket.status === "waiting" && "bg-muted text-muted-foreground border-border",
-                    ticket.status === "resolved" && "bg-success/10 text-success border-success/20",
-                    ticket.status === "closed" && "bg-muted text-muted-foreground border-border",
+                    "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium",
+                    TICKET_STATUS_COLORS[ticket.status],
                   ]}>
-                    {ticket.status}
+                    {TICKET_STATUS_LABELS[ticket.status]}
                   </span>
                 </td>
                 <td class="py-3 px-4">
                   <span class:list={[
                     "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
-                    ticket.priority === "low" && "bg-muted text-muted-foreground border-border",
-                    ticket.priority === "normal" && "bg-info/10 text-info border-info/20",
-                    ticket.priority === "high" && "bg-warning/10 text-warning border-warning/20",
-                    ticket.priority === "urgent" && "bg-destructive/10 text-destructive border-destructive/20",
+                    priorityColor(ticket.priority),
                   ]}>
                     {ticket.priority}
                   </span>
                 </td>
-                <td class="py-3 px-4 text-foreground hidden md:table-cell">{ticket.assignedAdmin || "—"}</td>
                 <td class="py-3 px-4 text-muted-foreground text-xs hidden lg:table-cell">
                   {new Date(ticket.updatedAt).toLocaleDateString()}
                 </td>
@@ -98,6 +130,15 @@ import { mockTickets } from "../../data/tickets";
             ))}
           </tbody>
         </table>
+        {loadError && (
+          <p class="text-sm text-destructive text-center px-4 py-8">{loadError}</p>
+        )}
+        {!loadError && visible.length === 0 && (
+          <div class="px-4 py-12 text-center">
+            <p class="text-sm font-medium text-foreground">No tickets found</p>
+            <p class="text-xs text-muted-foreground mt-1">Try adjusting your search or filters.</p>
+          </div>
+        )}
       </div>
     </div>
   </div>

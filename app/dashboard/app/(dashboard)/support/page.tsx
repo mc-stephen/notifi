@@ -5,6 +5,7 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/custom/page-header";
 import { DataTable } from "@/components/custom/data-table";
+import RichTextEditor, { type RichTextEditorHandle } from "@/components/custom/rich-text-editor";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -460,9 +461,10 @@ function TicketDetailPanel({
 }) {
   const { messages, loading, error, refresh } = useTicketThread(ticket.id);
   const { sendReply } = useSendReply();
-  const [replyBody, setReplyBody] = useState("");
+  const [canSend, setCanSend] = useState(false);
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<RichTextEditorHandle>(null);
   const isClosed = ticket.status === "closed";
 
   useEffect(() => {
@@ -472,11 +474,13 @@ function TicketDetailPanel({
   }, [messages]);
 
   const handleSendReply = useCallback(async () => {
-    if (!replyBody.trim() || sending) return;
+    const html = editorRef.current?.getHTML() ?? "";
+    if (!html || editorRef.current?.isEmpty() || sending) return;
     setSending(true);
     try {
-      await sendReply(ticket.id, replyBody.trim());
-      setReplyBody("");
+      await sendReply(ticket.id, html);
+      editorRef.current?.clear();
+      setCanSend(false);
       refresh();
       if (ticket.status === "resolved") {
         onTicketUpdate({ ...ticket, status: "open" });
@@ -487,7 +491,7 @@ function TicketDetailPanel({
     } finally {
       setSending(false);
     }
-  }, [replyBody, sending, ticket, sendReply, refresh, onTicketUpdate]);
+  }, [sending, ticket, sendReply, refresh, onTicketUpdate]);
 
   return (
     <aside className="flex min-h-0 w-96 shrink-0 flex-col overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm animate-in slide-in-from-right-3 fade-in duration-200"
@@ -581,7 +585,10 @@ function TicketDetailPanel({
                     : "bg-muted"
                 }`}
               >
-                <p className="whitespace-pre-wrap">{msg.body}</p>
+                <div
+                  className="[&_p]:my-0.5 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:underline [&_a]:text-inherit [&_img]:max-w-full [&_img]:rounded-md [&_blockquote]:border-l-2 [&_blockquote]:pl-2 [&_blockquote]:opacity-80 [&_pre]:bg-black/10 [&_pre]:rounded [&_pre]:p-1.5 [&_pre]:overflow-x-auto [&_h2]:text-sm [&_h2]:font-semibold"
+                  dangerouslySetInnerHTML={{ __html: msg.body }}
+                />
                 <p className={`text-[10px] mt-1 ${msg.author === "customer" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
                   {format(new Date(msg.createdAt), "MMM d, HH:mm")}
                 </p>
@@ -607,40 +614,35 @@ function TicketDetailPanel({
             for further assistance.
           </div>
         ) : (
-          <div className="flex items-end gap-2">
-            <Input
+          <div className="space-y-2">
+            <RichTextEditor
+              ref={editorRef}
               placeholder="Type your reply…"
-              value={replyBody}
-              onChange={(e) => setReplyBody(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendReply();
-                }
-              }}
-              disabled={sending}
-              className="flex-1"
+              onUpdate={(_html, empty) => setCanSend(!empty)}
             />
-            <Button
-              variant="outline"
-              size="icon"
-              className="shrink-0"
-              disabled={sending}
-            >
-              <Paperclip className="size-4" />
-            </Button>
-            <Button
-              size="icon"
-              className="shrink-0"
-              onClick={handleSendReply}
-              disabled={sending || !replyBody.trim()}
-            >
-              {sending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Send className="size-4" />
-              )}
-            </Button>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                className="shrink-0"
+                disabled={sending}
+              >
+                <Paperclip className="size-4" />
+              </Button>
+              <Button
+                size="sm"
+                className="shrink-0"
+                onClick={handleSendReply}
+                disabled={sending || !canSend}
+              >
+                {sending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Send className="size-4" />
+                )}
+                Send
+              </Button>
+            </div>
           </div>
         )}
       </div>

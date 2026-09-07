@@ -2,11 +2,13 @@ use std::sync::Arc;
 
 use serde_json::json;
 
+use crate::domain::admin::entities::AdminUser;
 use crate::domain::auth::entities::UserId;
 use crate::domain::auth::errors::AuthError;
 use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::audit::AuditService;
-use crate::domain::support::entities::{Ticket, TicketMessage};
+use crate::domain::support::entities::{AdminTicket, AdminTicketMessage, Ticket, TicketMessage};
+use crate::domain::support::entities::TicketStatus;
 use crate::ports::auth_store::StoreError;
 use crate::ports::tickets_store::TicketsStore;
 
@@ -190,6 +192,167 @@ impl TicketService {
             .await;
 
         Ok(message)
+    }
+
+    // === Admin-scoped methods (callers enforce admin auth) =================
+
+    pub async fn list_all_tickets(
+        &self,
+        status: Option<&str>,
+        limit: i64,
+        before: Option<&str>,
+    ) -> Result<Vec<AdminTicket>, AuthError> {
+        Ok(self
+            .store
+            .list_all(status, limit, before)
+            .await
+            .map_err(map_store_error)?
+            .into_iter()
+            .map(AdminTicket::from)
+            .collect())
+    }
+
+    pub async fn get_any_ticket(&self, ticket_id: &str) -> Result<Option<AdminTicket>, AuthError> {
+        Ok(self
+            .store
+            .get_any(ticket_id)
+            .await
+            .map_err(map_store_error)?
+            .map(AdminTicket::from))
+    }
+
+    pub async fn list_any_messages(
+        &self,
+        ticket_id: &str,
+    ) -> Result<Vec<AdminTicketMessage>, AuthError> {
+        Ok(self
+            .store
+            .list_messages_any(ticket_id)
+            .await
+            .map_err(map_store_error)?
+            .into_iter()
+            .map(AdminTicketMessage::from)
+            .collect())
+    }
+
+    pub async fn add_admin_reply(
+        &self,
+        admin: &AdminUser,
+        ticket_id: &str,
+        body: &str,
+    ) -> Result<TicketMessage, AuthError> {
+        let ticket = self
+            .store
+            .get_any(ticket_id)
+            .await
+            .map_err(map_store_error)?
+            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
+
+        if ticket.ticket.status == TicketStatus::Closed {
+            return Err(AuthError::Conflict(
+                "This ticket is closed. Reopen it before replying.".to_string(),
+            ));
+        }
+
+        let body = body.trim();
+        if body.is_empty() || body.len() > MAX_MESSAGE {
+            return Err(AuthError::Validation(
+                "body is required (10,000 characters max)".to_string(),
+            ));
+        }
+
+        let record = self
+            .store
+            .add_support_message(admin.id, ticket_id, body)
+            .await
+            .map_err(map_store_error)?
+            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
+
+        // A support reply on a resolved ticket resumes work.
+        if ticket.ticket.status == TicketStatus::Resolved {
+            let _ = self
+                .store
+                .set_status(ticket_id, TicketStatus::InProgress)
+                .await
+                .map_err(map_store_error)?;
+        }
+
+        let message = TicketMessage::from(record);
+
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::SupportTicketReplied,
+                    Some(&admin.id.to_string()),
+                    None,
+                    ticket.ticket.project_id.as_deref(),
+                    format!("ticket '{}' replied to by support", ticket.ticket.subject),
+                    Some(json!({ "ticket_id": ticket.ticket.id, "message_id": message.id })),
+                ),
+            )
+            .await;
+
+        Ok(message)
+    }
+
+    pub async fn set_ticket_status(
+        &self,
+        admin: &AdminUser,
+        ticket_id: &str,
+        status: &str,
+    ) -> Result<AdminTicket, AuthError> {
+        use std::str::FromStr;
+        let new_status = TicketStatus::from_str(status.trim()).map_err(|_| {
+            AuthError::Validation(
+                "invalid status (expected open, in_progress, resolved, or closed)".to_string(),
+            )
+        })?;
+
+        let ticket = self
+            .store
+            .get_any(ticket_id)
+            .await
+            .map_err(map_store_error)?
+            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
+
+        if ticket.ticket.status != new_status {
+            let updated = self
+                .store
+                .set_status(ticket_id, new_status)
+                .await
+                .map_err(map_store_error)?;
+            if !updated {
+                return Err(AuthError::NotFound("ticket not found".into()));
+            }
+
+            self.audit
+                .record(
+                    chrono::Utc::now(),
+                    &AuditEvent::new(
+                        AuditAction::SupportTicketStatusChanged,
+                        Some(&admin.id.to_string()),
+                        None,
+                        ticket.ticket.project_id.as_deref(),
+                        format!(
+                            "ticket '{}' status changed from {} to {}",
+                            ticket.ticket.subject,
+                            ticket.ticket.status.as_str(),
+                            new_status.as_str(),
+                        ),
+                        Some(json!({
+                            "ticket_id": ticket.ticket.id,
+                            "from": ticket.ticket.status.as_str(),
+                            "to": new_status.as_str(),
+                        })),
+                    ),
+                )
+                .await;
+        }
+
+        self.get_any_ticket(ticket_id)
+            .await?
+            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))
     }
 }
 

@@ -2,11 +2,15 @@
 import { defineConfig } from "astro/config";
 import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
+import node from "@astrojs/node";
 
 export default defineConfig({
   site: "https://admin.notifi.dev",
   trailingSlash: "never",
-  output: "static",
+  output: "server",
+  adapter: node({
+    mode: "standalone",
+  }),
   integrations: [react()],
   vite: {
     plugins: [tailwindcss()],

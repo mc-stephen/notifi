@@ -289,23 +289,22 @@ pub async fn login(
         .map_err(Problem::from)?;
 
     let ttl_days = if request.remember_me { 30 } else { 1 };
-    let cookie = Cookie::build((SESSION_COOKIE, issued.raw_token.clone()))
-        .http_only(true)
-        .same_site(SameSite::Lax)
-        .path("/")
-        .max_age(time::Duration::days(ttl_days));
-    let jar = jar.add(cookie);
-
     let user_dto = UserDto::from(&issued.user);
     let body = json!({
         "user": user_dto.clone(),
         "session": SessionDto {
             user: user_dto,
-            token: issued.raw_token,
+            token: issued.raw_token.clone(),
             expires_at: issued.session.expires_at,
             onboarding_completed: onboarding_flag(&service, &issued.user).await,
         },
     });
+    let cookie = Cookie::build((SESSION_COOKIE, issued.raw_token))
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .path("/")
+        .max_age(time::Duration::days(ttl_days));
+    let jar = jar.add(cookie);
     Ok((jar, Json(body)).into_response())
 }
 

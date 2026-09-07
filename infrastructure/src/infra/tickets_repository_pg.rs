@@ -2,10 +2,14 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use ulid::Ulid;
 
+use crate::domain::admin::entities::AdminUserId;
 use crate::domain::auth::entities::UserId;
 use crate::domain::support::entities::{MessageAuthor, TicketStatus};
 use crate::ports::auth_store::StoreError;
-use crate::ports::tickets_store::{TicketMessageRecord, TicketRecord, TicketsStore, BoxFut};
+use crate::ports::tickets_store::{
+    AdminTicketMessageRecord, AdminTicketRecord, TicketMessageRecord, TicketRecord, TicketsStore,
+    BoxFut,
+};
 
 pub struct PgTicketsStore {
     pool: PgPool,
@@ -40,6 +44,75 @@ struct TicketRow {
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(sqlx::FromRow)]
+struct AdminTicketRow {
+    id: String,
+    project_id: Option<String>,
+    created_by: String,
+    subject: String,
+    category: String,
+    priority: String,
+    description: String,
+    status: String,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    deleted_at: Option<DateTime<Utc>>,
+    customer_name: String,
+    customer_email: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct AdminTicketMessageRow {
+    id: String,
+    ticket_id: String,
+    author_type: String,
+    author_id: Option<String>,
+    body: String,
+    created_at: DateTime<Utc>,
+    author_name: Option<String>,
+}
+
+impl From<AdminTicketRow> for AdminTicketRecord {
+    fn from(row: AdminTicketRow) -> Self {
+        Self {
+            customer_name: row.customer_name,
+            customer_email: row.customer_email,
+            ticket: TicketRecord {
+                id: row.id,
+                project_id: row.project_id,
+                created_by: row.created_by,
+                subject: row.subject,
+                category: row.category,
+                priority: row.priority,
+                description: row.description,
+                status: row.status.parse::<TicketStatus>().unwrap_or(TicketStatus::Open),
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                deleted_at: row.deleted_at,
+            },
+        }
+    }
+}
+
+impl From<AdminTicketMessageRow> for AdminTicketMessageRecord {
+    fn from(row: AdminTicketMessageRow) -> Self {
+        Self {
+            author_name: row.author_name,
+            message: TicketMessageRecord {
+                id: row.id,
+                ticket_id: row.ticket_id,
+                author: row
+                    .author_type
+                    .parse::<MessageAuthor>()
+                    .unwrap_or(MessageAuthor::Customer),
+                author_id: row.author_id,
+                body: row.body,
+                created_at: row.created_at,
+            },
+        }
+    }
 }
 
 #[derive(sqlx::FromRow)]
@@ -399,6 +472,162 @@ impl TicketsStore for PgTicketsStore {
             )
             .bind(&actor_str)
             .bind(&ticket_id_owned)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+
+            Ok(result.rows_affected() > 0)
+        })
+    }
+
+    // === Admin-scoped methods (no actor visibility checks) =================
+
+    fn list_all(
+        &self,
+        status: Option<&str>,
+        limit: i64,
+        before: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<AdminTicketRecord>, StoreError>> {
+        let pool = self.pool.clone();
+        let status_owned = status.map(str::to_owned);
+        let before_owned = before.map(str::to_owned);
+
+        Box::pin(async move {
+            let rows = sqlx::query_as::<_, AdminTicketRow>(
+                "SELECT t.id, t.project_id, t.created_by, t.subject, t.category, t.priority,
+                        t.description, t.status, t.created_at, t.updated_at, t.deleted_at,
+                        u.name AS customer_name, u.email AS customer_email
+                 FROM platform_support_tickets t
+                 JOIN auth_users u ON u.id = t.created_by
+                 WHERE t.deleted_at IS NULL
+                   AND ($1::text IS NULL OR t.status = $1)
+                   AND ($2::text IS NULL OR t.id < $2)
+                 ORDER BY t.created_at DESC, t.id DESC
+                 LIMIT $3",
+            )
+            .bind(&status_owned)
+            .bind(&before_owned)
+            .bind(limit)
+            .fetch_all(&pool)
+            .await
+            .map_err(map_err)?;
+
+            Ok(rows.into_iter().map(AdminTicketRecord::from).collect())
+        })
+    }
+
+    fn get_any(&self, ticket_id: &str) -> BoxFut<'_, Result<Option<AdminTicketRecord>, StoreError>> {
+        let pool = self.pool.clone();
+        let ticket_id_owned = ticket_id.to_string();
+
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, AdminTicketRow>(
+                "SELECT t.id, t.project_id, t.created_by, t.subject, t.category, t.priority,
+                        t.description, t.status, t.created_at, t.updated_at, t.deleted_at,
+                        u.name AS customer_name, u.email AS customer_email
+                 FROM platform_support_tickets t
+                 JOIN auth_users u ON u.id = t.created_by
+                 WHERE t.id = $1
+                   AND t.deleted_at IS NULL",
+            )
+            .bind(&ticket_id_owned)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+
+            Ok(row.map(AdminTicketRecord::from))
+        })
+    }
+
+    fn list_messages_any(
+        &self,
+        ticket_id: &str,
+    ) -> BoxFut<'_, Result<Vec<AdminTicketMessageRecord>, StoreError>> {
+        let pool = self.pool.clone();
+        let ticket_id_owned = ticket_id.to_string();
+
+        Box::pin(async move {
+            let rows = sqlx::query_as::<_, AdminTicketMessageRow>(
+                "SELECT m.id, m.ticket_id, m.author_type, m.author_id, m.body, m.created_at,
+                        COALESCE(u.name, a.name) AS author_name
+                 FROM platform_support_ticket_messages m
+                 JOIN platform_support_tickets t ON t.id = m.ticket_id
+                 LEFT JOIN auth_users u
+                   ON m.author_type = 'customer' AND m.author_id = u.id
+                 LEFT JOIN admin_users a
+                   ON m.author_type = 'support' AND m.author_id = a.id
+                 WHERE m.ticket_id = $1
+                   AND t.deleted_at IS NULL
+                 ORDER BY m.created_at ASC, m.id ASC",
+            )
+            .bind(&ticket_id_owned)
+            .fetch_all(&pool)
+            .await
+            .map_err(map_err)?;
+
+            Ok(rows.into_iter().map(AdminTicketMessageRecord::from).collect())
+        })
+    }
+
+    fn add_support_message(
+        &self,
+        admin_id: AdminUserId,
+        ticket_id: &str,
+        body: &str,
+    ) -> BoxFut<'_, Result<Option<TicketMessageRecord>, StoreError>> {
+        let pool = self.pool.clone();
+        let admin_id_str = admin_id.to_string();
+        let ticket_id_owned = ticket_id.to_string();
+        let message_id = Ulid::new().to_string();
+        let body_owned = body.to_string();
+
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, TicketMessageRow>(
+                "WITH ticket_check AS (
+                     SELECT id FROM platform_support_tickets
+                     WHERE id = $2 AND deleted_at IS NULL
+                 ),
+                 ins AS (
+                     INSERT INTO platform_support_ticket_messages (id, ticket_id, author_type, author_id, body)
+                     SELECT $3, $2, 'support', $1, $4
+                     FROM ticket_check
+                     RETURNING id, ticket_id, author_type, author_id, body, created_at
+                 )
+                 UPDATE platform_support_tickets t
+                 SET updated_at = now()
+                 FROM ins
+                 WHERE t.id = ins.ticket_id
+                 RETURNING ins.id, ins.ticket_id, ins.author_type, ins.author_id, ins.body, ins.created_at",
+            )
+            .bind(&admin_id_str)
+            .bind(&ticket_id_owned)
+            .bind(&message_id)
+            .bind(&body_owned)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+
+            Ok(row.map(TicketMessageRecord::from))
+        })
+    }
+
+    fn set_status(
+        &self,
+        ticket_id: &str,
+        status: TicketStatus,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let pool = self.pool.clone();
+        let ticket_id_owned = ticket_id.to_string();
+        let status_str = status.as_str().to_string();
+
+        Box::pin(async move {
+            let result = sqlx::query(
+                "UPDATE platform_support_tickets
+                 SET status = $2, updated_at = now()
+                 WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(&ticket_id_owned)
+            .bind(&status_str)
             .execute(&pool)
             .await
             .map_err(map_err)?;

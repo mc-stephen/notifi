@@ -4,6 +4,7 @@
 //! v1 never changes incompatibly. New dashboard features mount inside
 //! [`v1_router`] (auth today; onboarding/organizations next).
 
+pub mod admin;
 pub mod auth;
 pub mod channel_configs;
 pub mod logs;
@@ -35,6 +36,20 @@ pub fn v1_router(state: &AppState) -> Router<AppState> {
         Some(runtime) => auth_routes.layer(axum::Extension(runtime)),
         None => auth_routes,
     };
+
+    let mut admin_routes = admin::routes::router();
+    // Admin routes need the admin service (for bootstrap, login, TOTP).
+    if let Some(admin_service) = state.admin.clone() {
+        admin_routes = admin_routes.layer(axum::Extension(admin_service));
+    }
+    // Admin routes also need auth service for CurrentUser extractor (fallback).
+    if let Some(auth_service) = state.auth.clone() {
+        admin_routes = admin_routes.layer(axum::Extension(auth_service));
+    }
+    // Admin support routes need the ticket service (absent -> 503).
+    if let Some(ticket_service) = state.tickets.clone() {
+        admin_routes = admin_routes.layer(axum::Extension(ticket_service));
+    }
 
     let mut project_routes = projects::routes::router();
     // Project routes require session auth via `CurrentUser`, which needs the
@@ -102,6 +117,7 @@ pub fn v1_router(state: &AppState) -> Router<AppState> {
 
     Router::new()
         .nest("/auth", auth_routes)
+        .nest("/admin", admin_routes)
         .nest("/providers", provider_routes)
         .nest("/projects", project_routes)
         .nest("/projects/{project_id}/recipients", recipient_routes)

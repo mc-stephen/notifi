@@ -2,6 +2,7 @@
 //!
 //! Framework-free by rule: no axum/sqlx/reqwest types may appear here.
 
+pub mod admin_store;
 pub mod audit_store;
 pub mod auth_store;
 pub mod channel_provider_store;

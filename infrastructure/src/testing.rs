@@ -21,7 +21,9 @@ use crate::ports::recipients_store::{RecipientRecord, RecipientsStore};
 use crate::ports::templates_store::{
     AttachmentInput, AttachmentRecord, TemplateRecord, TemplatesStore,
 };
-use crate::ports::tickets_store::{TicketMessageRecord, TicketRecord, TicketsStore};
+use crate::ports::tickets_store::{
+    AdminTicketMessageRecord, AdminTicketRecord, TicketMessageRecord, TicketRecord, TicketsStore,
+};
 
 /// Thread-safe in-memory store.
 #[derive(Default)]
@@ -901,6 +903,10 @@ pub struct FakeTicketsStore {
     messages: RwLock<Vec<TicketMessageRecord>>,
     /// (user_id, project_id) pairs the actor may access (project visibility).
     visible: RwLock<Vec<(String, String)>>,
+    /// user_id -> (name, email) for admin ticket views.
+    users: RwLock<Vec<(String, String, String)>>,
+    /// admin_id -> name for admin message views.
+    admins: RwLock<Vec<(String, String)>>,
 }
 
 impl FakeTicketsStore {
@@ -914,6 +920,49 @@ impl FakeTicketsStore {
             .write()
             .unwrap()
             .push((user_id.to_string(), project_id.to_string()));
+    }
+
+    /// Seeds a customer's identity for admin ticket views.
+    pub fn seed_user(&self, user_id: &str, name: &str, email: &str) {
+        self.users.write().unwrap().push((
+            user_id.to_string(),
+            name.to_string(),
+            email.to_string(),
+        ));
+    }
+
+    /// Seeds an admin's identity for admin message views.
+    pub fn seed_admin(&self, admin_id: &str, name: &str) {
+        self.admins
+            .write()
+            .unwrap()
+            .push((admin_id.to_string(), name.to_string()));
+    }
+
+    fn customer_identity(users: &[(String, String, String)], user_id: &str) -> (String, String) {
+        users
+            .iter()
+            .find(|(id, _, _)| id == user_id)
+            .map(|(_, name, email)| (name.clone(), email.clone()))
+            .unwrap_or_else(|| ("Unknown".to_string(), "unknown@example.com".to_string()))
+    }
+
+    fn author_name(
+        users: &[(String, String, String)],
+        admins: &[(String, String)],
+        message: &TicketMessageRecord,
+    ) -> Option<String> {
+        let author_id = message.author_id.as_deref()?;
+        match message.author {
+            crate::domain::support::entities::MessageAuthor::Customer => users
+                .iter()
+                .find(|(id, _, _)| id == author_id)
+                .map(|(_, name, _)| name.clone()),
+            crate::domain::support::entities::MessageAuthor::Support => admins
+                .iter()
+                .find(|(id, _)| id == author_id)
+                .map(|(_, name)| name.clone()),
+        }
     }
 
     pub fn all(&self) -> Vec<TicketRecord> {
@@ -1162,6 +1211,175 @@ impl TicketsStore for FakeTicketsStore {
             Ok(false)
         })
     }
+
+    // === Admin-scoped methods (no actor visibility checks) =================
+
+    fn list_all(
+        &self,
+        status: Option<&str>,
+        limit: i64,
+        before: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<AdminTicketRecord>, StoreError>> {
+        let status_owned = status.map(str::to_owned);
+        let before_owned = before.map(str::to_owned);
+        let tickets = &self.tickets;
+        let users = self.users.read().unwrap().clone();
+
+        Box::pin(async move {
+            let all = tickets.read().map_err(lock_err)?;
+            let mut result: Vec<AdminTicketRecord> = all
+                .iter()
+                .filter(|t| t.deleted_at.is_none())
+                .filter(|t| {
+                    if let Some(ref s) = status_owned {
+                        t.status.as_str() == s.as_str()
+                    } else {
+                        true
+                    }
+                })
+                .filter(|t| {
+                    if let Some(ref b) = before_owned {
+                        t.id < *b
+                    } else {
+                        true
+                    }
+                })
+                .map(|t| {
+                    let (customer_name, customer_email) =
+                        Self::customer_identity(&users, &t.created_by);
+                    AdminTicketRecord {
+                        ticket: t.clone(),
+                        customer_name,
+                        customer_email,
+                    }
+                })
+                .take(limit as usize)
+                .collect();
+            result.sort_by(|a, b| {
+                b.ticket
+                    .created_at
+                    .cmp(&a.ticket.created_at)
+                    .then(b.ticket.id.cmp(&a.ticket.id))
+            });
+            Ok(result)
+        })
+    }
+
+    fn get_any(&self, ticket_id: &str) -> BoxFut<'_, Result<Option<AdminTicketRecord>, StoreError>> {
+        let ticket_id = ticket_id.to_string();
+        let tickets = &self.tickets;
+        let users = self.users.read().unwrap().clone();
+
+        Box::pin(async move {
+            let all = tickets.read().map_err(lock_err)?;
+            Ok(all
+                .iter()
+                .find(|t| t.id == ticket_id && t.deleted_at.is_none())
+                .map(|t| {
+                    let (customer_name, customer_email) =
+                        Self::customer_identity(&users, &t.created_by);
+                    AdminTicketRecord {
+                        ticket: t.clone(),
+                        customer_name,
+                        customer_email,
+                    }
+                }))
+        })
+    }
+
+    fn list_messages_any(
+        &self,
+        ticket_id: &str,
+    ) -> BoxFut<'_, Result<Vec<AdminTicketMessageRecord>, StoreError>> {
+        let ticket_id = ticket_id.to_string();
+        let messages = self.messages.read().unwrap().clone();
+        let users = self.users.read().unwrap().clone();
+        let admins = self.admins.read().unwrap().clone();
+
+        Box::pin(async move {
+            let mut result: Vec<AdminTicketMessageRecord> = messages
+                .into_iter()
+                .filter(|m| m.ticket_id == ticket_id)
+                .map(|m| {
+                    let author_name = Self::author_name(&users, &admins, &m);
+                    AdminTicketMessageRecord {
+                        message: m,
+                        author_name,
+                    }
+                })
+                .collect();
+            result.sort_by(|a, b| {
+                a.message
+                    .created_at
+                    .cmp(&b.message.created_at)
+                    .then(a.message.id.cmp(&b.message.id))
+            });
+            Ok(result)
+        })
+    }
+
+    fn add_support_message(
+        &self,
+        admin_id: crate::domain::admin::entities::AdminUserId,
+        ticket_id: &str,
+        body: &str,
+    ) -> BoxFut<'_, Result<Option<TicketMessageRecord>, StoreError>> {
+        let admin_id_str = admin_id.to_string();
+        let ticket_id = ticket_id.to_string();
+        let body = body.to_string();
+
+        Box::pin(async move {
+            let exists = self
+                .tickets
+                .read()
+                .unwrap()
+                .iter()
+                .any(|t| t.id == ticket_id && t.deleted_at.is_none());
+            if !exists {
+                return Ok(None);
+            }
+            let record = TicketMessageRecord {
+                id: Ulid::new().to_string(),
+                ticket_id: ticket_id.clone(),
+                author: crate::domain::support::entities::MessageAuthor::Support,
+                author_id: Some(admin_id_str),
+                body,
+                created_at: Utc::now(),
+            };
+            self.messages.write().unwrap().push(record.clone());
+            if let Some(t) = self
+                .tickets
+                .write()
+                .unwrap()
+                .iter_mut()
+                .find(|t| t.id == ticket_id)
+            {
+                t.updated_at = Utc::now();
+            }
+            Ok(Some(record))
+        })
+    }
+
+    fn set_status(
+        &self,
+        ticket_id: &str,
+        status: crate::domain::support::entities::TicketStatus,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let ticket_id = ticket_id.to_string();
+
+        Box::pin(async move {
+            let mut tickets = self.tickets.write().unwrap();
+            if let Some(t) = tickets
+                .iter_mut()
+                .find(|t| t.id == ticket_id && t.deleted_at.is_none())
+            {
+                t.status = status;
+                t.updated_at = Utc::now();
+                return Ok(true);
+            }
+            Ok(false)
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1331,6 +1549,152 @@ impl NotificationsStore for FakeNotificationsStore {
             } else {
                 Ok(false)
             }
+        })
+    }
+}
+
+// ------------------------------------------------------------------
+// FakeAdminStore — in-memory admin store for tests
+// ------------------------------------------------------------------
+
+use crate::domain::admin::entities::{AdminSession, AdminSessionId, AdminUser, AdminUserId};
+use crate::ports::admin_store::AdminStore;
+
+#[derive(Default)]
+pub struct FakeAdminStore {
+    admins: RwLock<Vec<AdminUser>>,
+    sessions: RwLock<Vec<AdminSession>>,
+}
+
+impl FakeAdminStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn seed_admin(&self, admin: AdminUser) {
+        self.admins.write().unwrap().push(admin);
+    }
+}
+
+impl AdminStore for FakeAdminStore {
+    fn admin_exists(&self) -> BoxFut<'_, Result<bool, StoreError>> {
+        let admins = &self.admins;
+        Box::pin(async move {
+            Ok(!admins.read().map_err(lock_err)?.is_empty())
+        })
+    }
+
+    fn create_admin(&self, admin: &AdminUser) -> BoxFut<'_, Result<(), StoreError>> {
+        let admins = &self.admins;
+        let admin = admin.clone();
+        Box::pin(async move {
+            admins.write().map_err(lock_err)?.push(admin);
+            Ok(())
+        })
+    }
+
+    fn find_admin_by_email(&self, email: &str) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>> {
+        let admins = &self.admins;
+        let email = email.to_string();
+        Box::pin(async move {
+            Ok(admins
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .find(|a| a.email.as_str() == email)
+                .cloned())
+        })
+    }
+
+    fn find_admin_by_id(&self, id: AdminUserId) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>> {
+        let admins = &self.admins;
+        Box::pin(async move {
+            Ok(admins
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .find(|a| a.id == id)
+                .cloned())
+        })
+    }
+
+    fn set_totp_secret(&self, id: AdminUserId, secret: String) -> BoxFut<'_, Result<(), StoreError>> {
+        let admins = &self.admins;
+        Box::pin(async move {
+            let mut admins = admins.write().map_err(lock_err)?;
+            if let Some(admin) = admins.iter_mut().find(|a| a.id == id) {
+                admin.totp_secret = Some(secret);
+            }
+            Ok(())
+        })
+    }
+
+    fn enable_totp(&self, id: AdminUserId) -> BoxFut<'_, Result<(), StoreError>> {
+        let admins = &self.admins;
+        Box::pin(async move {
+            let mut admins = admins.write().map_err(lock_err)?;
+            if let Some(admin) = admins.iter_mut().find(|a| a.id == id) {
+                admin.totp_enabled = true;
+            }
+            Ok(())
+        })
+    }
+
+    fn touch_admin_last_login(&self, id: AdminUserId, at: DateTime<Utc>) -> BoxFut<'_, Result<(), StoreError>> {
+        let admins = &self.admins;
+        Box::pin(async move {
+            let mut admins = admins.write().map_err(lock_err)?;
+            if let Some(admin) = admins.iter_mut().find(|a| a.id == id) {
+                admin.last_login_at = Some(at);
+            }
+            Ok(())
+        })
+    }
+
+    fn create_admin_session(&self, session: &AdminSession) -> BoxFut<'_, Result<(), StoreError>> {
+        let sessions = &self.sessions;
+        let session = session.clone();
+        Box::pin(async move {
+            sessions.write().map_err(lock_err)?.push(session);
+            Ok(())
+        })
+    }
+
+    fn find_admin_session_by_hash(
+        &self,
+        hash: &str,
+    ) -> BoxFut<'_, Result<Option<AdminSession>, StoreError>> {
+        let sessions = &self.sessions;
+        let hash = hash.to_string();
+        Box::pin(async move {
+            Ok(sessions
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .find(|s| s.token_hash == hash)
+                .cloned())
+        })
+    }
+
+    fn revoke_admin_sessions(&self, id: AdminUserId) -> BoxFut<'_, Result<(), StoreError>> {
+        let sessions = &self.sessions;
+        Box::pin(async move {
+            let mut sessions = sessions.write().map_err(lock_err)?;
+            for s in sessions.iter_mut().filter(|s| s.admin_id == id) {
+                s.revoked_at = Some(Utc::now());
+            }
+            Ok(())
+        })
+    }
+
+    fn revoke_admin_session(&self, id: AdminSessionId) -> BoxFut<'_, Result<(), StoreError>> {
+        let sessions = &self.sessions;
+        Box::pin(async move {
+            let mut sessions = sessions.write().map_err(lock_err)?;
+            if let Some(s) = sessions.iter_mut().find(|s| s.id == id) {
+                s.revoked_at = Some(Utc::now());
+            }
+            Ok(())
         })
     }
 }

@@ -91,6 +91,13 @@ fn run_inner() -> Result<(), String> {
             std::sync::Arc::new(svc)
         });
 
+        // Admin service: separate from auth — platform managers only.
+        let admin = db.as_ref().map(|pool| {
+            std::sync::Arc::new(domain::admin::AdminService::new(
+                Box::new(infra::PgAdminStore::new(pool.clone())),
+            ))
+        });
+
         // Projects slice: same store backing, separate service instance.
         let projects = db.as_ref().map(|pool| {
             std::sync::Arc::new(domain::projects::ProjectService::new(
@@ -216,6 +223,7 @@ fn run_inner() -> Result<(), String> {
                 redis: redis_conn,
                 auth,
                 oauth,
+                admin,
                 projects,
                 audit,
                 recipients,

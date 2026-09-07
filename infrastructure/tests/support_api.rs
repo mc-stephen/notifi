@@ -34,6 +34,7 @@ fn app_with_tickets() -> (Router, Arc<FakeTicketsStore>, Arc<FakeRecipientsStore
                 redis: None,
                 auth: Some(auth),
                 oauth: None,
+                admin: None,
                 projects: Some(projects),
                 audit: Some(audit),
                 recipients: None,

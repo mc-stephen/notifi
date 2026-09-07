@@ -91,6 +91,12 @@ pub async fn list_messages(
     Extension(service): Extension<Arc<TicketService>>,
     Path(ticket_id): Path<String>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
+    // 404 when the ticket is missing or not visible (normalizes store
+    // differences: PG returns an empty list, the fake errors).
+    service
+        .get(user.id, &ticket_id)
+        .await?
+        .ok_or_else(|| crate::domain::auth::errors::AuthError::NotFound("ticket not found".into()))?;
     let messages = service.list_messages(user.id, &ticket_id).await?;
     let dtos: Vec<TicketMessageDto> = messages.into_iter().map(TicketMessageDto::from).collect();
     Ok((

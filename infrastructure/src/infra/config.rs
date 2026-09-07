@@ -125,7 +125,10 @@ fn default_port() -> u16 {
 }
 
 fn default_cors_origins() -> Vec<String> {
-    vec!["http://localhost:3000".to_string()]
+    vec![
+        "http://localhost:3000".to_string(),
+        "http://localhost:4321".to_string(),
+    ]
 }
 
 fn default_log_level() -> String {

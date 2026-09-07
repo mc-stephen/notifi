@@ -1,6 +1,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use crate::domain::admin::entities::AdminUserId;
 use crate::domain::auth::entities::UserId;
 use crate::domain::support::entities::{MessageAuthor, TicketStatus};
 use crate::ports::auth_store::StoreError;
@@ -30,6 +31,21 @@ pub struct TicketMessageRecord {
     pub author_id: Option<String>,
     pub body: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// A ticket plus its creator's identity (admin views only).
+#[derive(Debug, Clone)]
+pub struct AdminTicketRecord {
+    pub ticket: TicketRecord,
+    pub customer_name: String,
+    pub customer_email: String,
+}
+
+/// A message plus its author's display name (admin views only).
+#[derive(Debug, Clone)]
+pub struct AdminTicketMessageRecord {
+    pub message: TicketMessageRecord,
+    pub author_name: Option<String>,
 }
 
 pub trait TicketsStore: Send + Sync {
@@ -75,5 +91,41 @@ pub trait TicketsStore: Send + Sync {
         &self,
         actor: UserId,
         ticket_id: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>>;
+
+    // === Admin-scoped methods (no actor visibility checks) =================
+
+    /// Lists all tickets (newest first), with creator identity.
+    fn list_all(
+        &self,
+        status: Option<&str>,
+        limit: i64,
+        before: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<AdminTicketRecord>, StoreError>>;
+
+    /// Fetches any ticket by id, with creator identity.
+    fn get_any(&self, ticket_id: &str) -> BoxFut<'_, Result<Option<AdminTicketRecord>, StoreError>>;
+
+    /// Lists messages for any ticket, with author display names.
+    fn list_messages_any(
+        &self,
+        ticket_id: &str,
+    ) -> BoxFut<'_, Result<Vec<AdminTicketMessageRecord>, StoreError>>;
+
+    /// Adds a support-authored message to any ticket. Returns `None` when the
+    /// ticket does not exist (or is soft-deleted).
+    fn add_support_message(
+        &self,
+        admin_id: AdminUserId,
+        ticket_id: &str,
+        body: &str,
+    ) -> BoxFut<'_, Result<Option<TicketMessageRecord>, StoreError>>;
+
+    /// Sets a ticket's status. Returns `None` when the ticket does not exist
+    /// (or is soft-deleted).
+    fn set_status(
+        &self,
+        ticket_id: &str,
+        status: TicketStatus,
     ) -> BoxFut<'_, Result<bool, StoreError>>;
 }

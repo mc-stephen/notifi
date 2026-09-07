@@ -25,28 +25,29 @@ export type Organization = {
   monthlyNotifications: number;
 };
 
-export type Ticket = {
+export type AdminTicketStatus = "open" | "in_progress" | "resolved" | "closed";
+
+export type AdminTicket = {
   id: string;
+  projectId?: string | null;
   subject: string;
   description: string;
-  status: "open" | "pending" | "waiting" | "resolved" | "closed";
-  priority: "low" | "normal" | "high" | "urgent";
+  category: string;
+  priority: string;
+  status: AdminTicketStatus;
+  customerId: string;
   customerName: string;
   customerEmail: string;
-  organization?: string;
-  assignedAdmin?: string;
   createdAt: string;
   updatedAt: string;
-  messageCount: number;
 };
 
-export type TicketMessage = {
+export type AdminTicketMessage = {
   id: string;
   ticketId: string;
-  author: "customer" | "admin";
-  authorName: string;
+  author: "customer" | "support";
+  authorName?: string | null;
   body: string;
-  isInternalNote: boolean;
   createdAt: string;
 };
 

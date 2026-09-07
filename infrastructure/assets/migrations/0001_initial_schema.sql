@@ -30,6 +30,36 @@ CREATE TABLE auth_users (
     UNIQUE (oauth_provider, oauth_subject)
 );
 
+-- Platform administrators: separate from customers (`auth_users`). Admins
+-- manage the Notifi platform itself; 2FA (TOTP) is enforced for all admins.
+CREATE TABLE admin_users (
+    id            VARCHAR(26) PRIMARY KEY,
+    name          TEXT        NOT NULL,
+    email         TEXT        NOT NULL UNIQUE,
+    password_hash TEXT        NOT NULL,
+    totp_secret   TEXT,
+    totp_enabled  BOOLEAN     NOT NULL DEFAULT FALSE,
+    last_login_at TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at    TIMESTAMPTZ
+);
+
+CREATE INDEX idx_admin_users_email ON admin_users(email) WHERE deleted_at IS NULL;
+
+-- Admin sign-in sessions (admin dashboard cookie `session_token`; only the
+-- hash is stored server-side).
+CREATE TABLE admin_sessions (
+    id         VARCHAR(26) PRIMARY KEY,
+    admin_id   VARCHAR(26) NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+    token_hash TEXT        NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_admin_sessions_admin ON admin_sessions(admin_id);
+
 -- Active sign-in sessions (dashboard cookie `session_token`; only the hash
 -- is stored server-side).
 CREATE TABLE auth_sessions (
@@ -250,3 +280,62 @@ CREATE TABLE platform_project_provider_configs (
 
 CREATE INDEX idx_provider_configs_project ON platform_project_provider_configs(project_id);
 CREATE INDEX idx_provider_configs_channel ON platform_project_provider_configs(channel_id);
+
+-- ---------------------------------------------------------------------------
+-- support tickets
+-- ---------------------------------------------------------------------------
+
+-- Personal (project_id NULL, visible only to creator) or project-scoped
+-- (visible to all active project members).
+CREATE TABLE platform_support_tickets (
+    id          VARCHAR(26) PRIMARY KEY,
+    project_id  VARCHAR(26) REFERENCES platform_projects(id) ON DELETE CASCADE,
+    created_by  VARCHAR(26) NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+    subject     TEXT NOT NULL,
+    category    TEXT NOT NULL,
+    priority    TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'open',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at  TIMESTAMPTZ
+);
+
+CREATE INDEX idx_support_tickets_creator ON platform_support_tickets(created_by);
+CREATE INDEX idx_support_tickets_project ON platform_support_tickets(project_id);
+
+-- Ticket conversation thread. Each reply is a row.
+-- author_type: 'customer' (dashboard user) | 'support' (admin dashboard).
+CREATE TABLE platform_support_ticket_messages (
+    id          VARCHAR(26) PRIMARY KEY,
+    ticket_id   VARCHAR(26) NOT NULL REFERENCES platform_support_tickets(id) ON DELETE CASCADE,
+    author_type TEXT NOT NULL,
+    author_id   VARCHAR(26),
+    body        TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_ticket_messages_ticket ON platform_support_ticket_messages(ticket_id);
+
+-- ---------------------------------------------------------------------------
+-- in-app notifications
+-- ---------------------------------------------------------------------------
+
+-- Personal only (per user), no project scope.
+-- origin: 'system' (auto-emitted on events) | 'admin' (manual, admin dashboard).
+-- content is markdown/HTML rendered by the dashboard detail panel.
+CREATE TABLE platform_in_app_notifications (
+    id         VARCHAR(26) PRIMARY KEY,
+    user_id    VARCHAR(26) NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+    type       TEXT NOT NULL,
+    origin     TEXT NOT NULL DEFAULT 'system'
+               CHECK (origin IN ('system', 'admin')),
+    title      TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    read_at    TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_inapp_notifications_user_time ON platform_in_app_notifications(user_id, created_at DESC);
+CREATE INDEX idx_inapp_notifications_unread ON platform_in_app_notifications(user_id) WHERE read_at IS NULL AND deleted_at IS NULL;

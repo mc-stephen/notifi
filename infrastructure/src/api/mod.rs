@@ -54,6 +54,7 @@ mod tests {
                 redis: None,
                 auth: None,
                 oauth: None,
+                admin: None,
                 projects: None,
                 audit: None,
                 recipients: None,

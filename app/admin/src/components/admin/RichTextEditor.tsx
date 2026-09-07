@@ -3,7 +3,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
-import { useCallback, useEffect, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
 import "prosemirror-view/style/prosemirror.css";
 
 function ToolbarBtn({
@@ -37,11 +37,16 @@ function Divider() {
   return <div className="w-px h-5 bg-border mx-1" />;
 }
 
-export default function RichTextEditor({
-  placeholder = "Write your message...",
-}: {
-  placeholder?: string;
-}) {
+export type RichTextEditorHandle = {
+  getHTML: () => string;
+  isEmpty: () => boolean;
+  clear: () => void;
+};
+
+const RichTextEditor = forwardRef<
+  RichTextEditorHandle,
+  { placeholder?: string; onUpdate?: (html: string, empty: boolean) => void }
+>(function RichTextEditor({ placeholder = "Write your message...", onUpdate }, ref) {
   const [isPreview, setIsPreview] = useState(false);
 
   const editor = useEditor(
@@ -66,8 +71,21 @@ export default function RichTextEditor({
             "min-h-[160px] max-h-[320px] overflow-y-auto px-3 py-2.5 text-sm text-foreground focus:outline-none prose prose-sm max-w-none [&_p.is-editor-empty:first-child]:before:text-muted-foreground [&_p.is-editor-empty:first-child]:before:content-[attr(data-placeholder)] [&_p.is-editor-empty:first-child]:before:float-left [&_p.is-editor-empty:first-child]:before:pointer-events-none [&_p.is-editor-empty:first-child]:before:h-0",
         },
       },
+      onUpdate: ({ editor }) => {
+        onUpdate?.(editor.getHTML(), editor.isEmpty);
+      },
     },
     []
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      getHTML: () => editor?.getHTML() ?? "",
+      isEmpty: () => editor?.isEmpty ?? true,
+      clear: () => editor?.commands.clearContent(),
+    }),
+    [editor]
   );
 
   const setLink = useCallback(() => {
@@ -205,4 +223,6 @@ export default function RichTextEditor({
       )}
     </div>
   );
-}
+});
+
+export default RichTextEditor;

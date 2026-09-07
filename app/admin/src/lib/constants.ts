@@ -97,8 +97,7 @@ export const ACCOUNT_STATUS_COLORS: Record<AccountStatus, string> = {
 
 export const TICKET_STATUSES = [
   "open",
-  "pending",
-  "waiting",
+  "in_progress",
   "resolved",
   "closed",
 ] as const;
@@ -107,10 +106,16 @@ export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
 export const TICKET_STATUS_COLORS: Record<TicketStatus, string> = {
   open: "bg-info/10 text-info border-info/20",
-  pending: "bg-warning/10 text-warning border-warning/20",
-  waiting: "bg-muted text-muted-foreground border-border",
+  in_progress: "bg-warning/10 text-warning border-warning/20",
   resolved: "bg-success/10 text-success border-success/20",
   closed: "bg-muted text-muted-foreground border-border",
+};
+
+export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
+  open: "Open",
+  in_progress: "In Progress",
+  resolved: "Resolved",
+  closed: "Closed",
 };
 
 export const PRIORITY_COLORS: Record<string, string> = {

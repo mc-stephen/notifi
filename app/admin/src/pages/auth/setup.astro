@@ -1,0 +1,244 @@
+---
+import AuthLayout from "../../layouts/AuthLayout.astro";
+---
+
+<AuthLayout title="Set Up Admin">
+  <div class="space-y-6">
+    <!-- Step 1: Account creation form -->
+    <div id="step-form" class="space-y-6">
+      <div class="space-y-2 text-center">
+        <h1 class="text-2xl font-bold text-foreground">Create Admin Account</h1>
+        <p class="text-sm text-muted-foreground">
+          Set up the first administrator for your Notifi platform.
+        </p>
+      </div>
+
+      <form id="setup-form" class="space-y-4">
+        <div class="space-y-2">
+          <label for="name" class="text-sm font-medium text-foreground">Full Name</label>
+          <input
+            type="text"
+            id="name"
+            name="name"
+            required
+            autocomplete="name"
+            placeholder="Admin User"
+            class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          />
+        </div>
+
+        <div class="space-y-2">
+          <label for="email" class="text-sm font-medium text-foreground">Email</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            required
+            autocomplete="email"
+            placeholder="admin@notifi.dev"
+            class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          />
+        </div>
+
+        <div class="space-y-2">
+          <label for="password" class="text-sm font-medium text-foreground">Password</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            required
+            autocomplete="new-password"
+            placeholder="At least 8 characters"
+            minlength="8"
+            class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          />
+          <p class="text-xs text-muted-foreground">Minimum 8 characters. Must include uppercase, lowercase, number, and special character.</p>
+        </div>
+
+        <div id="error-message" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
+
+        <button
+          type="submit"
+          id="submit-btn"
+          class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 w-full"
+        >
+          <span id="btn-text">Create Admin</span>
+          <svg id="btn-spinner" class="hidden size-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+        </button>
+      </form>
+    </div>
+
+    <!-- Step 2: TOTP setup (hidden initially) -->
+    <div id="step-totp" class="hidden space-y-6">
+      <div class="space-y-2 text-center">
+        <h1 class="text-2xl font-bold text-foreground">Set Up 2FA</h1>
+        <p class="text-sm text-muted-foreground">
+          Scan this QR code with your authenticator app, then enter the 6-digit code.
+        </p>
+      </div>
+
+      <div class="flex justify-center">
+        <div id="qr-container" class="rounded-lg border border-border bg-white p-4">
+          <div class="text-sm text-muted-foreground text-center">Loading QR code...</div>
+        </div>
+      </div>
+
+      <div id="secret-display" class="hidden space-y-1">
+        <p class="text-xs text-muted-foreground text-center">Manual entry key:</p>
+        <code id="secret-value" class="block text-center text-xs font-mono bg-muted rounded-md px-3 py-2 break-all"></code>
+      </div>
+
+      <form id="totp-form" class="space-y-4">
+        <div class="space-y-2">
+          <label for="totp-code" class="text-sm font-medium text-foreground">Verification Code</label>
+          <input
+            type="text"
+            id="totp-code"
+            name="totp-code"
+            required
+            autocomplete="one-time-code"
+            inputmode="numeric"
+            maxlength="6"
+            pattern="[0-9]{6}"
+            placeholder="000000"
+            class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 text-center tracking-[0.5em] font-mono"
+          />
+        </div>
+
+        <div id="totp-error" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
+
+        <button
+          type="submit"
+          id="totp-btn"
+          class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 w-full"
+        >
+          <span id="totp-btn-text">Verify & Complete Setup</span>
+          <svg id="totp-btn-spinner" class="hidden size-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+        </button>
+      </form>
+    </div>
+  </div>
+</AuthLayout>
+
+<script>
+  const API_BASE = (import.meta as any).env?.PUBLIC_API_URL ?? "http://localhost:8080";
+
+  async function api(path: string, init?: RequestInit) {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(body?.detail ?? body?.message ?? `${res.status}`);
+    return body;
+  }
+
+  // Step 1: Account creation
+  const setupForm = document.getElementById("setup-form") as HTMLFormElement;
+  const stepForm = document.getElementById("step-form")!;
+  const stepTotp = document.getElementById("step-totp")!;
+  const errorDiv = document.getElementById("error-message")!;
+  const submitBtn = document.getElementById("submit-btn") as HTMLButtonElement;
+  const btnText = document.getElementById("btn-text")!;
+  const btnSpinner = document.getElementById("btn-spinner")!;
+
+  let _totpUri: string | undefined;
+
+  function validatePassword(pw: string): string | null {
+    const missing: string[] = [];
+    if (pw.length < 8) missing.push("at least 8 characters");
+    if (!/[A-Z]/.test(pw)) missing.push("an uppercase letter");
+    if (!/[a-z]/.test(pw)) missing.push("a lowercase letter");
+    if (!/[0-9]/.test(pw)) missing.push("a number");
+    if (!/[^\w]/.test(pw)) missing.push("a special character");
+    if (missing.length === 0) return null;
+    return "Password must include: " + missing.join(", ");
+  }
+
+  setupForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorDiv.classList.add("hidden");
+
+    const password = (document.getElementById("password") as HTMLInputElement).value;
+    const pwError = validatePassword(password);
+    if (pwError) {
+      errorDiv.textContent = pwError;
+      errorDiv.classList.remove("hidden");
+      return;
+    }
+
+    btnText.textContent = "";
+    btnSpinner.classList.remove("hidden");
+    submitBtn.disabled = true;
+
+    const name = (document.getElementById("name") as HTMLInputElement).value;
+    const email = (document.getElementById("email") as HTMLInputElement).value;
+
+    try {
+      const data = await api("/v1/admin/bootstrap", {
+        method: "POST",
+        body: JSON.stringify({ name, email, password }),
+      });
+
+      _totpUri = data.totpUri;
+      renderQrCode(data.totpUri);
+      document.getElementById("secret-value")!.textContent = data.totpSecret;
+      document.getElementById("secret-display")!.classList.remove("hidden");
+      stepForm.classList.add("hidden");
+      stepTotp.classList.remove("hidden");
+    } catch (err: any) {
+      errorDiv.textContent = err.message;
+      errorDiv.classList.remove("hidden");
+    } finally {
+      btnText.textContent = "Create Admin";
+      btnSpinner.classList.add("hidden");
+      submitBtn.disabled = false;
+    }
+  });
+
+  // Step 2: TOTP verification
+  const totpForm = document.getElementById("totp-form") as HTMLFormElement;
+  const totpError = document.getElementById("totp-error")!;
+  const totpBtn = document.getElementById("totp-btn") as HTMLButtonElement;
+  const totpBtnText = document.getElementById("totp-btn-text")!;
+  const totpBtnSpinner = document.getElementById("totp-btn-spinner")!;
+
+  totpForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    totpError.classList.add("hidden");
+    totpBtnText.textContent = "";
+    totpBtnSpinner.classList.remove("hidden");
+    totpBtn.disabled = true;
+
+    const code = (document.getElementById("totp-code") as HTMLInputElement).value;
+
+    try {
+      await api("/v1/admin/totp/verify", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+      window.location.href = "/overview";
+    } catch (err: any) {
+      totpError.textContent = err.message;
+      totpError.classList.remove("hidden");
+    } finally {
+      totpBtnText.textContent = "Verify & Complete Setup";
+      totpBtnSpinner.classList.add("hidden");
+      totpBtn.disabled = false;
+    }
+  });
+
+  function renderQrCode(uri: string) {
+    const container = document.getElementById("qr-container")!;
+    // Use a QR code API to render the TOTP URI
+    const svgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(uri)}&format=svg`;
+    container.innerHTML = `<img src="${svgUrl}" alt="TOTP QR Code" width="200" height="200" class="rounded" />`;
+  }
+</script>

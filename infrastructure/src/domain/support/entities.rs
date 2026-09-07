@@ -125,3 +125,63 @@ impl From<crate::ports::tickets_store::TicketMessageRecord> for TicketMessage {
         }
     }
 }
+
+/// A ticket plus its creator's identity, for admin views.
+#[derive(Debug, Clone)]
+pub struct AdminTicket {
+    pub id: String,
+    pub project_id: Option<String>,
+    pub subject: String,
+    pub category: String,
+    pub priority: String,
+    pub description: String,
+    pub status: TicketStatus,
+    pub customer_id: String,
+    pub customer_name: String,
+    pub customer_email: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<crate::ports::tickets_store::AdminTicketRecord> for AdminTicket {
+    fn from(record: crate::ports::tickets_store::AdminTicketRecord) -> Self {
+        Self {
+            id: record.ticket.id,
+            project_id: record.ticket.project_id,
+            subject: record.ticket.subject,
+            category: record.ticket.category,
+            priority: record.ticket.priority,
+            description: record.ticket.description,
+            status: record.ticket.status,
+            customer_id: record.ticket.created_by,
+            customer_name: record.customer_name,
+            customer_email: record.customer_email,
+            created_at: record.ticket.created_at,
+            updated_at: record.ticket.updated_at,
+        }
+    }
+}
+
+/// A message plus its author's display name, for admin views.
+#[derive(Debug, Clone)]
+pub struct AdminTicketMessage {
+    pub id: String,
+    pub ticket_id: String,
+    pub author: MessageAuthor,
+    pub author_name: Option<String>,
+    pub body: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<crate::ports::tickets_store::AdminTicketMessageRecord> for AdminTicketMessage {
+    fn from(record: crate::ports::tickets_store::AdminTicketMessageRecord) -> Self {
+        Self {
+            id: record.message.id,
+            ticket_id: record.message.ticket_id,
+            author: record.message.author,
+            author_name: record.author_name,
+            body: record.message.body,
+            created_at: record.message.created_at,
+        }
+    }
+}

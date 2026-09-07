@@ -21,7 +21,7 @@ import AuthLayout from "../layouts/AuthLayout.astro";
           required
           autocomplete="email"
           placeholder="admin@notifi.dev"
-          class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+          class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         />
       </div>
 
@@ -38,7 +38,7 @@ import AuthLayout from "../layouts/AuthLayout.astro";
             required
             autocomplete="current-password"
             placeholder="Enter your password"
-            class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 pr-10"
+            class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 pr-10"
           />
           <button
             type="button"
@@ -51,9 +51,23 @@ import AuthLayout from "../layouts/AuthLayout.astro";
         </div>
       </div>
 
-      <div id="error-message" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
-        Invalid email or password.
+      <div id="totp-group" class="hidden space-y-2">
+        <label for="totp-code" class="text-sm font-medium text-foreground">Two-Factor Code</label>
+        <input
+          type="text"
+          id="totp-code"
+          name="totp-code"
+          autocomplete="one-time-code"
+          inputmode="numeric"
+          maxlength="6"
+          pattern="[0-9]{6}"
+          placeholder="000000"
+          class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 text-center tracking-[0.5em] font-mono"
+        />
+        <p class="text-xs text-muted-foreground">Enter the 6-digit code from your authenticator app.</p>
       </div>
+
+      <div id="error-message" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
 
       <button
         type="submit"
@@ -77,15 +91,23 @@ import AuthLayout from "../layouts/AuthLayout.astro";
 </AuthLayout>
 
 <script>
-  const form = document.getElementById("login-form") as HTMLFormElement;
+  const API_BASE = (import.meta as any).env?.PUBLIC_API_URL ?? "http://localhost:8080";
+
+  async function api(path: string, init?: RequestInit) {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(body?.detail ?? body?.message ?? `${res.status}`);
+    return body;
+  }
+
+  // Password toggle
   const toggleBtn = document.getElementById("toggle-password");
   const passwordInput = document.getElementById("password") as HTMLInputElement;
   const eyeIcon = document.getElementById("eye-icon");
-  const errorDiv = document.getElementById("error-message");
-  const submitBtn = document.getElementById("submit-btn") as HTMLButtonElement;
-  const btnText = document.getElementById("btn-text");
-  const btnSpinner = document.getElementById("btn-spinner");
-
   let showPassword = false;
 
   toggleBtn?.addEventListener("click", () => {
@@ -98,20 +120,52 @@ import AuthLayout from "../layouts/AuthLayout.astro";
     }
   });
 
-  form?.addEventListener("submit", (e) => {
+  // Login form
+  const loginForm = document.getElementById("login-form") as HTMLFormElement;
+  const totpGroup = document.getElementById("totp-group")!;
+  const errorDiv = document.getElementById("error-message")!;
+  const submitBtn = document.getElementById("submit-btn") as HTMLButtonElement;
+  const btnText = document.getElementById("btn-text")!;
+  const btnSpinner = document.getElementById("btn-spinner")!;
+  const totpInput = document.getElementById("totp-code") as HTMLInputElement;
+
+  loginForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    errorDiv?.classList.add("hidden");
-    btnText && (btnText.textContent = "");
-    btnSpinner?.classList.remove("hidden");
+    errorDiv.classList.add("hidden");
+    btnText.textContent = "";
+    btnSpinner.classList.remove("hidden");
     submitBtn.disabled = true;
 
-    // Simulate login
-    setTimeout(() => {
-      btnText && (btnText.textContent = "Sign In");
-      btnSpinner?.classList.add("hidden");
+    const email = (document.getElementById("email") as HTMLInputElement).value;
+    const password = (document.getElementById("password") as HTMLInputElement).value;
+    const totpCode = totpInput?.value || undefined;
+
+    try {
+      const data = await api("/v1/admin/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password, totp_code: totpCode }),
+      });
+
+      if (data.requires_totp_setup) {
+        window.location.href = "/auth/totp";
+        return;
+      }
+
+      if (data.requires_totp) {
+        totpGroup.classList.remove("hidden");
+        totpInput.focus();
+        errorDiv.textContent = "Enter the 6-digit code from your authenticator app.";
+        errorDiv.classList.remove("hidden");
+      } else {
+        window.location.href = "/overview";
+      }
+    } catch (err: any) {
+      errorDiv.textContent = err.message || "Login failed";
+      errorDiv.classList.remove("hidden");
+    } finally {
+      btnText.textContent = "Sign In";
+      btnSpinner.classList.add("hidden");
       submitBtn.disabled = false;
-      // Redirect to overview
-      window.location.href = "/overview";
-    }, 1500);
+    }
   });
 </script>

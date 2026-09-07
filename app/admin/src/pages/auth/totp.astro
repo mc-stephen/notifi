@@ -1,0 +1,122 @@
+---
+import AuthLayout from "../../layouts/AuthLayout.astro";
+---
+
+<AuthLayout title="Complete 2FA Setup">
+  <div class="space-y-6">
+    <div class="space-y-2 text-center">
+      <h1 class="text-2xl font-bold text-foreground">Set Up 2FA</h1>
+      <p class="text-sm text-muted-foreground">
+        Scan this QR code with your authenticator app, then enter the 6-digit code.
+      </p>
+    </div>
+
+    <div class="flex justify-center">
+      <div id="qr-container" class="rounded-lg border border-border bg-white p-4">
+        <div class="text-sm text-muted-foreground text-center">Loading QR code...</div>
+      </div>
+    </div>
+
+    <div id="secret-display" class="hidden space-y-1">
+      <p class="text-xs text-muted-foreground text-center">Manual entry key:</p>
+      <code id="secret-value" class="block text-center text-xs font-mono bg-muted rounded-md px-3 py-2 break-all"></code>
+    </div>
+
+    <form id="totp-form" class="space-y-4">
+      <div class="space-y-2">
+        <label for="totp-code" class="text-sm font-medium text-foreground">Verification Code</label>
+        <input
+          type="text"
+          id="totp-code"
+          name="totp-code"
+          required
+          autocomplete="one-time-code"
+          inputmode="numeric"
+          maxlength="6"
+          pattern="[0-9]{6}"
+          placeholder="000000"
+          class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 text-center tracking-[0.5em] font-mono"
+        />
+      </div>
+
+      <div id="totp-error" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
+
+      <button
+        type="submit"
+        id="totp-btn"
+        class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 w-full"
+      >
+        <span id="totp-btn-text">Verify & Complete Setup</span>
+        <svg id="totp-btn-spinner" class="hidden size-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+      </button>
+    </form>
+  </div>
+</AuthLayout>
+
+<script>
+  const API_BASE = (import.meta as any).env?.PUBLIC_API_URL ?? "http://localhost:8080";
+
+  async function api(path: string, init?: RequestInit) {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(body?.detail ?? body?.message ?? `${res.status}`);
+    return body;
+  }
+
+  function renderQrCode(uri: string) {
+    const container = document.getElementById("qr-container")!;
+    const svgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(uri)}&format=svg`;
+    container.innerHTML = `<img src="${svgUrl}" alt="TOTP QR Code" width="200" height="200" class="rounded" />`;
+  }
+
+  const totpError = document.getElementById("totp-error")!;
+  const totpForm = document.getElementById("totp-form") as HTMLFormElement;
+  const totpBtn = document.getElementById("totp-btn") as HTMLButtonElement;
+  const totpBtnText = document.getElementById("totp-btn-text")!;
+  const totpBtnSpinner = document.getElementById("totp-btn-spinner")!;
+
+  // On load, generate a fresh TOTP secret (requires an existing session).
+  (async () => {
+    try {
+      const data = await api("/v1/admin/totp/setup", { method: "POST" });
+      renderQrCode(data.totpUri);
+      document.getElementById("secret-value")!.textContent = data.totpSecret;
+      document.getElementById("secret-display")!.classList.remove("hidden");
+    } catch (err: any) {
+      totpError.textContent = err.message || "Failed to load TOTP setup";
+      totpError.classList.remove("hidden");
+    }
+  })();
+
+  totpForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    totpError.classList.add("hidden");
+    totpBtnText.textContent = "";
+    totpBtnSpinner.classList.remove("hidden");
+    totpBtn.disabled = true;
+
+    const code = (document.getElementById("totp-code") as HTMLInputElement).value;
+
+    try {
+      await api("/v1/admin/totp/verify", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+      window.location.href = "/overview";
+    } catch (err: any) {
+      totpError.textContent = err.message;
+      totpError.classList.remove("hidden");
+    } finally {
+      totpBtnText.textContent = "Verify & Complete Setup";
+      totpBtnSpinner.classList.add("hidden");
+      totpBtn.disabled = false;
+    }
+  });
+</script>

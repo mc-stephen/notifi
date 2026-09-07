@@ -30,6 +30,10 @@ pub enum AuthError {
     NotImplemented(String),
     /// Persistence failure.
     Storage(String),
+    /// TOTP code is invalid or missing.
+    TotpInvalid,
+    /// TOTP setup is required but has not been completed.
+    TotpRequired,
 }
 
 impl std::fmt::Display for AuthError {
@@ -46,6 +50,8 @@ impl std::fmt::Display for AuthError {
             Self::NotConfigured => write!(f, "auth service not configured"),
             Self::NotImplemented(m) => write!(f, "not implemented: {m}"),
             Self::Storage(m) => write!(f, "storage failure: {m}"),
+            Self::TotpInvalid => write!(f, "invalid TOTP code"),
+            Self::TotpRequired => write!(f, "TOTP verification required"),
         }
     }
 }
@@ -90,6 +96,18 @@ impl IntoApiError for AuthError {
             Self::Storage(_) => {
                 ApiError::internal("something went wrong on our side; try again later.")
             }
+            Self::TotpInvalid => ApiError::new(
+                401,
+                "about:blank",
+                "Unauthorized",
+                "Invalid or missing TOTP code.",
+            ),
+            Self::TotpRequired => ApiError::new(
+                403,
+                "about:blank",
+                "Forbidden",
+                "TOTP verification is required.",
+            ),
         }
     }
 }

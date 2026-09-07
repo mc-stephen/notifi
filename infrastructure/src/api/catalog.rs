@@ -281,6 +281,56 @@ pub const USER_V1_ROUTES: &[RouteInfo] = &[
         feature: "support",
         description: "fetch a single support ticket",
     },
+    RouteInfo {
+        method: "GET",
+        path: "/v1/support/tickets/{ticket_id}/messages",
+        surface: Surface::UserV1,
+        feature: "support",
+        description: "list the conversation thread for a ticket",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/v1/support/tickets/{ticket_id}/messages",
+        surface: Surface::UserV1,
+        feature: "support",
+        description: "send a reply on a ticket",
+    },
+    // -- admin support feature ----------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/v1/admin/support/tickets",
+        surface: Surface::UserV1,
+        feature: "support",
+        description: "list all support tickets (admin view)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/v1/admin/support/tickets/{ticket_id}",
+        surface: Surface::UserV1,
+        feature: "support",
+        description: "fetch a single support ticket (admin view)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/v1/admin/support/tickets/{ticket_id}/messages",
+        surface: Surface::UserV1,
+        feature: "support",
+        description: "list the conversation thread for a ticket (admin view)",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/v1/admin/support/tickets/{ticket_id}/messages",
+        surface: Surface::UserV1,
+        feature: "support",
+        description: "send a support reply on a ticket",
+    },
+    RouteInfo {
+        method: "PATCH",
+        path: "/v1/admin/support/tickets/{ticket_id}",
+        surface: Surface::UserV1,
+        feature: "support",
+        description: "set a ticket's status",
+    },
     // -- notifications feature ------------------------------------------------
     RouteInfo {
         method: "GET",

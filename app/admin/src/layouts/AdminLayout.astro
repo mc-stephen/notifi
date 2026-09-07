@@ -128,10 +128,10 @@ const navStructure = [
       </nav>
       <!-- Footer -->
       <div class="border-t border-sidebar-border p-3">
-        <a href="/login" class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors">
+        <button id="sign-out-btn" class="flex w-full items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="opacity-70"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
           Sign Out
-        </a>
+        </button>
       </div>
     </aside>
 
@@ -221,5 +221,22 @@ const navStructure = [
 
     toggle?.addEventListener("click", openMenu);
     overlay?.addEventListener("click", closeMenu);
+
+    // Sign out: revoke the server-side session, then go to login.
+    const signOutBtn = document.getElementById("sign-out-btn");
+    const API_BASE = (import.meta as any).env?.PUBLIC_API_URL ?? "http://localhost:8080";
+
+    signOutBtn?.addEventListener("click", async () => {
+      try {
+        await fetch(`${API_BASE}/v1/admin/logout`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch {
+        // Best-effort: proceed to login even if the request fails.
+      }
+      window.location.href = "/login";
+    });
   </script>
 </BaseLayout>
