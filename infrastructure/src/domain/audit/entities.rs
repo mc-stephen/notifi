@@ -15,6 +15,8 @@ pub enum AuditAction {
     UserPasswordReset,
     UserEmailVerified,
     UserOnboardingCompleted,
+    UserSuspended,
+    UserRestored,
     ProjectEnvironmentChanged,
     RecipientCreated,
     RecipientUpdated,
@@ -47,6 +49,8 @@ impl AuditAction {
             Self::SupportTicketCreated => "support.ticket_created",
             Self::SupportTicketReplied => "support.ticket_replied",
             Self::SupportTicketStatusChanged => "support.ticket_status_changed",
+            Self::UserSuspended => "user.suspended",
+            Self::UserRestored => "user.restored",
             Self::ProjectCreated => "project.created",
         }
     }

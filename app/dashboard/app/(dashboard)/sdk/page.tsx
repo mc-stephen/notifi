@@ -225,7 +225,7 @@ println("Sent: \${result.id}")`,
     language: "Shell / Bash",
     version: "API v1",
     install: "No installation required",
-    code: `curl -X POST ${env.apiBase}/v1/notifications \\
+    code: `curl -X POST ${env.apiBase}/app/notifications \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{

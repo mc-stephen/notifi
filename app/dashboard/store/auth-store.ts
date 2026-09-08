@@ -16,7 +16,7 @@ type LoginResponse = { user: User; session: Session };
 type SignupResponse = LoginResponse & { verificationToken?: string };
 type MeResponse = { user: User; onboardingCompleted: boolean };
 
-/** Payload for `POST /v1/auth/onboarding/complete`. */
+/** Payload for `POST /app/auth/onboarding/complete`. */
 export type CompleteOnboardingInput = {
   project: {
     name: string;
@@ -85,7 +85,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true });
 
     try {
-      const data = await api<LoginResponse>("/v1/auth/login", {
+      const data = await api<LoginResponse>("/app/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password, rememberMe }),
       });
@@ -110,7 +110,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       // Signup starts a session server-side (rememberMe=false → 1-day
       // cookie), so onboarding and the dashboard continue without a login.
-      const data = await api<SignupResponse>("/v1/auth/signup", {
+      const data = await api<SignupResponse>("/app/auth/signup", {
         method: "POST",
         body: JSON.stringify({ name, email, password }),
       });
@@ -132,7 +132,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   loginWithOAuth: (provider) => {
     // Popup-first OAuth: the backend callback posts the outcome back to
     // this window, then fetchMe() hydrates the session from the new cookie.
-    const url = `${env.apiBase}/v1/auth/oauth/${provider}?popup=1`;
+    const url = `${env.apiBase}/app/auth/oauth/${provider}?popup=1`;
 
     // Loading state drives the Sign in/Sign up buttons (disabled + spinner)
     // for the whole attempt — set it before the popup opens.
@@ -143,7 +143,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     // Popup blocked → full-page redirect; the server sets the cookie either
     // way and fetchMe() restores the session after the bounce back home.
     if (!popup) {
-      window.location.assign(`${env.apiBase}/v1/auth/oauth/${provider}`);
+      window.location.assign(`${env.apiBase}/app/auth/oauth/${provider}`);
       return Promise.resolve(undefined);
     }
 
@@ -199,7 +199,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user: null, session: null, isAuthenticated: false, onboardingCompleted: false });
 
     try {
-      await api("/v1/auth/logout", { method: "POST" });
+      await api("/app/auth/logout", { method: "POST" });
     } catch {
       // Already logged out locally; nothing else to do.
     }
@@ -210,7 +210,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     try {
       // Always 200 — never reveals whether the account exists.
-      await api("/v1/auth/password/forgot", {
+      await api("/app/auth/password/forgot", {
         method: "POST",
         body: JSON.stringify({ email }),
       });
@@ -226,7 +226,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true });
 
     try {
-      await api("/v1/auth/password/reset", {
+      await api("/app/auth/password/reset", {
         method: "POST",
         body: JSON.stringify({ token, password }),
       });
@@ -240,7 +240,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   verifyEmail: async (token) => {
     try {
-      await api("/v1/auth/verify-email", {
+      await api("/app/auth/verify-email", {
         method: "POST",
         body: JSON.stringify({ token }),
       });
@@ -256,7 +256,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     try {
       // Always 200 regardless of account existence.
-      await api("/v1/auth/verify-email/resend", {
+      await api("/app/auth/verify-email/resend", {
         method: "POST",
         body: JSON.stringify({ email }),
       });
@@ -270,7 +270,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   fetchMe: async () => {
     try {
-      const data = await api<MeResponse>("/v1/auth/me");
+      const data = await api<MeResponse>("/app/auth/me");
       set({
         user: data.user,
         isAuthenticated: true,
@@ -287,7 +287,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   completeOnboarding: async (input) => {
     try {
       const data = await api<{ status: string; alreadyCompleted?: boolean }>(
-        "/v1/auth/onboarding/complete",
+        "/app/auth/onboarding/complete",
         { method: "POST", body: JSON.stringify(input) }
       );
       set({ onboardingCompleted: true });

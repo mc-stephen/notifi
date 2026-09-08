@@ -48,6 +48,13 @@ pub struct AdminTicketMessageRecord {
     pub author_name: Option<String>,
 }
 
+/// Ticket totals for one user (created-by), for admin stats.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TicketCounts {
+    pub total: i64,
+    pub open: i64,
+}
+
 pub trait TicketsStore: Send + Sync {
     fn create(
         &self,
@@ -128,4 +135,10 @@ pub trait TicketsStore: Send + Sync {
         ticket_id: &str,
         status: TicketStatus,
     ) -> BoxFut<'_, Result<bool, StoreError>>;
+
+    /// Counts non-deleted tickets created by a user (admin stats).
+    fn count_tickets_for_user(
+        &self,
+        user_id: &str,
+    ) -> BoxFut<'_, Result<TicketCounts, StoreError>>;
 }

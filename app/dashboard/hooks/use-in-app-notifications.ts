@@ -26,7 +26,7 @@ export function useInAppNotifications() {
       const params = new URLSearchParams();
       if (unreadOnly) params.set("unreadOnly", "true");
       params.set("limit", "50");
-      const res = await fetch(`/v1/notifications?${params}`);
+      const res = await fetch(`/app/notifications?${params}`);
       if (!res.ok) throw new Error(`${res.status}`);
       const data = await res.json();
       setState({
@@ -47,7 +47,7 @@ export function useInAppNotifications() {
 
   const fetchUnreadCount = useCallback(async () => {
     try {
-      const res = await fetch("/v1/notifications/count");
+      const res = await fetch("/app/notifications/count");
       if (!res.ok) return;
       const data = await res.json();
       setState((s) => ({ ...s, unreadCount: data.count ?? 0 }));
@@ -73,7 +73,7 @@ export function useInAppNotifications() {
           : s.unreadCount + 1,
       }));
       try {
-        await fetch(`/v1/notifications/${id}/read`, {
+        await fetch(`/app/notifications/${id}/read`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ read }),
@@ -101,7 +101,7 @@ export function useInAppNotifications() {
       unreadCount: 0,
     }));
     try {
-      await fetch("/v1/notifications/read-all", { method: "PATCH" });
+      await fetch("/app/notifications/read-all", { method: "PATCH" });
     } catch {
       // silent — optimistic update already applied
     }
@@ -115,7 +115,7 @@ export function useInAppNotifications() {
         notifications: s.notifications.filter((n) => n.id !== id),
       }));
       try {
-        await fetch(`/v1/notifications/${id}`, { method: "DELETE" });
+        await fetch(`/app/notifications/${id}`, { method: "DELETE" });
       } catch {
         setState((s) => ({ ...s, notifications: prev }));
       }

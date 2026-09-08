@@ -18,7 +18,7 @@ use super::super::auth::{CurrentUser, Problem};
 const DEFAULT_LIMIT: i64 = 100;
 const MAX_LIMIT: i64 = 500;
 
-/// `GET /v1/logs` — audit entries the current user may see (their own plus
+/// `GET /app/logs` — audit entries the current user may see (their own plus
 /// project-scoped actions), newest first. Supports cursor pagination via
 /// `?limit` and `?before=<id>`.
 pub async fn list_logs(

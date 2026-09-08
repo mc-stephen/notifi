@@ -1,4 +1,4 @@
-//! Projects HTTP surface (mounted at `/v1/projects`).
+//! Projects HTTP surface (mounted at `/app/projects`).
 
 pub mod dto;
 pub mod handlers;

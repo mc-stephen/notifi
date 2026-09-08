@@ -42,6 +42,7 @@ fn app_with_recipients() -> (Router, Arc<FakeRecipientsStore>) {
                 auth: Some(auth),
                 oauth: None,
                 admin: None,
+                admin_users: None,
                 projects: Some(projects),
                 audit: Some(audit),
                 recipients: Some(recipients),
@@ -68,7 +69,7 @@ async fn signup_and_login_on(app: Router, email: &str) -> (String, String) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/signup")
+                .uri("/app/auth/signup")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({"name": "Jane", "email": email, "password": "Sup3rSecret!"})
@@ -84,7 +85,7 @@ async fn signup_and_login_on(app: Router, email: &str) -> (String, String) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/login")
+                .uri("/app/auth/login")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({"email": email, "password": "Sup3rSecret!", "rememberMe": false})
@@ -185,14 +186,14 @@ async fn onboard_project_on(
 
     let res = post_with_cookie(
         app.clone(),
-        "/v1/auth/onboarding/complete",
+        "/app/auth/onboarding/complete",
         json!({"project": {"name": project_name, "description": "test"}}),
         &token,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let res = get_with_cookie(app.clone(), "/v1/projects", &token).await;
+    let res = get_with_cookie(app.clone(), "/app/projects", &token).await;
     let project_id = body_json(res).await["projects"][0]["id"]
         .as_str()
         .unwrap()
@@ -205,7 +206,7 @@ async fn onboard_project_on(
 #[tokio::test]
 async fn recipients_require_auth() {
     let (app, _store) = app_with_recipients();
-    let res = get_with_cookie(app, "/v1/projects/p1/recipients", "bogus").await;
+    let res = get_with_cookie(app, "/app/projects/p1/recipients", "bogus").await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -217,7 +218,7 @@ async fn create_and_list_and_get_and_delete_roundtrip() {
     // create
     let res = post_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid}/recipients"),
+        &format!("/app/projects/{pid}/recipients"),
         json!({"userId": "u_123", "name": "Ada Lovelace", "contacts": {"email": "ada@example.com", "phone": "+1415"}}),
         &token,
     )
@@ -232,7 +233,7 @@ async fn create_and_list_and_get_and_delete_roundtrip() {
     // get
     let res = get_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid}/recipients/{rid}"),
+        &format!("/app/projects/{pid}/recipients/{rid}"),
         &token,
     )
     .await;
@@ -240,7 +241,7 @@ async fn create_and_list_and_get_and_delete_roundtrip() {
     assert_eq!(body_json(res).await["recipient"]["name"], "Ada Lovelace");
 
     // list
-    let res = get_with_cookie(app.clone(), &format!("/v1/projects/{pid}/recipients"), &token).await;
+    let res = get_with_cookie(app.clone(), &format!("/app/projects/{pid}/recipients"), &token).await;
     assert_eq!(res.status(), StatusCode::OK);
     let list = body_json(res).await;
     assert_eq!(list["recipients"].as_array().unwrap().len(), 1);
@@ -249,7 +250,7 @@ async fn create_and_list_and_get_and_delete_roundtrip() {
     // delete
     let res = delete_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid}/recipients/{rid}"),
+        &format!("/app/projects/{pid}/recipients/{rid}"),
         &token,
     )
     .await;
@@ -257,7 +258,7 @@ async fn create_and_list_and_get_and_delete_roundtrip() {
     assert_eq!(body_json(res).await["status"], "ok");
 
     // gone from list
-    let res = get_with_cookie(app.clone(), &format!("/v1/projects/{pid}/recipients"), &token).await;
+    let res = get_with_cookie(app.clone(), &format!("/app/projects/{pid}/recipients"), &token).await;
     assert_eq!(body_json(res).await["recipients"].as_array().unwrap().len(), 0);
 }
 
@@ -266,7 +267,7 @@ async fn duplicate_user_id_within_a_project_conflicts() {
     let (app, _store) = app_with_recipients();
     let (token, _uid, pid) = onboard_project_on(app.clone(), &_store, "rcp2@example.com", "My App").await;
 
-    let uri = format!("/v1/projects/{pid}/recipients");
+    let uri = format!("/app/projects/{pid}/recipients");
     let res = post_with_cookie(
         app.clone(),
         &uri,
@@ -303,7 +304,7 @@ async fn recipients_are_isolated_per_project() {
     // User A creates one recipient in project A.
     let res = post_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid_a}/recipients"),
+        &format!("/app/projects/{pid_a}/recipients"),
         json!({"userId": "u_own", "name": "Owner"}),
         &token_a,
     )
@@ -312,12 +313,12 @@ async fn recipients_are_isolated_per_project() {
     let rid = body_json(res).await["recipient"]["id"].as_str().unwrap().to_string();
 
     // User B's project list must not show project A's recipient.
-    let res = get_with_cookie(app.clone(), &format!("/v1/projects/{pid_b}/recipients"), &token_b).await;
+    let res = get_with_cookie(app.clone(), &format!("/app/projects/{pid_b}/recipients"), &token_b).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res).await["recipients"].as_array().unwrap().len(), 0);
 
     // User B fetching the recipient under project B must 404 (exists only under A).
-    let res = get_with_cookie(app.clone(), &format!("/v1/projects/{pid_b}/recipients/{rid}"), &token_b).await;
+    let res = get_with_cookie(app.clone(), &format!("/app/projects/{pid_b}/recipients/{rid}"), &token_b).await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
 
@@ -326,7 +327,7 @@ async fn create_requires_user_id_and_name() {
     let (app, store) = app_with_recipients();
     let (token, _uid, pid) = onboard_project_on(app.clone(), &store, "rcp4@example.com", "My App").await;
 
-    let uri = format!("/v1/projects/{pid}/recipients");
+    let uri = format!("/app/projects/{pid}/recipients");
 
     // Missing required fields are rejected at deserialization (422).
     let res = post_with_cookie(app.clone(), &uri, json!({"name": "No ID"}), &token).await;
@@ -345,7 +346,7 @@ async fn update_changes_name_and_replaces_contacts() {
     let (app, store) = app_with_recipients();
     let (token, _uid, pid) = onboard_project_on(app.clone(), &store, "rcp5@example.com", "My App").await;
 
-    let uri = format!("/v1/projects/{pid}/recipients");
+    let uri = format!("/app/projects/{pid}/recipients");
     let res = post_with_cookie(
         app.clone(),
         &uri,
@@ -359,7 +360,7 @@ async fn update_changes_name_and_replaces_contacts() {
     // Update both name and contacts (whatsapp/androidToken added, phone dropped).
     let res = patch_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid}/recipients/{rid}"),
+        &format!("/app/projects/{pid}/recipients/{rid}"),
         json!({
             "name": "New Name",
             "contacts": {
@@ -381,7 +382,7 @@ async fn update_changes_name_and_replaces_contacts() {
     assert!(updated["contacts"]["phone"].is_null(), "phone should be replaced away");
 
     // GET reflects the update.
-    let res = get_with_cookie(app.clone(), &format!("/v1/projects/{pid}/recipients/{rid}"), &token).await;
+    let res = get_with_cookie(app.clone(), &format!("/app/projects/{pid}/recipients/{rid}"), &token).await;
     let got = body_json(res).await["recipient"].clone();
     assert_eq!(got["name"], "New Name");
     assert_eq!(got["contacts"]["whatsapp"], "+15551234567");
@@ -392,7 +393,7 @@ async fn update_name_only_keeps_contacts() {
     let (app, store) = app_with_recipients();
     let (token, _uid, pid) = onboard_project_on(app.clone(), &store, "rcp6@example.com", "My App").await;
 
-    let uri = format!("/v1/projects/{pid}/recipients");
+    let uri = format!("/app/projects/{pid}/recipients");
     let res = post_with_cookie(
         app.clone(),
         &uri,
@@ -406,7 +407,7 @@ async fn update_name_only_keeps_contacts() {
     // Only name provided → contacts untouched.
     let res = patch_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid}/recipients/{rid}"),
+        &format!("/app/projects/{pid}/recipients/{rid}"),
         json!({"name": "Renamed"}),
         &token,
     )
@@ -425,7 +426,7 @@ async fn update_unknown_recipient_404_and_bad_contacts_400() {
     // Unknown recipient id → 404.
     let res = patch_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid}/recipients/does_not_exist"),
+        &format!("/app/projects/{pid}/recipients/does_not_exist"),
         json!({"name": "X"}),
         &token,
     )
@@ -433,7 +434,7 @@ async fn update_unknown_recipient_404_and_bad_contacts_400() {
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     // Non-object contacts → 400.
-    let uri = format!("/v1/projects/{pid}/recipients");
+    let uri = format!("/app/projects/{pid}/recipients");
     let res = post_with_cookie(
         app.clone(),
         &uri,
@@ -444,7 +445,7 @@ async fn update_unknown_recipient_404_and_bad_contacts_400() {
     let rid = body_json(res).await["recipient"]["id"].as_str().unwrap().to_string();
     let res = patch_with_cookie(
         app,
-        &format!("/v1/projects/{pid}/recipients/{rid}"),
+        &format!("/app/projects/{pid}/recipients/{rid}"),
         json!({"contacts": [1, 2, 3]}),
         &token,
     )

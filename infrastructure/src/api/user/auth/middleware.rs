@@ -20,6 +20,10 @@ use crate::domain::auth::errors::AuthError;
 
 /// Cookie name shared with the dashboard proxy (`proxy.ts`).
 pub const SESSION_COOKIE: &str = "session_token";
+/// Admin session cookie — deliberately distinct from [`SESSION_COOKIE`] so
+/// admin and dashboard logins coexist in one cookie jar (browsers ignore
+/// ports, and both frontends share the API host's jar).
+pub const ADMIN_SESSION_COOKIE: &str = "admin_session";
 
 /// Renders an [`AuthError`] as an RFC 9457 problem document.
 ///

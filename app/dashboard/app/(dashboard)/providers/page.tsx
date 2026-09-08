@@ -82,7 +82,7 @@ export default function ProvidersPage() {
     try {
       // First, test the connection
       const testResult = await api<{ success: boolean; message: string }>(
-        `/v1/projects/${projectId}/channel-configs/test`,
+        `/app/projects/${projectId}/channel-configs/test`,
         {
           method: "POST",
           body: JSON.stringify({
@@ -99,7 +99,7 @@ export default function ProvidersPage() {
       }
 
       // If test passes, save the config
-      await api(`/v1/projects/${projectId}/channel-configs`, {
+      await api(`/app/projects/${projectId}/channel-configs`, {
         method: "POST",
         body: JSON.stringify({
           channel_id: connectDialog.channel,

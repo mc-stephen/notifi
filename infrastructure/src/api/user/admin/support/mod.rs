@@ -1,4 +1,4 @@
-//! Admin support surface (mounted at `/v1/admin/support`).
+//! Admin support surface (mounted at `/admin/support`).
 
 pub mod dto;
 pub mod handlers;

@@ -6,7 +6,7 @@ use crate::domain::channels::{
     ProviderScope, SmtpFallbackConfig,
 };
 
-/// Response type for GET /v1/providers
+/// Response type for GET /app/providers
 #[derive(Debug, Serialize)]
 pub struct ProvidersResponse {
     pub version: String,
@@ -53,7 +53,7 @@ pub struct SmtpFallbackDto {
     pub fields: Vec<ConfigFieldDto>,
 }
 
-/// GET /v1/providers — returns the full provider registry.
+/// GET /app/providers — returns the full provider registry.
 /// This is derived from the Rust types — no hardcoded JSON.
 pub async fn get_providers() -> Json<ProvidersResponse> {
     let registry = build_registry();

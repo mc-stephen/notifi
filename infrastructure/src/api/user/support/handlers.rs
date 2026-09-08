@@ -12,7 +12,7 @@ use super::super::auth::{CurrentUser, Problem};
 const DEFAULT_LIMIT: i64 = 100;
 const MAX_LIMIT: i64 = 200;
 
-/// `POST /v1/support/tickets` — create a support ticket.
+/// `POST /app/support/tickets` — create a support ticket.
 pub async fn create_ticket(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<TicketService>>,
@@ -34,7 +34,7 @@ pub async fn create_ticket(
     ))
 }
 
-/// `GET /v1/support/tickets` — list tickets visible to the caller.
+/// `GET /app/support/tickets` — list tickets visible to the caller.
 pub async fn list_tickets(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<TicketService>>,
@@ -69,7 +69,7 @@ pub async fn list_tickets(
     ))
 }
 
-/// `GET /v1/support/tickets/:id` — one ticket.
+/// `GET /app/support/tickets/:id` — one ticket.
 pub async fn get_ticket(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<TicketService>>,
@@ -85,7 +85,7 @@ pub async fn get_ticket(
     ))
 }
 
-/// `GET /v1/support/tickets/:id/messages` — conversation thread for a ticket.
+/// `GET /app/support/tickets/:id/messages` — conversation thread for a ticket.
 pub async fn list_messages(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<TicketService>>,
@@ -105,7 +105,7 @@ pub async fn list_messages(
     ))
 }
 
-/// `POST /v1/support/tickets/:id/messages` — send a reply.
+/// `POST /app/support/tickets/:id/messages` — send a reply.
 pub async fn send_reply(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<TicketService>>,

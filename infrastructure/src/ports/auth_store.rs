@@ -10,7 +10,7 @@ use std::pin::Pin;
 use chrono::{DateTime, Utc};
 
 use crate::domain::auth::entities::{
-    AuthToken, AuthTokenId, Session, SessionId, TokenPurpose, User, UserId,
+    AuthToken, AuthTokenId, Session, SessionId, TokenPurpose, User, UserId, UserStatus,
 };
 
 /// Boxed future returned by every port method (keeps the trait object-safe
@@ -62,6 +62,21 @@ pub trait AuthStore: Send + Sync {
         user_id: UserId,
         at: DateTime<Utc>,
     ) -> BoxFut<'_, Result<(), StoreError>>;
+    /// Lists users (newest first) with optional search/status filters.
+    /// `search` matches name or email (case-insensitive, substring).
+    fn list_users(
+        &self,
+        search: Option<&str>,
+        status: Option<UserStatus>,
+        limit: i64,
+        before: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<User>, StoreError>>;
+    /// Sets a user's account status. Returns false when unknown/deleted.
+    fn set_user_status(
+        &self,
+        user_id: UserId,
+        status: UserStatus,
+    ) -> BoxFut<'_, Result<bool, StoreError>>;
 
     // -- sessions ---------------------------------------------------------
     fn create_session(&self, session: &Session) -> BoxFut<'_, Result<(), StoreError>>;

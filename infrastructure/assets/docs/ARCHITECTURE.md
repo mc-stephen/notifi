@@ -85,19 +85,27 @@ The server crate enforces layering through visibility:
 
 ## 4. API surfaces
 
-Two independent API surfaces:
+Four API surfaces (see root `note.md`):
 
 | Surface | Route prefix | Auth | Purpose |
 |---------|-------------|------|---------|
-| **User API** | `/v1/*` | Session cookie (`CurrentUser`) | Dashboard backend |
-| **Project API** | `/*` | API key (from M6) | Product API |
+| **Ops** | `/*` | none | Health, readiness, route catalog |
+| **External API** | `/api/v1/*` | API key (from M6) | Product API (empty until M2) |
+| **App API** | `/app/*` | Session cookie (`CurrentUser`) | User dashboard backend |
+| **Admin API** | `/admin/*` | Admin session + 2FA (`CurrentAdmin`) | Platform administration |
 
-User API routes live in `src/api/user/`:
-- `/v1/auth/*` — signup, login, logout, verify-email, password reset
-- `/v1/providers` — provider registry (GET)
-- `/v1/projects/{id}/channel-configs` — channel configs CRUD
-- `/v1/projects/{id}/recipients` — recipients CRUD
-- `/v1/projects/{id}/templates` — templates CRUD
+App API routes live in `src/api/user/`:
+- `/app/auth/*` — signup, login, logout, verify-email, password reset, OAuth
+- `/app/providers` — provider registry (GET)
+- `/app/projects/{id}/channel-configs` — channel configs CRUD
+- `/app/projects/{id}/recipients` — recipients CRUD
+- `/app/projects/{id}/templates` — templates CRUD
+- `/app/support/*`, `/app/notifications/*`, `/app/logs` — tickets, in-app notifications, audit log
+
+Admin API routes live in `src/api/user/admin/`:
+- `/admin/*` — status, bootstrap, login, logout, me, password reset, TOTP
+- `/admin/users/*` — platform user list/detail/suspend
+- `/admin/support/*` — all tickets, replies, status changes
 
 ## 5. Domain layer
 
@@ -141,11 +149,11 @@ src/api/
 ├── mod.rs              # Shared middleware, error mapping
 ├── state.rs            # AppState (db, redis, auth, channel_providers)
 ├── catalog.rs          # GET /routes — route registry
-├── user/               # User API (/v1/*)
-│   ├── mod.rs          # v1_router()
-│   ├── auth/           # /v1/auth/*
-│   ├── providers/      # /v1/providers
-│   └── channel_configs/ # /v1/projects/{id}/channel-configs
+├── user/               # App API (/app/*) + Admin API (/admin/*)
+│   ├── mod.rs          # app_router() + admin_router()
+│   ├── auth/           # /app/auth/*
+│   ├── providers/      # /app/providers
+│   └── channel_configs/ # /app/projects/{id}/channel-configs
 └── project/            # Project API (root, M2+)
 ```
 
@@ -300,7 +308,7 @@ fn build_email_channel() -> ChannelDefinition {
 
 ### API Endpoint
 
-`GET /v1/providers` — returns the full provider registry:
+`GET /app/providers` — returns the full provider registry:
 
 ```json
 {
@@ -330,10 +338,10 @@ fn build_email_channel() -> ChannelDefinition {
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/v1/projects/{id}/channel-configs` | GET | List project's provider configs |
-| `/v1/projects/{id}/channel-configs` | POST | Connect a new provider |
-| `/v1/projects/{id}/channel-configs/{config_id}` | PATCH | Update config |
-| `/v1/projects/{id}/channel-configs/{config_id}` | DELETE | Disconnect provider |
+| `/app/projects/{id}/channel-configs` | GET | List project's provider configs |
+| `/app/projects/{id}/channel-configs` | POST | Connect a new provider |
+| `/app/projects/{id}/channel-configs/{config_id}` | PATCH | Update config |
+| `/app/projects/{id}/channel-configs/{config_id}` | DELETE | Disconnect provider |
 
 ---
 

@@ -52,7 +52,7 @@ export function useTemplates() {
     (async () => {
       try {
         const res = await api<{ templates: Template[] }>(
-          `/v1/projects/${projectId}/templates`,
+          `/app/projects/${projectId}/templates`,
         );
         if (ignore) return;
         setState({ templates: res.templates, loading: false, error: null });
@@ -75,7 +75,7 @@ export function useTemplates() {
     setState((prev) => ({ ...prev, loading: true }));
     try {
       const res = await api<{ templates: Template[] }>(
-        `/v1/projects/${projectId}/templates`,
+        `/app/projects/${projectId}/templates`,
       );
       setState({ templates: res.templates, loading: false, error: null });
     } catch (e) {
@@ -103,7 +103,7 @@ export function useTemplateActions() {
     async (input: CreateTemplateInput): Promise<Template> => {
       if (!projectId) throw new Error("No project selected");
       const res = await api<{ template: Template }>(
-        `/v1/projects/${projectId}/templates`,
+        `/app/projects/${projectId}/templates`,
         { method: "POST", body: JSON.stringify(input) },
       );
       return res.template;
@@ -118,7 +118,7 @@ export function useTemplateActions() {
     ): Promise<Template> => {
       if (!projectId) throw new Error("No project selected");
       const res = await api<{ template: Template }>(
-        `/v1/projects/${projectId}/templates/${templateId}`,
+        `/app/projects/${projectId}/templates/${templateId}`,
         { method: "PATCH", body: JSON.stringify(input) },
       );
       return res.template;
@@ -129,7 +129,7 @@ export function useTemplateActions() {
   const remove = useCallback(
     async (templateId: string): Promise<void> => {
       if (!projectId) throw new Error("No project selected");
-      await api(`/v1/projects/${projectId}/templates/${templateId}`, {
+      await api(`/app/projects/${projectId}/templates/${templateId}`, {
         method: "DELETE",
       });
     },
@@ -158,7 +158,7 @@ export function useTemplate(id: string) {
     if (!projectId) return;
     try {
       const res = await api<{ template: Template }>(
-        `/v1/projects/${projectId}/templates/${id}`,
+        `/app/projects/${projectId}/templates/${id}`,
       );
       setState({ template: res.template, loading: false, error: null });
     } catch (e) {
@@ -176,7 +176,7 @@ export function useTemplate(id: string) {
       if (!projectId) return;
       try {
         const res = await api<{ template: Template }>(
-          `/v1/projects/${projectId}/templates/${id}`,
+          `/app/projects/${projectId}/templates/${id}`,
         );
         if (ignore) return;
         setState({ template: res.template, loading: false, error: null });

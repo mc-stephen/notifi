@@ -89,7 +89,7 @@ impl HttpOAuthIdentityProvider {
 
     fn redirect_uri(&self, provider: &str) -> String {
         format!(
-            "{}/v1/auth/oauth/{provider}/callback",
+            "{}/app/auth/oauth/{provider}/callback",
             self.api_base_url.trim_end_matches('/')
         )
     }

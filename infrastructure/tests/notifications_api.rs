@@ -32,6 +32,7 @@ fn app_with_notifications() -> (Router, Arc<FakeNotificationsStore>) {
                 auth: Some(auth),
                 oauth: None,
                 admin: None,
+                admin_users: None,
                 projects: None,
                 audit: Some(audit),
                 recipients: None,
@@ -58,7 +59,7 @@ async fn signup_and_login_on(app: Router, email: &str) -> String {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/signup")
+                .uri("/app/auth/signup")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({"name": "Test", "email": email, "password": "Sup3rSecret!"})
@@ -74,7 +75,7 @@ async fn signup_and_login_on(app: Router, email: &str) -> String {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/login")
+                .uri("/app/auth/login")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({"email": email, "password": "Sup3rSecret!", "rememberMe": false})
@@ -143,7 +144,7 @@ async fn list_notifications_empty_initially() {
     let (app, _store) = app_with_notifications();
     let token = signup_and_login_on(app.clone(), "notif-list-empty@example.com").await;
 
-    let res = get_with_cookie_on(app, "/v1/notifications", Some(&token)).await;
+    let res = get_with_cookie_on(app, "/app/notifications", Some(&token)).await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["notifications"].as_array().unwrap().len(), 0);
@@ -156,7 +157,7 @@ async fn create_and_list_system_notification() {
     let token = signup_and_login_on(app.clone(), "notif-create-list@example.com").await;
 
     // List should be empty initially.
-    let res = get_with_cookie_on(app.clone(), "/v1/notifications", Some(&token)).await;
+    let res = get_with_cookie_on(app.clone(), "/app/notifications", Some(&token)).await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["notifications"].as_array().unwrap().len(), 0);
@@ -167,7 +168,7 @@ async fn count_unread_returns_zero_initially() {
     let (app, _store) = app_with_notifications();
     let token = signup_and_login_on(app.clone(), "notif-count@example.com").await;
 
-    let res = get_with_cookie_on(app, "/v1/notifications/count", Some(&token)).await;
+    let res = get_with_cookie_on(app, "/app/notifications/count", Some(&token)).await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["count"], 0);
@@ -180,7 +181,7 @@ async fn mark_all_read_returns_zero_when_nothing_to_mark() {
 
     let res = patch_with_cookie_on(
         app,
-        "/v1/notifications/read-all",
+        "/app/notifications/read-all",
         &token,
         json!({}),
     )
@@ -197,7 +198,7 @@ async fn get_nonexistent_notification_returns_404() {
 
     let res = get_with_cookie_on(
         app,
-        "/v1/notifications/nonexistent-id",
+        "/app/notifications/nonexistent-id",
         Some(&token),
     )
     .await;
@@ -207,7 +208,7 @@ async fn get_nonexistent_notification_returns_404() {
 #[tokio::test]
 async fn unauthenticated_list_returns_401() {
     let (app, _store) = app_with_notifications();
-    let res = get_with_cookie_on(app, "/v1/notifications", None).await;
+    let res = get_with_cookie_on(app, "/app/notifications", None).await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -219,7 +220,7 @@ async fn list_unread_only_filter() {
     // Verify empty unread filter returns empty.
     let res = get_with_cookie_on(
         app.clone(),
-        "/v1/notifications?unreadOnly=true",
+        "/app/notifications?unreadOnly=true",
         Some(&token),
     )
     .await;

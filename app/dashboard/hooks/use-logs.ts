@@ -23,7 +23,7 @@ export function useLogs() {
     let ignore = false;
     (async () => {
       try {
-        const { logs } = await api<{ logs: AuditLog[] }>("/v1/logs");
+        const { logs } = await api<{ logs: AuditLog[] }>("/app/logs");
         if (ignore) return;
         setLogs(logs);
         setError(null);
@@ -43,7 +43,7 @@ export function useLogs() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const { logs } = await api<{ logs: AuditLog[] }>("/v1/logs");
+      const { logs } = await api<{ logs: AuditLog[] }>("/app/logs");
       setLogs(logs);
       setError(null);
     } catch (e) {

@@ -3,7 +3,10 @@
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
-use crate::domain::admin::entities::{AdminSession, AdminSessionId, AdminUser, AdminUserId};
+use crate::domain::admin::entities::{
+    AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession, AdminSessionId, AdminUser,
+    AdminUserId,
+};
 use crate::domain::auth::value_objects::Email;
 use crate::ports::admin_store::AdminStore;
 use crate::ports::auth_store::{BoxFut, StoreError};
@@ -74,6 +77,34 @@ impl TryFrom<AdminSessionRow> for AdminSession {
             token_hash: row.token_hash,
             expires_at: row.expires_at,
             revoked_at: row.revoked_at,
+            created_at: row.created_at,
+        })
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct AdminPasswordResetTokenRow {
+    id: String,
+    admin_id: String,
+    token_hash: String,
+    expires_at: DateTime<Utc>,
+    consumed_at: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
+}
+
+impl TryFrom<AdminPasswordResetTokenRow> for AdminPasswordResetToken {
+    type Error = StoreError;
+
+    fn try_from(row: AdminPasswordResetTokenRow) -> Result<Self, Self::Error> {
+        use std::str::FromStr;
+        Ok(Self {
+            id: AdminPasswordResetTokenId::from_str(&row.id)
+                .map_err(|e| StoreError::Storage(format!("invalid reset token id in db: {e}")))?,
+            admin_id: AdminUserId::from_str(&row.admin_id)
+                .map_err(|e| StoreError::Storage(format!("invalid admin id in db: {e}")))?,
+            token_hash: row.token_hash,
+            expires_at: row.expires_at,
+            consumed_at: row.consumed_at,
             created_at: row.created_at,
         })
     }
@@ -269,6 +300,111 @@ impl AdminStore for PgAdminStore {
             sqlx::query(
                 "UPDATE admin_sessions SET revoked_at = now() \
                  WHERE id = $1 AND revoked_at IS NULL",
+            )
+            .bind(&id_str)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(())
+        })
+    }
+
+    fn update_admin_password(
+        &self,
+        id: AdminUserId,
+        password_hash: String,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let pool = self.pool.clone();
+        let id_str = id.to_string();
+        Box::pin(async move {
+            sqlx::query(
+                "UPDATE admin_users SET password_hash = $1, updated_at = now() \
+                 WHERE id = $2 AND deleted_at IS NULL",
+            )
+            .bind(&password_hash)
+            .bind(&id_str)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(())
+        })
+    }
+
+    fn create_admin_reset_token(
+        &self,
+        token: &AdminPasswordResetToken,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let pool = self.pool.clone();
+        let id = token.id.to_string();
+        let admin_id = token.admin_id.to_string();
+        let token_hash = token.token_hash.clone();
+        let expires_at = token.expires_at;
+        let created_at = token.created_at;
+        Box::pin(async move {
+            sqlx::query(
+                "INSERT INTO admin_password_reset_tokens (id, admin_id, token_hash, expires_at, created_at) \
+                 VALUES ($1, $2, $3, $4, $5)",
+            )
+            .bind(&id)
+            .bind(&admin_id)
+            .bind(&token_hash)
+            .bind(expires_at)
+            .bind(created_at)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(())
+        })
+    }
+
+    fn consume_admin_reset_tokens_for_admin(
+        &self,
+        id: AdminUserId,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let pool = self.pool.clone();
+        let id_str = id.to_string();
+        Box::pin(async move {
+            sqlx::query(
+                "UPDATE admin_password_reset_tokens SET consumed_at = now() \
+                 WHERE admin_id = $1 AND consumed_at IS NULL",
+            )
+            .bind(&id_str)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(())
+        })
+    }
+
+    fn find_admin_reset_token_by_hash(
+        &self,
+        hash: &str,
+    ) -> BoxFut<'_, Result<Option<AdminPasswordResetToken>, StoreError>> {
+        let pool = self.pool.clone();
+        let hash = hash.to_string();
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, AdminPasswordResetTokenRow>(
+                "SELECT id, admin_id, token_hash, expires_at, consumed_at, created_at \
+                 FROM admin_password_reset_tokens WHERE token_hash = $1",
+            )
+            .bind(&hash)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+            row.map(AdminPasswordResetToken::try_from).transpose()
+        })
+    }
+
+    fn consume_admin_reset_token(
+        &self,
+        id: AdminPasswordResetTokenId,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let pool = self.pool.clone();
+        let id_str = id.to_string();
+        Box::pin(async move {
+            sqlx::query(
+                "UPDATE admin_password_reset_tokens SET consumed_at = now() \
+                 WHERE id = $1 AND consumed_at IS NULL",
             )
             .bind(&id_str)
             .execute(&pool)

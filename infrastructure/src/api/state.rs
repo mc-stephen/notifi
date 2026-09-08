@@ -18,6 +18,8 @@ pub struct AppState {
     pub oauth: Option<Arc<crate::ports::oauth::OAuthRuntime>>,
     /// Admin service (separate from auth — platform managers).
     pub admin: Option<Arc<crate::domain::admin::AdminService>>,
+    /// Admin user management (list/stats/suspend) — wired alongside admin/db.
+    pub admin_users: Option<Arc<crate::domain::admin::AdminUsersService>>,
     /// Project listing and environment gate — wired alongside auth.
     pub projects: Option<Arc<crate::domain::projects::ProjectService>>,
     /// Audit log listener + query surface — wired alongside auth/db.

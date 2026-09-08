@@ -151,6 +151,27 @@ impl NotificationsStore for PgNotificationsStore {
         })
     }
 
+    fn count_all_for_user(
+        &self,
+        user_id: UserId,
+    ) -> BoxFut<'_, Result<i64, StoreError>> {
+        let pool = self.pool.clone();
+        let user_str = user_id.to_string();
+
+        Box::pin(async move {
+            let row = sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM platform_in_app_notifications
+                 WHERE user_id = $1 AND deleted_at IS NULL",
+            )
+            .bind(&user_str)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+
+            Ok(row.unwrap_or(0))
+        })
+    }
+
     fn get(
         &self,
         user_id: UserId,

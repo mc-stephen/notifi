@@ -4,18 +4,30 @@ use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use chrono::Utc;
 
-use crate::domain::admin::entities::{AdminSession, AdminSessionId, AdminUser, AdminUserId};
+use crate::domain::admin::entities::{
+    AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession, AdminSessionId, AdminUser,
+    AdminUserId,
+};
 use crate::domain::auth::errors::AuthError;
 use crate::domain::auth::value_objects::{Email, hash_token, new_token, validate_password};
 use crate::ports::admin_store::AdminStore;
 
 pub struct AdminService {
     store: Box<dyn AdminStore>,
+    expose_dev_tokens: bool,
 }
 
 impl AdminService {
-    pub fn new(store: Box<dyn AdminStore>) -> Self {
-        Self { store }
+    pub fn new(store: Box<dyn AdminStore>, expose_dev_tokens: bool) -> Self {
+        Self {
+            store,
+            expose_dev_tokens,
+        }
+    }
+
+    /// Whether raw one-time tokens are surfaced in API responses (dev only).
+    pub fn exposes_dev_tokens(&self) -> bool {
+        self.expose_dev_tokens
     }
 
     /// Whether at least one admin user exists.
@@ -167,6 +179,70 @@ impl AdminService {
     /// Enables TOTP for an admin after successful code verification.
     pub async fn enable_totp(&self, admin_id: AdminUserId) -> Result<(), AuthError> {
         self.store.enable_totp(admin_id).await?;
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // password reset
+    // ------------------------------------------------------------------
+
+    /// Always succeeds from the caller's perspective (no enumeration):
+    /// returns `Some(raw_token)` only when the account exists.
+    pub async fn forgot_password(&self, email: &str) -> Result<Option<String>, AuthError> {
+        let email = match Email::parse(email) {
+            Ok(email) => email,
+            // malformed input behaves like an unknown address
+            Err(_) => return Ok(None),
+        };
+        let Some(admin) = self.store.find_admin_by_email(email.as_str()).await? else {
+            return Ok(None);
+        };
+
+        self.store
+            .consume_admin_reset_tokens_for_admin(admin.id)
+            .await?;
+        let (raw, hash) = new_token();
+        let now = Utc::now();
+        self.store
+            .create_admin_reset_token(&AdminPasswordResetToken {
+                id: AdminPasswordResetTokenId::new(),
+                admin_id: admin.id,
+                token_hash: hash,
+                expires_at: now + chrono::Duration::hours(1),
+                consumed_at: None,
+                created_at: now,
+            })
+            .await?;
+        Ok(Some(raw))
+    }
+
+    pub async fn reset_password(
+        &self,
+        raw_token: &str,
+        new_password: &str,
+    ) -> Result<(), AuthError> {
+        validate_password(new_password)?;
+
+        let token = self
+            .store
+            .find_admin_reset_token_by_hash(&hash_token(raw_token))
+            .await?
+            .filter(|t| t.consumed_at.is_none())
+            .ok_or_else(|| {
+                AuthError::TokenInvalid("Invalid or expired reset token.".to_string())
+            })?;
+        if !token.is_usable(Utc::now()) {
+            return Err(AuthError::TokenExpired(
+                "This reset link has expired. Request a new one.".to_string(),
+            ));
+        }
+
+        self.store.consume_admin_reset_token(token.id).await?;
+        self.store
+            .update_admin_password(token.admin_id, hash_password(new_password)?)
+            .await?;
+        // a reset invalidates every existing session for that account
+        self.store.revoke_admin_sessions(token.admin_id).await?;
         Ok(())
     }
 }

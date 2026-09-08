@@ -41,6 +41,7 @@ struct UserRow {
     oauth_provider: Option<String>,
     oauth_subject: Option<String>,
     email_verified_at: Option<DateTime<Utc>>,
+    status: String,
     created_at: DateTime<Utc>,
     last_login_at: Option<DateTime<Utc>>,
 }
@@ -58,6 +59,10 @@ impl TryFrom<UserRow> for User {
             oauth_provider: row.oauth_provider,
             oauth_subject: row.oauth_subject,
             email_verified_at: row.email_verified_at,
+            status: row
+                .status
+                .parse::<crate::domain::auth::entities::UserStatus>()
+                .unwrap_or(crate::domain::auth::entities::UserStatus::Active),
             created_at: row.created_at,
             last_login_at: row.last_login_at,
         })
@@ -180,7 +185,7 @@ impl AuthStore for PgAuthStore {
         Box::pin(async move {
             let row = sqlx::query_as::<_, UserRow>(
                 "SELECT id, name, email, password_hash, avatar_url,
-                        email_verified_at, oauth_provider, oauth_subject,
+                        email_verified_at, oauth_provider, oauth_subject, status,
                         created_at, last_login_at
                  FROM auth_users WHERE email = $1 AND deleted_at IS NULL",
             )
@@ -197,7 +202,7 @@ impl AuthStore for PgAuthStore {
         Box::pin(async move {
             let row = sqlx::query_as::<_, UserRow>(
                 "SELECT id, name, email, password_hash, avatar_url,
-                        email_verified_at, oauth_provider, oauth_subject,
+                        email_verified_at, oauth_provider, oauth_subject, status,
                         created_at, last_login_at
                  FROM auth_users WHERE id = $1 AND deleted_at IS NULL",
             )
@@ -263,6 +268,63 @@ impl AuthStore for PgAuthStore {
                 .await
                 .map_err(map_err)?;
             Ok(())
+        })
+    }
+
+    fn list_users(
+        &self,
+        search: Option<&str>,
+        status: Option<crate::domain::auth::entities::UserStatus>,
+        limit: i64,
+        before: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<User>, StoreError>> {
+        let pool = self.pool.clone();
+        let search_owned = search.map(str::to_owned);
+        let status_owned = status.map(|s| s.as_str().to_string());
+        let before_owned = before.map(str::to_owned);
+        Box::pin(async move {
+            let rows = sqlx::query_as::<_, UserRow>(
+                "SELECT id, name, email, password_hash, avatar_url,
+                        email_verified_at, oauth_provider, oauth_subject, status,
+                        created_at, last_login_at
+                 FROM auth_users
+                 WHERE deleted_at IS NULL
+                   AND ($1::text IS NULL OR status = $1)
+                   AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%' OR email ILIKE '%' || $2 || '%')
+                   AND ($3::text IS NULL OR id < $3)
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT $4",
+            )
+            .bind(&status_owned)
+            .bind(&search_owned)
+            .bind(&before_owned)
+            .bind(limit)
+            .fetch_all(&pool)
+            .await
+            .map_err(map_err)?;
+            rows.into_iter().map(User::try_from).collect()
+        })
+    }
+
+    fn set_user_status(
+        &self,
+        user_id: UserId,
+        status: crate::domain::auth::entities::UserStatus,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let pool = self.pool.clone();
+        let user_id_str = user_id.to_string();
+        let status_str = status.as_str().to_string();
+        Box::pin(async move {
+            let result = sqlx::query(
+                "UPDATE auth_users SET status = $2, updated_at = now()
+                 WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(&user_id_str)
+            .bind(&status_str)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(result.rows_affected() > 0)
         })
     }
 
@@ -427,7 +489,7 @@ impl AuthStore for PgAuthStore {
         Box::pin(async move {
             let row = sqlx::query_as::<_, UserRow>(
                 "SELECT id, name, email, password_hash, avatar_url,
-                        email_verified_at, oauth_provider, oauth_subject,
+                        email_verified_at, oauth_provider, oauth_subject, status,
                         created_at, last_login_at
                  FROM auth_users
                  WHERE oauth_provider = $1 AND oauth_subject = $2 AND deleted_at IS NULL",
@@ -718,6 +780,7 @@ mod pg_tests {
             email_verified_at: None,
             oauth_provider: None,
             oauth_subject: None,
+            status: crate::domain::auth::entities::UserStatus::Active,
             created_at: Utc::now(),
             last_login_at: None,
         };

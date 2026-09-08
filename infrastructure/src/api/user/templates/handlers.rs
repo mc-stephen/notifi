@@ -33,7 +33,7 @@ fn to_attachment_inputs(dtos: Vec<AttachmentInputDto>) -> Vec<AttachmentInput> {
         .collect()
 }
 
-/// `POST /v1/projects/:project_id/templates` — create a template.
+/// `POST /app/projects/:project_id/templates` — create a template.
 pub async fn create_template(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<TemplateService>>,
@@ -58,7 +58,7 @@ pub async fn create_template(
     ))
 }
 
-/// `GET /v1/projects/:project_id/templates` — list, newest first.
+/// `GET /app/projects/:project_id/templates` — list, newest first.
 pub async fn list_templates(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<TemplateService>>,
@@ -94,7 +94,7 @@ pub async fn list_templates(
     ))
 }
 
-/// `GET /v1/projects/:project_id/templates/:id` — one template with attachments.
+/// `GET /app/projects/:project_id/templates/:id` — one template with attachments.
 pub async fn get_template(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<TemplateService>>,
@@ -110,7 +110,7 @@ pub async fn get_template(
     ))
 }
 
-/// `PATCH /v1/projects/:project_id/templates/:id` — update content/attachments.
+/// `PATCH /app/projects/:project_id/templates/:id` — update content/attachments.
 pub async fn update_template(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<TemplateService>>,
@@ -137,7 +137,7 @@ pub async fn update_template(
     ))
 }
 
-/// `DELETE /v1/projects/:project_id/templates/:id` — soft delete.
+/// `DELETE /app/projects/:project_id/templates/:id` — soft delete.
 pub async fn delete_template(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<TemplateService>>,

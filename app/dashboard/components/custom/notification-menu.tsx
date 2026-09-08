@@ -88,7 +88,7 @@ export function NotificationMenu() {
     const controller = new AbortController();
     async function load() {
       try {
-        const res = await fetch("/v1/notifications?limit=10", { signal: controller.signal });
+        const res = await fetch("/app/notifications?limit=10", { signal: controller.signal });
         if (!res.ok) return;
         const data = await res.json();
         setNotifications(data.notifications ?? []);
@@ -98,7 +98,7 @@ export function NotificationMenu() {
     }
     async function loadCount() {
       try {
-        const res = await fetch("/v1/notifications/count", { signal: controller.signal });
+        const res = await fetch("/app/notifications/count", { signal: controller.signal });
         if (!res.ok) return;
         const data = await res.json();
         setUnread(data.count ?? 0);
@@ -115,7 +115,7 @@ export function NotificationMenu() {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true, readAt: new Date().toISOString() })));
     setUnread(0);
     try {
-      await fetch("/v1/notifications/read-all", { method: "PATCH" });
+      await fetch("/app/notifications/read-all", { method: "PATCH" });
     } catch {
       // silent
     }

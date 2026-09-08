@@ -1,4 +1,4 @@
-## Here's where I'd go one step further
+# Here's where I'd go one step further
 
 If I were leading this project, I wouldn't stop at the dashboard and auth prompts. I'd define the entire platform through a series of specialized design and architecture prompts. Something like:
 
@@ -13,19 +13,8 @@ If I were leading this project, I wouldn't stop at the dashboard and auth prompt
 9. **09 – Admin Console** (internal tooling for support, moderation, system health).
 10. **10 – Deployment & Infrastructure** (Docker, CI/CD, observability, scaling).
 
-That sequence mirrors how a well-organized engineering team would approach a product of this scope. By the time you start writing Rust code, you'll have a complete product blueprint rather than just a collection of UI mockups. Given the ambition of what you're building, that upfront investment will save you a lot of redesign work later.
+# What M1 built (plain language)
 
-
-Think of it as a **trust website**.
-
-Your landing page sells the product.
-Your dashboard lets users use the product.
-Your documentation teaches the product.
-Your **status page proves the product is reliable.**
-
-### What M1 built (plain language)
-The server now has its front door:
-It can be started — cargo run -p api boots a real web server on 127.0.0.1:8080 (main.rs wires up logging → config → database → web server).
 It answers three questions:
 GET / → "who am I" (name, version)
 GET /healthz → "am I alive?" (always 200)

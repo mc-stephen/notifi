@@ -25,8 +25,8 @@ export function useSupportTickets() {
     (async () => {
       try {
         const url = projectId
-          ? `/v1/support/tickets?project_id=${encodeURIComponent(projectId)}`
-          : "/v1/support/tickets";
+          ? `/app/support/tickets?project_id=${encodeURIComponent(projectId)}`
+          : "/app/support/tickets";
         const res = await api<{ tickets: SupportTicket[] }>(url);
         if (ignore) return;
         setState({ tickets: res.tickets, loading: false, error: null });
@@ -48,8 +48,8 @@ export function useSupportTickets() {
     setState((prev) => ({ ...prev, loading: true }));
     try {
       const url = projectId
-        ? `/v1/support/tickets?project_id=${encodeURIComponent(projectId)}`
-        : "/v1/support/tickets";
+        ? `/app/support/tickets?project_id=${encodeURIComponent(projectId)}`
+        : "/app/support/tickets";
       const res = await api<{ tickets: SupportTicket[] }>(url);
       setState({ tickets: res.tickets, loading: false, error: null });
     } catch (e) {
@@ -83,7 +83,7 @@ export function useSubmitTicket() {
   const submit = useCallback(
     async (input: CreateTicketInput): Promise<SupportTicket> => {
       const res = await api<{ ticket: SupportTicket }>(
-        "/v1/support/tickets",
+        "/app/support/tickets",
         {
           method: "POST",
           body: JSON.stringify({
@@ -123,7 +123,7 @@ export function useTicketThread(ticketId: string | null) {
       setState({ messages: [], loading: true, error: null });
       try {
         const res = await api<{ messages: TicketMessage[] }>(
-          `/v1/support/tickets/${ticketId}/messages`,
+          `/app/support/tickets/${ticketId}/messages`,
         );
         if (ignore) return;
         setState({ messages: res.messages, loading: false, error: null });
@@ -146,7 +146,7 @@ export function useTicketThread(ticketId: string | null) {
     setState((prev) => ({ ...prev, loading: true }));
     try {
       const res = await api<{ messages: TicketMessage[] }>(
-        `/v1/support/tickets/${ticketId}/messages`,
+        `/app/support/tickets/${ticketId}/messages`,
       );
       setState({ messages: res.messages, loading: false, error: null });
     } catch (e) {
@@ -170,7 +170,7 @@ export function useSendReply() {
   const sendReply = useCallback(
     async (ticketId: string, body: string): Promise<TicketMessage> => {
       const res = await api<{ message: TicketMessage }>(
-        `/v1/support/tickets/${ticketId}/messages`,
+        `/app/support/tickets/${ticketId}/messages`,
         {
           method: "POST",
           body: JSON.stringify({ body }),

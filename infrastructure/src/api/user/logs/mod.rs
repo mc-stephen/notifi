@@ -1,4 +1,4 @@
-//! Audit log HTTP surface (mounted at `/v1/logs`).
+//! Audit log HTTP surface (mounted at `/app/logs`).
 
 pub mod dto;
 pub mod handlers;

@@ -1,5 +1,5 @@
 //! Auth routes — mounted by the api binary's central registry under
-//! `/v1/auth`.
+//! `/app/auth`.
 //!
 //! Generic over the parent state: handlers pull their dependencies from
 //! request extensions (`Arc<AuthService>`), so no `AppState` coupling.

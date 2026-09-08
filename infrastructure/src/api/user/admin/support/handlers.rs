@@ -23,7 +23,7 @@ fn require_tickets_service(extension: MaybeTicketService) -> Result<Arc<TicketSe
         .ok_or_else(|| AuthError::NotConfigured.into())
 }
 
-/// `GET /v1/admin/support/tickets` — list all tickets (admin view).
+/// `GET /admin/support/tickets` — list all tickets (admin view).
 pub async fn list_tickets(
     CurrentAdmin(_admin): CurrentAdmin,
     service: MaybeTicketService,
@@ -57,7 +57,7 @@ pub async fn list_tickets(
     ))
 }
 
-/// `GET /v1/admin/support/tickets/:id` — one ticket (admin view).
+/// `GET /admin/support/tickets/:id` — one ticket (admin view).
 pub async fn get_ticket(
     CurrentAdmin(_admin): CurrentAdmin,
     service: MaybeTicketService,
@@ -74,7 +74,7 @@ pub async fn get_ticket(
     ))
 }
 
-/// `GET /v1/admin/support/tickets/:id/messages` — thread (admin view).
+/// `GET /admin/support/tickets/:id/messages` — thread (admin view).
 pub async fn list_messages(
     CurrentAdmin(_admin): CurrentAdmin,
     service: MaybeTicketService,
@@ -95,7 +95,7 @@ pub async fn list_messages(
     ))
 }
 
-/// `POST /v1/admin/support/tickets/:id/messages` — admin reply as `support`.
+/// `POST /admin/support/tickets/:id/messages` — admin reply as `support`.
 pub async fn send_reply(
     CurrentAdmin(admin): CurrentAdmin,
     service: MaybeTicketService,
@@ -110,7 +110,7 @@ pub async fn send_reply(
     ))
 }
 
-/// `PATCH /v1/admin/support/tickets/:id` — set ticket status.
+/// `PATCH /admin/support/tickets/:id` — set ticket status.
 pub async fn set_status(
     CurrentAdmin(admin): CurrentAdmin,
     service: MaybeTicketService,

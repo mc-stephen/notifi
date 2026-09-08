@@ -22,22 +22,42 @@ const { title } = Astro.props;
     <div class="relative z-10 flex min-h-screen">
       <!-- Left: Branding -->
       <div class="hidden lg:flex lg:w-1/2 flex-col items-center justify-center p-12 bg-card border-r border-border">
-        <div class="max-w-md text-center space-y-6">
-          <div class="flex items-center justify-center gap-3">
-            <div class="size-10 rounded-lg bg-primary flex items-center justify-center">
+        <div class="max-w-md w-full space-y-6">
+          <div class="flex items-center gap-3">
+            <div class="size-10 rounded-lg bg-primary flex items-center justify-center shrink-0">
               <span class="text-primary-foreground font-bold text-lg">N</span>
             </div>
             <span class="text-2xl font-bold text-foreground">Notifi</span>
           </div>
-          <h1 class="text-3xl font-bold text-foreground">Admin Control Plane</h1>
-          <p class="text-muted-foreground text-lg leading-relaxed">
-            Internal administration system for managing users, organizations, billing, and platform operations.
-          </p>
-          <div class="flex items-center justify-center gap-6 pt-4 text-sm text-muted-foreground">
-            <div class="flex items-center gap-2">
-              <div class="size-2 rounded-full bg-success"></div>
-              <span>All Systems Operational</span>
-            </div>
+          <div class="space-y-2">
+            <h1 class="text-3xl font-bold tracking-tight text-foreground">Admin Control Plane</h1>
+            <p class="text-muted-foreground leading-relaxed">
+              Internal administration for users, organizations, notifications, billing, and platform operations.
+            </p>
+          </div>
+          <ul class="space-y-3 pt-2">
+            <li class="flex items-center gap-3 text-sm text-foreground">
+              <span class="size-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </span>
+              Users & Organizations
+            </li>
+            <li class="flex items-center gap-3 text-sm text-foreground">
+              <span class="size-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+              </span>
+              Notifications & Channels
+            </li>
+            <li class="flex items-center gap-3 text-sm text-foreground">
+              <span class="size-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
+              </span>
+              Billing & Audit Logs
+            </li>
+          </ul>
+          <div class="flex items-center gap-2 pt-2 text-sm text-muted-foreground">
+            <div class="size-2 rounded-full bg-success"></div>
+            <span>All Systems Operational</span>
           </div>
         </div>
       </div>

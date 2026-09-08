@@ -28,8 +28,8 @@ src/
 ├── main.rs           # binary entry point → server::run()
 ├── lib.rs            # module tree + run()/build_router()
 ├── api/              # HTTP presentation layer
-│   ├── project/      # PROJECT surface — product API at the root (API-key auth, M6+)
-│   └── user/         # USER surface — dashboard backend under /v1 (session auth)
+│   ├── project/      # external product API under /api/v1 (API-key auth, M6+; empty until M2)
+│   └── user/         # app backend (/api/app) + admin backend (/api/admin, session auth)
 ├── domain/           # business logic & models
 │   ├── auth/
 │   └── channels/     # provider registry types (ProviderRegistry, etc.)
@@ -47,12 +47,14 @@ Other root files: `Cargo.toml` (package + workspace index), `rust-toolchain.toml
 (pinned toolchain), `.cargo/config.toml` (dev env: `NOTIFI_CONFIG_ROOT → ./assets`),
 `target/` (build output, gitignored).
 
-### Two API surfaces
+### API surfaces (see root `note.md`)
 
 | Surface | Base path | Auth | Purpose |
 |---|---|---|---|
-| **project** | `/` | API keys (M6+) | The product API customers integrate with — evolves independently |
-| **user** | `/v1` | session cookie | The dashboard backend — versioned so `/v2` can later coexist with v1 |
+| **ops** | `/` | none | Health, readiness, route catalog |
+| **external** | `/api/v1` | API keys (M6+) | The product API customers integrate with (empty until M2) |
+| **app** | `/api/app` | session cookie | The user dashboard backend |
+| **admin** | `/api/admin` | admin session + 2FA | Platform administration |
 
 Route declarations live in `src/api/catalog.rs`; each surface's router is in
 its own module (`src/api/project/mod.rs`, `src/api/user/mod.rs`).
@@ -81,10 +83,10 @@ cargo run
 | `GET /healthz` | ops | Liveness — the process is up |
 | `GET /readyz` | ops | Readiness — Postgres + Redis reachable (503 problem doc otherwise) |
 | `GET /routes` | ops | Route catalog — every endpoint across all surfaces |
-| project surface | project | *(empty until M2 — product endpoints mount at the root)* |
-| `/v1/auth/*` | user/v1 | Auth: signup, login, logout, me, OAuth, password flows, verify-email, onboarding-complete |
-| `/v1/providers` | user/v1 | Provider registry — all channels + providers + config fields (GET) |
-| `/v1/projects/{id}/channel-configs` | user/v1 | Channel configs CRUD (list, create, update, delete) |
+| project surface | external | *(empty until M2 — product endpoints mount under /api/v1)* |
+| `/app/auth/*` | app | Auth: signup, login, logout, me, OAuth, password flows, verify-email, onboarding-complete |
+| `/app/providers` | app | Provider registry — all channels + providers + config fields (GET) |
+| `/app/projects/{id}/channel-configs` | app | Channel configs CRUD (list, create, update, delete) |
 | any other path | — | RFC 9457 `application/problem+json` 404 |
 
 Every response carries a `x-request-id` header for log correlation.

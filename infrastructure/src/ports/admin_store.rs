@@ -5,7 +5,9 @@ use std::pin::Pin;
 
 use chrono::{DateTime, Utc};
 
-use crate::domain::admin::entities::{AdminSession, AdminSessionId, AdminUser, AdminUserId};
+use crate::domain::admin::entities::{
+    AdminPasswordResetToken, AdminSession, AdminSessionId, AdminUser, AdminUserId,
+};
 use crate::ports::auth_store::StoreError;
 
 /// Boxed future returned by every port method.
@@ -37,4 +39,30 @@ pub trait AdminStore: Send + Sync {
     fn revoke_admin_session(&self, id: AdminSessionId) -> BoxFut<'_, Result<(), StoreError>>;
     /// Revokes all sessions for an admin.
     fn revoke_admin_sessions(&self, id: AdminUserId) -> BoxFut<'_, Result<(), StoreError>>;
+    /// Updates an admin's password hash.
+    fn update_admin_password(
+        &self,
+        id: AdminUserId,
+        password_hash: String,
+    ) -> BoxFut<'_, Result<(), StoreError>>;
+    /// Creates a password-reset token.
+    fn create_admin_reset_token(
+        &self,
+        token: &AdminPasswordResetToken,
+    ) -> BoxFut<'_, Result<(), StoreError>>;
+    /// Invalidates all outstanding reset tokens for an admin.
+    fn consume_admin_reset_tokens_for_admin(
+        &self,
+        id: AdminUserId,
+    ) -> BoxFut<'_, Result<(), StoreError>>;
+    /// Finds a reset token by its hash.
+    fn find_admin_reset_token_by_hash(
+        &self,
+        hash: &str,
+    ) -> BoxFut<'_, Result<Option<AdminPasswordResetToken>, StoreError>>;
+    /// Marks a reset token as consumed.
+    fn consume_admin_reset_token(
+        &self,
+        id: crate::domain::admin::entities::AdminPasswordResetTokenId,
+    ) -> BoxFut<'_, Result<(), StoreError>>;
 }

@@ -30,8 +30,8 @@ values that must match the code exactly are the callback URLs.
    - **Application name**: `Notifi (dev)`
    - **Homepage URL**: `http://localhost:3000`
    - **Authorization callback URL**:
-     `http://localhost:8080/v1/auth/oauth/github/callback`
-     (must equal `NOTIFI_API_BASE_URL + /v1/auth/oauth/github/callback`)
+     `http://localhost:8080/app/auth/oauth/github/callback`
+     (must equal `NOTIFI_API_BASE_URL + /app/auth/oauth/github/callback`)
 3. **Register application** → copy the **Client ID**. Click
    **Generate a new client secret** — copy it immediately (GitHub shows it
    once; it can be regenerated later).
@@ -53,7 +53,7 @@ values that must match the code exactly are the callback URLs.
 4. Fill in:
    - **Authorized JavaScript origins**: `http://localhost:3000`
    - **Authorized redirect URIs**:
-     `http://localhost:8080/v1/auth/oauth/google/callback`
+     `http://localhost:8080/app/auth/oauth/google/callback`
 5. Create → copy **Client ID** and **Client secret** into
    `infrastructure/.env`.
 
@@ -63,7 +63,7 @@ values that must match the code exactly are the callback URLs.
    no longer print `oauth disabled (no provider credentials)`.
 2. Smoke test:
    ```shell
-   curl -I "http://localhost:8080/v1/auth/oauth/github"
+   curl -I "http://localhost:8080/app/auth/oauth/github"
    ```
    Expect `302` to `github.com/login/oauth/authorize...` — a `503` means the
    env vars weren't picked up.

@@ -28,14 +28,21 @@ export class ApiError extends Error {
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 
-export type LoginResponse = {
-  totpRequired?: boolean;
-  user: { id: string; name: string; email: string; role: string; avatar?: string };
-  session: { token: string; expiresAt: string; onboardingCompleted: boolean };
+export type AdminLoginResponse = {
+  user_id?: string;
+  requires_totp?: boolean;
+  requires_totp_setup?: boolean;
 };
 
 export type AdminStatusResponse = {
   adminExists: boolean;
+};
+
+export type AdminMeResponse = {
+  id: string;
+  name: string;
+  email: string;
+  totpEnabled: boolean;
 };
 
 export type BootstrapResponse = {
@@ -50,41 +57,54 @@ export type TotpSetupResponse = {
 };
 
 export const auth = {
-  adminStatus: () => request<AdminStatusResponse>("/v1/admin/status"),
+  adminStatus: () => request<AdminStatusResponse>("/admin/status"),
 
   bootstrap: (data: { name: string; email: string; password: string }) =>
-    request<BootstrapResponse>("/v1/admin/bootstrap", {
+    request<BootstrapResponse>("/admin/bootstrap", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
-  login: (data: { email: string; password: string; rememberMe?: boolean }) =>
-    request<LoginResponse>("/v1/auth/login", {
+  login: (data: { email: string; password: string; totp_code?: string }) =>
+    request<AdminLoginResponse>("/admin/login", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
-  totpSetup: () =>
-    request<TotpSetupResponse>("/v1/admin/totp/setup", { method: "POST" }),
+  totpSetup: (regenerate = false) =>
+    request<TotpSetupResponse>(
+      `/admin/totp/setup${regenerate ? "?regenerate=true" : ""}`,
+      { method: "POST", body: "{}" },
+    ),
 
   totpVerify: (code: string) =>
-    request<{ status: string }>("/v1/admin/totp/verify", {
+    request<{ status: string }>("/admin/totp/verify", {
       method: "POST",
       body: JSON.stringify({ code }),
     }),
 
-  me: () =>
-    request<{ user: LoginResponse["user"]; onboardingCompleted: boolean }>(
-      "/v1/auth/me",
-    ),
+  forgotPassword: (email: string) =>
+    request<{ status: string; resetToken?: string }>("/admin/password/forgot", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (token: string, password: string) =>
+    request<{ status: string }>("/admin/password/reset", {
+      method: "POST",
+      body: JSON.stringify({ token, password }),
+    }),
+
+  me: () => request<AdminMeResponse>("/admin/me"),
 
   logout: () =>
-    request<{ status: string }>("/v1/admin/logout", { method: "POST" }),
+    request<{ status: string }>("/admin/logout", { method: "POST" }),
 };
 
 // ── Support tickets (admin view) ────────────────────────────────────────────
 
 import type { AdminTicket, AdminTicketMessage, AdminTicketStatus } from "./types";
+import type { AdminUser, AdminUserDetail, AdminUserStatus } from "./types";
 
 export type TicketListResponse = {
   tickets: AdminTicket[];
@@ -99,29 +119,67 @@ export const support = {
     if (params?.before) search.set("before", params.before);
     const query = search.toString();
     return request<TicketListResponse>(
-      `/v1/admin/support/tickets${query ? `?${query}` : ""}`,
+      `/admin/support/tickets${query ? `?${query}` : ""}`,
     );
   },
 
   getTicket: (id: string) =>
     request<{ ticket: AdminTicket }>(
-      `/v1/admin/support/tickets/${encodeURIComponent(id)}`,
+      `/admin/support/tickets/${encodeURIComponent(id)}`,
     ),
 
   listMessages: (id: string) =>
     request<{ messages: AdminTicketMessage[] }>(
-      `/v1/admin/support/tickets/${encodeURIComponent(id)}/messages`,
+      `/admin/support/tickets/${encodeURIComponent(id)}/messages`,
     ),
 
   sendReply: (id: string, body: string) =>
     request<{ message: AdminTicketMessage }>(
-      `/v1/admin/support/tickets/${encodeURIComponent(id)}/messages`,
+      `/admin/support/tickets/${encodeURIComponent(id)}/messages`,
       { method: "POST", body: JSON.stringify({ body }) },
     ),
 
   setStatus: (id: string, status: AdminTicketStatus) =>
     request<{ ticket: AdminTicket }>(
-      `/v1/admin/support/tickets/${encodeURIComponent(id)}`,
+      `/admin/support/tickets/${encodeURIComponent(id)}`,
       { method: "PATCH", body: JSON.stringify({ status }) },
+    ),
+};
+
+// ── Platform users (admin view) ─────────────────────────────────────────────
+
+export type UserListResponse = {
+  users: AdminUser[];
+  hasMore: boolean;
+};
+
+export const users = {
+  listUsers: (params?: { search?: string; status?: string; limit?: number; before?: string }) => {
+    const search = new URLSearchParams();
+    if (params?.search) search.set("search", params.search);
+    if (params?.status) search.set("status", params.status);
+    if (params?.limit) search.set("limit", String(params.limit));
+    if (params?.before) search.set("before", params.before);
+    const query = search.toString();
+    return request<UserListResponse>(
+      `/admin/users${query ? `?${query}` : ""}`,
+    );
+  },
+
+  getUser: (id: string) =>
+    request<{ user: AdminUserDetail }>(
+      `/admin/users/${encodeURIComponent(id)}`,
+    ),
+
+  setStatus: (id: string, status: AdminUserStatus) =>
+    request<{ user: AdminUserDetail }>(
+      `/admin/users/${encodeURIComponent(id)}/status`,
+      { method: "PATCH", body: JSON.stringify({ status }) },
+    ),
+
+  revokeSessions: (id: string) =>
+    request<{ status: string }>(
+      `/admin/users/${encodeURIComponent(id)}/sessions/revoke`,
+      { method: "POST" },
     ),
 };

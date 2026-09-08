@@ -42,3 +42,24 @@ impl AdminSession {
         self.revoked_at.is_none() && now < self.expires_at
     }
 }
+
+define_id!(AdminPasswordResetTokenId);
+
+/// A one-time password-reset token for an admin (1h TTL, single-use).
+#[derive(Debug, Clone)]
+pub struct AdminPasswordResetToken {
+    pub id: AdminPasswordResetTokenId,
+    pub admin_id: AdminUserId,
+    /// SHA-256 hex of the raw token value; raw value is never stored.
+    pub token_hash: String,
+    pub expires_at: DateTime<Utc>,
+    pub consumed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+impl AdminPasswordResetToken {
+    /// True when the token can still be exchanged.
+    pub fn is_usable(&self, now: DateTime<Utc>) -> bool {
+        self.consumed_at.is_none() && now < self.expires_at
+    }
+}

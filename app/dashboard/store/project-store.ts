@@ -30,7 +30,7 @@ export const useProjectStore = create<ProjectStore>()(
         if (get().loading) return;
         set({ loading: true });
         try {
-          const { projects } = await api<{ projects: Project[] }>("/v1/projects");
+          const { projects } = await api<{ projects: Project[] }>("/app/projects");
           const current = get().currentProject;
           const savedId = get().currentProjectId;
           let resolved: Project | null = null;
@@ -63,7 +63,7 @@ export const useProjectStore = create<ProjectStore>()(
 
       createProject: async (name, description) => {
         const { project } = await api<{ project: Project }>(
-          "/v1/projects",
+          "/app/projects",
           {
             method: "POST",
             body: JSON.stringify({ name, description: description || null }),

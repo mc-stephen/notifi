@@ -39,6 +39,7 @@ fn app_with_templates() -> (Router, Arc<FakeTemplatesStore>) {
                 auth: Some(auth),
                 oauth: None,
                 admin: None,
+                admin_users: None,
                 projects: Some(projects),
                 audit: Some(audit),
                 recipients: None,
@@ -65,7 +66,7 @@ async fn signup_and_login_on(app: Router, email: &str) -> (String, String) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/signup")
+                .uri("/app/auth/signup")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({"name": "Jane", "email": email, "password": "Sup3rSecret!"})
@@ -81,7 +82,7 @@ async fn signup_and_login_on(app: Router, email: &str) -> (String, String) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/login")
+                .uri("/app/auth/login")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({"email": email, "password": "Sup3rSecret!", "rememberMe": false})
@@ -182,14 +183,14 @@ async fn onboard_project_on(
 
     let res = post_with_cookie(
         app.clone(),
-        "/v1/auth/onboarding/complete",
+        "/app/auth/onboarding/complete",
         json!({"project": {"name": project_name, "description": "test"}}),
         &token,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let res = get_with_cookie(app.clone(), "/v1/projects", &token).await;
+    let res = get_with_cookie(app.clone(), "/app/projects", &token).await;
     let project_id = body_json(res).await["projects"][0]["id"]
         .as_str()
         .unwrap()
@@ -202,7 +203,7 @@ async fn onboard_project_on(
 #[tokio::test]
 async fn templates_require_auth() {
     let (app, _store) = app_with_templates();
-    let res = get_with_cookie(app, "/v1/projects/p1/templates", "bogus").await;
+    let res = get_with_cookie(app, "/app/projects/p1/templates", "bogus").await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -215,7 +216,7 @@ async fn create_and_list_and_get_and_delete_roundtrip() {
     // create
     let res = post_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid}/templates"),
+        &format!("/app/projects/{pid}/templates"),
         json!({
             "name": "Welcome",
             "channel": "email",
@@ -244,7 +245,7 @@ async fn create_and_list_and_get_and_delete_roundtrip() {
     // get
     let res = get_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid}/templates/{tid}"),
+        &format!("/app/projects/{pid}/templates/{tid}"),
         &token,
     )
     .await;
@@ -254,7 +255,7 @@ async fn create_and_list_and_get_and_delete_roundtrip() {
     assert_eq!(got["attachments"][0]["url"], "https://cdn.example/logo.png");
 
     // list
-    let res = get_with_cookie(app.clone(), &format!("/v1/projects/{pid}/templates"), &token).await;
+    let res = get_with_cookie(app.clone(), &format!("/app/projects/{pid}/templates"), &token).await;
     assert_eq!(res.status(), StatusCode::OK);
     let list = body_json(res).await;
     assert_eq!(list["templates"].as_array().unwrap().len(), 1);
@@ -263,7 +264,7 @@ async fn create_and_list_and_get_and_delete_roundtrip() {
     // delete
     let res = delete_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid}/templates/{tid}"),
+        &format!("/app/projects/{pid}/templates/{tid}"),
         &token,
     )
     .await;
@@ -271,7 +272,7 @@ async fn create_and_list_and_get_and_delete_roundtrip() {
     assert_eq!(body_json(res).await["status"], "ok");
 
     // gone from list
-    let res = get_with_cookie(app.clone(), &format!("/v1/projects/{pid}/templates"), &token).await;
+    let res = get_with_cookie(app.clone(), &format!("/app/projects/{pid}/templates"), &token).await;
     assert_eq!(body_json(res).await["templates"].as_array().unwrap().len(), 0);
 }
 
@@ -281,7 +282,7 @@ async fn update_changes_content_and_replaces_attachments() {
     let (token, _uid, pid) =
         onboard_project_on(app.clone(), &store, "tpl2@example.com", "My App").await;
 
-    let uri = format!("/v1/projects/{pid}/templates");
+    let uri = format!("/app/projects/{pid}/templates");
     let res = post_with_cookie(
         app.clone(),
         &uri,
@@ -300,7 +301,7 @@ async fn update_changes_content_and_replaces_attachments() {
     // Update: new content, replaced attachments.
     let res = patch_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid}/templates/{tid}"),
+        &format!("/app/projects/{pid}/templates/{tid}"),
         json!({
             "name": "Welcome v2",
             "description": "updated",
@@ -336,7 +337,7 @@ async fn templates_are_isolated_per_project() {
 
     let res = post_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid_a}/templates"),
+        &format!("/app/projects/{pid_a}/templates"),
         json!({"name": "Mine", "channel": "email", "content": {"subject": "s"}}),
         &token_a,
     )
@@ -345,11 +346,11 @@ async fn templates_are_isolated_per_project() {
     let tid = body_json(res).await["template"]["id"].as_str().unwrap().to_string();
 
     // User B's list must not show A's template.
-    let res = get_with_cookie(app.clone(), &format!("/v1/projects/{pid_b}/templates"), &token_b).await;
+    let res = get_with_cookie(app.clone(), &format!("/app/projects/{pid_b}/templates"), &token_b).await;
     assert_eq!(body_json(res).await["templates"].as_array().unwrap().len(), 0);
 
     // User B fetching under project B must 404.
-    let res = get_with_cookie(app.clone(), &format!("/v1/projects/{pid_b}/templates/{tid}"), &token_b).await;
+    let res = get_with_cookie(app.clone(), &format!("/app/projects/{pid_b}/templates/{tid}"), &token_b).await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
 
@@ -359,7 +360,7 @@ async fn create_requires_name_and_rejects_bad_content() {
     let (token, _uid, pid) =
         onboard_project_on(app.clone(), &store, "tpl4@example.com", "My App").await;
 
-    let uri = format!("/v1/projects/{pid}/templates");
+    let uri = format!("/app/projects/{pid}/templates");
 
     // Missing required name → 422 (deserialization).
     let res = post_with_cookie(app.clone(), &uri, json!({"channel": "sms"}), &token).await;
@@ -388,7 +389,7 @@ async fn update_and_delete_unknown_template_404() {
 
     let res = patch_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid}/templates/does_not_exist"),
+        &format!("/app/projects/{pid}/templates/does_not_exist"),
         json!({"name": "X", "channel": "email"}),
         &token,
     )
@@ -397,7 +398,7 @@ async fn update_and_delete_unknown_template_404() {
 
     let res = delete_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{pid}/templates/does_not_exist"),
+        &format!("/app/projects/{pid}/templates/does_not_exist"),
         &token,
     )
     .await;

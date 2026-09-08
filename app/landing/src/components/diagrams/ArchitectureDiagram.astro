@@ -6,7 +6,7 @@ interface Stage {
 }
 
 const stages: Stage[] = [
-  { key: "ingest", title: "Ingest", sub: "POST /v1/notifications" },
+  { key: "ingest", title: "Ingest", sub: "POST /api/v1/notifications" },
   { key: "outbox", title: "Outbox", sub: "durable · fsync before reply" },
   { key: "queue", title: "Queue", sub: "backpressure · bursts absorbed" },
   { key: "workers", title: "Workers", sub: "retries · backoff + jitter" },

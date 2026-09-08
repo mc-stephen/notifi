@@ -5,7 +5,7 @@ project channel configs.
 
 ---
 
-## GET /v1/providers
+## GET /app/providers
 
 Returns the full provider registry — all channels and their available providers
 with config field definitions.
@@ -144,7 +144,7 @@ Project-scoped endpoints for managing provider configurations.
 ### List configs
 
 ```
-GET /v1/projects/{project_id}/channel-configs
+GET /app/projects/{project_id}/channel-configs
 ```
 
 **Response (200)**:
@@ -168,7 +168,7 @@ GET /v1/projects/{project_id}/channel-configs
 ### Create config
 
 ```
-POST /v1/projects/{project_id}/channel-configs
+POST /app/projects/{project_id}/channel-configs
 ```
 
 **Request body**:
@@ -188,7 +188,7 @@ POST /v1/projects/{project_id}/channel-configs
 ### Update config
 
 ```
-PATCH /v1/projects/{project_id}/channel-configs/{config_id}
+PATCH /app/projects/{project_id}/channel-configs/{config_id}
 ```
 
 **Request body** (partial update):
@@ -206,7 +206,7 @@ PATCH /v1/projects/{project_id}/channel-configs/{config_id}
 ### Delete config
 
 ```
-DELETE /v1/projects/{project_id}/channel-configs/{config_id}
+DELETE /app/projects/{project_id}/channel-configs/{config_id}
 ```
 
 **Response (204)**: No content.
@@ -217,9 +217,9 @@ DELETE /v1/projects/{project_id}/channel-configs/{config_id}
 
 The providers page (`/providers`) consumes these endpoints:
 
-1. **Load registry**: `useProviderRegistry()` hook calls `GET /v1/providers`
+1. **Load registry**: `useProviderRegistry()` hook calls `GET /app/providers`
 2. **Connect provider**: User clicks "Connect" → modal with dynamic config fields
-3. **Save config**: `POST /v1/projects/{id}/channel-configs` with form data
+3. **Save config**: `POST /app/projects/{id}/channel-configs` with form data
 4. **Manage configs**: View/edit/delete from project settings
 
 ### Hook: `useProviderRegistry`
@@ -256,6 +256,6 @@ All errors follow RFC 9457 Problem Details:
   "title": "Validation Error",
   "status": 422,
   "detail": "channel_id is required",
-  "instance": "/v1/projects/xxx/channel-configs"
+  "instance": "/app/projects/xxx/channel-configs"
 }
 ```

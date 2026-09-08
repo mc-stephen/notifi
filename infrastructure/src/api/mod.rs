@@ -1,13 +1,10 @@
 //! HTTP presentation layer: router assembly, middleware wiring, error mapping.
 //!
-//! Two independent API surfaces:
-//! * **project** — the product API customers integrate with, served at the
-//!   root ([`project`]). Evolves independently; no version promise.
-//! * **user** — the dashboard backend, versioned under `/v1`
-//!   ([`user`]); `/v2` can later coexist without breaking v1.
-//!
-//! Ops routes (`/`, `/healthz`, `/readyz`, `/routes`) live outside both
-//! surfaces. See `catalog.rs` for the full route registry.
+//! API layout (`Readme.md`):
+//! * `/*` — ops routes (`/`, `/healthz`, `/readyz`, `/routes`).
+//! * `/v1/*` — external product API ([`project`]); empty until M2.
+//! * `/app/*` — user dashboard backend ([`user::app_router`]).
+//! * `/admin/*` — platform administration ([`user::admin_router`]).
 
 pub mod catalog;
 pub mod error;
@@ -24,17 +21,17 @@ use crate::infra::config::AppConfig;
 
 
 
-/// Builds the application router: ops routes at the root, the project
-/// surface merged in, and the versioned user surface nested under `/v1` —
-/// all wrapped in the global middleware chain.
+/// Builds the application router: ops routes at the root plus the three
+/// API surfaces — all wrapped in the global middleware chain.
 pub fn build_router(state: AppState, config: &AppConfig) -> Router {
     let router = Router::new()
         .route("/", axum::routing::get(handlers::root))
         .route("/healthz", axum::routing::get(handlers::healthz))
         .route("/readyz", axum::routing::get(handlers::readyz))
         .route("/routes", axum::routing::get(handlers::catalog))
-        .merge(project::router())
-        .nest("/v1", user::v1_router(&state))
+        .nest("/v1", project::router())
+        .nest("/app", user::app_router(&state))
+        .nest("/admin", user::admin_router(&state))
         .fallback(handlers::not_found)
         .with_state(state);
     middleware::apply(router, &config.server.cors_origins)
@@ -55,6 +52,7 @@ mod tests {
                 auth: None,
                 oauth: None,
                 admin: None,
+                admin_users: None,
                 projects: None,
                 audit: None,
                 recipients: None,

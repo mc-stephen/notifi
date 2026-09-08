@@ -270,7 +270,7 @@ export default function SignupPage() {
 }
 
 // Real flow (wired to the Rust API):
-// - Signup POSTs /v1/auth/signup, which creates the account AND starts a
+// - Signup POSTs /app/auth/signup, which creates the account AND starts a
 //   short-lived session (rememberMe=false) — so this continues straight to
 //   onboarding and then the dashboard.
 // - The backend emails a welcome mail plus a verification link; that link is

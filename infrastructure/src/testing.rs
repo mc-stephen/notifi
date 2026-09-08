@@ -164,6 +164,70 @@ impl AuthStore for FakeAuthStore {
         })
     }
 
+    fn list_users(
+        &self,
+        search: Option<&str>,
+        status: Option<crate::domain::auth::entities::UserStatus>,
+        limit: i64,
+        before: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<User>, StoreError>> {
+        let search_owned = search.map(|s| s.to_lowercase());
+        let before_owned = before.map(str::to_owned);
+        let users = &self.users;
+        Box::pin(async move {
+            let all = users.read().map_err(lock_err)?;
+            let mut result: Vec<User> = all
+                .iter()
+                .filter(|u| {
+                    if let Some(s) = status {
+                        u.status == s
+                    } else {
+                        true
+                    }
+                })
+                .filter(|u| {
+                    if let Some(ref q) = search_owned {
+                        u.name.to_lowercase().contains(q.as_str())
+                            || u.email.as_str().to_lowercase().contains(q.as_str())
+                    } else {
+                        true
+                    }
+                })
+                .filter(|u| {
+                    if let Some(ref b) = before_owned {
+                        u.id.to_string() < *b
+                    } else {
+                        true
+                    }
+                })
+                .take(limit.max(0) as usize)
+                .cloned()
+                .collect();
+            result.sort_by(|a, b| {
+                b.created_at
+                    .cmp(&a.created_at)
+                    .then(b.id.to_string().cmp(&a.id.to_string()))
+            });
+            Ok(result)
+        })
+    }
+
+    fn set_user_status(
+        &self,
+        user_id: crate::domain::auth::entities::UserId,
+        status: crate::domain::auth::entities::UserStatus,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let users = &self.users;
+        Box::pin(async move {
+            let mut users = users.write().map_err(lock_err)?;
+            if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
+                user.status = status;
+                return Ok(true);
+            }
+            Ok(false)
+        })
+    }
+
     fn create_session(&self, session: &Session) -> BoxFut<'_, Result<(), StoreError>> {
         let sessions = &self.sessions;
         let session = session.clone();
@@ -1380,6 +1444,33 @@ impl TicketsStore for FakeTicketsStore {
             Ok(false)
         })
     }
+
+    fn count_tickets_for_user(
+        &self,
+        user_id: &str,
+    ) -> BoxFut<'_, Result<crate::ports::tickets_store::TicketCounts, StoreError>> {
+        let user_id = user_id.to_string();
+        let tickets = self.tickets.read().unwrap().clone();
+
+        Box::pin(async move {
+            let mine: Vec<_> = tickets
+                .iter()
+                .filter(|t| t.created_by == user_id && t.deleted_at.is_none())
+                .collect();
+            let total = mine.len() as i64;
+            let open = mine
+                .iter()
+                .filter(|t| {
+                    matches!(
+                        t.status,
+                        crate::domain::support::entities::TicketStatus::Open
+                            | crate::domain::support::entities::TicketStatus::InProgress
+                    )
+                })
+                .count() as i64;
+            Ok(crate::ports::tickets_store::TicketCounts { total, open })
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1471,6 +1562,21 @@ impl NotificationsStore for FakeNotificationsStore {
         })
     }
 
+    fn count_all_for_user(
+        &self,
+        user_id: UserId,
+    ) -> BoxFut<'_, Result<i64, StoreError>> {
+        let user_str = user_id.to_string();
+        let all = self.notifications.read().unwrap().clone();
+        Box::pin(async move {
+            let count = all
+                .iter()
+                .filter(|n| n.user_id == user_str && n.deleted_at.is_none())
+                .count() as i64;
+            Ok(count)
+        })
+    }
+
     fn get(
         &self,
         user_id: UserId,
@@ -1557,13 +1663,17 @@ impl NotificationsStore for FakeNotificationsStore {
 // FakeAdminStore — in-memory admin store for tests
 // ------------------------------------------------------------------
 
-use crate::domain::admin::entities::{AdminSession, AdminSessionId, AdminUser, AdminUserId};
+use crate::domain::admin::entities::{
+    AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession, AdminSessionId, AdminUser,
+    AdminUserId,
+};
 use crate::ports::admin_store::AdminStore;
 
 #[derive(Default)]
 pub struct FakeAdminStore {
     admins: RwLock<Vec<AdminUser>>,
     sessions: RwLock<Vec<AdminSession>>,
+    reset_tokens: RwLock<Vec<AdminPasswordResetToken>>,
 }
 
 impl FakeAdminStore {
@@ -1693,6 +1803,77 @@ impl AdminStore for FakeAdminStore {
             let mut sessions = sessions.write().map_err(lock_err)?;
             if let Some(s) = sessions.iter_mut().find(|s| s.id == id) {
                 s.revoked_at = Some(Utc::now());
+            }
+            Ok(())
+        })
+    }
+
+    fn update_admin_password(
+        &self,
+        id: AdminUserId,
+        password_hash: String,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let admins = &self.admins;
+        Box::pin(async move {
+            let mut admins = admins.write().map_err(lock_err)?;
+            if let Some(admin) = admins.iter_mut().find(|a| a.id == id) {
+                admin.password_hash = password_hash;
+            }
+            Ok(())
+        })
+    }
+
+    fn create_admin_reset_token(
+        &self,
+        token: &AdminPasswordResetToken,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let tokens = &self.reset_tokens;
+        let token = token.clone();
+        Box::pin(async move {
+            tokens.write().map_err(lock_err)?.push(token);
+            Ok(())
+        })
+    }
+
+    fn consume_admin_reset_tokens_for_admin(
+        &self,
+        id: AdminUserId,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let tokens = &self.reset_tokens;
+        Box::pin(async move {
+            let mut tokens = tokens.write().map_err(lock_err)?;
+            for t in tokens.iter_mut().filter(|t| t.admin_id == id) {
+                t.consumed_at = Some(Utc::now());
+            }
+            Ok(())
+        })
+    }
+
+    fn find_admin_reset_token_by_hash(
+        &self,
+        hash: &str,
+    ) -> BoxFut<'_, Result<Option<AdminPasswordResetToken>, StoreError>> {
+        let tokens = &self.reset_tokens;
+        let hash = hash.to_string();
+        Box::pin(async move {
+            Ok(tokens
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .find(|t| t.token_hash == hash)
+                .cloned())
+        })
+    }
+
+    fn consume_admin_reset_token(
+        &self,
+        id: AdminPasswordResetTokenId,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let tokens = &self.reset_tokens;
+        Box::pin(async move {
+            let mut tokens = tokens.write().map_err(lock_err)?;
+            if let Some(t) = tokens.iter_mut().find(|t| t.id == id) {
+                t.consumed_at = Some(Utc::now());
             }
             Ok(())
         })

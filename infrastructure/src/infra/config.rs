@@ -73,7 +73,7 @@ pub struct OAuthConfig {
     #[serde(default = "default_dashboard_url")]
     pub dashboard_url: String,
     /// Public base URL of this API — callback URLs registered with the
-    /// providers are `{api_base_url}/v1/auth/oauth/{provider}/callback`.
+    /// providers are `{api_base_url}/app/auth/oauth/{provider}/callback`.
     #[serde(default = "default_api_base_url")]
     pub api_base_url: String,
 }

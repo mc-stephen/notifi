@@ -44,7 +44,7 @@ export function useProviderRegistry() {
   useEffect(() => {
     async function fetchRegistry() {
       try {
-        const data = await api<ProviderRegistry>("/v1/providers");
+        const data = await api<ProviderRegistry>("/app/providers");
         setRegistry(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unknown error");

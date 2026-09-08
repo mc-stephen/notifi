@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use notifi_core::define_id;
+use serde::{Deserialize, Serialize};
 
 use crate::domain::auth::value_objects::Email;
 
@@ -24,6 +25,7 @@ pub struct User {
     /// OAuth provider; `(provider, subject)` is unique per user.
     pub oauth_provider: Option<String>,
     pub oauth_subject: Option<String>,
+    pub status: UserStatus,
     pub created_at: DateTime<Utc>,
     pub last_login_at: Option<DateTime<Utc>>,
 }
@@ -31,6 +33,41 @@ pub struct User {
 impl User {
     pub fn email_verified(&self) -> bool {
         self.email_verified_at.is_some()
+    }
+}
+
+/// Account state for a platform user (admin suspend/restore).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UserStatus {
+    Active,
+    Suspended,
+}
+
+impl UserStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Suspended => "suspended",
+        }
+    }
+}
+
+impl std::str::FromStr for UserStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "active" => Ok(Self::Active),
+            "suspended" => Ok(Self::Suspended),
+            _ => Err(()),
+        }
+    }
+}
+
+impl std::fmt::Display for UserStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

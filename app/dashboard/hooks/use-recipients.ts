@@ -42,7 +42,7 @@ export function useRecipients() {
     (async () => {
       try {
         const res = await api<{ recipients: Recipient[] }>(
-          `/v1/projects/${projectId}/recipients`,
+          `/app/projects/${projectId}/recipients`,
         );
         if (ignore) return;
         setState({ recipients: res.recipients, loading: false, error: null });
@@ -65,7 +65,7 @@ export function useRecipients() {
     setState((prev) => ({ ...prev, loading: true }));
     try {
       const res = await api<{ recipients: Recipient[] }>(
-        `/v1/projects/${projectId}/recipients`,
+        `/app/projects/${projectId}/recipients`,
       );
       setState({ recipients: res.recipients, loading: false, error: null });
     } catch (e) {
@@ -93,7 +93,7 @@ export function useRecipientActions() {
     async (input: CreateRecipientInput): Promise<Recipient> => {
       if (!projectId) throw new Error("No project selected");
       const res = await api<{ recipient: Recipient }>(
-        `/v1/projects/${projectId}/recipients`,
+        `/app/projects/${projectId}/recipients`,
         { method: "POST", body: JSON.stringify(input) },
       );
       return res.recipient;
@@ -104,7 +104,7 @@ export function useRecipientActions() {
   const remove = useCallback(
     async (recipientId: string): Promise<void> => {
       if (!projectId) throw new Error("No project selected");
-      await api(`/v1/projects/${projectId}/recipients/${recipientId}`, {
+      await api(`/app/projects/${projectId}/recipients/${recipientId}`, {
         method: "DELETE",
       });
     },
@@ -115,7 +115,7 @@ export function useRecipientActions() {
     async (recipientId: string, input: UpdateRecipientInput): Promise<Recipient> => {
       if (!projectId) throw new Error("No project selected");
       const res = await api<{ recipient: Recipient }>(
-        `/v1/projects/${projectId}/recipients/${recipientId}`,
+        `/app/projects/${projectId}/recipients/${recipientId}`,
         { method: "PATCH", body: JSON.stringify(input) },
       );
       return res.recipient;
@@ -145,7 +145,7 @@ export function useRecipient(id: string) {
     if (!projectId) return;
     try {
       const res = await api<{ recipient: Recipient }>(
-        `/v1/projects/${projectId}/recipients/${id}`,
+        `/app/projects/${projectId}/recipients/${id}`,
       );
       setState({ recipient: res.recipient, loading: false, error: null });
     } catch (e) {
@@ -163,7 +163,7 @@ export function useRecipient(id: string) {
       if (!projectId) return;
       try {
         const res = await api<{ recipient: Recipient }>(
-          `/v1/projects/${projectId}/recipients/${id}`,
+          `/app/projects/${projectId}/recipients/${id}`,
         );
         if (ignore) return;
         setState({ recipient: res.recipient, loading: false, error: null });

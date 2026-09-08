@@ -2,6 +2,11 @@
 
 pub mod entities;
 pub mod services;
+pub mod users;
 
-pub use entities::{AdminSession, AdminSessionId, AdminUser, AdminUserId};
+pub use entities::{
+    AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession, AdminSessionId, AdminUser,
+    AdminUserId,
+};
 pub use services::AdminService;
+pub use users::{AdminUsersService, UserDetail};

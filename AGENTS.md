@@ -61,7 +61,7 @@ npm run lint     # ESLint checks
 
 ## Backend Server (`infrastructure/`)
 
-The server is a **single crate** rooted at `infrastructure/` (`src/{api,domain,ports,infra,testing}`), plus independent channel plugin crates in `infrastructure/channels/*`. Two independent API surfaces: **project** (product API at the root; API-key auth from M6) and **user** (dashboard backend under `/v1`, versioned).
+The server is a **single crate** rooted at `infrastructure/` (`src/{api,domain,ports,infra,testing}`), plus independent channel plugin crates in `infrastructure/channels/*`. API layout (see root `Readme.md`): ops at `/`, external product API at `/v1/*` (empty until M2; API-key auth from M6), user dashboard backend at `/app/*`, administration at `/admin/*`.
 
 ### Commands
 
@@ -78,7 +78,7 @@ cargo run                                         # Run main server executable
 
 - **Design Doc**: See `infrastructure/assets/docs/ARCHITECTURE.md` — layering rules, conventions, M0–M8 roadmap. §2 documents the current single-crate layout (the doc's earlier multi-crate history is noted at its top).
 - **Module boundaries** (single crate, enforced by visibility): `src/api/` = HTTP presentation only · `src/domain/` = framework-free business logic · `src/ports/` = trait contracts (`AuthStore`, `OAuthIdentityProvider`) implemented by `infra/` · `src/infra/` = concrete drivers (sqlx, reqwest, config, telemetry). Keep axum/sqlx/reqwest out of `domain/` and `ports/`.
-- **API surfaces**: route registry per surface lives in `src/api/catalog.rs` (drives `GET /routes`). Project endpoints mount in `src/api/project/mod.rs` — empty until M2 lands product endpoints. Dashboard endpoints live under `src/api/user/` and mount at `/v1/auth/*` today.
+- **API surfaces**: route registry per surface lives in `src/api/catalog.rs` (drives `GET /routes`). Product endpoints mount in `src/api/project/mod.rs` under `/v1` — empty until M2 lands product endpoints. Dashboard endpoints live under `src/api/user/` and mount at `/app/*`; admin endpoints mount at `/admin/*`.
 - **Shared kernel crates**: `crates/core` (errors, ULID ids, events, outbox, config resolver) and `crates/domain-ports` (trait-only contracts) stay framework-free — keep them that way; the channel plugins will consume them in M3.
 - **Known Build Issue**: `web_channel` is currently broken (web-push API mismatch). Always include `--exclude web_channel` when running workspace commands. A fix-checklist TODO sits at the top of `channels/web_channel/src/lib.rs`.
 - **Runtime Tenant Config**: Configs load dynamically at runtime from `{NOTIFI_CONFIG_ROOT}/brands/{brand}/config/{channel_name}/` (root defaults to `configs`; local dev sets it to `infrastructure/assets` via `infrastructure/.cargo/config.toml`). Channels parse their own config; use `notifi_core::config::ConfigResolver::load_json` for new code. Brand templates live at `{NOTIFI_CONFIG_ROOT}/brands/{brand}/templates/{name}/`.

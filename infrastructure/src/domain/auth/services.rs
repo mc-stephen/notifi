@@ -117,6 +117,7 @@ impl AuthService {
             email_verified_at: None,
             oauth_provider: None,
             oauth_subject: None,
+            status: crate::domain::auth::entities::UserStatus::Active,
             created_at: now,
             // signup counts as the first login
             last_login_at: Some(now),
@@ -176,6 +177,8 @@ impl AuthService {
             return Err(AuthError::InvalidCredentials);
         }
 
+        ensure_active(&user)?;
+
         let now = Utc::now();
         self.store.touch_last_login(user.id, now).await?;
 
@@ -228,10 +231,13 @@ impl AuthService {
             .filter(|s| s.is_active(now))
             .ok_or(AuthError::Unauthorized)?;
 
-        self.store
+        let user = self
+            .store
             .find_user_by_id(session.user_id)
             .await?
-            .ok_or(AuthError::Unauthorized)
+            .ok_or(AuthError::Unauthorized)?;
+        ensure_active(&user)?;
+        Ok(user)
     }
 
     /// Revokes the session behind `session_cookie` (idempotent).
@@ -440,6 +446,7 @@ impl AuthService {
                         email_verified_at: Some(now),
                         oauth_provider: Some(provider.to_string()),
                         oauth_subject: Some(profile.subject.clone()),
+                        status: crate::domain::auth::entities::UserStatus::Active,
                         created_at: now,
                         last_login_at: Some(now),
                     };
@@ -450,6 +457,7 @@ impl AuthService {
         };
 
         self.store.touch_last_login(user.id, Utc::now()).await?;
+        ensure_active(&user)?;
         let (session, raw_token) = self.issue_session(user.id, SESSION_TTL_SHORT).await?;
 
         self.audit
@@ -591,6 +599,13 @@ fn hash_password(password: &str) -> Result<String, AuthError> {
         .hash_password(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(|e| AuthError::Storage(format!("password hashing failed: {e}")))
+}
+
+fn ensure_active(user: &User) -> Result<(), AuthError> {
+    if user.status == crate::domain::auth::entities::UserStatus::Suspended {
+        return Err(AuthError::AccountSuspended);
+    }
+    Ok(())
 }
 
 fn verify_password(password: &str, phc_hash: &str) -> bool {

@@ -57,7 +57,7 @@ pub struct ProviderConfigResponse {
     pub updated_at: String,
 }
 
-/// GET /v1/projects/:project_id/channel-configs
+/// GET /app/projects/:project_id/channel-configs
 pub async fn list_configs(
     CurrentUser(_user): CurrentUser,
     Extension(store): Extension<Arc<dyn ChannelProviderStore + Send + Sync>>,
@@ -71,7 +71,7 @@ pub async fn list_configs(
     Ok(Json(configs.into_iter().map(|c| c.into()).collect()))
 }
 
-/// POST /v1/projects/:project_id/channel-configs/test
+/// POST /app/projects/:project_id/channel-configs/test
 pub async fn test_config(
     CurrentUser(_user): CurrentUser,
     Extension(tester): Extension<Arc<dyn ProviderTester + Send + Sync>>,
@@ -86,7 +86,7 @@ pub async fn test_config(
     }))
 }
 
-/// POST /v1/projects/:project_id/channel-configs
+/// POST /app/projects/:project_id/channel-configs
 pub async fn create_config(
     CurrentUser(user): CurrentUser,
     Extension(store): Extension<Arc<dyn ChannelProviderStore + Send + Sync>>,
@@ -122,7 +122,7 @@ pub async fn create_config(
     Ok(Json(config.into()))
 }
 
-/// PATCH /v1/projects/:project_id/channel-configs/:config_id
+/// PATCH /app/projects/:project_id/channel-configs/:config_id
 pub async fn update_config(
     CurrentUser(_user): CurrentUser,
     Extension(store): Extension<Arc<dyn ChannelProviderStore + Send + Sync>>,
@@ -145,7 +145,7 @@ pub async fn update_config(
     Ok(Json(config.into()))
 }
 
-/// DELETE /v1/projects/:project_id/channel-configs/:config_id
+/// DELETE /app/projects/:project_id/channel-configs/:config_id
 pub async fn delete_config(
     CurrentUser(user): CurrentUser,
     Extension(store): Extension<Arc<dyn ChannelProviderStore + Send + Sync>>,

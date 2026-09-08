@@ -15,7 +15,7 @@ use crate::domain::projects::ProjectService;
 use super::dto::{CreateProjectRequest, ProjectDto, UpdateEnvironmentRequest};
 use super::super::auth::{CurrentUser, Problem};
 
-/// `GET /v1/projects` — list all projects the current user owns or belongs to.
+/// `GET /app/projects` — list all projects the current user owns or belongs to.
 pub async fn list_projects(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<ProjectService>>,
@@ -28,7 +28,7 @@ pub async fn list_projects(
     ))
 }
 
-/// `POST /v1/projects` — create a new project.
+/// `POST /app/projects` — create a new project.
 pub async fn create_project(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<ProjectService>>,
@@ -43,7 +43,7 @@ pub async fn create_project(
     ))
 }
 
-/// `PATCH /v1/projects/:id/environment` — switch the project's environment gate.
+/// `PATCH /app/projects/:id/environment` — switch the project's environment gate.
 pub async fn update_environment(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<ProjectService>>,

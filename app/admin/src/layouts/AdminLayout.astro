@@ -205,6 +205,8 @@ const navStructure = [
   </aside>
 
   <script>
+    import { auth } from "../lib/api";
+
     const toggle = document.getElementById("mobile-menu-toggle");
     const overlay = document.getElementById("mobile-sidebar-overlay");
     const sidebar = document.getElementById("mobile-sidebar");
@@ -224,15 +226,10 @@ const navStructure = [
 
     // Sign out: revoke the server-side session, then go to login.
     const signOutBtn = document.getElementById("sign-out-btn");
-    const API_BASE = (import.meta as any).env?.PUBLIC_API_URL ?? "http://localhost:8080";
 
     signOutBtn?.addEventListener("click", async () => {
       try {
-        await fetch(`${API_BASE}/v1/admin/logout`, {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-        });
+        await auth.logout();
       } catch {
         // Best-effort: proceed to login even if the request fails.
       }

@@ -50,7 +50,7 @@ pub struct ResendVerificationRequest {
     pub email: String,
 }
 
-/// Body of `POST /v1/auth/onboarding/complete` — the first project
+/// Body of `POST /app/auth/onboarding/complete` — the first project
 /// collected by the dashboard flow.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

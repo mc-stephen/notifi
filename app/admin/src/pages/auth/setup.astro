@@ -23,7 +23,7 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
             required
             autocomplete="name"
             placeholder="Admin User"
-            class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           />
         </div>
 
@@ -36,7 +36,7 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
             required
             autocomplete="email"
             placeholder="admin@notifi.dev"
-            class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           />
         </div>
 
@@ -50,7 +50,7 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
             autocomplete="new-password"
             placeholder="At least 8 characters"
             minlength="8"
-            class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           />
           <p class="text-xs text-muted-foreground">Minimum 8 characters. Must include uppercase, lowercase, number, and special character.</p>
         </div>
@@ -104,7 +104,7 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
             maxlength="6"
             pattern="[0-9]{6}"
             placeholder="000000"
-            class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 text-center tracking-[0.5em] font-mono"
+            class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 text-center tracking-[0.5em] font-mono"
           />
         </div>
 
@@ -127,18 +127,9 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
 </AuthLayout>
 
 <script>
-  const API_BASE = (import.meta as any).env?.PUBLIC_API_URL ?? "http://localhost:8080";
-
-  async function api(path: string, init?: RequestInit) {
-    const res = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      credentials: "include",
-      headers: { "Content-Type": "application/json", ...init?.headers },
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(body?.detail ?? body?.message ?? `${res.status}`);
-    return body;
-  }
+  import { auth, ApiError } from "../../lib/api";
+  import { passwordValid } from "../../lib/password";
+  import { renderQrCode } from "../../lib/qrcode";
 
   // Step 1: Account creation
   const setupForm = document.getElementById("setup-form") as HTMLFormElement;
@@ -149,27 +140,14 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
   const btnText = document.getElementById("btn-text")!;
   const btnSpinner = document.getElementById("btn-spinner")!;
 
-  let _totpUri: string | undefined;
-
-  function validatePassword(pw: string): string | null {
-    const missing: string[] = [];
-    if (pw.length < 8) missing.push("at least 8 characters");
-    if (!/[A-Z]/.test(pw)) missing.push("an uppercase letter");
-    if (!/[a-z]/.test(pw)) missing.push("a lowercase letter");
-    if (!/[0-9]/.test(pw)) missing.push("a number");
-    if (!/[^\w]/.test(pw)) missing.push("a special character");
-    if (missing.length === 0) return null;
-    return "Password must include: " + missing.join(", ");
-  }
-
   setupForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
     errorDiv.classList.add("hidden");
 
     const password = (document.getElementById("password") as HTMLInputElement).value;
-    const pwError = validatePassword(password);
-    if (pwError) {
-      errorDiv.textContent = pwError;
+    if (!passwordValid(password)) {
+      errorDiv.textContent =
+        "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.";
       errorDiv.classList.remove("hidden");
       return;
     }
@@ -182,19 +160,15 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
     const email = (document.getElementById("email") as HTMLInputElement).value;
 
     try {
-      const data = await api("/v1/admin/bootstrap", {
-        method: "POST",
-        body: JSON.stringify({ name, email, password }),
-      });
+      const data = await auth.bootstrap({ name, email, password });
 
-      _totpUri = data.totpUri;
-      renderQrCode(data.totpUri);
+      await renderQrCode(document.getElementById("qr-container")!, data.totpUri);
       document.getElementById("secret-value")!.textContent = data.totpSecret;
       document.getElementById("secret-display")!.classList.remove("hidden");
       stepForm.classList.add("hidden");
       stepTotp.classList.remove("hidden");
-    } catch (err: any) {
-      errorDiv.textContent = err.message;
+    } catch (err) {
+      errorDiv.textContent = err instanceof ApiError ? err.message : "Setup failed. Please try again.";
       errorDiv.classList.remove("hidden");
     } finally {
       btnText.textContent = "Create Admin";
@@ -220,13 +194,10 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
     const code = (document.getElementById("totp-code") as HTMLInputElement).value;
 
     try {
-      await api("/v1/admin/totp/verify", {
-        method: "POST",
-        body: JSON.stringify({ code }),
-      });
+      await auth.totpVerify(code);
       window.location.href = "/overview";
-    } catch (err: any) {
-      totpError.textContent = err.message;
+    } catch (err) {
+      totpError.textContent = err instanceof ApiError ? err.message : "Verification failed. Please try again.";
       totpError.classList.remove("hidden");
     } finally {
       totpBtnText.textContent = "Verify & Complete Setup";
@@ -234,11 +205,4 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
       totpBtn.disabled = false;
     }
   });
-
-  function renderQrCode(uri: string) {
-    const container = document.getElementById("qr-container")!;
-    // Use a QR code API to render the TOTP URI
-    const svgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(uri)}&format=svg`;
-    container.innerHTML = `<img src="${svgUrl}" alt="TOTP QR Code" width="200" height="200" class="rounded" />`;
-  }
 </script>

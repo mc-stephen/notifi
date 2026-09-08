@@ -17,7 +17,7 @@ use super::super::auth::{CurrentUser, Problem};
 const DEFAULT_LIMIT: i64 = 20;
 const MAX_LIMIT: i64 = 100;
 
-/// `POST /v1/projects/:project_id/recipients` — create a recipient.
+/// `POST /app/projects/:project_id/recipients` — create a recipient.
 pub async fn create_recipient(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<RecipientService>>,
@@ -40,7 +40,7 @@ pub async fn create_recipient(
     ))
 }
 
-/// `GET /v1/projects/:project_id/recipients` — list, newest first.
+/// `GET /app/projects/:project_id/recipients` — list, newest first.
 pub async fn list_recipients(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<RecipientService>>,
@@ -76,7 +76,7 @@ pub async fn list_recipients(
     ))
 }
 
-/// `GET /v1/projects/:project_id/recipients/:id` — one recipient.
+/// `GET /app/projects/:project_id/recipients/:id` — one recipient.
 pub async fn get_recipient(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<RecipientService>>,
@@ -92,7 +92,7 @@ pub async fn get_recipient(
     ))
 }
 
-/// `PATCH /v1/projects/:project_id/recipients/:id` — update name/contacts.
+/// `PATCH /app/projects/:project_id/recipients/:id` — update name/contacts.
 pub async fn update_recipient(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<RecipientService>>,
@@ -114,7 +114,7 @@ pub async fn update_recipient(
     ))
 }
 
-/// `DELETE /v1/projects/:project_id/recipients/:id` — soft delete.
+/// `DELETE /app/projects/:project_id/recipients/:id` — soft delete.
 pub async fn delete_recipient(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<RecipientService>>,

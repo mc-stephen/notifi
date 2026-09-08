@@ -8,7 +8,7 @@
  *   ({ type, title, status, detail, correlation_id }) — read `.message`.
  *
  * Usage:
- *   const { user, session } = await api<LoginResponse>("/v1/auth/login", {
+ *   const { user, session } = await api<LoginResponse>("/app/auth/login", {
  *     method: "POST",
  *     body: JSON.stringify({ email, password, rememberMe }),
  *   });

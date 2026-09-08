@@ -1,16 +1,29 @@
+export type AdminUserStatus = "active" | "suspended";
+
 export type AdminUser = {
   id: string;
   name: string;
   email: string;
-  avatar?: string;
-  status: "active" | "restricted" | "suspended" | "banned" | "deleted";
-  organization?: string;
-  role: "super_admin" | "admin" | "support" | "billing" | "operations" | "readonly";
-  plan: string;
+  avatar?: string | null;
+  emailVerified: boolean;
+  status: AdminUserStatus;
   createdAt: string;
-  lastActiveAt: string;
+  lastLoginAt?: string | null;
+};
+
+export type AdminUserDetail = {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string | null;
+  emailVerified: boolean;
+  status: AdminUserStatus;
+  createdAt: string;
+  lastLoginAt?: string | null;
+  projectCount: number;
+  ticketTotal: number;
+  ticketsOpen: number;
   notificationCount: number;
-  billingStatus: "current" | "past_due" | "cancelled";
 };
 
 export type Organization = {
@@ -131,16 +144,6 @@ export type SystemHealth = {
   status: "operational" | "degraded" | "down" | "unknown";
   latencyMs?: number;
   lastCheck: string;
-};
-
-export type AdminUser2 = {
-  id: string;
-  name: string;
-  email: string;
-  role: "super_admin" | "admin" | "support" | "billing" | "operations" | "readonly";
-  status: "active" | "disabled";
-  lastLoginAt?: string;
-  createdAt: string;
 };
 
 export type MetricData = {

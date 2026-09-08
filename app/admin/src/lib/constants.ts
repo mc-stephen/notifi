@@ -95,6 +95,15 @@ export const ACCOUNT_STATUS_COLORS: Record<AccountStatus, string> = {
   deleted: "bg-muted text-muted-foreground border-border",
 };
 
+export const USER_STATUSES = ["active", "suspended"] as const;
+
+export type UserStatus = (typeof USER_STATUSES)[number];
+
+export const USER_STATUS_COLORS: Record<UserStatus, string> = {
+  active: "bg-success/10 text-success border-success/20",
+  suspended: "bg-destructive/10 text-destructive border-destructive/20",
+};
+
 export const TICKET_STATUSES = [
   "open",
   "in_progress",

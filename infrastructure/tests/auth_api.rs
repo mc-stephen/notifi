@@ -42,6 +42,7 @@ fn app() -> (Router, Arc<FakeAuthStore>) {
                 auth: Some(auth),
                 oauth: None,
                 admin: None,
+                admin_users: None,
                 projects: None,
                 audit: Some(audit),
                 recipients: None,
@@ -66,6 +67,7 @@ fn app_without_auth() -> Router {
             auth: None,
             oauth: None,
             admin: None,
+            admin_users: None,
             projects: None,
             audit: None,
             recipients: None,
@@ -80,7 +82,7 @@ fn app_without_auth() -> Router {
 }
 
 /// Same, plus the OAuth runtime wired through `AppState` — the exact
-/// production path (`v1_router`'s conditional Extension layer), so a layer/
+/// production path (`app_router`'s conditional Extension layer), so a layer/
 /// extractor type mismatch cannot hide here.
 fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
     let store = Arc::new(FakeAuthStore::new());
@@ -98,6 +100,7 @@ fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
                 auth: Some(auth),
                 oauth: Some(oauth),
                 admin: None,
+                admin_users: None,
                 projects: None,
                 audit: Some(audit),
                 recipients: None,
@@ -217,7 +220,7 @@ fn cookie_value(cookies: &[String], name: &str) -> Option<String> {
 async fn signup_and_login_on(app: Router, email: &str) -> (String, String) {
     let res = post_json(
         app.clone(),
-        "/v1/auth/signup",
+        "/app/auth/signup",
         json!({"name": "Jane", "email": email, "password": "Sup3rSecret!"}),
     )
     .await;
@@ -225,7 +228,7 @@ async fn signup_and_login_on(app: Router, email: &str) -> (String, String) {
 
     let res = post_json(
         app,
-        "/v1/auth/login",
+        "/app/auth/login",
         json!({"email": email, "password": "Sup3rSecret!", "rememberMe": false}),
     )
     .await;
@@ -241,7 +244,7 @@ async fn signup_returns_201_with_user_and_dev_verification_token() {
     let (app, _store) = app();
     let res = post_json(
         app,
-        "/v1/auth/signup",
+        "/app/auth/signup",
         json!({"name": "Jane", "email": "jane@example.com", "password": "Sup3rSecret!"}),
     )
     .await;
@@ -270,7 +273,7 @@ async fn signup_session_authenticates_without_login() {
     let (app, _store) = app();
     let res = post_json(
         app.clone(),
-        "/v1/auth/signup",
+        "/app/auth/signup",
         json!({"name": "Jane", "email": "nosession@example.com", "password": "Sup3rSecret!"}),
     )
     .await;
@@ -279,7 +282,7 @@ async fn signup_session_authenticates_without_login() {
     let cookie = body["session"]["token"].as_str().unwrap().to_string();
 
     // the signup cookie alone is enough for the protected endpoint
-    let res = get_with_cookie_on(app, "/v1/auth/me", Some(&cookie)).await;
+    let res = get_with_cookie_on(app, "/app/auth/me", Some(&cookie)).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(
         body_json(res).await["user"]["email"],
@@ -295,12 +298,12 @@ async fn onboarding_complete_flips_the_flag_and_is_idempotent() {
     // fresh account: flag false in login payload and /me
     let res = post_json(
         app.clone(),
-        "/v1/auth/login",
+        "/app/auth/login",
         json!({"email": "onboard@example.com", "password": "Sup3rSecret!", "rememberMe": false}),
     )
     .await;
     assert_eq!(body_json(res).await["session"]["onboardingCompleted"], false);
-    let res = get_with_cookie_on(app.clone(), "/v1/auth/me", Some(&token)).await;
+    let res = get_with_cookie_on(app.clone(), "/app/auth/me", Some(&token)).await;
     assert_eq!(body_json(res).await["onboardingCompleted"], false);
 
     // completing onboarding persists the first project
@@ -309,27 +312,27 @@ async fn onboarding_complete_flips_the_flag_and_is_idempotent() {
     });
     let res = post_json_with_cookie(
         app.clone(),
-        "/v1/auth/onboarding/complete",
+        "/app/auth/onboarding/complete",
         payload.clone(),
         &token,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let res = get_with_cookie_on(app.clone(), "/v1/auth/me", Some(&token)).await;
+    let res = get_with_cookie_on(app.clone(), "/app/auth/me", Some(&token)).await;
     assert_eq!(body_json(res).await["onboardingCompleted"], true);
 
     // next login reports the completed flag
     let res = post_json(
         app.clone(),
-        "/v1/auth/login",
+        "/app/auth/login",
         json!({"email": "onboard@example.com", "password": "Sup3rSecret!", "rememberMe": false}),
     )
     .await;
     assert_eq!(body_json(res).await["session"]["onboardingCompleted"], true);
 
     // idempotent replay
-    let res = post_json_with_cookie(app, "/v1/auth/onboarding/complete", payload, &token)
+    let res = post_json_with_cookie(app, "/app/auth/onboarding/complete", payload, &token)
         .await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res).await["alreadyCompleted"], true);
@@ -343,7 +346,7 @@ async fn invited_member_of_existing_project_skips_onboarding() {
     // row already exists on someone else's project.
     let res = post_json(
         app.clone(),
-        "/v1/auth/signup",
+        "/app/auth/signup",
         json!({"name": "Guest", "email": "invited@example.com", "password": "Sup3rSecret!"}),
     )
     .await;
@@ -354,7 +357,7 @@ async fn invited_member_of_existing_project_skips_onboarding() {
 
     let res = post_json(
         app,
-        "/v1/auth/login",
+        "/app/auth/login",
         json!({"email": "invited@example.com", "password": "Sup3rSecret!", "rememberMe": false}),
     )
     .await;
@@ -366,13 +369,13 @@ async fn signup_rejects_duplicates_weak_passwords_and_bad_emails() {
     let (app, _store) = app();
     let payload = json!({"name": "Jane", "email": "dup@example.com", "password": "Sup3rSecret!"});
     assert_eq!(
-        post_json(app.clone(), "/v1/auth/signup", payload.clone())
+        post_json(app.clone(), "/app/auth/signup", payload.clone())
             .await
             .status(),
         StatusCode::CREATED
     );
 
-    let res = post_json(app, "/v1/auth/signup", payload).await;
+    let res = post_json(app, "/app/auth/signup", payload).await;
     assert_eq!(res.status(), StatusCode::CONFLICT);
     let body = body_json(res).await;
     assert_eq!(body["detail"], "An account with this email already exists.");
@@ -383,7 +386,7 @@ async fn login_sets_session_cookie_and_returns_contract_shape() {
     let (app, _store) = app();
     post_json(
         app.clone(),
-        "/v1/auth/signup",
+        "/app/auth/signup",
         json!({"name": "Jane", "email": "cookie@example.com", "password": "Sup3rSecret!"}),
     )
     .await;
@@ -391,7 +394,7 @@ async fn login_sets_session_cookie_and_returns_contract_shape() {
     // wrong password first
     let res = post_json(
         app.clone(),
-        "/v1/auth/login",
+        "/app/auth/login",
         json!({"email": "cookie@example.com", "password": "WrongPass1!", "rememberMe": false}),
     )
     .await;
@@ -401,7 +404,7 @@ async fn login_sets_session_cookie_and_returns_contract_shape() {
     // correct password
     let res = post_json(
         app,
-        "/v1/auth/login",
+        "/app/auth/login",
         json!({"email": "cookie@example.com", "password": "Sup3rSecret!", "rememberMe": true}),
     )
     .await;
@@ -433,11 +436,11 @@ async fn me_requires_and_honors_the_session_cookie() {
     let (token, _uid) = signup_and_login_on(app.clone(), "me@example.com").await;
 
     // no cookie → 401 problem doc
-    let res = get_with_cookie_on(app.clone(), "/v1/auth/me", None).await;
+    let res = get_with_cookie_on(app.clone(), "/app/auth/me", None).await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
     // valid cookie → current user
-    let res = get_with_cookie_on(app, "/v1/auth/me", Some(&token)).await;
+    let res = get_with_cookie_on(app, "/app/auth/me", Some(&token)).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res).await["user"]["email"], "me@example.com");
 }
@@ -448,7 +451,7 @@ async fn verify_email_consumes_once_and_reports_expiry_properly() {
 
     let res = post_json(
         app.clone(),
-        "/v1/auth/signup",
+        "/app/auth/signup",
         json!({"name": "Jane", "email": "verify@example.com", "password": "Sup3rSecret!"}),
     )
     .await;
@@ -460,7 +463,7 @@ async fn verify_email_consumes_once_and_reports_expiry_properly() {
     // first use succeeds
     let res = post_json(
         app.clone(),
-        "/v1/auth/verify-email",
+        "/app/auth/verify-email",
         json!({"token": token}),
     )
     .await;
@@ -469,7 +472,7 @@ async fn verify_email_consumes_once_and_reports_expiry_properly() {
     // replay is rejected as invalid (not expired)
     let res = post_json(
         app.clone(),
-        "/v1/auth/verify-email",
+        "/app/auth/verify-email",
         json!({"token": token}),
     )
     .await;
@@ -494,7 +497,7 @@ async fn verify_email_consumes_once_and_reports_expiry_properly() {
         consumed_at: None,
         created_at: Utc::now() - Duration::hours(25),
     });
-    let res = post_json(app, "/v1/auth/verify-email", json!({"token": raw2_real})).await;
+    let res = post_json(app, "/app/auth/verify-email", json!({"token": raw2_real})).await;
     assert_eq!(res.status(), StatusCode::GONE);
     assert!(
         body_json(res).await["detail"]
@@ -512,7 +515,7 @@ async fn password_reset_flow_rotates_and_revokes_sessions() {
     // forgot always answers 200, even for unknown emails (no enumeration)
     let res = post_json(
         app.clone(),
-        "/v1/auth/password/forgot",
+        "/app/auth/password/forgot",
         json!({"email": "nobody@example.com"}),
     )
     .await;
@@ -522,7 +525,7 @@ async fn password_reset_flow_rotates_and_revokes_sessions() {
     // known email exposes the dev reset token
     let res = post_json(
         app.clone(),
-        "/v1/auth/password/forgot",
+        "/app/auth/password/forgot",
         json!({"email": "reset@example.com"}),
     )
     .await;
@@ -534,7 +537,7 @@ async fn password_reset_flow_rotates_and_revokes_sessions() {
     // weak replacement rejected
     let res = post_json(
         app.clone(),
-        "/v1/auth/password/reset",
+        "/app/auth/password/reset",
         json!({"token": reset_token, "password": "weak"}),
     )
     .await;
@@ -543,19 +546,19 @@ async fn password_reset_flow_rotates_and_revokes_sessions() {
     // strong replacement works and revokes prior sessions
     let res = post_json(
         app.clone(),
-        "/v1/auth/password/reset",
+        "/app/auth/password/reset",
         json!({"token": reset_token, "password": "N3wPassword!"}),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let res = get_with_cookie_on(app.clone(), "/v1/auth/me", Some(&old_session)).await;
+    let res = get_with_cookie_on(app.clone(), "/app/auth/me", Some(&old_session)).await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
     // login with the new password succeeds
     let res = post_json(
         app,
-        "/v1/auth/login",
+        "/app/auth/login",
         json!({"email": "reset@example.com", "password": "N3wPassword!", "rememberMe": false}),
     )
     .await;
@@ -568,14 +571,14 @@ async fn logout_revokes_and_clears_the_cookie() {
     let (token, _uid) = {
         let res = post_json(
             app.clone(),
-            "/v1/auth/signup",
+            "/app/auth/signup",
             json!({"name": "Jane", "email": "logout@example.com", "password": "Sup3rSecret!"}),
         )
         .await;
         assert_eq!(res.status(), StatusCode::CREATED);
         let res = post_json(
             app.clone(),
-            "/v1/auth/login",
+            "/app/auth/login",
             json!({"email": "logout@example.com", "password": "Sup3rSecret!", "rememberMe": false}),
         )
         .await;
@@ -591,7 +594,7 @@ async fn logout_revokes_and_clears_the_cookie() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/logout")
+                .uri("/app/auth/logout")
                 .header("cookie", format!("session_token={token}"))
                 .body(Body::empty())
                 .unwrap(),
@@ -601,7 +604,7 @@ async fn logout_revokes_and_clears_the_cookie() {
     assert_eq!(res.status(), StatusCode::OK);
 
     // session is gone
-    let res = get_with_cookie_on(app, "/v1/auth/me", Some(&token)).await;
+    let res = get_with_cookie_on(app, "/app/auth/me", Some(&token)).await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -609,7 +612,7 @@ async fn logout_revokes_and_clears_the_cookie() {
 async fn auth_routes_answer_503_when_unconfigured() {
     let res = post_json(
         app_without_auth(),
-        "/v1/auth/signup",
+        "/app/auth/signup",
         json!({"name": "Jane", "email": "x@example.com", "password": "Sup3rSecret!"}),
     )
     .await;
@@ -631,7 +634,7 @@ async fn oauth_start_redirects_and_parks_temp_cookies() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v1/auth/oauth/github?popup=1")
+                .uri("/app/auth/oauth/github?popup=1")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -665,7 +668,7 @@ async fn oauth_callback_creates_user_sets_session_and_messages_opener() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v1/auth/oauth/github?popup=1")
+                .uri("/app/auth/oauth/github?popup=1")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -682,7 +685,7 @@ async fn oauth_callback_creates_user_sets_session_and_messages_opener() {
             Request::builder()
                 .method("GET")
                 .uri(format!(
-                    "/v1/auth/oauth/github/callback?code=the-code&state={state}"
+                    "/app/auth/oauth/github/callback?code=the-code&state={state}"
                 ))
                 .header(
                     "cookie",
@@ -719,7 +722,7 @@ async fn oauth_callback_links_matching_password_account() {
     // an existing password account with the email the OAuth profile will use
     let res = post_json(
         app.clone(),
-        "/v1/auth/signup",
+        "/app/auth/signup",
         json!({"name": "Original", "email": "oauth.user@example.com", "password": "Sup3rSecret!"}),
     )
     .await;
@@ -734,7 +737,7 @@ async fn oauth_callback_links_matching_password_account() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v1/auth/oauth/github")
+                .uri("/app/auth/oauth/github")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -749,7 +752,7 @@ async fn oauth_callback_links_matching_password_account() {
             Request::builder()
                 .method("GET")
                 .uri(format!(
-                    "/v1/auth/oauth/github/callback?code=c&state={state}"
+                    "/app/auth/oauth/github/callback?code=c&state={state}"
                 ))
                 .header(
                     "cookie",
@@ -781,7 +784,7 @@ async fn oauth_callback_rejects_state_mismatch() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v1/auth/oauth/github/callback?code=c&state=tampered")
+                .uri("/app/auth/oauth/github/callback?code=c&state=tampered")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -799,7 +802,7 @@ async fn oauth_routes_answer_503_without_runtime() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v1/auth/oauth/github")
+                .uri("/app/auth/oauth/github")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -824,6 +827,7 @@ fn app_with_projects() -> (Router, Arc<FakeAuthStore>) {
                 auth: Some(auth),
                 oauth: None,
                 admin: None,
+                admin_users: None,
                 projects: Some(projects),
                 audit: Some(audit),
                 recipients: None,
@@ -843,7 +847,7 @@ fn app_with_projects() -> (Router, Arc<FakeAuthStore>) {
 async fn list_projects_empty_for_new_user() {
     let (app, _store) = app_with_projects();
     let (token, _uid) = signup_and_login_on(app.clone(), "proj-list@example.com").await;
-    let res = get_with_cookie_on(app, "/v1/projects", Some(&token)).await;
+    let res = get_with_cookie_on(app, "/app/projects", Some(&token)).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res).await["projects"], json!([]));
 }
@@ -856,7 +860,7 @@ async fn list_projects_returns_onboarded_project() {
     // complete onboarding → creates a real project via the auth store
     let res = post_json_with_cookie(
         app.clone(),
-        "/v1/auth/onboarding/complete",
+        "/app/auth/onboarding/complete",
         json!({"project": {"name": "My App", "description": "test"}}),
         &token,
     )
@@ -864,7 +868,7 @@ async fn list_projects_returns_onboarded_project() {
     assert_eq!(res.status(), StatusCode::OK);
 
     // list should now return that project with environment = development
-    let res = get_with_cookie_on(app, "/v1/projects", Some(&token)).await;
+    let res = get_with_cookie_on(app, "/app/projects", Some(&token)).await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     let projects = body["projects"].as_array().unwrap();
@@ -881,7 +885,7 @@ async fn patch_environment_switches_gate() {
     // complete onboarding
     let res = post_json_with_cookie(
         app.clone(),
-        "/v1/auth/onboarding/complete",
+        "/app/auth/onboarding/complete",
         json!({"project": {"name": "Env App"}}),
         &token,
     )
@@ -889,7 +893,7 @@ async fn patch_environment_switches_gate() {
     assert_eq!(res.status(), StatusCode::OK);
 
     // fetch project id from list
-    let res = get_with_cookie_on(app.clone(), "/v1/projects", Some(&token)).await;
+    let res = get_with_cookie_on(app.clone(), "/app/projects", Some(&token)).await;
     assert_eq!(res.status(), StatusCode::OK);
     let project_id = body_json(res).await["projects"][0]["id"]
         .as_str()
@@ -899,7 +903,7 @@ async fn patch_environment_switches_gate() {
     // switch to production
     let res = patch_json_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{project_id}/environment"),
+        &format!("/app/projects/{project_id}/environment"),
         json!({"environment": "production"}),
         &token,
     )
@@ -908,7 +912,7 @@ async fn patch_environment_switches_gate() {
     assert_eq!(body_json(res).await["project"]["environment"], "production");
 
     // verify via list
-    let res = get_with_cookie_on(app, "/v1/projects", Some(&token)).await;
+    let res = get_with_cookie_on(app, "/app/projects", Some(&token)).await;
     assert_eq!(body_json(res).await["projects"][0]["environment"], "production");
 }
 
@@ -919,14 +923,14 @@ async fn patch_environment_rejects_invalid_env() {
 
     let res = post_json_with_cookie(
         app.clone(),
-        "/v1/auth/onboarding/complete",
+        "/app/auth/onboarding/complete",
         json!({"project": {"name": "Bad Env"}}),
         &token,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let res = get_with_cookie_on(app.clone(), "/v1/projects", Some(&token)).await;
+    let res = get_with_cookie_on(app.clone(), "/app/projects", Some(&token)).await;
     let project_id = body_json(res).await["projects"][0]["id"]
         .as_str()
         .unwrap()
@@ -934,7 +938,7 @@ async fn patch_environment_rejects_invalid_env() {
 
     let res = patch_json_with_cookie(
         app,
-        &format!("/v1/projects/{project_id}/environment"),
+        &format!("/app/projects/{project_id}/environment"),
         json!({"environment": "staging"}),
         &token,
     )
@@ -949,7 +953,7 @@ async fn patch_environment_returns_404_for_unknown_project() {
 
     let res = patch_json_with_cookie(
         app,
-        "/v1/projects/nonexistent/environment",
+        "/app/projects/nonexistent/environment",
         json!({"environment": "production"}),
         &token,
     )
@@ -982,7 +986,7 @@ async fn patch_json_with_cookie(
 #[tokio::test]
 async fn logs_require_auth() {
     let (app, _store) = app_with_projects();
-    let res = get_with_cookie_on(app, "/v1/logs", None).await;
+    let res = get_with_cookie_on(app, "/app/logs", None).await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -991,7 +995,7 @@ async fn logs_return_recorded_actions_after_signup_and_login() {
     let (app, _store) = app_with_projects();
     let (token, uid) = signup_and_login_on(app.clone(), "logs@example.com").await;
 
-    let res = get_with_cookie_on(app, "/v1/logs", Some(&token)).await;
+    let res = get_with_cookie_on(app, "/app/logs", Some(&token)).await;
     assert_eq!(res.status(), StatusCode::OK);
 
     let body = body_json(res).await;
@@ -1017,14 +1021,14 @@ async fn logs_record_project_environment_switch() {
     // complete onboarding → creates a project; capture its id from /projects
     let res = post_json_with_cookie(
         app.clone(),
-        "/v1/auth/onboarding/complete",
+        "/app/auth/onboarding/complete",
         json!({"project": {"name": "Log App", "description": "test"}}),
         &token,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let res = get_with_cookie_on(app.clone(), "/v1/projects", Some(&token)).await;
+    let res = get_with_cookie_on(app.clone(), "/app/projects", Some(&token)).await;
     let project_id = body_json(res).await["projects"][0]["id"]
         .as_str()
         .unwrap()
@@ -1032,14 +1036,14 @@ async fn logs_record_project_environment_switch() {
 
     let res = patch_json_with_cookie(
         app.clone(),
-        &format!("/v1/projects/{project_id}/environment"),
+        &format!("/app/projects/{project_id}/environment"),
         json!({"environment": "production"}),
         &token,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let res = get_with_cookie_on(app, "/v1/logs", Some(&token)).await;
+    let res = get_with_cookie_on(app, "/app/logs", Some(&token)).await;
     let body = body_json(res).await;
     let logs = body["logs"].as_array().unwrap();
     assert!(

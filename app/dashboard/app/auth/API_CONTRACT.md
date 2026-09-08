@@ -1,6 +1,6 @@
 # Auth API Contract
 
-The contract between the dashboard auth pages and the Rust API (`infrastructure/crates/domains/auth`, mounted under `/v1/auth` in `crates/api/src/http/routes.rs`). **Implemented on both sides** — keep this file updated when either side changes (see root `AGENTS.md`).
+The contract between the dashboard auth pages and the Rust API (`infrastructure/src/api/user/auth`, mounted under `/app/auth` in `infrastructure/src/api/user/mod.rs`). **Implemented on both sides** — keep this file updated when either side changes (see root `AGENTS.md`).
 
 Sources: `app/auth/`, `hooks/use-auth.ts`, `store/auth-store.ts`, `lib/auth-types.ts`, `lib/api.ts`; backend: `domains/auth/src/presentation/{routes,handlers,dto}.rs`.
 
@@ -8,7 +8,7 @@ Sources: `app/auth/`, `hooks/use-auth.ts`, `store/auth-store.ts`, `lib/auth-type
 
 - Base URL: `NEXT_PUBLIC_API_URL` (`.env.local`: `http://localhost:8080`). All paths below are relative to it.
 - Wire format is camelCase; backend DTOs use `#[serde(rename_all = "camelCase")]`.
-- Auth is **cookie-based**: the server sets/clears an httpOnly `session_token` cookie (`SameSite=Lax`, 30 days with `rememberMe`, else 1 day). The frontend never touches `document.cookie`.
+- Auth is **cookie-based**: the server sets/clears an httpOnly `session_token` cookie (`SameSite=Lax`, 30 days with `rememberMe`, else 1 day). The frontend never touches `document.cookie`. Admin logins use a separate `admin_session` cookie, so dashboard and admin sessions coexist in one browser.
 - CORS: only browser origins in `NOTIFI_CORS_ORIGINS` may call with credentials (defaults to `http://localhost:3000`). Methods GET/POST only.
 - Errors are RFC 9457 problem documents (`application/problem+json`):
   `{ type, title, status, detail, correlation_id }` — the frontend surfaces `detail ?? title`.
@@ -16,7 +16,7 @@ Sources: `app/auth/`, `hooks/use-auth.ts`, `store/auth-store.ts`, `lib/auth-type
 
 ## Endpoints
 
-### 1. Login — `POST /v1/auth/login`
+### 1. Login — `POST /app/auth/login`
 
 Request:
 
@@ -40,7 +40,7 @@ Response `200`:
 
 `session.onboardingCompleted` is server-derived: true when the account already owns or belongs to at least one project (e.g. an invited member). Sets the httpOnly `session_token` cookie. Errors: `401` "Invalid email or password." Page redirects to `/`.
 
-### 2. Signup — `POST /v1/auth/signup`
+### 2. Signup — `POST /app/auth/signup`
 
 Request:
 
@@ -64,32 +64,32 @@ Signup **starts a session immediately** (`rememberMe = false` semantics → 1-da
 
 Page behavior: redirects to `/onboarding/welcome`. The backend sends a **welcome email plus a verification email** whose link points to `/auth/verify-email?token={token}` (email delivery pending M4; in dev mode the raw token is returned instead for manual testing of that page). Until verified, the dashboard shows an amber banner warning that unverified accounts are deleted after 48 hours (deletion enforcement pending).
 
-### 3. OAuth — `GET /v1/auth/oauth/{provider}` (`github` | `google`)
+### 3. OAuth — `GET /app/auth/oauth/{provider}` (`github` | `google`)
 
 Browser-redirect flow (popup-first on the dashboard):
 
-1. **Start** `GET /v1/auth/oauth/github?popup=1` → `302` to the provider's consent screen; parks short-lived httpOnly cookies (`oauth_state_*`, `oauth_verifier_*`, `oauth_mode_*`) scoped to the callback path. Unconfigured provider (no client credentials) → `503` problem document; unknown provider → `400`.
-2. **Callback** `GET /v1/auth/oauth/{provider}/callback?code=…&state=…` → validates CSRF state, exchanges the code server-side, upserts the user, sets the standard 1-day `session_token` cookie, then:
+1. **Start** `GET /app/auth/oauth/github?popup=1` → `302` to the provider's consent screen; parks short-lived httpOnly cookies (`oauth_state_*`, `oauth_verifier_*`, `oauth_mode_*`) scoped to the callback path. Unconfigured provider (no client credentials) → `503` problem document; unknown provider → `400`.
+2. **Callback** `GET /app/auth/oauth/{provider}/callback?code=…&state=…` → validates CSRF state, exchanges the code server-side, upserts the user, sets the standard 1-day `session_token` cookie, then:
    - `popup` mode → `200 text/html` page that postMessages `{ "type": "oauth:success" }` (or `{ "type": "oauth:error" }`) to the dashboard origin and closes the window;
    - `redirect` mode → `302` to the dashboard root.
    - Any failure → popup gets `oauth:error`; redirect mode lands on `/auth/login?error=oauth_failed`.
-3. Dashboard: opens the start URL in a popup from the click handler (falls back to full-page redirect when blocked), listens for one validated-origin message, then calls `/v1/auth/me` to hydrate user + onboarding flag.
+3. Dashboard: opens the start URL in a popup from the click handler (falls back to full-page redirect when blocked), listens for one validated-origin message, then calls `/app/auth/me` to hydrate user + onboarding flag.
 
 **Account linking:** only provider-verified emails are accepted. Resolution order: existing `(provider, subject)` account → sign in; else an account with the same email → auto-link the OAuth identity onto it (a provider-verified address proves inbox control); else create a fresh verified account.
 
-**Config (backend env):** `NOTIFI_OAUTH_GITHUB_CLIENT_ID/_SECRET`, `NOTIFI_OAUTH_GOOGLE_CLIENT_ID/_SECRET`, `NOTIFI_DASHBOARD_URL` (default `http://localhost:3000`), `NOTIFI_API_BASE_URL` (default `http://localhost:8080`). Callback URLs to register with providers: `{api_base_url}/v1/auth/oauth/{provider}/callback`.
+**Config (backend env):** `NOTIFI_OAUTH_GITHUB_CLIENT_ID/_SECRET`, `NOTIFI_OAUTH_GOOGLE_CLIENT_ID/_SECRET`, `NOTIFI_DASHBOARD_URL` (default `http://localhost:3000`), `NOTIFI_API_BASE_URL` (default `http://localhost:8080`). Callback URLs to register with providers: `{api_base_url}/app/auth/oauth/{provider}/callback`.
 
-### 4. Logout — `POST /v1/auth/logout`
+### 4. Logout — `POST /app/auth/logout`
 
 Revokes the session behind the cookie and clears it. Idempotent — always `200 { "status": "ok" }`, even without a cookie.
 
-### 5. Current user — `GET /v1/auth/me`
+### 5. Current user — `GET /app/auth/me`
 
 Requires a valid session cookie. Response `200 { "user": {}, "onboardingCompleted": false }`. Errors: `401` "Authentication required."
 
 Called by the dashboard on first load (`fetchMe`) to restore session state, including the onboarding flag.
 
-### 5b. Complete onboarding — `POST /v1/auth/onboarding/complete`
+### 5b. Complete onboarding — `POST /app/auth/onboarding/complete`
 
 Requires a valid session cookie.
 
@@ -134,7 +134,7 @@ endpoint is now live (see the two project endpoints below).
 
 ### Project endpoints
 
-#### `GET /v1/projects` — list projects
+#### `GET /app/projects` — list projects
 
 Requires a valid session cookie. Returns all projects the user owns or belongs to.
 
@@ -157,7 +157,7 @@ Response `200`:
 
 Used by the topbar project switcher and environment switcher on dashboard mount.
 
-#### `PATCH /v1/projects/:id/environment` — switch environment gate
+#### `PATCH /app/projects/:id/environment` — switch environment gate
 
 Requires a valid session cookie. The user must own or belong to the project.
 
@@ -182,25 +182,25 @@ Errors: `400` invalid environment value, `404` project not found or user lacks a
 
 Called by the topbar environment segmented control; the UI shows a spinner while the request is in flight and reverts on failure with a toast.
 
-### 6. Forgot password — `POST /v1/auth/password/forgot`
+### 6. Forgot password — `POST /app/auth/password/forgot`
 
 Request: `{ "email": "string" }`
 
 Always `200 { "status": "ok"[, "resetToken": "dev mode"] }` — never reveals whether the account exists (no enumeration). Emails a reset link. Page shows its "check your email" state regardless.
 
-### 7. Reset password — `POST /v1/auth/password/reset`
+### 7. Reset password — `POST /app/auth/password/reset`
 
 Request: `{ "token": "string", "password": "string" }` (token from `?token=` query param of the emailed link)
 
 Response `200 { "status": "ok" }`. Consumes the one-time token, rotates the password, and revokes all existing sessions for the account. Errors: `400` invalid/used token, `410` expired token. Page shows success then redirects to `/auth/login` after 2s.
 
-### 8. Verify email — `POST /v1/auth/verify-email`
+### 8. Verify email — `POST /app/auth/verify-email`
 
 Request: `{ "token": "string" }` (from `?token=` query param)
 
 Response `200 { "status": "ok" }`. Errors: `410` expired (detail contains the word "expired" — **load-bearing**: the page branches on it to pick its "Link expired" vs "Invalid link" state; do not change that wording), `400` unknown/used token. Success → page redirects to `/onboarding/welcome` after 3s.
 
-### 9. Resend verification — `POST /v1/auth/verify-email/resend`
+### 9. Resend verification — `POST /app/auth/verify-email/resend`
 
 Request: `{ "email": "string" }`
 

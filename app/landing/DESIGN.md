@@ -567,7 +567,7 @@ Rules: exactly **one primary CTA per viewport**; all others secondary/ghost. Eve
 
 Design language §16 applies. Landing-specific executions:
 
-1. **Hero delivery flow (signature motif):** SVG — a `POST /v1/notifications` node → outbox → queue (3 stacked bars) → workers → 4 channel glyphs (envelope, message, bell, monitor) → green "Delivered" flag. A violet packet travels the path on loop. Captions under nodes in mono 11px.
+1. **Hero delivery flow (signature motif):** SVG — a `POST /api/v1/notifications` node → outbox → queue (3 stacked bars) → workers → 4 channel glyphs (envelope, message, bell, monitor) → green "Delivered" flag. A violet packet travels the path on loop. Captions under nodes in mono 11px.
 2. **Floating code window:** real, copy-pasteable JS snippet in a `CodeWindow` (filename `send.js`), tilted 2°, `--shadow-lg`; it contains the working quickstart (idempotency key + channel array).
 3. **Architecture diagram:** wide SVG with 5 stages, per-stage hover highlights a caption column (sticky); arrows show fan-out; a failed-provider edge shows a violet retry loop.
 4. **Analytics mock:** dashboard-style panel (server-rendered): 4 counters (Delivered today, Open rate, Channel split, p95 latency), horizontal channel bars, latency sparkline — all SVG/CSS, tabular figures, skeleton-free (it is a static illustration, marked "Sample data").

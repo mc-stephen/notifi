@@ -96,21 +96,21 @@ Auth flow (needs a database; dev mode returns one-time tokens in responses):
 
 ```shell
 # 1. signup → 201, note verificationToken from the response
-curl -s -X POST http://127.0.0.1:8080/v1/auth/signup \
+curl -s -X POST http://127.0.0.1:8080/app/auth/signup \
   -H 'content-type: application/json' \
   -d '{"name":"Jane","email":"jane@example.com","password":"Sup3rSecret!"}'
 
 # 2. verify email with that token
-curl -s -X POST http://127.0.0.1:8080/v1/auth/verify-email \
+curl -s -X POST http://127.0.0.1:8080/app/auth/verify-email \
   -H 'content-type: application/json' -d '{"token":"<verificationToken>"}'
 
 # 3. login → sets the session_token cookie; session.token is also in the body
-curl -s -c /tmp/notifi-cookies.txt -X POST http://127.0.0.1:8080/v1/auth/login \
+curl -s -c /tmp/notifi-cookies.txt -X POST http://127.0.0.1:8080/app/auth/login \
   -H 'content-type: application/json' \
   -d '{"email":"jane@example.com","password":"Sup3rSecret!","rememberMe":true}'
 
 # 4. current user via cookie
-curl -s -b /tmp/notifi-cookies.txt http://127.0.0.1:8080/v1/auth/me
+curl -s -b /tmp/notifi-cookies.txt http://127.0.0.1:8080/app/auth/me
 ```
 
 Every response includes an `x-request-id` header for log correlation.

@@ -7,8 +7,8 @@ use crate::domain::auth::entities::UserId;
 use crate::domain::support::entities::{MessageAuthor, TicketStatus};
 use crate::ports::auth_store::StoreError;
 use crate::ports::tickets_store::{
-    AdminTicketMessageRecord, AdminTicketRecord, TicketMessageRecord, TicketRecord, TicketsStore,
-    BoxFut,
+    AdminTicketMessageRecord, AdminTicketRecord, TicketCounts, TicketMessageRecord, TicketRecord,
+    TicketsStore, BoxFut,
 };
 
 pub struct PgTicketsStore {
@@ -633,6 +633,30 @@ impl TicketsStore for PgTicketsStore {
             .map_err(map_err)?;
 
             Ok(result.rows_affected() > 0)
+        })
+    }
+
+    fn count_tickets_for_user(
+        &self,
+        user_id: &str,
+    ) -> BoxFut<'_, Result<TicketCounts, StoreError>> {
+        let pool = self.pool.clone();
+        let user_id_owned = user_id.to_string();
+
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, (i64, i64)>(
+                "SELECT count(*),
+                        count(*) FILTER (WHERE status IN ('open', 'in_progress'))
+                 FROM platform_support_tickets
+                 WHERE created_by = $1 AND deleted_at IS NULL",
+            )
+            .bind(&user_id_owned)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+
+            let (total, open) = row.unwrap_or((0, 0));
+            Ok(TicketCounts { total, open })
         })
     }
 }

@@ -20,6 +20,11 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
     <div id="secret-display" class="hidden space-y-1">
       <p class="text-xs text-muted-foreground text-center">Manual entry key:</p>
       <code id="secret-value" class="block text-center text-xs font-mono bg-muted rounded-md px-3 py-2 break-all"></code>
+      <div class="text-center">
+        <button type="button" id="regenerate-btn" class="text-xs text-muted-foreground hover:text-foreground underline">
+          Generate a new code
+        </button>
+      </div>
     </div>
 
     <form id="totp-form" class="space-y-4">
@@ -35,7 +40,7 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
           maxlength="6"
           pattern="[0-9]{6}"
           placeholder="000000"
-          class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 text-center tracking-[0.5em] font-mono"
+          class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 text-center tracking-[0.5em] font-mono"
         />
       </div>
 
@@ -53,28 +58,18 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
         </svg>
       </button>
     </form>
+
+    <div class="text-center">
+      <button type="button" id="sign-out-btn" class="text-sm text-muted-foreground hover:text-foreground underline">
+        Sign out
+      </button>
+    </div>
   </div>
 </AuthLayout>
 
 <script>
-  const API_BASE = (import.meta as any).env?.PUBLIC_API_URL ?? "http://localhost:8080";
-
-  async function api(path: string, init?: RequestInit) {
-    const res = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      credentials: "include",
-      headers: { "Content-Type": "application/json", ...init?.headers },
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(body?.detail ?? body?.message ?? `${res.status}`);
-    return body;
-  }
-
-  function renderQrCode(uri: string) {
-    const container = document.getElementById("qr-container")!;
-    const svgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(uri)}&format=svg`;
-    container.innerHTML = `<img src="${svgUrl}" alt="TOTP QR Code" width="200" height="200" class="rounded" />`;
-  }
+  import { auth, ApiError } from "../../lib/api";
+  import { renderQrCode } from "../../lib/qrcode";
 
   const totpError = document.getElementById("totp-error")!;
   const totpForm = document.getElementById("totp-form") as HTMLFormElement;
@@ -82,18 +77,36 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
   const totpBtnText = document.getElementById("totp-btn-text")!;
   const totpBtnSpinner = document.getElementById("totp-btn-spinner")!;
 
-  // On load, generate a fresh TOTP secret (requires an existing session).
-  (async () => {
+  function showError(message: string) {
+    totpError.textContent = message;
+    totpError.classList.remove("hidden");
+  }
+
+  async function loadQr(regenerate = false) {
+    totpError.classList.add("hidden");
     try {
-      const data = await api("/v1/admin/totp/setup", { method: "POST" });
-      renderQrCode(data.totpUri);
+      const data = await auth.totpSetup(regenerate);
+      await renderQrCode(document.getElementById("qr-container")!, data.totpUri);
       document.getElementById("secret-value")!.textContent = data.totpSecret;
       document.getElementById("secret-display")!.classList.remove("hidden");
-    } catch (err: any) {
-      totpError.textContent = err.message || "Failed to load TOTP setup";
-      totpError.classList.remove("hidden");
+    } catch (err) {
+      showError(err instanceof ApiError ? err.message : "Failed to load TOTP setup");
     }
-  })();
+  }
+
+  // Load the pending secret (the backend reuses it instead of rotating,
+  // so refreshes never orphan the displayed QR code).
+  loadQr();
+
+  document.getElementById("regenerate-btn")?.addEventListener("click", () => loadQr(true));
+
+  document.getElementById("sign-out-btn")?.addEventListener("click", async () => {
+    try {
+      await auth.logout();
+    } finally {
+      window.location.href = "/login";
+    }
+  });
 
   totpForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -105,14 +118,10 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
     const code = (document.getElementById("totp-code") as HTMLInputElement).value;
 
     try {
-      await api("/v1/admin/totp/verify", {
-        method: "POST",
-        body: JSON.stringify({ code }),
-      });
+      await auth.totpVerify(code);
       window.location.href = "/overview";
-    } catch (err: any) {
-      totpError.textContent = err.message;
-      totpError.classList.remove("hidden");
+    } catch (err) {
+      showError(err instanceof ApiError ? err.message : "Verification failed. Please try again.");
     } finally {
       totpBtnText.textContent = "Verify & Complete Setup";
       totpBtnSpinner.classList.add("hidden");

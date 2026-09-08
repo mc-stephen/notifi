@@ -21,7 +21,7 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
           required
           autocomplete="new-password"
           placeholder="Enter new password"
-          class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+          class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
         />
       </div>
 
@@ -34,7 +34,7 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
           required
           autocomplete="new-password"
           placeholder="Confirm new password"
-          class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+          class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
         />
       </div>
 
@@ -49,15 +49,25 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
             <span class="size-1.5 rounded-full bg-muted-foreground/40"></span>
             One uppercase letter
           </li>
+          <li class="flex items-center gap-1.5" id="req-lower">
+            <span class="size-1.5 rounded-full bg-muted-foreground/40"></span>
+            One lowercase letter
+          </li>
           <li class="flex items-center gap-1.5" id="req-number">
             <span class="size-1.5 rounded-full bg-muted-foreground/40"></span>
             One number
           </li>
+          <li class="flex items-center gap-1.5" id="req-special">
+            <span class="size-1.5 rounded-full bg-muted-foreground/40"></span>
+            One special character
+          </li>
         </ul>
       </div>
 
-      <div id="error-message" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
-        Passwords do not meet requirements.
+      <div id="error-message" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
+
+      <div id="success-message" class="hidden rounded-lg border border-success/20 bg-success/5 p-3 text-sm text-success">
+        Password reset. Redirecting to sign in…
       </div>
 
       <button
@@ -82,46 +92,61 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
 </AuthLayout>
 
 <script>
+  import { auth, ApiError } from "../../lib/api";
+  import { checkPassword, passwordValid } from "../../lib/password";
+
   const form = document.getElementById("reset-form") as HTMLFormElement;
   const password = document.getElementById("password") as HTMLInputElement;
   const confirm = document.getElementById("confirm") as HTMLInputElement;
   const errorDiv = document.getElementById("error-message");
+  const successDiv = document.getElementById("success-message");
   const submitBtn = document.getElementById("submit-btn") as HTMLButtonElement;
   const btnText = document.getElementById("btn-text");
   const btnSpinner = document.getElementById("btn-spinner");
 
-  function checkRequirements() {
-    const len = document.getElementById("req-length");
-    const upper = document.getElementById("req-upper");
-    const num = document.getElementById("req-number");
-    const v = password.value;
+  const token = new URLSearchParams(window.location.search).get("token") ?? "";
 
-    function setMet(el: HTMLElement | null, met: boolean) {
-      if (!el) return;
-      const dot = el.querySelector("span");
-      if (dot) {
-        dot.className = met ? "size-1.5 rounded-full bg-success" : "size-1.5 rounded-full bg-muted-foreground/40";
-      }
+  function setMet(id: string, met: boolean) {
+    const el = document.getElementById(id);
+    const dot = el?.querySelector("span");
+    if (dot) {
+      dot.className = met ? "size-1.5 rounded-full bg-success" : "size-1.5 rounded-full bg-muted-foreground/40";
     }
+  }
 
-    setMet(len, v.length >= 8);
-    setMet(upper, /[A-Z]/.test(v));
-    setMet(num, /[0-9]/.test(v));
+  function checkRequirements() {
+    const c = checkPassword(password.value);
+    setMet("req-length", c.length);
+    setMet("req-upper", c.upper);
+    setMet("req-lower", c.lower);
+    setMet("req-number", c.digit);
+    setMet("req-special", c.special);
   }
 
   password?.addEventListener("input", checkRequirements);
 
-  form?.addEventListener("submit", (e) => {
+  function showError(message: string) {
+    if (!errorDiv) return;
+    errorDiv.textContent = message;
+    errorDiv.classList.remove("hidden");
+  }
+
+  if (!token) {
+    showError("This reset link is missing its token. Request a new one.");
+    submitBtn.disabled = true;
+  }
+
+  form?.addEventListener("submit", async (e) => {
     e.preventDefault();
     errorDiv?.classList.add("hidden");
 
-    if (password.value.length < 8 || !/[A-Z]/.test(password.value) || !/[0-9]/.test(password.value)) {
-      errorDiv?.classList.remove("hidden");
+    if (!passwordValid(password.value)) {
+      showError("Password does not meet all requirements above.");
       return;
     }
 
     if (password.value !== confirm.value) {
-      errorDiv?.classList.remove("hidden");
+      showError("Passwords do not match.");
       return;
     }
 
@@ -129,10 +154,17 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
     btnSpinner?.classList.remove("hidden");
     submitBtn.disabled = true;
 
-    setTimeout(() => {
+    try {
+      await auth.resetPassword(token, password.value);
+      successDiv?.classList.remove("hidden");
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 1500);
+    } catch (err) {
+      showError(err instanceof ApiError ? err.message : "Reset failed. The link may have expired.");
       btnSpinner?.classList.add("hidden");
       submitBtn.disabled = false;
-      window.location.href = "/login";
-    }, 1500);
+      btnText && (btnText.textContent = "Reset Password");
+    }
   });
 </script>

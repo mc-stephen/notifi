@@ -1,9 +1,10 @@
 //! Admin HTTP handlers — bootstrap (first admin) and TOTP 2FA management.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Extension, FromRequestParts};
+use axum::extract::{Extension, FromRequestParts, Query};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -16,9 +17,10 @@ use crate::domain::admin::AdminService;
 use crate::domain::admin::entities::AdminUser;
 use crate::domain::auth::errors::AuthError;
 use super::dto::{
-    AdminStatusResponse, BootstrapRequest, BootstrapResponse, TotpSetupResponse, VerifyTotpRequest,
+    AdminStatusResponse, BootstrapRequest, BootstrapResponse, ForgotPasswordRequest,
+    ResetPasswordRequest, TotpSetupResponse, VerifyTotpRequest,
 };
-use super::super::auth::middleware::{Problem, SESSION_COOKIE};
+use super::super::auth::middleware::{ADMIN_SESSION_COOKIE, Problem};
 
 type MaybeAdminService = Option<Extension<Arc<AdminService>>>;
 
@@ -54,7 +56,7 @@ where
             })?;
 
         let raw_cookie = jar
-            .get(SESSION_COOKIE)
+            .get(ADMIN_SESSION_COOKIE)
             .map(|cookie| cookie.value().to_string())
             .ok_or_else(|| {
                 super::super::auth::middleware::problem_response(AuthError::Unauthorized)
@@ -96,7 +98,7 @@ fn build_totp_from_base32(base32: &str) -> Result<TOTP, AuthError> {
     })
 }
 
-/// `GET /v1/admin/status` — returns whether any admin user exists.
+/// `GET /admin/status` — returns whether any admin user exists.
 /// No authentication required (used by the setup flow).
 pub async fn admin_status(service: MaybeAdminService) -> Result<Response, Problem> {
     let service = require_admin_service(service)?;
@@ -104,7 +106,7 @@ pub async fn admin_status(service: MaybeAdminService) -> Result<Response, Proble
     Ok(Json(json!(AdminStatusResponse { admin_exists })).into_response())
 }
 
-/// `POST /v1/admin/bootstrap` — creates the first admin user with TOTP.
+/// `POST /admin/bootstrap` — creates the first admin user with TOTP.
 /// Only works when no admin exists yet.
 pub async fn bootstrap(
     jar: CookieJar,
@@ -148,7 +150,7 @@ pub async fn bootstrap(
         .await
         .map_err(Problem::from)?;
 
-    let cookie = Cookie::build((SESSION_COOKIE, session_token))
+    let cookie = Cookie::build((ADMIN_SESSION_COOKIE, session_token))
         .http_only(true)
         .same_site(SameSite::Lax)
         .path("/")
@@ -167,7 +169,7 @@ pub async fn bootstrap(
         .into_response())
 }
 
-/// `POST /v1/admin/login` — authenticates an admin with email/password and optional TOTP code.
+/// `POST /admin/login` — authenticates an admin with email/password and optional TOTP code.
 pub async fn login(
     jar: CookieJar,
     service: MaybeAdminService,
@@ -188,7 +190,7 @@ pub async fn login(
             .issue_session(admin.id)
             .await
             .map_err(Problem::from)?;
-        let cookie = Cookie::build((SESSION_COOKIE, session_token))
+        let cookie = Cookie::build((ADMIN_SESSION_COOKIE, session_token))
             .http_only(true)
             .same_site(SameSite::Lax)
             .path("/")
@@ -240,7 +242,7 @@ pub async fn login(
         .await
         .map_err(Problem::from)?;
 
-    let cookie = Cookie::build((SESSION_COOKIE, session_token))
+    let cookie = Cookie::build((ADMIN_SESSION_COOKIE, session_token))
         .http_only(true)
         .same_site(SameSite::Lax)
         .path("/")
@@ -257,25 +259,37 @@ pub async fn login(
         .into_response())
 }
 
-/// `POST /v1/admin/totp/setup` — generates a new TOTP secret for an admin.
-/// Returns the TOTP URI for QR code generation.
+/// `POST /admin/totp/setup` — returns the TOTP URI for QR code generation.
+/// Get-or-create: reuses the pending secret when 2FA isn't enabled yet (so a
+/// refresh or the bootstrap handoff never orphans a displayed QR code).
+/// Pass `?regenerate=true` to rotate to a fresh secret instead.
 pub async fn totp_setup(
     current_admin: CurrentAdmin,
     service: MaybeAdminService,
+    Query(query): Query<HashMap<String, String>>,
 ) -> Result<Response, Problem> {
     let service = require_admin_service(service)?;
     let admin = current_admin.0;
+    let regenerate = query
+        .get("regenerate")
+        .is_some_and(|v| v == "true" || v == "1");
 
-    let (_secret_bytes, totp_secret) = generate_totp_secret()?;
+    let totp_secret = match (&admin.totp_secret, admin.totp_enabled, regenerate) {
+        (Some(secret), false, false) => secret.clone(),
+        _ => {
+            let (_secret_bytes, secret) = generate_totp_secret()?;
+            service
+                .set_totp_secret(admin.id, secret.clone())
+                .await
+                .map_err(Problem::from)?;
+            secret
+        }
+    };
+
     let mut totp = build_totp_from_base32(&totp_secret)?;
     totp.issuer = Some("Notifi".to_string());
     totp.account_name = admin.email.to_string();
     let totp_uri = totp.get_url().to_string();
-
-    service
-        .set_totp_secret(admin.id, totp_secret.clone())
-        .await
-        .map_err(Problem::from)?;
 
     Ok(Json(json!(TotpSetupResponse {
         totp_secret,
@@ -284,7 +298,7 @@ pub async fn totp_setup(
     .into_response())
 }
 
-/// `POST /v1/admin/totp/verify` — verifies a TOTP code and enables 2FA.
+/// `POST /admin/totp/verify` — verifies a TOTP code and enables 2FA.
 pub async fn totp_verify(
     current_admin: CurrentAdmin,
     service: MaybeAdminService,
@@ -314,15 +328,60 @@ pub async fn totp_verify(
     Ok(Json(json!({ "status": "ok" })).into_response())
 }
 
-/// `POST /v1/admin/logout` — revokes the session behind the cookie.
+/// `GET /admin/me` — returns the authenticated admin (session check).
+pub async fn me(CurrentAdmin(admin): CurrentAdmin) -> Result<Response, Problem> {
+    Ok(Json(json!({
+        "id": admin.id.to_string(),
+        "name": admin.name,
+        "email": admin.email.to_string(),
+        "totpEnabled": admin.totp_enabled,
+    }))
+    .into_response())
+}
+
+/// `POST /admin/password/forgot` — always 200; never reveals whether the
+/// account exists. The reset token is only exposed in local dev mode.
+pub async fn forgot_password(
+    service: MaybeAdminService,
+    Json(request): Json<ForgotPasswordRequest>,
+) -> Result<Response, Problem> {
+    let service = require_admin_service(service)?;
+    let raw_token = service
+        .forgot_password(&request.email)
+        .await
+        .map_err(Problem::from)?;
+
+    let mut body = json!({ "status": "ok" });
+    if let (true, Some(token)) = (service.exposes_dev_tokens(), raw_token) {
+        body["resetToken"] = json!(token);
+    }
+    Ok(Json(body).into_response())
+}
+
+/// `POST /admin/password/reset` — consumes the token, rotates the password,
+/// revokes all existing sessions for the account.
+pub async fn reset_password(
+    service: MaybeAdminService,
+    Json(request): Json<ResetPasswordRequest>,
+) -> Result<Response, Problem> {
+    let service = require_admin_service(service)?;
+    service
+        .reset_password(&request.token, &request.password)
+        .await
+        .map_err(Problem::from)?;
+
+    Ok(Json(json!({ "status": "ok" })).into_response())
+}
+
+/// `POST /admin/logout` — revokes the session behind the cookie.
 pub async fn logout(jar: CookieJar, service: MaybeAdminService) -> Result<Response, Problem> {
     let service = require_admin_service(service)?;
-    if let Some(raw) = jar.get(SESSION_COOKIE).map(|cookie| cookie.value()) {
+    if let Some(raw) = jar.get(ADMIN_SESSION_COOKIE).map(|cookie| cookie.value()) {
         service.logout(raw).await.map_err(Problem::from)?;
     }
 
     // Clear the cookie even when there was nothing to revoke (idempotent).
-    let removal = Cookie::build(SESSION_COOKIE).path("/").build();
+    let removal = Cookie::build(ADMIN_SESSION_COOKIE).path("/").build();
     Ok((jar.remove(removal), Json(json!({ "status": "ok" }))).into_response())
 }
 

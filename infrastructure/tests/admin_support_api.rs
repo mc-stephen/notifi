@@ -27,7 +27,7 @@ fn app_with_admin_support() -> (Router, Arc<FakeTicketsStore>) {
     let audit = Arc::new(AuditService::new(Arc::new(FakeAuditStore::new())));
     let auth = Arc::new(AuthService::new(auth_store.clone(), true, audit.clone()));
     let projects = Arc::new(ProjectService::new(auth_store.clone(), audit.clone()));
-    let admin = Arc::new(AdminService::new(Box::new(FakeAdminStore::new())));
+    let admin = Arc::new(AdminService::new(Box::new(FakeAdminStore::new()), true));
     let tickets_store = Arc::new(FakeTicketsStore::new());
     let tickets = Arc::new(TicketService::new(tickets_store.clone(), audit.clone()));
     let _recipients_store = Arc::new(FakeRecipientsStore::new());
@@ -39,6 +39,7 @@ fn app_with_admin_support() -> (Router, Arc<FakeTicketsStore>) {
                 auth: Some(auth),
                 oauth: None,
                 admin: Some(admin),
+                admin_users: None,
                 projects: Some(projects),
                 audit: Some(audit),
                 recipients: None,
@@ -69,7 +70,7 @@ fn session_cookie_from(res: &axum::response::Response) -> String {
         .split(';')
         .next()
         .unwrap_or("")
-        .strip_prefix("session_token=")
+        .strip_prefix("admin_session=")
         .unwrap_or("")
         .to_string()
 }
@@ -80,7 +81,7 @@ async fn signup_and_login(app: Router, tickets: &FakeTicketsStore, email: &str) 
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/signup")
+                .uri("/app/auth/signup")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({"name": "Jane", "email": email, "password": "Sup3rSecret!"})
@@ -96,7 +97,7 @@ async fn signup_and_login(app: Router, tickets: &FakeTicketsStore, email: &str) 
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/login")
+                .uri("/app/auth/login")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({"email": email, "password": "Sup3rSecret!", "rememberMe": false})
@@ -119,7 +120,7 @@ async fn bootstrap_admin(app: Router, tickets: &FakeTicketsStore) -> String {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/admin/bootstrap")
+                .uri("/admin/bootstrap")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({"name": "Root", "email": "root@notifi.dev", "password": "Adm1n!Pass"})
@@ -143,6 +144,7 @@ async fn request_with_cookie(
     method: &str,
     uri: &str,
     body: Option<Value>,
+    cookie_name: &str,
     cookie: &str,
 ) -> axum::response::Response {
     let mut builder = Request::builder()
@@ -150,7 +152,7 @@ async fn request_with_cookie(
         .uri(uri)
         .header("content-type", "application/json");
     if !cookie.is_empty() {
-        builder = builder.header("cookie", format!("session_token={cookie}"));
+        builder = builder.header("cookie", format!("{cookie_name}={cookie}"));
     }
     let body = body.map(|b| Body::from(b.to_string())).unwrap_or_else(Body::empty);
     app.oneshot(builder.body(body).unwrap()).await.unwrap()
@@ -160,7 +162,7 @@ async fn create_ticket_as(app: Router, cookie: &str) -> String {
     let res = request_with_cookie(
         app,
         "POST",
-        "/v1/support/tickets",
+        "/app/support/tickets",
         Some(json!({
             "projectId": null,
             "subject": "Login is broken",
@@ -168,6 +170,7 @@ async fn create_ticket_as(app: Router, cookie: &str) -> String {
             "priority": "High",
             "description": "Cannot sign in since yesterday.",
         })),
+        "session_token",
         cookie,
     )
     .await;
@@ -183,7 +186,7 @@ async fn admin_lists_all_tickets_with_customer_identity() {
     let admin_cookie = bootstrap_admin(app.clone(), &tickets).await;
     let ticket_id = create_ticket_as(app.clone(), &user_cookie).await;
 
-    let res = request_with_cookie(app.clone(), "GET", "/v1/admin/support/tickets", None, &admin_cookie).await;
+    let res = request_with_cookie(app.clone(), "GET", "/admin/support/tickets", None, "admin_session", &admin_cookie).await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     let list = body["tickets"].as_array().unwrap();
@@ -206,9 +209,9 @@ async fn admin_views_thread_and_replies_as_support() {
     let res = request_with_cookie(
         app.clone(),
         "GET",
-        &format!("/v1/admin/support/tickets/{ticket_id}"),
+        &format!("/admin/support/tickets/{ticket_id}"),
         None,
-        &admin_cookie,
+        "admin_session", &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -217,9 +220,9 @@ async fn admin_views_thread_and_replies_as_support() {
     let res = request_with_cookie(
         app.clone(),
         "GET",
-        &format!("/v1/admin/support/tickets/{ticket_id}/messages"),
+        &format!("/admin/support/tickets/{ticket_id}/messages"),
         None,
-        &admin_cookie,
+        "admin_session", &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -229,9 +232,9 @@ async fn admin_views_thread_and_replies_as_support() {
     let res = request_with_cookie(
         app.clone(),
         "POST",
-        &format!("/v1/admin/support/tickets/{ticket_id}/messages"),
+        &format!("/admin/support/tickets/{ticket_id}/messages"),
         Some(json!({"body": "We are looking into this."})),
-        &admin_cookie,
+        "admin_session", &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::CREATED);
@@ -242,9 +245,9 @@ async fn admin_views_thread_and_replies_as_support() {
     let res = request_with_cookie(
         app.clone(),
         "GET",
-        &format!("/v1/support/tickets/{ticket_id}/messages"),
+        &format!("/app/support/tickets/{ticket_id}/messages"),
         None,
-        &user_cookie,
+        "session_token", &user_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -258,9 +261,9 @@ async fn admin_views_thread_and_replies_as_support() {
     let res = request_with_cookie(
         app.clone(),
         "GET",
-        &format!("/v1/admin/support/tickets/{ticket_id}/messages"),
+        &format!("/admin/support/tickets/{ticket_id}/messages"),
         None,
-        &admin_cookie,
+        "admin_session", &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -281,9 +284,9 @@ async fn admin_sets_ticket_status() {
         let res = request_with_cookie(
             app.clone(),
             "PATCH",
-            &format!("/v1/admin/support/tickets/{ticket_id}"),
+            &format!("/admin/support/tickets/{ticket_id}"),
             Some(json!({"status": status})),
-            &admin_cookie,
+            "admin_session", &admin_cookie,
         )
         .await;
         assert_eq!(res.status(), StatusCode::OK);
@@ -295,9 +298,9 @@ async fn admin_sets_ticket_status() {
     let res = request_with_cookie(
         app.clone(),
         "PATCH",
-        &format!("/v1/admin/support/tickets/{ticket_id}"),
+        &format!("/admin/support/tickets/{ticket_id}"),
         Some(json!({"status": "waiting"})),
-        &admin_cookie,
+        "admin_session", &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
@@ -313,9 +316,9 @@ async fn admin_reply_moves_resolved_ticket_to_in_progress() {
     let res = request_with_cookie(
         app.clone(),
         "PATCH",
-        &format!("/v1/admin/support/tickets/{ticket_id}"),
+        &format!("/admin/support/tickets/{ticket_id}"),
         Some(json!({"status": "resolved"})),
-        &admin_cookie,
+        "admin_session", &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -323,9 +326,9 @@ async fn admin_reply_moves_resolved_ticket_to_in_progress() {
     let res = request_with_cookie(
         app.clone(),
         "POST",
-        &format!("/v1/admin/support/tickets/{ticket_id}/messages"),
+        &format!("/admin/support/tickets/{ticket_id}/messages"),
         Some(json!({"body": "Actually, one more thing to check."})),
-        &admin_cookie,
+        "admin_session", &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::CREATED);
@@ -333,9 +336,9 @@ async fn admin_reply_moves_resolved_ticket_to_in_progress() {
     let res = request_with_cookie(
         app.clone(),
         "GET",
-        &format!("/v1/admin/support/tickets/{ticket_id}"),
+        &format!("/admin/support/tickets/{ticket_id}"),
         None,
-        &admin_cookie,
+        "admin_session", &admin_cookie,
     )
     .await;
     assert_eq!(body_json(res).await["ticket"]["status"].as_str().unwrap(), "in_progress");
@@ -351,9 +354,9 @@ async fn admin_cannot_reply_to_closed_ticket() {
     let res = request_with_cookie(
         app.clone(),
         "PATCH",
-        &format!("/v1/admin/support/tickets/{ticket_id}"),
+        &format!("/admin/support/tickets/{ticket_id}"),
         Some(json!({"status": "closed"})),
-        &admin_cookie,
+        "admin_session", &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -361,9 +364,9 @@ async fn admin_cannot_reply_to_closed_ticket() {
     let res = request_with_cookie(
         app.clone(),
         "POST",
-        &format!("/v1/admin/support/tickets/{ticket_id}/messages"),
+        &format!("/admin/support/tickets/{ticket_id}/messages"),
         Some(json!({"body": "Hello?"})),
-        &admin_cookie,
+        "admin_session", &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::CONFLICT);
@@ -377,16 +380,16 @@ async fn admin_endpoints_require_admin_session() {
     let ticket_id = create_ticket_as(app.clone(), &user_cookie).await;
 
     // No cookie at all.
-    let res = request_with_cookie(app.clone(), "GET", "/v1/admin/support/tickets", None, "").await;
+    let res = request_with_cookie(app.clone(), "GET", "/admin/support/tickets", None, "admin_session", "").await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
     // A customer session is not an admin session.
     let res = request_with_cookie(
         app.clone(),
         "GET",
-        &format!("/v1/admin/support/tickets/{ticket_id}"),
+        &format!("/admin/support/tickets/{ticket_id}"),
         None,
-        &user_cookie,
+        "session_token", &user_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -394,9 +397,9 @@ async fn admin_endpoints_require_admin_session() {
     let res = request_with_cookie(
         app.clone(),
         "POST",
-        &format!("/v1/admin/support/tickets/{ticket_id}/messages"),
+        &format!("/admin/support/tickets/{ticket_id}/messages"),
         Some(json!({"body": "hi"})),
-        &user_cookie,
+        "session_token", &user_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -405,12 +408,28 @@ async fn admin_endpoints_require_admin_session() {
     let res = request_with_cookie(
         app.clone(),
         "GET",
-        "/v1/admin/support/tickets/01J0000000000000000000000",
+        "/admin/support/tickets/01J0000000000000000000000",
         None,
-        &admin_cookie,
+        "admin_session", &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn admin_me_returns_current_admin() {
+    let (app, tickets) = app_with_admin_support();
+    let admin_cookie = bootstrap_admin(app.clone(), &tickets).await;
+
+    let res = request_with_cookie(app.clone(), "GET", "/admin/me", None, "admin_session", &admin_cookie).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert_eq!(body["email"].as_str().unwrap(), "root@notifi.dev");
+    assert_eq!(body["name"].as_str().unwrap(), "Root");
+
+    // No session -> 401.
+    let res = request_with_cookie(app.clone(), "GET", "/admin/me", None, "admin_session", "").await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -421,9 +440,9 @@ async fn admin_get_unknown_ticket_is_404() {
     let res = request_with_cookie(
         app.clone(),
         "GET",
-        "/v1/admin/support/tickets/01J0000000000000000000000",
+        "/admin/support/tickets/01J0000000000000000000000",
         None,
-        &admin_cookie,
+        "admin_session", &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
@@ -431,9 +450,9 @@ async fn admin_get_unknown_ticket_is_404() {
     let res = request_with_cookie(
         app.clone(),
         "GET",
-        "/v1/admin/support/tickets/01J0000000000000000000000/messages",
+        "/admin/support/tickets/01J0000000000000000000000/messages",
         None,
-        &admin_cookie,
+        "admin_session", &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);

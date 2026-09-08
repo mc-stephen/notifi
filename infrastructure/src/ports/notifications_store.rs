@@ -45,6 +45,12 @@ pub trait NotificationsStore: Send + Sync {
         user_id: UserId,
     ) -> BoxFut<'_, Result<i64, StoreError>>;
 
+    /// Total non-deleted notifications for a user (admin stats).
+    fn count_all_for_user(
+        &self,
+        user_id: UserId,
+    ) -> BoxFut<'_, Result<i64, StoreError>>;
+
     fn get(
         &self,
         user_id: UserId,

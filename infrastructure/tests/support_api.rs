@@ -35,6 +35,7 @@ fn app_with_tickets() -> (Router, Arc<FakeTicketsStore>, Arc<FakeRecipientsStore
                 auth: Some(auth),
                 oauth: None,
                 admin: None,
+                admin_users: None,
                 projects: Some(projects),
                 audit: Some(audit),
                 recipients: None,
@@ -62,7 +63,7 @@ async fn signup_and_login_on(app: Router, email: &str) -> (String, String) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/signup")
+                .uri("/app/auth/signup")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({"name": "Jane", "email": email, "password": "Sup3rSecret!"})
@@ -78,7 +79,7 @@ async fn signup_and_login_on(app: Router, email: &str) -> (String, String) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/login")
+                .uri("/app/auth/login")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({"email": email, "password": "Sup3rSecret!", "rememberMe": false})
@@ -142,14 +143,14 @@ async fn onboard_project_on(
 
     let res = post_with_cookie(
         app.clone(),
-        "/v1/auth/onboarding/complete",
+        "/app/auth/onboarding/complete",
         json!({"project": {"name": project_name, "description": "test"}}),
         &token,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let res = get_with_cookie(app.clone(), "/v1/projects", &token).await;
+    let res = get_with_cookie(app.clone(), "/app/projects", &token).await;
     let project_id = body_json(res).await["projects"][0]["id"]
         .as_str()
         .unwrap()
@@ -163,7 +164,7 @@ async fn onboard_project_on(
 #[tokio::test]
 async fn tickets_require_auth() {
     let (app, _, _) = app_with_tickets();
-    let res = get_with_cookie(app, "/v1/support/tickets", "bogus").await;
+    let res = get_with_cookie(app, "/app/support/tickets", "bogus").await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -175,7 +176,7 @@ async fn create_personal_ticket_and_list() {
     // create personal ticket (no project_id)
     let res = post_with_cookie(
         app.clone(),
-        "/v1/support/tickets",
+        "/app/support/tickets",
         json!({
             "subject": "Account closure request",
             "category": "Account Access",
@@ -192,7 +193,7 @@ async fn create_personal_ticket_and_list() {
     assert!(created["projectId"].is_null());
 
     // list — should include the personal ticket
-    let res = get_with_cookie(app, "/v1/support/tickets", &token).await;
+    let res = get_with_cookie(app, "/app/support/tickets", &token).await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["tickets"].as_array().unwrap().len(), 1);
@@ -208,7 +209,7 @@ async fn create_project_ticket_and_get() {
     // create project-scoped ticket
     let res = post_with_cookie(
         app.clone(),
-        "/v1/support/tickets",
+        "/app/support/tickets",
         json!({
             "projectId": pid,
             "subject": "API rate limit issue",
@@ -227,7 +228,7 @@ async fn create_project_ticket_and_get() {
     // get single
     let res = get_with_cookie(
         app.clone(),
-        &format!("/v1/support/tickets/{tid}"),
+        &format!("/app/support/tickets/{tid}"),
         &token,
     )
     .await;
@@ -251,7 +252,7 @@ async fn project_tickets_visible_to_members() {
     // A creates a project ticket.
     let res = post_with_cookie(
         app.clone(),
-        "/v1/support/tickets",
+        "/app/support/tickets",
         json!({
             "projectId": pid,
             "subject": "Webhook issue",
@@ -265,7 +266,7 @@ async fn project_tickets_visible_to_members() {
     assert_eq!(res.status(), StatusCode::CREATED);
 
     // B sees the ticket (member of project).
-    let res = get_with_cookie(app.clone(), "/v1/support/tickets", &token_b).await;
+    let res = get_with_cookie(app.clone(), "/app/support/tickets", &token_b).await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["tickets"].as_array().unwrap().len(), 1);
@@ -286,7 +287,7 @@ async fn personal_ticket_invisible_to_others() {
     // A creates a personal ticket.
     let res = post_with_cookie(
         app.clone(),
-        "/v1/support/tickets",
+        "/app/support/tickets",
         json!({
             "subject": "Personal support",
             "category": "Other",
@@ -299,7 +300,7 @@ async fn personal_ticket_invisible_to_others() {
     assert_eq!(res.status(), StatusCode::CREATED);
 
     // B should NOT see A's personal ticket.
-    let res = get_with_cookie(app.clone(), "/v1/support/tickets", &token_b).await;
+    let res = get_with_cookie(app.clone(), "/app/support/tickets", &token_b).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res).await["tickets"].as_array().unwrap().len(), 0);
 }
@@ -312,7 +313,7 @@ async fn create_ticket_requires_fields() {
     // Missing subject → 422 (deserialization fails).
     let res = post_with_cookie(
         app.clone(),
-        "/v1/support/tickets",
+        "/app/support/tickets",
         json!({"category": "Billing", "priority": "Low", "description": "text"}),
         &token,
     )
@@ -322,7 +323,7 @@ async fn create_ticket_requires_fields() {
     // Empty subject → 400 (service validation).
     let res = post_with_cookie(
         app.clone(),
-        "/v1/support/tickets",
+        "/app/support/tickets",
         json!({
             "subject": "  ",
             "category": "Billing",
@@ -343,7 +344,7 @@ async fn personal_ticket_for_invisible_project_400() {
     // A tries to create a ticket for a project they don't have access to.
     let res = post_with_cookie(
         app.clone(),
-        "/v1/support/tickets",
+        "/app/support/tickets",
         json!({
             "projectId": "fake_project_id",
             "subject": "Something",
@@ -367,7 +368,7 @@ async fn list_messages_and_send_reply() {
     // Create a ticket.
     let res = post_with_cookie(
         app.clone(),
-        "/v1/support/tickets",
+        "/app/support/tickets",
         json!({
             "subject": "Login issue",
             "category": "Technical Issue",
@@ -386,7 +387,7 @@ async fn list_messages_and_send_reply() {
     // Initially no messages.
     let res = get_with_cookie(
         app.clone(),
-        &format!("/v1/support/tickets/{tid}/messages"),
+        &format!("/app/support/tickets/{tid}/messages"),
         &token,
     )
     .await;
@@ -396,7 +397,7 @@ async fn list_messages_and_send_reply() {
     // Send a reply.
     let res = post_with_cookie(
         app.clone(),
-        &format!("/v1/support/tickets/{tid}/messages"),
+        &format!("/app/support/tickets/{tid}/messages"),
         json!({"body": "Here is more info about my login issue."}),
         &token,
     )
@@ -409,7 +410,7 @@ async fn list_messages_and_send_reply() {
     // Now the thread has one message.
     let res = get_with_cookie(
         app.clone(),
-        &format!("/v1/support/tickets/{tid}/messages"),
+        &format!("/app/support/tickets/{tid}/messages"),
         &token,
     )
     .await;
@@ -430,7 +431,7 @@ async fn project_tickets_are_isolated_by_project_id() {
     // A creates a ticket scoped to project A.
     let res = post_with_cookie(
         app.clone(),
-        "/v1/support/tickets",
+        "/app/support/tickets",
         json!({
             "projectId": pid_a,
             "subject": "A's issue",
@@ -446,7 +447,7 @@ async fn project_tickets_are_isolated_by_project_id() {
     // B creates a ticket scoped to project B.
     let res = post_with_cookie(
         app.clone(),
-        "/v1/support/tickets",
+        "/app/support/tickets",
         json!({
             "projectId": pid_b,
             "subject": "B's issue",
@@ -462,7 +463,7 @@ async fn project_tickets_are_isolated_by_project_id() {
     // B lists with project_id=B — should only see B's ticket.
     let res = get_with_cookie(
         app.clone(),
-        &format!("/v1/support/tickets?project_id={pid_b}"),
+        &format!("/app/support/tickets?project_id={pid_b}"),
         &token_b,
     )
     .await;
@@ -474,7 +475,7 @@ async fn project_tickets_are_isolated_by_project_id() {
     // B lists with project_id=A — should see A's ticket (B is a member via visibility).
     let res = get_with_cookie(
         app.clone(),
-        &format!("/v1/support/tickets?project_id={pid_a}"),
+        &format!("/app/support/tickets?project_id={pid_a}"),
         &token_b,
     )
     .await;
@@ -484,7 +485,7 @@ async fn project_tickets_are_isolated_by_project_id() {
     assert_eq!(tickets.len(), 0);
 
     // B lists without project_id — backward compat: all visible tickets.
-    let res = get_with_cookie(app.clone(), "/v1/support/tickets", &token_b).await;
+    let res = get_with_cookie(app.clone(), "/app/support/tickets", &token_b).await;
     assert_eq!(res.status(), StatusCode::OK);
     let tickets = body_json(res).await["tickets"].as_array().unwrap().clone();
     assert_eq!(tickets.len(), 1);
@@ -499,7 +500,7 @@ async fn reply_on_closed_ticket_rejected() {
     // Create a ticket.
     let res = post_with_cookie(
         app.clone(),
-        "/v1/support/tickets",
+        "/app/support/tickets",
         json!({
             "subject": "Billing issue",
             "category": "Billing",
@@ -518,7 +519,7 @@ async fn reply_on_closed_ticket_rejected() {
     // Send a reply (to make the ticket open).
     let res = post_with_cookie(
         app.clone(),
-        &format!("/v1/support/tickets/{tid}/messages"),
+        &format!("/app/support/tickets/{tid}/messages"),
         json!({"body": "More details."}),
         &token,
     )

@@ -10,6 +10,8 @@ use notifi_core::error::{ApiError, IntoApiError};
 pub enum AuthError {
     /// Wrong email or password (login).
     InvalidCredentials,
+    /// The account exists but an admin suspended it.
+    AccountSuspended,
     /// Signup with an email that already has an account.
     EmailAlreadyExists,
     /// Input failed validation (email shape, password policy).
@@ -40,6 +42,7 @@ impl std::fmt::Display for AuthError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidCredentials => write!(f, "invalid credentials"),
+            Self::AccountSuspended => write!(f, "account suspended"),
             Self::EmailAlreadyExists => write!(f, "email already exists"),
             Self::Validation(m) => write!(f, "validation failed: {m}"),
             Self::TokenInvalid(m) => write!(f, "invalid token: {m}"),
@@ -66,6 +69,12 @@ impl IntoApiError for AuthError {
                 "about:blank",
                 "Unauthorized",
                 "Invalid email or password.",
+            ),
+            Self::AccountSuspended => ApiError::new(
+                403,
+                "about:blank",
+                "Forbidden",
+                "This account has been suspended. Contact support for help.",
             ),
             Self::EmailAlreadyExists => ApiError::new(
                 409,

@@ -1,8 +1,9 @@
 //! Notifi server — HTTP API, domain logic, and infrastructure in one crate.
 //!
 //! Layout (`docs/ARCHITECTURE.md` §2):
-//! * [`api`] — axum presentation: two surfaces (project @ root, user @ `/v1`),
-//!   middleware, error mapping.
+//! * [`api`] — axum presentation: ops at root, external product API at
+//!   `/v1`, dashboard backend at `/app`, administration at
+//!   `/admin`; middleware, error mapping.
 //! * [`domain`] — business logic and models, framework-free.
 //! * [`ports`] — traits/contracts the domain depends on ([`ports::AuthStore`],
 //!   [`ports::OAuthIdentityProvider`]); implemented by `infra`.
@@ -59,7 +60,7 @@ fn run_inner() -> Result<(), String> {
         let redis_conn = infra::redis::connect(&config);
 
         // Audit log listener: built from the same DB, shared by auth/projects
-        // (they emit actions) and the /v1/logs query surface.
+        // (they emit actions) and the /app/logs query surface.
         let audit = db.as_ref().map(|pool| {
             std::sync::Arc::new(domain::audit::AuditService::new(
                 std::sync::Arc::new(infra::audit_repository_pg::PgAuditStore::new(pool.clone())),
@@ -95,6 +96,7 @@ fn run_inner() -> Result<(), String> {
         let admin = db.as_ref().map(|pool| {
             std::sync::Arc::new(domain::admin::AdminService::new(
                 Box::new(infra::PgAdminStore::new(pool.clone())),
+                config.auth.expose_dev_tokens,
             ))
         });
 
@@ -131,6 +133,18 @@ fn run_inner() -> Result<(), String> {
         // Support tickets: personal or project-scoped tickets with status.
         let tickets = db.as_ref().map(|pool| {
             std::sync::Arc::new(domain::support::TicketService::new(
+                std::sync::Arc::new(infra::PgTicketsStore::new(pool.clone())),
+                audit.clone().expect("audit service built with db"),
+            ))
+        });
+
+        // Admin user management: list/stats/suspend across platform users.
+        let admin_users = db.as_ref().map(|pool| {
+            let auth_store = std::sync::Arc::new(infra::PgAuthStore::new(pool.clone()));
+            std::sync::Arc::new(domain::admin::AdminUsersService::new(
+                auth_store.clone(),
+                auth_store,
+                std::sync::Arc::new(infra::PgNotificationsStore::new(pool.clone())),
                 std::sync::Arc::new(infra::PgTicketsStore::new(pool.clone())),
                 audit.clone().expect("audit service built with db"),
             ))
@@ -178,42 +192,47 @@ fn run_inner() -> Result<(), String> {
             tracing::warn!("redis unavailable/disabled; readiness will report 503");
         }
         if auth.is_none() {
-            tracing::warn!("auth disabled (needs database); /v1/auth routes will answer 503");
+            tracing::warn!("auth disabled (needs database); /app/auth routes will answer 503");
         }
         if projects.is_none() {
-            tracing::warn!("projects disabled (needs database); /v1/projects routes will answer 503");
+            tracing::warn!("projects disabled (needs database); /app/projects routes will answer 503");
         }
         if audit.is_none() {
-            tracing::warn!("audit log disabled (needs database); /v1/logs routes will answer 503");
+            tracing::warn!("audit log disabled (needs database); /app/logs routes will answer 503");
         }
         if recipients.is_none() {
             tracing::warn!(
-                "recipients disabled (needs database); /v1/projects/{{project_id}}/recipients routes will answer 503"
+                "recipients disabled (needs database); /app/projects/{{project_id}}/recipients routes will answer 503"
             );
         }
         if templates.is_none() {
             tracing::warn!(
-                "templates disabled (needs database); /v1/projects/{{project_id}}/templates routes will answer 503"
+                "templates disabled (needs database); /app/projects/{{project_id}}/templates routes will answer 503"
             );
         }
         if channel_providers.is_none() {
             tracing::warn!(
-                "channel_providers disabled (needs database); /v1/projects/{{project_id}}/channel-configs routes will answer 503"
+                "channel_providers disabled (needs database); /app/projects/{{project_id}}/channel-configs routes will answer 503"
             );
         }
         if tickets.is_none() {
             tracing::warn!(
-                "support tickets disabled (needs database); /v1/support/tickets routes will answer 503"
+                "support tickets disabled (needs database); /app/support/tickets routes will answer 503"
+            );
+        }
+        if admin_users.is_none() {
+            tracing::warn!(
+                "admin user management disabled (needs database); /admin/users routes will answer 503"
             );
         }
         if notifications.is_none() {
             tracing::warn!(
-                "in-app notifications disabled (needs database); /v1/notifications routes will answer 503"
+                "in-app notifications disabled (needs database); /app/notifications routes will answer 503"
             );
         }
         if oauth.is_none() {
             tracing::warn!(
-                "oauth disabled (no provider credentials); /v1/auth/oauth routes will answer 503"
+                "oauth disabled (no provider credentials); /app/auth/oauth routes will answer 503"
             );
         }
 
@@ -224,6 +243,7 @@ fn run_inner() -> Result<(), String> {
                 auth,
                 oauth,
                 admin,
+                admin_users,
                 projects,
                 audit,
                 recipients,

@@ -10,7 +10,7 @@ use super::super::auth::{CurrentUser, Problem};
 
 const MAX_LIMIT: i64 = 200;
 
-/// `GET /v1/notifications` — list in-app notifications (newest first).
+/// `GET /app/notifications` — list in-app notifications (newest first).
 pub async fn list_notifications(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<NotificationService>>,
@@ -35,7 +35,7 @@ pub async fn list_notifications(
     ))
 }
 
-/// `GET /v1/notifications/count` — unread count for the bell badge.
+/// `GET /app/notifications/count` — unread count for the bell badge.
 pub async fn count_unread(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<NotificationService>>,
@@ -47,7 +47,7 @@ pub async fn count_unread(
     ))
 }
 
-/// `GET /v1/notifications/:id` — one notification.
+/// `GET /app/notifications/:id` — one notification.
 pub async fn get_notification(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<NotificationService>>,
@@ -65,7 +65,7 @@ pub async fn get_notification(
     ))
 }
 
-/// `PATCH /v1/notifications/:id/read` — mark one notification read/unread.
+/// `PATCH /app/notifications/:id/read` — mark one notification read/unread.
 pub async fn set_read(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<NotificationService>>,
@@ -84,7 +84,7 @@ pub async fn set_read(
     ))
 }
 
-/// `PATCH /v1/notifications/read-all` — mark all as read.
+/// `PATCH /app/notifications/read-all` — mark all as read.
 pub async fn mark_all_read(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<NotificationService>>,
@@ -96,7 +96,7 @@ pub async fn mark_all_read(
     ))
 }
 
-/// `DELETE /v1/notifications/:id` — soft-delete a notification.
+/// `DELETE /app/notifications/:id` — soft-delete a notification.
 pub async fn delete_notification(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<NotificationService>>,

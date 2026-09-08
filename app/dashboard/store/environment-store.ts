@@ -30,7 +30,7 @@ export const useEnvironmentStore = create<EnvironmentStore>((set, get) => ({
     set({ pending: true });
     try {
       const { project } = await api<{ project: { environment: Environment } }>(
-        `/v1/projects/${projectId}/environment`,
+        `/app/projects/${projectId}/environment`,
         {
           method: "PATCH",
           body: JSON.stringify({ environment: env }),

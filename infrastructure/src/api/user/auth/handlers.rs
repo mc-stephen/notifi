@@ -105,7 +105,7 @@ fn oauth_failure(dashboard_url: &str, mode: &str) -> Response {
     }
 }
 
-/// `GET /v1/auth/oauth/{provider}` — redirects the browser to the provider's
+/// `GET /app/auth/oauth/{provider}` — redirects the browser to the provider's
 /// consent screen. `?popup=1` switches the callback into postMessage mode.
 pub async fn oauth_start(
     Path(provider): Path<String>,
@@ -132,7 +132,7 @@ pub async fn oauth_start(
     } else {
         "redirect"
     };
-    let cookie_path = format!("/v1/auth/oauth/{provider}/callback");
+    let cookie_path = format!("/app/auth/oauth/{provider}/callback");
     let temp_cookie = |kind: &str, value: String| {
         Cookie::build((oauth_temp_cookie(&provider, kind), value))
             .http_only(true)
@@ -148,7 +148,7 @@ pub async fn oauth_start(
     Ok((jar, Redirect::to(start.url.as_str())).into_response())
 }
 
-/// `GET /v1/auth/oauth/{provider}/callback` — exchanges the code, signs the
+/// `GET /app/auth/oauth/{provider}/callback` — exchanges the code, signs the
 /// person in, sets the session cookie, then either postMessages the popup
 /// opener or redirects back to the dashboard.
 #[allow(clippy::too_many_lines)]
@@ -209,7 +209,7 @@ pub async fn oauth_callback(
         .max_age(time::Duration::days(1));
     let clear = |kind: &str| {
         Cookie::build(oauth_temp_cookie(&provider, kind))
-            .path(format!("/v1/auth/oauth/{provider}/callback"))
+            .path(format!("/app/auth/oauth/{provider}/callback"))
             .build()
     };
     let jar = jar
@@ -236,7 +236,7 @@ pub async fn oauth_callback(
     }
 }
 
-/// `POST /v1/auth/signup` — creates the account, starts a session
+/// `POST /app/auth/signup` — creates the account, starts a session
 /// (rememberMe=false → 1-day cookie), and a verification token.
 pub async fn signup(
     jar: CookieJar,
@@ -275,7 +275,7 @@ pub async fn signup(
     Ok((StatusCode::CREATED, jar, Json(body)).into_response())
 }
 
-/// `POST /v1/auth/login` — verifies credentials, starts a session, sets the
+/// `POST /app/auth/login` — verifies credentials, starts a session, sets the
 /// httpOnly `session_token` cookie (30 days with `rememberMe`, else 1 day).
 pub async fn login(
     jar: CookieJar,
@@ -308,7 +308,7 @@ pub async fn login(
     Ok((jar, Json(body)).into_response())
 }
 
-/// `POST /v1/auth/logout` — revokes the session behind the cookie.
+/// `POST /app/auth/logout` — revokes the session behind the cookie.
 pub async fn logout(jar: CookieJar, service: MaybeService) -> Result<Response, Problem> {
     let service = require_service(service)?;
     if let Some(raw) = jar.get(SESSION_COOKIE).map(|cookie| cookie.value()) {
@@ -320,7 +320,7 @@ pub async fn logout(jar: CookieJar, service: MaybeService) -> Result<Response, P
     Ok((jar.remove(removal), ok_json(json!({"status": "ok"}))).into_response())
 }
 
-/// `GET /v1/auth/me` — the signed-in user (requires a valid session cookie).
+/// `GET /app/auth/me` — the signed-in user (requires a valid session cookie).
 pub async fn me(
     current_user: CurrentUser,
     service: MaybeService,
@@ -336,7 +336,7 @@ pub async fn me(
     ))
 }
 
-/// `POST /v1/auth/onboarding/complete` — persists the first organization +
+/// `POST /app/auth/onboarding/complete` — persists the first organization +
 /// project collected by the dashboard flow. Idempotent: completing again
 /// answers 200 with `alreadyCompleted`.
 pub async fn complete_onboarding(
@@ -363,7 +363,7 @@ pub async fn complete_onboarding(
     Ok(ok_json(json!({ "status": "ok" })))
 }
 
-/// `POST /v1/auth/password/forgot` — always 200; never reveals whether the
+/// `POST /app/auth/password/forgot` — always 200; never reveals whether the
 /// account exists. The reset token is only exposed in local dev mode.
 pub async fn forgot_password(
     service: MaybeService,
@@ -382,7 +382,7 @@ pub async fn forgot_password(
     Ok(ok_json(body))
 }
 
-/// `POST /v1/auth/password/reset` — consumes the token, rotates the password,
+/// `POST /app/auth/password/reset` — consumes the token, rotates the password,
 /// revokes all existing sessions for the account.
 pub async fn reset_password(
     service: MaybeService,
@@ -397,7 +397,7 @@ pub async fn reset_password(
     Ok(ok_json(json!({ "status": "ok" })))
 }
 
-/// `POST /v1/auth/verify-email` — confirms an email via its one-time token.
+/// `POST /app/auth/verify-email` — confirms an email via its one-time token.
 /// Expired tokens answer 410 with "expired" in the detail (the dashboard
 /// branches on that word); unknown/used tokens answer 400.
 pub async fn verify_email(
@@ -413,7 +413,7 @@ pub async fn verify_email(
     Ok(ok_json(json!({ "status": "ok" })))
 }
 
-/// `POST /v1/auth/verify-email/resend` — re-issues the verification email.
+/// `POST /app/auth/verify-email/resend` — re-issues the verification email.
 /// Always 200 regardless of whether the account exists (no enumeration).
 pub async fn resend_verification(
     service: MaybeService,

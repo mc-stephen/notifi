@@ -1,8 +1,6 @@
-//! User API surface — the dashboard backend, versioned under `/v1`.
-//!
-//! Versioning contract: breaking changes ship as `/v2` alongside `/v1`;
-//! v1 never changes incompatibly. New dashboard features mount inside
-//! [`v1_router`] (auth today; onboarding/organizations next).
+//! User dashboard backend (`/app`) and platform administration
+//! (`/admin`). New dashboard features mount inside [`app_router`];
+//! new admin features mount inside [`admin_router`].
 
 pub mod admin;
 pub mod auth;
@@ -19,8 +17,9 @@ use axum::Router;
 
 use crate::api::state::AppState;
 
-/// The `/v1` router: nests feature routers under their path segments.
-pub fn v1_router(state: &AppState) -> Router<AppState> {
+/// The `/app` router: user-dashboard backend (auth, projects, support,
+/// notifications, logs). Nests feature routers under their path segments.
+pub fn app_router(state: &AppState) -> Router<AppState> {
     // Auth routes pull their service from a scoped Extension; without it
     // (no database) they answer 503 problem documents.
     let auth_routes = match state.auth.clone() {
@@ -36,20 +35,6 @@ pub fn v1_router(state: &AppState) -> Router<AppState> {
         Some(runtime) => auth_routes.layer(axum::Extension(runtime)),
         None => auth_routes,
     };
-
-    let mut admin_routes = admin::routes::router();
-    // Admin routes need the admin service (for bootstrap, login, TOTP).
-    if let Some(admin_service) = state.admin.clone() {
-        admin_routes = admin_routes.layer(axum::Extension(admin_service));
-    }
-    // Admin routes also need auth service for CurrentUser extractor (fallback).
-    if let Some(auth_service) = state.auth.clone() {
-        admin_routes = admin_routes.layer(axum::Extension(auth_service));
-    }
-    // Admin support routes need the ticket service (absent -> 503).
-    if let Some(ticket_service) = state.tickets.clone() {
-        admin_routes = admin_routes.layer(axum::Extension(ticket_service));
-    }
 
     let mut project_routes = projects::routes::router();
     // Project routes require session auth via `CurrentUser`, which needs the
@@ -117,7 +102,6 @@ pub fn v1_router(state: &AppState) -> Router<AppState> {
 
     Router::new()
         .nest("/auth", auth_routes)
-        .nest("/admin", admin_routes)
         .nest("/providers", provider_routes)
         .nest("/projects", project_routes)
         .nest("/projects/{project_id}/recipients", recipient_routes)
@@ -126,4 +110,27 @@ pub fn v1_router(state: &AppState) -> Router<AppState> {
         .nest("/support", support_routes)
         .nest("/notifications", notification_routes)
         .nest("/logs", log_routes)
+}
+
+/// The `/admin` router: platform administration (accounts, users,
+/// support). Mounted separately from [`app_router`] per the API layout.
+pub fn admin_router(state: &AppState) -> Router<AppState> {
+    let mut admin_routes = admin::routes::router();
+    // Admin routes need the admin service (for bootstrap, login, TOTP).
+    if let Some(admin_service) = state.admin.clone() {
+        admin_routes = admin_routes.layer(axum::Extension(admin_service));
+    }
+    // Admin routes also need auth service for CurrentUser extractor (fallback).
+    if let Some(auth_service) = state.auth.clone() {
+        admin_routes = admin_routes.layer(axum::Extension(auth_service));
+    }
+    // Admin support routes need the ticket service (absent -> 503).
+    if let Some(ticket_service) = state.tickets.clone() {
+        admin_routes = admin_routes.layer(axum::Extension(ticket_service));
+    }
+    // Admin user routes need the admin-users service (absent -> 503).
+    if let Some(users_service) = state.admin_users.clone() {
+        admin_routes = admin_routes.layer(axum::Extension(users_service));
+    }
+    admin_routes
 }
