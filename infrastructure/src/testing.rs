@@ -1973,8 +1973,8 @@ impl NotificationsStore for FakeNotificationsStore {
 // ------------------------------------------------------------------
 
 use crate::domain::admin::entities::{
-    AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession, AdminSessionId, AdminUser,
-    AdminUserId,
+    AdminApprovalRequest, AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession,
+    AdminSessionId, AdminStatus, AdminUser, AdminUserId, ApprovalStatus,
 };
 use crate::ports::admin_store::AdminStore;
 
@@ -1983,6 +1983,8 @@ pub struct FakeAdminStore {
     admins: RwLock<Vec<AdminUser>>,
     sessions: RwLock<Vec<AdminSession>>,
     reset_tokens: RwLock<Vec<AdminPasswordResetToken>>,
+    deleted_admins: RwLock<Vec<AdminUserId>>,
+    approvals: RwLock<Vec<AdminApprovalRequest>>,
 }
 
 impl FakeAdminStore {
@@ -2015,24 +2017,26 @@ impl AdminStore for FakeAdminStore {
     fn find_admin_by_email(&self, email: &str) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>> {
         let admins = &self.admins;
         let email = email.to_string();
+        let deleted = self.deleted_admins.read().unwrap().clone();
         Box::pin(async move {
             Ok(admins
                 .read()
                 .map_err(lock_err)?
                 .iter()
-                .find(|a| a.email.as_str() == email)
+                .find(|a| a.email.as_str() == email && !deleted.contains(&a.id))
                 .cloned())
         })
     }
 
     fn find_admin_by_id(&self, id: AdminUserId) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>> {
         let admins = &self.admins;
+        let deleted = self.deleted_admins.read().unwrap().clone();
         Box::pin(async move {
             Ok(admins
                 .read()
                 .map_err(lock_err)?
                 .iter()
-                .find(|a| a.id == id)
+                .find(|a| a.id == id && !deleted.contains(&a.id))
                 .cloned())
         })
     }
@@ -2185,6 +2189,148 @@ impl AdminStore for FakeAdminStore {
                 t.consumed_at = Some(Utc::now());
             }
             Ok(())
+        })
+    }
+
+    fn list_admins(&self) -> BoxFut<'_, Result<Vec<AdminUser>, StoreError>> {
+        let admins = &self.admins;
+        let deleted = self.deleted_admins.read().unwrap().clone();
+        Box::pin(async move {
+            let mut result: Vec<AdminUser> = admins
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .filter(|a| !deleted.contains(&a.id))
+                .cloned()
+                .collect();
+            result.sort_by(|a, b| {
+                a.created_at
+                    .cmp(&b.created_at)
+                    .then(a.id.to_string().cmp(&b.id.to_string()))
+            });
+            Ok(result)
+        })
+    }
+
+    fn set_admin_status(
+        &self,
+        id: AdminUserId,
+        status: AdminStatus,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let admins = &self.admins;
+        let deleted = self.deleted_admins.read().unwrap().clone();
+        Box::pin(async move {
+            let mut admins = admins.write().map_err(lock_err)?;
+            if let Some(admin) = admins
+                .iter_mut()
+                .find(|a| a.id == id && !deleted.contains(&a.id))
+            {
+                admin.status = status;
+                return Ok(true);
+            }
+            Ok(false)
+        })
+    }
+
+    fn soft_delete_admin(&self, id: AdminUserId) -> BoxFut<'_, Result<bool, StoreError>> {
+        let admins = &self.admins;
+        let deleted = &self.deleted_admins;
+        Box::pin(async move {
+            let exists = admins
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .any(|a| a.id == id);
+            if !exists {
+                return Ok(false);
+            }
+            let mut deleted = deleted.write().map_err(lock_err)?;
+            if deleted.contains(&id) {
+                return Ok(false);
+            }
+            deleted.push(id);
+            Ok(true)
+        })
+    }
+
+    fn create_approval(
+        &self,
+        request: &AdminApprovalRequest,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let approvals = &self.approvals;
+        let request = request.clone();
+        Box::pin(async move {
+            approvals.write().map_err(lock_err)?.push(request);
+            Ok(())
+        })
+    }
+
+    fn find_approval(&self, id: &str) -> BoxFut<'_, Result<Option<AdminApprovalRequest>, StoreError>> {
+        let approvals = &self.approvals;
+        let id = id.to_string();
+        Box::pin(async move {
+            Ok(approvals
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .find(|r| r.id == id)
+                .cloned())
+        })
+    }
+
+    fn list_approvals(
+        &self,
+        status: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<AdminApprovalRequest>, StoreError>> {
+        let status_owned = status.map(str::to_owned);
+        let approvals = &self.approvals;
+        Box::pin(async move {
+            let mut result: Vec<AdminApprovalRequest> = approvals
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .filter(|r| {
+                    if let Some(ref s) = status_owned {
+                        r.status.as_str() == s.as_str()
+                    } else {
+                        true
+                    }
+                })
+                .cloned()
+                .collect();
+            result.sort_by(|a, b| {
+                b.created_at
+                    .cmp(&a.created_at)
+                    .then(b.id.cmp(&a.id))
+            });
+            Ok(result)
+        })
+    }
+
+    fn decide_approval(
+        &self,
+        id: &str,
+        approved: bool,
+        decided_by: AdminUserId,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let approvals = &self.approvals;
+        let id = id.to_string();
+        Box::pin(async move {
+            let mut approvals = approvals.write().map_err(lock_err)?;
+            if let Some(r) = approvals
+                .iter_mut()
+                .find(|r| r.id == id && r.status == ApprovalStatus::Pending)
+            {
+                r.status = if approved {
+                    ApprovalStatus::Approved
+                } else {
+                    ApprovalStatus::Rejected
+                };
+                r.decided_by = Some(decided_by);
+                r.decided_at = Some(Utc::now());
+                return Ok(true);
+            }
+            Ok(false)
         })
     }
 }

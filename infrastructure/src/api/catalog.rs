@@ -421,6 +421,56 @@ pub const ADMIN_ROUTES: &[RouteInfo] = &[
         feature: "admin",
         description: "verify a TOTP code and enable 2FA",
     },
+    // -- admin accounts + governance ----------------------------------------
+    RouteInfo {
+        method: "POST",
+        path: "/admin/password/change",
+        surface: Surface::Admin,
+        feature: "admin",
+        description: "change the caller's own password (rotates sessions)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/admin/admins",
+        surface: Surface::Admin,
+        feature: "admin",
+        description: "list all admin accounts",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/admin/admins",
+        surface: Surface::Admin,
+        feature: "admin",
+        description: "create another admin (pending unless created by super admin)",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/admin/admins/{admin_id}/remove",
+        surface: Surface::Admin,
+        feature: "admin",
+        description: "request (or, for super admin, apply) an admin removal",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/admin/approvals",
+        surface: Surface::Admin,
+        feature: "admin",
+        description: "list approval requests (super admin only)",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/admin/approvals/{request_id}/approve",
+        surface: Surface::Admin,
+        feature: "admin",
+        description: "approve a request (super admin only)",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/admin/approvals/{request_id}/reject",
+        surface: Surface::Admin,
+        feature: "admin",
+        description: "reject a request (super admin only)",
+    },
     // -- admin users feature ------------------------------------------------
     RouteInfo {
         method: "GET",

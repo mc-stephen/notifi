@@ -6,7 +6,8 @@ use std::pin::Pin;
 use chrono::{DateTime, Utc};
 
 use crate::domain::admin::entities::{
-    AdminPasswordResetToken, AdminSession, AdminSessionId, AdminUser, AdminUserId,
+    AdminApprovalRequest, AdminPasswordResetToken, AdminSession, AdminSessionId, AdminStatus,
+    AdminUser, AdminUserId,
 };
 use crate::ports::auth_store::StoreError;
 
@@ -22,6 +23,16 @@ pub trait AdminStore: Send + Sync {
     fn find_admin_by_email(&self, email: &str) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>>;
     /// Finds an admin by id.
     fn find_admin_by_id(&self, id: AdminUserId) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>>;
+    /// All non-deleted admins, oldest first.
+    fn list_admins(&self) -> BoxFut<'_, Result<Vec<AdminUser>, StoreError>>;
+    /// Sets an admin's account status. Returns false when unknown/deleted.
+    fn set_admin_status(
+        &self,
+        id: AdminUserId,
+        status: AdminStatus,
+    ) -> BoxFut<'_, Result<bool, StoreError>>;
+    /// Soft-deletes an admin. Returns false when unknown/already deleted.
+    fn soft_delete_admin(&self, id: AdminUserId) -> BoxFut<'_, Result<bool, StoreError>>;
     /// Stores the TOTP secret for an admin.
     fn set_totp_secret(&self, id: AdminUserId, secret: String) -> BoxFut<'_, Result<(), StoreError>>;
     /// Enables TOTP for an admin.
@@ -65,4 +76,23 @@ pub trait AdminStore: Send + Sync {
         &self,
         id: crate::domain::admin::entities::AdminPasswordResetTokenId,
     ) -> BoxFut<'_, Result<(), StoreError>>;
+    /// Creates an approval request.
+    fn create_approval(
+        &self,
+        request: &AdminApprovalRequest,
+    ) -> BoxFut<'_, Result<(), StoreError>>;
+    /// Finds an approval request by id.
+    fn find_approval(&self, id: &str) -> BoxFut<'_, Result<Option<AdminApprovalRequest>, StoreError>>;
+    /// Lists approval requests, newest first, optionally filtered by status.
+    fn list_approvals(
+        &self,
+        status: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<AdminApprovalRequest>, StoreError>>;
+    /// Decides a pending request. Returns false unless it was pending.
+    fn decide_approval(
+        &self,
+        id: &str,
+        approved: bool,
+        decided_by: AdminUserId,
+    ) -> BoxFut<'_, Result<bool, StoreError>>;
 }

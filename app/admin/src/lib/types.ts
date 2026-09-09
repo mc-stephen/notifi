@@ -1,5 +1,29 @@
 export type AdminUserStatus = "active" | "suspended";
 
+export type AdminAccount = {
+  id: string;
+  name: string;
+  email: string;
+  isSuperAdmin: boolean;
+  status: "pending" | "active" | "suspended";
+  totpEnabled: boolean;
+  createdAt: string;
+  lastLoginAt?: string | null;
+};
+
+export type ApprovalRequest = {
+  id: string;
+  kind: "create" | "remove";
+  targetAdminId: string;
+  targetName?: string | null;
+  targetEmail?: string | null;
+  requestedBy: string;
+  requesterName?: string | null;
+  status: "pending" | "approved" | "rejected";
+  decidedAt?: string | null;
+  createdAt: string;
+};
+
 export type AdminUser = {
   id: string;
   name: string;

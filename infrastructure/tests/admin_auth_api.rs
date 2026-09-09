@@ -25,7 +25,7 @@ fn app_with_admin() -> Router {
     let audit = Arc::new(AuditService::new(Arc::new(FakeAuditStore::new())));
     let auth = Arc::new(AuthService::new(auth_store.clone(), true, audit.clone()));
     let projects = Arc::new(ProjectService::new(auth_store.clone(), audit.clone()));
-    let admin = Arc::new(AdminService::new(Box::new(FakeAdminStore::new()), true));
+    let admin = Arc::new(AdminService::new(Box::new(FakeAdminStore::new()), true, audit.clone()));
     let tickets = Arc::new(TicketService::new(Arc::new(FakeTicketsStore::new()), audit.clone()));
     build_router(
         AppState {

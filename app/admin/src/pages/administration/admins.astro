@@ -1,11 +1,64 @@
 ---
 import AdminLayout from "../../layouts/AdminLayout.astro";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../../components/ui/table";
+import type { AdminAccount, ApprovalRequest } from "../../lib/types";
 
-const admins = [
-  { id: "1", name: "Admin User", email: "admin@notifi.dev", role: "Super Admin", status: "active", lastLogin: "2025-09-04T08:00:00Z" },
-  { id: "2", name: "Support Lead", email: "support@notifi.dev", role: "Support Admin", status: "active", lastLogin: "2025-09-04T07:30:00Z" },
-  { id: "3", name: "Billing Admin", email: "billing@notifi.dev", role: "Billing Admin", status: "active", lastLogin: "2025-09-03T14:00:00Z" },
-];
+const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8080";
+const session = Astro.cookies.get("admin_session")?.value;
+const cookieHeader = session ? { Cookie: `admin_session=${session}` } : {};
+
+async function apiGet(path: string) {
+  const res = await fetch(`${API_BASE}${path}`, { headers: cookieHeader });
+  if (res.status === 401) {
+    const err: Error & { status?: number } = new Error("unauthorized");
+    err.status = 401;
+    throw err;
+  }
+  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  return res.json();
+}
+
+let admins: AdminAccount[] = [];
+let approvals: ApprovalRequest[] = [];
+let isSuperAdmin = false;
+let myId = "";
+let loadError: string | null = null;
+try {
+  const me = await apiGet("/admin/me");
+  isSuperAdmin = me.isSuperAdmin ?? false;
+  myId = me.id ?? "";
+  const data = await apiGet("/admin/admins");
+  admins = data.admins ?? [];
+  if (isSuperAdmin) {
+    try {
+      const pending = await apiGet("/admin/approvals?status=pending");
+      approvals = pending.approvals ?? [];
+    } catch {
+      approvals = [];
+    }
+  }
+} catch (e: any) {
+  if (e?.status === 401) {
+    loadError = "Your session has expired. Please sign out and sign in again.";
+  } else {
+    loadError = "Could not load admins. Check that the API is running and try again.";
+  }
+}
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+function statusColor(status: string) {
+  if (status === "active") return "bg-success/10 text-success border-success/20";
+  if (status === "pending") return "bg-warning/10 text-warning border-warning/20";
+  return "bg-muted text-muted-foreground border-border";
+}
 ---
 
 <AdminLayout title="Admins">
@@ -21,62 +74,311 @@ const admins = [
       <div class="flex items-start justify-between gap-4">
         <div>
           <h1 class="text-2xl font-bold tracking-tight text-foreground">Admin Users</h1>
-          <p class="text-sm text-muted-foreground mt-1">Manage administrator accounts and roles.</p>
+          <p class="text-sm text-muted-foreground mt-1">
+            {isSuperAdmin
+              ? "New admins you add are active immediately."
+              : "New admins need super-admin approval before they can sign in."}
+          </p>
         </div>
-        <button class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80">
+        <button
+          id="add-admin-toggle"
+          class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 shrink-0"
+        >
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
           Add Admin
         </button>
       </div>
     </div>
 
-    <div class="rounded-xl border bg-card overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-border bg-muted/30">
-              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Admin</th>
-              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Role</th>
-              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
-              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Last Login</th>
-              <th class="text-right py-3 px-4 font-medium text-muted-foreground"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {admins.map((admin) => (
-              <tr class="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
-                <td class="py-3 px-4">
-                  <div class="flex items-center gap-3">
-                    <div class="size-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
-                      {admin.name.split(" ").map(n => n[0]).join("")}
-                    </div>
-                    <div>
-                      <p class="font-medium text-foreground">{admin.name}</p>
-                      <p class="text-xs text-muted-foreground">{admin.email}</p>
-                    </div>
-                  </div>
-                </td>
-                <td class="py-3 px-4">
-                  <span class="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-                    {admin.role}
-                  </span>
-                </td>
-                <td class="py-3 px-4">
-                  <span class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium bg-success/10 text-success border-success/20 capitalize">
-                    {admin.status}
-                  </span>
-                </td>
-                <td class="py-3 px-4 text-muted-foreground text-xs hidden md:table-cell">
-                  {new Date(admin.lastLogin).toLocaleString()}
-                </td>
-                <td class="py-3 px-4 text-right">
-                  <button class="text-xs text-muted-foreground hover:text-foreground transition-colors">Edit</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div id="add-admin-card" class="hidden rounded-xl border bg-card">
+      <form id="add-admin-form" class="p-5 space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="space-y-2">
+            <label for="new-name" class="text-sm font-medium text-foreground">Full Name</label>
+            <input
+              type="text"
+              id="new-name"
+              required
+              placeholder="Admin User"
+              class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            />
+          </div>
+          <div class="space-y-2">
+            <label for="new-email" class="text-sm font-medium text-foreground">Email</label>
+            <input
+              type="email"
+              id="new-email"
+              required
+              placeholder="admin@notifi.dev"
+              class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            />
+          </div>
+        </div>
+        <div class="space-y-2">
+          <label for="new-password" class="text-sm font-medium text-foreground">Temporary Password</label>
+          <input
+            type="password"
+            id="new-password"
+            required
+            autocomplete="new-password"
+            placeholder="At least 8 characters"
+            class="flex h-9 w-full max-w-md rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          />
+          <p class="text-xs text-muted-foreground">Minimum 8 characters. Must include uppercase, lowercase, number, and special character.</p>
+        </div>
+        <div id="add-error" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
+        <div id="add-success" class="hidden rounded-lg border border-success/20 bg-success/5 p-3 text-sm text-success"></div>
+        <div class="flex gap-2">
+          <button
+            type="submit"
+            id="add-btn"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 disabled:pointer-events-none disabled:opacity-50"
+          >
+            Create Admin
+          </button>
+          <button
+            type="button"
+            id="add-cancel"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+
+    {isSuperAdmin && approvals.length > 0 && (
+      <div class="rounded-xl border border-warning/30 bg-card overflow-hidden">
+        <div class="p-5 border-b border-border">
+          <h2 class="font-semibold text-foreground">Pending Approvals ({approvals.length})</h2>
+          <p class="text-sm text-muted-foreground mt-0.5">New admins and removals waiting on you.</p>
+        </div>
+        <div class="divide-y divide-border/50">
+          {approvals.map((req) => (
+            <div class="flex flex-wrap items-center gap-3 px-5 py-3" data-request={req.id}>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-foreground">
+                  {req.kind === "create" ? "New admin" : "Remove admin"}: {req.targetName ?? req.targetEmail ?? req.targetAdminId}
+                </p>
+                <p class="text-xs text-muted-foreground">
+                  Requested by {req.requesterName ?? req.requestedBy} · {new Date(req.createdAt).toLocaleString()}
+                </p>
+              </div>
+              <div class="flex gap-2 shrink-0">
+                <button
+                  type="button"
+                  data-approve={req.id}
+                  class="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80"
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  data-reject={req.id}
+                  class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div id="approval-error" class="hidden mx-5 mb-5 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
       </div>
+    )}
+
+    <div class="rounded-xl border bg-card overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Admin</TableHead>
+            <TableHead>Role</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="hidden md:table-cell">Last Login</TableHead>
+            <TableHead className="text-right">Action</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {admins.map((admin) => (
+            <TableRow>
+              <TableCell>
+                <div class="flex items-center gap-3">
+                  <div class="size-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary shrink-0">
+                    {initials(admin.name)}
+                  </div>
+                  <div class="min-w-0">
+                    <p class="font-medium text-foreground truncate">
+                      {admin.name}
+                      {admin.id === myId && <span class="text-xs text-muted-foreground font-normal"> (you)</span>}
+                    </p>
+                    <p class="text-xs text-muted-foreground truncate">{admin.email}</p>
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell>
+                {admin.isSuperAdmin ? (
+                  <span class="inline-flex items-center rounded-md bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 text-xs font-medium">
+                    Super Admin
+                  </span>
+                ) : (
+                  <span class="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                    Admin
+                  </span>
+                )}
+              </TableCell>
+              <TableCell>
+                <span class:list={[
+                  "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+                  statusColor(admin.status),
+                ]}>
+                  {admin.status}
+                </span>
+              </TableCell>
+              <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
+                {admin.lastLoginAt ? new Date(admin.lastLoginAt).toLocaleString() : "—"}
+              </TableCell>
+              <TableCell className="text-right">
+                {!admin.isSuperAdmin && admin.id !== myId ? (
+                  <button
+                    type="button"
+                    data-remove={admin.id}
+                    data-name={admin.name}
+                    class="text-xs text-destructive hover:underline"
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <span class="text-xs text-muted-foreground">—</span>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {loadError && (
+        <div class="px-4 py-12 text-center">
+          <p class="text-sm text-destructive">{loadError}</p>
+          <a href="/login" class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted transition-colors mt-4">
+            Sign in again
+          </a>
+        </div>
+      )}
+      {!loadError && admins.length === 0 && (
+        <div class="px-4 py-12 text-center">
+          <p class="text-sm font-medium text-foreground">No admins found</p>
+        </div>
+      )}
+      <div id="remove-error" class="hidden mx-4 mb-4 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
     </div>
   </div>
 </AdminLayout>
+
+<script>
+  import { admins, ApiError } from "../../lib/api";
+  import { passwordValid } from "../../lib/password";
+
+  const toggle = document.getElementById("add-admin-toggle");
+  const card = document.getElementById("add-admin-card");
+  const form = document.getElementById("add-admin-form") as HTMLFormElement;
+  const addError = document.getElementById("add-error");
+  const addSuccess = document.getElementById("add-success");
+  const addBtn = document.getElementById("add-btn") as HTMLButtonElement;
+
+  toggle?.addEventListener("click", () => card?.classList.toggle("hidden"));
+  document.getElementById("add-cancel")?.addEventListener("click", () => {
+    card?.classList.add("hidden");
+    form?.reset();
+  });
+
+  function showAddError(message: string) {
+    if (!addError) return;
+    addError.textContent = message;
+    addError.classList.remove("hidden");
+  }
+
+  form?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    addError?.classList.add("hidden");
+    addSuccess?.classList.add("hidden");
+
+    const name = (document.getElementById("new-name") as HTMLInputElement).value.trim();
+    const email = (document.getElementById("new-email") as HTMLInputElement).value.trim();
+    const password = (document.getElementById("new-password") as HTMLInputElement).value;
+
+    if (!passwordValid(password)) {
+      showAddError("Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.");
+      return;
+    }
+
+    addBtn.disabled = true;
+    try {
+      const res = await admins.createAdmin({ name, email, password });
+      if (addSuccess) {
+        addSuccess.textContent = res.pendingApproval
+          ? `Admin created and pending super-admin approval.`
+          : `Admin created and active.`;
+        addSuccess.classList.remove("hidden");
+      }
+      form.reset();
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (err) {
+      showAddError(err instanceof ApiError ? err.message : "Could not create admin. Please try again.");
+    } finally {
+      addBtn.disabled = false;
+    }
+  });
+
+  function showRemoveError(message: string) {
+    const el = document.getElementById("remove-error");
+    if (!el) return;
+    el.textContent = message;
+    el.classList.remove("hidden");
+  }
+
+  document.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.remove!;
+      const name = btn.dataset.name ?? "this admin";
+      if (!window.confirm(`Remove ${name}? A super admin must approve this unless you are one.`)) return;
+      btn.disabled = true;
+      try {
+        const res = await admins.removeAdmin(id);
+        if (res.applied) {
+          window.location.reload();
+        } else {
+          btn.disabled = false;
+          btn.textContent = "Removal requested";
+        }
+      } catch (err) {
+        btn.disabled = false;
+        showRemoveError(err instanceof ApiError ? err.message : "Remove failed. Please try again.");
+      }
+    });
+  });
+
+  function showApprovalError(message: string) {
+    const el = document.getElementById("approval-error");
+    if (!el) return;
+    el.textContent = message;
+    el.classList.remove("hidden");
+  }
+
+  document.querySelectorAll<HTMLButtonElement>("[data-approve],[data-reject]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const approve = btn.hasAttribute("data-approve");
+      const id = (btn.dataset.approve ?? btn.dataset.reject)!;
+      btn.disabled = true;
+      try {
+        if (approve) {
+          await admins.approveRequest(id);
+        } else {
+          await admins.rejectRequest(id);
+        }
+        window.location.reload();
+      } catch (err) {
+        btn.disabled = false;
+        showApprovalError(err instanceof ApiError ? err.message : "Decision failed. Please try again.");
+      }
+    });
+  });
+</script>

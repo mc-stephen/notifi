@@ -43,6 +43,8 @@ export type AdminMeResponse = {
   name: string;
   email: string;
   totpEnabled: boolean;
+  isSuperAdmin: boolean;
+  status: string;
 };
 
 export type BootstrapResponse = {
@@ -97,8 +99,51 @@ export const auth = {
 
   me: () => request<AdminMeResponse>("/admin/me"),
 
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ status: string }>("/admin/password/change", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+
   logout: () =>
     request<{ status: string }>("/admin/logout", { method: "POST" }),
+};
+
+// ── Admin accounts + approvals ──────────────────────────────────────────────
+
+import type { AdminAccount, ApprovalRequest } from "./types";
+
+export const admins = {
+  listAdmins: () => request<{ admins: AdminAccount[] }>("/admin/admins"),
+
+  createAdmin: (data: { name: string; email: string; password: string }) =>
+    request<{ admin: AdminAccount; pendingApproval: boolean }>("/admin/admins", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  removeAdmin: (id: string) =>
+    request<{ status: string; applied: boolean }>(
+      `/admin/admins/${encodeURIComponent(id)}/remove`,
+      { method: "POST" },
+    ),
+
+  listApprovals: (status?: string) => {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    return request<{ approvals: ApprovalRequest[] }>(`/admin/approvals${query}`);
+  },
+
+  approveRequest: (id: string) =>
+    request<{ status: string }>(
+      `/admin/approvals/${encodeURIComponent(id)}/approve`,
+      { method: "POST" },
+    ),
+
+  rejectRequest: (id: string) =>
+    request<{ status: string }>(
+      `/admin/approvals/${encodeURIComponent(id)}/reject`,
+      { method: "POST" },
+    ),
 };
 
 // ── Support tickets (admin view) ────────────────────────────────────────────

@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
 use crate::domain::admin::entities::{
-    AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession, AdminSessionId, AdminUser,
-    AdminUserId,
+    AdminApprovalRequest, AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession,
+    AdminSessionId, AdminStatus, AdminUser, AdminUserId, ApprovalKind, ApprovalStatus,
 };
 use crate::domain::auth::value_objects::Email;
 use crate::ports::admin_store::AdminStore;
@@ -30,6 +30,8 @@ struct AdminUserRow {
     password_hash: String,
     totp_secret: Option<String>,
     totp_enabled: bool,
+    is_super_admin: bool,
+    status: String,
     last_login_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
 }
@@ -48,6 +50,11 @@ impl TryFrom<AdminUserRow> for AdminUser {
             password_hash: row.password_hash,
             totp_secret: row.totp_secret,
             totp_enabled: row.totp_enabled,
+            is_super_admin: row.is_super_admin,
+            status: row
+                .status
+                .parse::<crate::domain::admin::entities::AdminStatus>()
+                .unwrap_or(crate::domain::admin::entities::AdminStatus::Active),
             last_login_at: row.last_login_at,
             created_at: row.created_at,
         })
@@ -55,8 +62,61 @@ impl TryFrom<AdminUserRow> for AdminUser {
 }
 
 #[derive(sqlx::FromRow)]
-struct AdminSessionRow {
+struct ApprovalRow {
     id: String,
+    kind: String,
+    target_admin_id: String,
+    requested_by: String,
+    status: String,
+    decided_by: Option<String>,
+    decided_at: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
+}
+
+impl TryFrom<ApprovalRow> for AdminApprovalRequest {
+    type Error = StoreError;
+
+    fn try_from(row: ApprovalRow) -> Result<Self, Self::Error> {
+        use std::str::FromStr;
+        let parse_id = |raw: &str, what: &str| {
+            AdminUserId::from_str(raw)
+                .map_err(|e| StoreError::Storage(format!("invalid {what} in db: {e}")))
+        };
+        Ok(Self {
+            id: row.id,
+            kind: match row.kind.as_str() {
+                "create" => ApprovalKind::Create,
+                "remove" => ApprovalKind::Remove,
+                other => {
+                    return Err(StoreError::Storage(format!(
+                        "invalid approval kind in db: {other}"
+                    )))
+                }
+            },
+            target_admin_id: parse_id(&row.target_admin_id, "target admin id")?,
+            requested_by: parse_id(&row.requested_by, "requester admin id")?,
+            status: match row.status.as_str() {
+                "pending" => ApprovalStatus::Pending,
+                "approved" => ApprovalStatus::Approved,
+                "rejected" => ApprovalStatus::Rejected,
+                other => {
+                    return Err(StoreError::Storage(format!(
+                        "invalid approval status in db: {other}"
+                    )))
+                }
+            },
+            decided_by: row
+                .decided_by
+                .map(|raw| parse_id(&raw, "decider admin id"))
+                .transpose()?,
+            decided_at: row.decided_at,
+            created_at: row.created_at,
+        })
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct AdminSessionRow {    id: String,
     admin_id: String,
     token_hash: String,
     expires_at: DateTime<Utc>,
@@ -134,16 +194,20 @@ impl AdminStore for PgAdminStore {
         let name = admin.name.clone();
         let email = admin.email.as_str().to_string();
         let password_hash = admin.password_hash.clone();
+        let is_super_admin = admin.is_super_admin;
+        let status = admin.status.as_str().to_string();
         let created_at = admin.created_at;
         Box::pin(async move {
             sqlx::query(
-                "INSERT INTO admin_users (id, name, email, password_hash, created_at, updated_at) \
-                 VALUES ($1, $2, $3, $4, $5, $5)",
+                "INSERT INTO admin_users (id, name, email, password_hash, is_super_admin, status, created_at, updated_at) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $7)",
             )
             .bind(&id)
             .bind(&name)
             .bind(&email)
             .bind(&password_hash)
+            .bind(is_super_admin)
+            .bind(&status)
             .bind(created_at)
             .execute(&pool)
             .await
@@ -157,7 +221,7 @@ impl AdminStore for PgAdminStore {
         let email = email.to_string();
         Box::pin(async move {
             let row = sqlx::query_as::<_, AdminUserRow>(
-                "SELECT id, name, email, password_hash, totp_secret, totp_enabled, last_login_at, created_at \
+                "SELECT id, name, email, password_hash, totp_secret, totp_enabled, is_super_admin, status, last_login_at, created_at \
                  FROM admin_users WHERE email = $1 AND deleted_at IS NULL",
             )
             .bind(&email)
@@ -173,7 +237,7 @@ impl AdminStore for PgAdminStore {
         let id_str = id.to_string();
         Box::pin(async move {
             let row = sqlx::query_as::<_, AdminUserRow>(
-                "SELECT id, name, email, password_hash, totp_secret, totp_enabled, last_login_at, created_at \
+                "SELECT id, name, email, password_hash, totp_secret, totp_enabled, is_super_admin, status, last_login_at, created_at \
                  FROM admin_users WHERE id = $1 AND deleted_at IS NULL",
             )
             .bind(&id_str)
@@ -411,6 +475,153 @@ impl AdminStore for PgAdminStore {
             .await
             .map_err(map_err)?;
             Ok(())
+        })
+    }
+
+    fn list_admins(&self) -> BoxFut<'_, Result<Vec<AdminUser>, StoreError>> {
+        let pool = self.pool.clone();
+        Box::pin(async move {
+            let rows = sqlx::query_as::<_, AdminUserRow>(
+                "SELECT id, name, email, password_hash, totp_secret, totp_enabled, is_super_admin, status, last_login_at, created_at \
+                 FROM admin_users WHERE deleted_at IS NULL \
+                 ORDER BY created_at ASC, id ASC",
+            )
+            .fetch_all(&pool)
+            .await
+            .map_err(map_err)?;
+            rows.into_iter().map(AdminUser::try_from).collect()
+        })
+    }
+
+    fn set_admin_status(
+        &self,
+        id: AdminUserId,
+        status: AdminStatus,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let pool = self.pool.clone();
+        let id_str = id.to_string();
+        let status_str = status.as_str().to_string();
+        Box::pin(async move {
+            let result = sqlx::query(
+                "UPDATE admin_users SET status = $2, updated_at = now() \
+                 WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(&id_str)
+            .bind(&status_str)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(result.rows_affected() > 0)
+        })
+    }
+
+    fn soft_delete_admin(&self, id: AdminUserId) -> BoxFut<'_, Result<bool, StoreError>> {
+        let pool = self.pool.clone();
+        let id_str = id.to_string();
+        Box::pin(async move {
+            let result = sqlx::query(
+                "UPDATE admin_users SET deleted_at = now(), updated_at = now() \
+                 WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(&id_str)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(result.rows_affected() > 0)
+        })
+    }
+
+    fn create_approval(
+        &self,
+        request: &AdminApprovalRequest,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let pool = self.pool.clone();
+        let id = request.id.clone();
+        let kind = request.kind.as_str().to_string();
+        let target = request.target_admin_id.to_string();
+        let requested_by = request.requested_by.to_string();
+        let status = request.status.as_str().to_string();
+        let created_at = request.created_at;
+        Box::pin(async move {
+            sqlx::query(
+                "INSERT INTO admin_approval_requests (id, kind, target_admin_id, requested_by, status, created_at) \
+                 VALUES ($1, $2, $3, $4, $5, $6)",
+            )
+            .bind(&id)
+            .bind(&kind)
+            .bind(&target)
+            .bind(&requested_by)
+            .bind(&status)
+            .bind(created_at)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(())
+        })
+    }
+
+    fn find_approval(&self, id: &str) -> BoxFut<'_, Result<Option<AdminApprovalRequest>, StoreError>> {
+        let pool = self.pool.clone();
+        let id = id.to_string();
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, ApprovalRow>(
+                "SELECT id, kind, target_admin_id, requested_by, status, decided_by, decided_at, created_at \
+                 FROM admin_approval_requests WHERE id = $1",
+            )
+            .bind(&id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+            row.map(AdminApprovalRequest::try_from).transpose()
+        })
+    }
+
+    fn list_approvals(
+        &self,
+        status: Option<&str>,
+    ) -> BoxFut<'_, Result<Vec<AdminApprovalRequest>, StoreError>> {
+        let pool = self.pool.clone();
+        let status_owned = status.map(str::to_owned);
+        Box::pin(async move {
+            let rows = sqlx::query_as::<_, ApprovalRow>(
+                "SELECT id, kind, target_admin_id, requested_by, status, decided_by, decided_at, created_at \
+                 FROM admin_approval_requests \
+                 WHERE ($1::text IS NULL OR status = $1) \
+                 ORDER BY created_at DESC, id DESC",
+            )
+            .bind(&status_owned)
+            .fetch_all(&pool)
+            .await
+            .map_err(map_err)?;
+            rows.into_iter()
+                .map(AdminApprovalRequest::try_from)
+                .collect()
+        })
+    }
+
+    fn decide_approval(
+        &self,
+        id: &str,
+        approved: bool,
+        decided_by: AdminUserId,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let pool = self.pool.clone();
+        let id = id.to_string();
+        let decided_by_str = decided_by.to_string();
+        let status = if approved { "approved" } else { "rejected" };
+        Box::pin(async move {
+            let result = sqlx::query(
+                "UPDATE admin_approval_requests \
+                 SET status = $2, decided_by = $3, decided_at = now() \
+                 WHERE id = $1 AND status = 'pending'",
+            )
+            .bind(&id)
+            .bind(status)
+            .bind(&decided_by_str)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(result.rows_affected() > 0)
         })
     }
 }

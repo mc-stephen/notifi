@@ -97,6 +97,7 @@ fn run_inner() -> Result<(), String> {
             std::sync::Arc::new(domain::admin::AdminService::new(
                 Box::new(infra::PgAdminStore::new(pool.clone())),
                 config.auth.expose_dev_tokens,
+                audit.clone().expect("audit service built with db"),
             ))
         });
 

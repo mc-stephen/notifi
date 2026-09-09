@@ -20,8 +20,95 @@ pub struct AdminUser {
     pub totp_secret: Option<String>,
     /// Whether TOTP 2FA is enabled for this admin.
     pub totp_enabled: bool,
+    /// The first bootstrapped admin; approves everything, acts unilaterally,
+    /// and cannot be removed or suspended.
+    pub is_super_admin: bool,
+    /// Account state: pending (awaiting approval), active, suspended.
+    pub status: AdminStatus,
     pub created_at: DateTime<Utc>,
     pub last_login_at: Option<DateTime<Utc>>,
+}
+
+/// Account state for a platform admin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdminStatus {
+    Pending,
+    Active,
+    Suspended,
+}
+
+impl AdminStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Active => "active",
+            Self::Suspended => "suspended",
+        }
+    }
+}
+
+impl std::str::FromStr for AdminStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(Self::Pending),
+            "active" => Ok(Self::Active),
+            "suspended" => Ok(Self::Suspended),
+            _ => Err(()),
+        }
+    }
+}
+
+impl std::fmt::Display for AdminStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// An approval request for a sensitive admin action.
+#[derive(Debug, Clone)]
+pub struct AdminApprovalRequest {
+    pub id: String,
+    pub kind: ApprovalKind,
+    pub target_admin_id: AdminUserId,
+    pub requested_by: AdminUserId,
+    pub status: ApprovalStatus,
+    pub decided_by: Option<AdminUserId>,
+    pub decided_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApprovalKind {
+    Create,
+    Remove,
+}
+
+impl ApprovalKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Create => "create",
+            Self::Remove => "remove",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApprovalStatus {
+    Pending,
+    Approved,
+    Rejected,
+}
+
+impl ApprovalStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Approved => "approved",
+            Self::Rejected => "rejected",
+        }
+    }
 }
 
 /// A signed-in admin browser session (cookie-backed).

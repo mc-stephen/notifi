@@ -29,6 +29,81 @@ pub struct ResetPasswordRequest {
     pub password: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateAdminRequest {
+    pub name: String,
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminAccountDto {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub is_super_admin: bool,
+    pub status: String,
+    pub totp_enabled: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub last_login_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl From<crate::domain::admin::entities::AdminUser> for AdminAccountDto {
+    fn from(admin: crate::domain::admin::entities::AdminUser) -> Self {
+        Self {
+            id: admin.id.to_string(),
+            name: admin.name,
+            email: admin.email.to_string(),
+            is_super_admin: admin.is_super_admin,
+            status: admin.status.as_str().to_string(),
+            totp_enabled: admin.totp_enabled,
+            created_at: admin.created_at,
+            last_login_at: admin.last_login_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApprovalDto {
+    pub id: String,
+    pub kind: String,
+    pub target_admin_id: String,
+    pub target_name: Option<String>,
+    pub target_email: Option<String>,
+    pub requested_by: String,
+    pub requester_name: Option<String>,
+    pub status: String,
+    pub decided_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<crate::domain::admin::services::AdminApprovalView> for ApprovalDto {
+    fn from(view: crate::domain::admin::services::AdminApprovalView) -> Self {
+        Self {
+            id: view.request.id,
+            kind: view.request.kind.as_str().to_string(),
+            target_admin_id: view.request.target_admin_id.to_string(),
+            target_name: view.target_name,
+            target_email: view.target_email,
+            requested_by: view.request.requested_by.to_string(),
+            requester_name: view.requester_name,
+            status: view.request.status.as_str().to_string(),
+            decided_at: view.request.decided_at,
+            created_at: view.request.created_at,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminStatusResponse {

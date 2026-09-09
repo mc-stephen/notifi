@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Extension, FromRequestParts, Query};
+use axum::extract::{Extension, FromRequestParts, Path, Query};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -14,11 +14,12 @@ use serde_json::json;
 use totp_rs::{TOTP, Secret, Rfc6238};
 
 use crate::domain::admin::AdminService;
-use crate::domain::admin::entities::AdminUser;
+use crate::domain::admin::entities::{AdminUser, AdminUserId};
 use crate::domain::auth::errors::AuthError;
 use super::dto::{
-    AdminStatusResponse, BootstrapRequest, BootstrapResponse, ForgotPasswordRequest,
-    ResetPasswordRequest, TotpSetupResponse, VerifyTotpRequest,
+    AdminAccountDto, AdminStatusResponse, ApprovalDto, BootstrapRequest, BootstrapResponse,
+    ChangePasswordRequest, CreateAdminRequest, ForgotPasswordRequest, ResetPasswordRequest,
+    TotpSetupResponse, VerifyTotpRequest,
 };
 use super::super::auth::middleware::{ADMIN_SESSION_COOKIE, Problem};
 
@@ -357,6 +358,8 @@ pub async fn me(CurrentAdmin(admin): CurrentAdmin) -> Result<Response, Problem> 
         "name": admin.name,
         "email": admin.email.to_string(),
         "totpEnabled": admin.totp_enabled,
+        "isSuperAdmin": admin.is_super_admin,
+        "status": admin.status.as_str(),
     }))
     .into_response())
 }
@@ -405,6 +408,135 @@ pub async fn logout(jar: CookieJar, service: MaybeAdminService) -> Result<Respon
     // Clear the cookie even when there was nothing to revoke (idempotent).
     let removal = Cookie::build(ADMIN_SESSION_COOKIE).path("/").build();
     Ok((jar.remove(removal), Json(json!({ "status": "ok" }))).into_response())
+}
+
+/// `POST /admin/password/change` — rotates the caller's own password.
+/// Verifies the current password, then revokes every session and issues a
+/// fresh one so the caller stays signed in.
+pub async fn change_password(
+    jar: CookieJar,
+    CurrentAdmin(admin): CurrentAdmin,
+    service: MaybeAdminService,
+    Json(request): Json<ChangePasswordRequest>,
+) -> Result<Response, Problem> {
+    let service = require_admin_service(service)?;
+    let session_token = service
+        .change_password(&admin, &request.current_password, &request.new_password)
+        .await
+        .map_err(Problem::from)?;
+
+    let cookie = Cookie::build((ADMIN_SESSION_COOKIE, session_token))
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .path("/")
+        .max_age(time::Duration::days(1));
+    let jar = jar.add(cookie);
+
+    Ok((jar, Json(json!({ "status": "ok" }))).into_response())
+}
+
+/// `GET /admin/admins` — lists all admin accounts.
+pub async fn list_admins(
+    CurrentAdmin(_admin): CurrentAdmin,
+    service: MaybeAdminService,
+) -> Result<Response, Problem> {
+    let service = require_admin_service(service)?;
+    let admins = service.list_admins().await.map_err(Problem::from)?;
+    let dtos: Vec<AdminAccountDto> = admins.into_iter().map(AdminAccountDto::from).collect();
+    Ok(Json(json!({ "admins": dtos })).into_response())
+}
+
+/// `POST /admin/admins` — creates another admin. Super-admin creations go
+/// active immediately; everyone else's land pending with an approval request.
+pub async fn create_admin(
+    CurrentAdmin(caller): CurrentAdmin,
+    service: MaybeAdminService,
+    Json(request): Json<CreateAdminRequest>,
+) -> Result<Response, Problem> {
+    let service = require_admin_service(service)?;
+    let admin = service
+        .invite_admin(&caller, &request.name, &request.email, &request.password)
+        .await
+        .map_err(Problem::from)?;
+    let pending = admin.status != crate::domain::admin::entities::AdminStatus::Active;
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "admin": AdminAccountDto::from(admin),
+            "pendingApproval": pending,
+        })),
+    )
+        .into_response())
+}
+
+/// `POST /admin/admins/:id/remove` — requests (or, for the super admin,
+/// immediately applies) the removal of another admin.
+pub async fn remove_admin(
+    CurrentAdmin(caller): CurrentAdmin,
+    service: MaybeAdminService,
+    Path(admin_id): Path<String>,
+) -> Result<Response, Problem> {
+    let service = require_admin_service(service)?;
+    let target = parse_admin_id(&admin_id)?;
+    let applied = service
+        .request_removal(&caller, target)
+        .await
+        .map_err(Problem::from)?;
+    Ok(Json(json!({ "status": "ok", "applied": applied })).into_response())
+}
+
+/// `GET /admin/approvals` — lists approval requests (super admin only).
+pub async fn list_approvals(
+    CurrentAdmin(caller): CurrentAdmin,
+    service: MaybeAdminService,
+    Query(query): Query<HashMap<String, String>>,
+) -> Result<Response, Problem> {
+    let service = require_admin_service(service)?;
+    let views = service
+        .list_approval_views(&caller, query.get("status").map(String::as_str))
+        .await
+        .map_err(Problem::from)?;
+    let dtos: Vec<ApprovalDto> = views.into_iter().map(ApprovalDto::from).collect();
+    Ok(Json(json!({ "approvals": dtos })).into_response())
+}
+
+/// `POST /admin/approvals/:id/approve` — approves a request (super only).
+pub async fn approve_request(
+    CurrentAdmin(caller): CurrentAdmin,
+    service: MaybeAdminService,
+    Path(request_id): Path<String>,
+) -> Result<Response, Problem> {
+    decide_request(caller, service, &request_id, true).await
+}
+
+/// `POST /admin/approvals/:id/reject` — rejects a request (super only).
+pub async fn reject_request(
+    CurrentAdmin(caller): CurrentAdmin,
+    service: MaybeAdminService,
+    Path(request_id): Path<String>,
+) -> Result<Response, Problem> {
+    decide_request(caller, service, &request_id, false).await
+}
+
+async fn decide_request(
+    caller: Arc<AdminUser>,
+    service: MaybeAdminService,
+    request_id: &str,
+    approve: bool,
+) -> Result<Response, Problem> {
+    let service = require_admin_service(service)?;
+    service
+        .decide_approval(&caller, request_id, approve)
+        .await
+        .map_err(Problem::from)?;
+    Ok(Json(json!({ "status": "ok" })).into_response())
+}
+
+fn parse_admin_id(raw: &str) -> Result<AdminUserId, Problem> {
+    use std::str::FromStr;
+    AdminUserId::from_str(raw).map_err(|_| {
+        AuthError::Validation("invalid admin id".to_string()).into()
+    })
 }
 
 /// Login request body.

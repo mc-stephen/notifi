@@ -22,6 +22,8 @@ pub enum AuthError {
     TokenExpired(String),
     /// Missing/invalid session cookie on a protected endpoint.
     Unauthorized,
+    /// Authenticated but not allowed (e.g. not a super admin, account pending).
+    Forbidden(String),
     /// A requested resource does not exist (or is not visible to the caller).
     NotFound(String),
     /// A unique constraint was violated (e.g. duplicate brand user_id).
@@ -48,6 +50,7 @@ impl std::fmt::Display for AuthError {
             Self::TokenInvalid(m) => write!(f, "invalid token: {m}"),
             Self::TokenExpired(m) => write!(f, "expired token: {m}"),
             Self::Unauthorized => write!(f, "unauthorized"),
+            Self::Forbidden(m) => write!(f, "forbidden: {m}"),
             Self::NotFound(m) => write!(f, "not found: {m}"),
             Self::Conflict(m) => write!(f, "conflict: {m}"),
             Self::NotConfigured => write!(f, "auth service not configured"),
@@ -91,6 +94,7 @@ impl IntoApiError for AuthError {
                 "Unauthorized",
                 "Authentication required.",
             ),
+            Self::Forbidden(detail) => ApiError::new(403, "about:blank", "Forbidden", detail.clone()),
             Self::NotConfigured => ApiError::new(
                 503,
                 "about:blank",
