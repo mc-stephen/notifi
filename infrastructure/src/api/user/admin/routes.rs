@@ -3,6 +3,8 @@
 use axum::Router;
 use axum::routing::{get, post};
 use super::handlers;
+use super::notifications;
+use super::projects;
 use super::support;
 use super::users;
 
@@ -22,4 +24,6 @@ where
         .route("/totp/verify", post(handlers::totp_verify))
         .nest("/support", support::routes::router())
         .nest("/users", users::routes::router())
+        .nest("/projects", projects::routes::router())
+        .nest("/notifications", notifications::routes::router())
 }

@@ -46,6 +46,42 @@ struct UserRow {
     last_login_at: Option<DateTime<Utc>>,
 }
 
+#[derive(sqlx::FromRow)]
+struct UserListRow {
+    id: String,
+    name: String,
+    email: String,
+    password_hash: String,
+    avatar_url: Option<String>,
+    oauth_provider: Option<String>,
+    oauth_subject: Option<String>,
+    email_verified_at: Option<DateTime<Utc>>,
+    status: String,
+    created_at: DateTime<Utc>,
+    last_login_at: Option<DateTime<Utc>>,
+    total_count: i64,
+}
+
+impl TryFrom<UserListRow> for User {
+    type Error = StoreError;
+
+    fn try_from(row: UserListRow) -> Result<Self, Self::Error> {
+        User::try_from(UserRow {
+            id: row.id,
+            name: row.name,
+            email: row.email,
+            password_hash: row.password_hash,
+            avatar_url: row.avatar_url,
+            oauth_provider: row.oauth_provider,
+            oauth_subject: row.oauth_subject,
+            email_verified_at: row.email_verified_at,
+            status: row.status,
+            created_at: row.created_at,
+            last_login_at: row.last_login_at,
+        })
+    }
+}
+
 impl TryFrom<UserRow> for User {
     type Error = StoreError;
 
@@ -276,33 +312,37 @@ impl AuthStore for PgAuthStore {
         search: Option<&str>,
         status: Option<crate::domain::auth::entities::UserStatus>,
         limit: i64,
-        before: Option<&str>,
-    ) -> BoxFut<'_, Result<Vec<User>, StoreError>> {
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<User>, i64), StoreError>> {
         let pool = self.pool.clone();
         let search_owned = search.map(str::to_owned);
         let status_owned = status.map(|s| s.as_str().to_string());
-        let before_owned = before.map(str::to_owned);
         Box::pin(async move {
-            let rows = sqlx::query_as::<_, UserRow>(
+            let rows = sqlx::query_as::<_, UserListRow>(
                 "SELECT id, name, email, password_hash, avatar_url,
                         email_verified_at, oauth_provider, oauth_subject, status,
-                        created_at, last_login_at
+                        created_at, last_login_at,
+                        COUNT(*) OVER() AS total_count
                  FROM auth_users
                  WHERE deleted_at IS NULL
                    AND ($1::text IS NULL OR status = $1)
                    AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%' OR email ILIKE '%' || $2 || '%')
-                   AND ($3::text IS NULL OR id < $3)
                  ORDER BY created_at DESC, id DESC
-                 LIMIT $4",
+                 LIMIT $3 OFFSET $4",
             )
             .bind(&status_owned)
             .bind(&search_owned)
-            .bind(&before_owned)
             .bind(limit)
+            .bind(offset)
             .fetch_all(&pool)
             .await
             .map_err(map_err)?;
-            rows.into_iter().map(User::try_from).collect()
+            let total = rows.first().map(|r| r.total_count).unwrap_or(0);
+            let users = rows
+                .into_iter()
+                .map(User::try_from)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((users, total))
         })
     }
 
@@ -325,6 +365,33 @@ impl AuthStore for PgAuthStore {
             .await
             .map_err(map_err)?;
             Ok(result.rows_affected() > 0)
+        })
+    }
+
+    fn list_all_user_ids(
+        &self,
+        status: Option<crate::domain::auth::entities::UserStatus>,
+    ) -> BoxFut<'_, Result<Vec<UserId>, StoreError>> {
+        let pool = self.pool.clone();
+        let status_owned = status.map(|s| s.as_str().to_string());
+        Box::pin(async move {
+            let ids = sqlx::query_scalar::<_, String>(
+                "SELECT id FROM auth_users
+                 WHERE deleted_at IS NULL
+                   AND ($1::text IS NULL OR status = $1)
+                 ORDER BY id ASC",
+            )
+            .bind(&status_owned)
+            .fetch_all(&pool)
+            .await
+            .map_err(map_err)?;
+            ids.into_iter()
+                .map(|id| {
+                    parse_id(&id).map_err(|e| {
+                        StoreError::Storage(format!("invalid user id in db: {e}"))
+                    })
+                })
+                .collect::<Result<Vec<UserId>, _>>()
         })
     }
 
@@ -599,6 +666,44 @@ impl TryFrom<ProjectRow> for ProjectSummary {
     }
 }
 
+#[derive(sqlx::FromRow)]
+struct AdminProjectRow {
+    id: String,
+    name: String,
+    slug: String,
+    description: Option<String>,
+    environment: String,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    owner_id: Option<String>,
+    owner_name: Option<String>,
+    owner_email: Option<String>,
+    member_count: i64,
+    total_count: i64,
+}
+
+impl TryFrom<AdminProjectRow> for crate::ports::projects_store::AdminProjectRecord {
+    type Error = StoreError;
+
+    fn try_from(row: AdminProjectRow) -> Result<Self, Self::Error> {
+        Ok(Self {
+            project: ProjectSummary {
+                id: row.id,
+                name: row.name,
+                slug: row.slug,
+                description: row.description,
+                environment: row.environment,
+                created_at: row.created_at,
+            },
+            owner_id: row.owner_id,
+            owner_name: row.owner_name,
+            owner_email: row.owner_email,
+            member_count: row.member_count,
+            updated_at: row.updated_at,
+        })
+    }
+}
+
 impl ProjectsStore for PgAuthStore {
     fn list_projects(
         &self,
@@ -685,6 +790,111 @@ impl ProjectsStore for PgAuthStore {
             .map_err(map_err)?;
 
             row.map(ProjectSummary::try_from).transpose()
+        })
+    }
+
+    // === Admin-scoped reads (no actor visibility checks) =================
+
+    fn list_all_projects(
+        &self,
+        search: Option<&str>,
+        environment: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<crate::ports::projects_store::AdminProjectRecord>, i64), StoreError>> {
+        let pool = self.pool.clone();
+        let search_owned = search.map(str::to_owned);
+        let environment_owned = environment.map(str::to_owned);
+        Box::pin(async move {
+            let rows = sqlx::query_as::<_, AdminProjectRow>(
+                "SELECT p.id, p.name, p.slug, p.description, p.environment,
+                        p.created_at, p.updated_at,
+                        u.id AS owner_id, u.name AS owner_name, u.email AS owner_email,
+                        (SELECT COUNT(*) FROM platform_project_members pm
+                         WHERE pm.project_id = p.id AND pm.deleted_at IS NULL) AS member_count,
+                        COUNT(*) OVER() AS total_count
+                 FROM platform_projects p
+                 LEFT JOIN auth_users u ON u.id = p.created_by AND u.deleted_at IS NULL
+                 WHERE p.deleted_at IS NULL
+                   AND ($1::text IS NULL OR p.environment = $1)
+                   AND ($2::text IS NULL OR p.name ILIKE '%' || $2 || '%' OR p.slug ILIKE '%' || $2 || '%')
+                 ORDER BY p.created_at DESC, p.id DESC
+                 LIMIT $3 OFFSET $4",
+            )
+            .bind(&environment_owned)
+            .bind(&search_owned)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&pool)
+            .await
+            .map_err(map_err)?;
+            let total = rows.first().map(|r| r.total_count).unwrap_or(0);
+            let records = rows
+                .into_iter()
+                .map(crate::ports::projects_store::AdminProjectRecord::try_from)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((records, total))
+        })
+    }
+
+    fn get_any_project(
+        &self,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Option<crate::ports::projects_store::AdminProjectRecord>, StoreError>>
+    {
+        let pool = self.pool.clone();
+        let project_id_owned = project_id.to_string();
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, AdminProjectRow>(
+                "SELECT p.id, p.name, p.slug, p.description, p.environment,
+                        p.created_at, p.updated_at,
+                        u.id AS owner_id, u.name AS owner_name, u.email AS owner_email,
+                        (SELECT COUNT(*) FROM platform_project_members pm
+                         WHERE pm.project_id = p.id AND pm.deleted_at IS NULL) AS member_count,
+                        COUNT(*) OVER() AS total_count
+                 FROM platform_projects p
+                 LEFT JOIN auth_users u ON u.id = p.created_by AND u.deleted_at IS NULL
+                 WHERE p.id = $1 AND p.deleted_at IS NULL",
+            )
+            .bind(&project_id_owned)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+            row.map(crate::ports::projects_store::AdminProjectRecord::try_from)
+                .transpose()
+        })
+    }
+
+    fn list_project_members(
+        &self,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Vec<crate::ports::projects_store::ProjectMemberRecord>, StoreError>>
+    {
+        let pool = self.pool.clone();
+        let project_id_owned = project_id.to_string();
+        Box::pin(async move {
+            let rows = sqlx::query_as::<_, (String, Option<String>, Option<String>, String)>(
+                "SELECT pm.user_id, u.name, u.email, pm.role
+                 FROM platform_project_members pm
+                 LEFT JOIN auth_users u ON u.id = pm.user_id AND u.deleted_at IS NULL
+                 WHERE pm.project_id = $1 AND pm.deleted_at IS NULL
+                 ORDER BY pm.created_at ASC, pm.user_id ASC",
+            )
+            .bind(&project_id_owned)
+            .fetch_all(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(rows
+                .into_iter()
+                .map(
+                    |(user_id, name, email, role)| crate::ports::projects_store::ProjectMemberRecord {
+                        user_id,
+                        name,
+                        email,
+                        role,
+                    },
+                )
+                .collect())
         })
     }
 }

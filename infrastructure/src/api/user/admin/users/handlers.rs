@@ -14,7 +14,6 @@ use super::super::super::auth::Problem;
 use super::dto::{AdminUserDetailDto, AdminUserDto, SetUserStatusRequest};
 
 const DEFAULT_LIMIT: i64 = 50;
-const MAX_LIMIT: i64 = 200;
 
 type MaybeUsersService = Option<Extension<Arc<AdminUsersService>>>;
 
@@ -37,11 +36,7 @@ pub async fn list_users(
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let service = require_users_service(service)?;
-    let limit = query
-        .get("limit")
-        .and_then(|v| v.parse::<i64>().ok())
-        .unwrap_or(DEFAULT_LIMIT)
-        .clamp(1, MAX_LIMIT);
+    let (page, per_page, offset) = super::super::handlers::pagination(&query, DEFAULT_LIMIT);
 
     let status = query
         .get("status")
@@ -54,25 +49,26 @@ pub async fn list_users(
         })
         .transpose()?;
 
-    let users = service
+    let (users, total) = service
         .list_users(
             query.get("search").map(String::as_str),
             status,
-            limit + 1,
-            query.get("before").map(String::as_str),
+            per_page,
+            offset,
         )
         .await?;
 
-    let has_more = users.len() > limit as usize;
-    let dtos: Vec<AdminUserDto> = users
-        .into_iter()
-        .take(limit as usize)
-        .map(AdminUserDto::from)
-        .collect();
+    let dtos: Vec<AdminUserDto> = users.into_iter().map(AdminUserDto::from).collect();
 
     Ok((
         StatusCode::OK,
-        Json(serde_json::json!({ "users": dtos, "hasMore": has_more })),
+        Json(serde_json::json!({
+            "users": dtos,
+            "page": page,
+            "perPage": per_page,
+            "total": total,
+            "totalPages": super::super::handlers::total_pages(total, per_page),
+        })),
     ))
 }
 

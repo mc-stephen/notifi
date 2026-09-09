@@ -40,6 +40,8 @@ fn app_with_admin_support() -> (Router, Arc<FakeTicketsStore>) {
                 oauth: None,
                 admin: Some(admin),
                 admin_users: None,
+                admin_projects: None,
+                admin_notifications: None,
                 projects: Some(projects),
                 audit: Some(audit),
                 recipients: None,
@@ -195,7 +197,8 @@ async fn admin_lists_all_tickets_with_customer_identity() {
     assert_eq!(list[0]["customerEmail"].as_str().unwrap(), "jane@x.dev");
     assert_eq!(list[0]["customerName"].as_str().unwrap(), "Jane");
     assert_eq!(list[0]["status"].as_str().unwrap(), "open");
-    assert_eq!(body["hasMore"], false);
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["totalPages"], 1);
 }
 
 #[tokio::test]

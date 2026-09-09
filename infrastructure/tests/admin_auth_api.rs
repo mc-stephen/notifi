@@ -35,6 +35,8 @@ fn app_with_admin() -> Router {
             oauth: None,
             admin: Some(admin),
             admin_users: None,
+            admin_projects: None,
+            admin_notifications: None,
             projects: Some(projects),
             audit: Some(audit),
             recipients: None,

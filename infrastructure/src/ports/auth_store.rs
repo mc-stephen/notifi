@@ -64,19 +64,25 @@ pub trait AuthStore: Send + Sync {
     ) -> BoxFut<'_, Result<(), StoreError>>;
     /// Lists users (newest first) with optional search/status filters.
     /// `search` matches name or email (case-insensitive, substring).
+    /// Returns the page plus the total matching count.
     fn list_users(
         &self,
         search: Option<&str>,
         status: Option<UserStatus>,
         limit: i64,
-        before: Option<&str>,
-    ) -> BoxFut<'_, Result<Vec<User>, StoreError>>;
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<User>, i64), StoreError>>;
     /// Sets a user's account status. Returns false when unknown/deleted.
     fn set_user_status(
         &self,
         user_id: UserId,
         status: UserStatus,
     ) -> BoxFut<'_, Result<bool, StoreError>>;
+    /// All non-deleted user ids, optionally filtered by status (admin broadcast).
+    fn list_all_user_ids(
+        &self,
+        status: Option<UserStatus>,
+    ) -> BoxFut<'_, Result<Vec<UserId>, StoreError>>;
 
     // -- sessions ---------------------------------------------------------
     fn create_session(&self, session: &Session) -> BoxFut<'_, Result<(), StoreError>>;

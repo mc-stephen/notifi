@@ -1,10 +1,10 @@
-1. History page:
-   - the channel should be "sms" and "push" (in-app web notification) only.
+1. History page: (LIVE — backed by /admin/notifications)
+   - the channel is in-app only for now; email/push options show a "not implemented yet" notice (channels land in M3).
    - message box should be of richtext (wysiwyg) editor.
    - Target should be of
      - Specific users (this should bring up a new file to search and select users (one or multi))
      - All users
-     - By plan / Billing
+     - By project (orgs/plans don't exist in the backend)
    - The send now and schedule btn is nice, so i can send now or later
    - Let send page should be inside of History page in a tab view, and below the send tab that is where you will put current schedule notification (or find a better way to do it)
    - The Preview component should be inside of the WYSIWYG editor like how other brands (github) does theirs.

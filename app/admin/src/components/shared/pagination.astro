@@ -1,0 +1,69 @@
+---
+interface Props {
+  page: number;
+  totalPages: number;
+  total: number;
+  basePath: string;
+  params?: Record<string, string>;
+}
+
+const { page, totalPages, total, basePath, params = {} } = Astro.props;
+
+function hrefFor(p: number) {
+  const search = new URLSearchParams({ ...params, page: String(p) });
+  return `${basePath}?${search.toString()}`;
+}
+
+// Compact window: first, last, and neighbors of the current page.
+function windowPages(current: number, last: number): (number | "…")[] {
+  if (last <= 7) return Array.from({ length: last }, (_, i) => i + 1);
+  const keep = new Set([1, last, current - 1, current, current + 1]);
+  const sorted = [...keep].filter((n) => n >= 1 && n <= last).sort((a, b) => a - b);
+  const out: (number | "…")[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) out.push("…");
+    out.push(sorted[i]);
+  }
+  return out;
+}
+
+const btn =
+  "inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors disabled:pointer-events-none disabled:opacity-50";
+---
+
+{total > 0 && (
+  <div class="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
+    <p class="text-xs text-muted-foreground">
+      Page {page} of {totalPages} · {total} total
+    </p>
+    <nav class="flex items-center gap-1.5" aria-label="Pagination">
+      <a href={hrefFor(1)} aria-disabled={page <= 1} class:list={[btn, page <= 1 && "pointer-events-none opacity-50"]}>
+        First
+      </a>
+      <a href={hrefFor(page - 1)} aria-disabled={page <= 1} class:list={[btn, page <= 1 && "pointer-events-none opacity-50"]}>
+        ← Prev
+      </a>
+      {windowPages(page, totalPages).map((p) =>
+        p === "…" ? (
+          <span class="px-1 text-xs text-muted-foreground">…</span>
+        ) : (
+          <a
+            href={hrefFor(p)}
+            aria-current={p === page ? "page" : undefined}
+            class:list={[
+              "inline-flex items-center justify-center rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+              p === page
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-input bg-background hover:bg-muted",
+            ]}
+          >
+            {p}
+          </a>
+        ),
+      )}
+      <a href={hrefFor(page + 1)} aria-disabled={page >= totalPages} class:list={[btn, page >= totalPages && "pointer-events-none opacity-50"]}>
+        Next →
+      </a>
+    </nav>
+  </div>
+)}

@@ -43,6 +43,8 @@ fn app_with_recipients() -> (Router, Arc<FakeRecipientsStore>) {
                 oauth: None,
                 admin: None,
                 admin_users: None,
+                admin_projects: None,
+                admin_notifications: None,
                 projects: Some(projects),
                 audit: Some(audit),
                 recipients: Some(recipients),

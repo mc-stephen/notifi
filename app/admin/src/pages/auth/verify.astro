@@ -1,0 +1,146 @@
+---
+import AuthLayout from "../../layouts/AuthLayout.astro";
+import OtpInput from "../../components/admin/OtpInput.tsx";
+---
+
+<AuthLayout title="Two-Factor Authentication">
+  <div class="space-y-6">
+    <div class="space-y-3 text-center">
+      <div class="flex justify-center">
+        <div class="size-11 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+      </div>
+      <div class="space-y-2">
+        <h1 class="text-2xl font-bold tracking-tight text-foreground">Check your authenticator app</h1>
+        <p class="text-sm text-muted-foreground">
+          Enter the 6-digit code to finish signing in.
+        </p>
+      </div>
+    </div>
+
+    <div id="no-session" class="hidden rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-primary text-center">
+      This page needs a login first.
+      <a href="/login" class="font-medium hover:underline">Back to sign in</a>
+    </div>
+
+    <form id="verify-form" class="space-y-6">
+      <div class="space-y-3">
+        <OtpInput client:load />
+        <input type="hidden" id="otp-code" />
+        <p class="text-xs text-muted-foreground text-center">
+          Type or paste the 6-digit code — it submits automatically when complete.
+        </p>
+      </div>
+
+      <div id="verify-error" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive text-center"></div>
+
+      <button
+        type="submit"
+        id="verify-btn"
+        class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 w-full"
+      >
+        <span id="verify-btn-text">Verify</span>
+        <svg id="verify-btn-spinner" class="hidden size-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+      </button>
+    </form>
+
+    <div class="text-center">
+      <button type="button" id="back-btn" class="text-sm text-muted-foreground hover:text-foreground underline">
+        Use a different account
+      </button>
+    </div>
+  </div>
+</AuthLayout>
+
+<script>
+  import { auth, ApiError } from "../../lib/api";
+
+  const PENDING_KEY = "pending_admin_auth";
+
+  const form = document.getElementById("verify-form") as HTMLFormElement;
+  const noSession = document.getElementById("no-session")!;
+  const errorDiv = document.getElementById("verify-error")!;
+  const submitBtn = document.getElementById("verify-btn") as HTMLButtonElement;
+  const btnText = document.getElementById("verify-btn-text")!;
+  const btnSpinner = document.getElementById("verify-btn-spinner")!;
+  const hiddenCode = document.getElementById("otp-code") as HTMLInputElement;
+
+  function readCreds(): { email: string; password: string } | null {
+    try {
+      const raw = sessionStorage.getItem(PENDING_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.email !== "string" || typeof parsed?.password !== "string") return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  function clearCreds() {
+    sessionStorage.removeItem(PENDING_KEY);
+  }
+
+  function showError(message: string) {
+    errorDiv.textContent = message;
+    errorDiv.classList.remove("hidden");
+  }
+
+  let submitting = false;
+
+  async function submit(code: string) {
+    const creds = readCreds();
+    if (!creds || submitting) return;
+    submitting = true;
+    errorDiv.classList.add("hidden");
+    btnText.textContent = "";
+    btnSpinner.classList.remove("hidden");
+    submitBtn.disabled = true;
+
+    try {
+      await auth.login({ email: creds.email, password: creds.password, totp_code: code });
+      clearCreds();
+      window.location.href = "/overview";
+    } catch (err) {
+      showError(err instanceof ApiError ? err.message : "Verification failed. Please try again.");
+    } finally {
+      submitting = false;
+      btnText.textContent = "Verify";
+      btnSpinner.classList.add("hidden");
+      submitBtn.disabled = false;
+    }
+  }
+
+  const creds = readCreds();
+  if (!creds) {
+    form.classList.add("hidden");
+    noSession.classList.remove("hidden");
+  } else {
+    window.addEventListener("otp:complete", (e) => {
+      hiddenCode.value = (e as CustomEvent<string>).detail;
+      submit(hiddenCode.value);
+    });
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (hiddenCode.value.length === 6) {
+        submit(hiddenCode.value);
+      } else {
+        showError("Enter all 6 digits.");
+      }
+    });
+  }
+
+  document.getElementById("back-btn")?.addEventListener("click", async () => {
+    clearCreds();
+    try {
+      await auth.logout();
+    } finally {
+      window.location.href = "/login";
+    }
+  });
+</script>

@@ -3,7 +3,6 @@ import {
   Users,
   Building2,
   LifeBuoy,
-  Send,
   Bell,
   CreditCard,
   Server,
@@ -33,7 +32,7 @@ export const NAV_STRUCTURE: NavGroup[] = [
     label: "Customers",
     items: [
       { label: "Users", href: "/users", icon: Users },
-      { label: "Organizations", href: "/organizations", icon: Building2 },
+      { label: "Projects", href: "/projects", icon: Building2 },
     ],
   },
   {
@@ -45,8 +44,7 @@ export const NAV_STRUCTURE: NavGroup[] = [
   {
     label: "Notifications",
     items: [
-      { label: "Send", href: "/notifications/send", icon: Send },
-      { label: "History", href: "/notifications", icon: Bell },
+      { label: "Notifications", href: "/notifications", icon: Bell },
     ],
   },
   {

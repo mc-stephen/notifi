@@ -1,5 +1,7 @@
 ---
 import AdminLayout from "../../layouts/AdminLayout.astro";
+import Pagination from "../../components/shared/pagination.astro";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../../components/ui/table";
 import { TICKET_STATUSES, TICKET_STATUS_COLORS, TICKET_STATUS_LABELS, PRIORITY_COLORS } from "../../lib/constants";
 import type { AdminTicket } from "../../lib/types";
 
@@ -9,13 +11,19 @@ const cookieHeader = session ? { Cookie: `admin_session=${session}` } : {};
 
 const statusFilter = Astro.url.searchParams.get("status") ?? "";
 const searchQuery = Astro.url.searchParams.get("q") ?? "";
+const page = Math.max(1, parseInt(Astro.url.searchParams.get("page") ?? "1", 10) || 1);
+const LIMIT = 25;
 
 let tickets: AdminTicket[] = [];
+let total = 0;
+let totalPages = 0;
 let loadError: string | null = null;
 try {
   const params = new URLSearchParams();
   if (statusFilter) params.set("status", statusFilter);
-  params.set("limit", "100");
+  if (searchQuery.trim()) params.set("search", searchQuery.trim());
+  params.set("limit", String(LIMIT));
+  params.set("page", String(page));
   const res = await fetch(`${API_BASE}/admin/support/tickets?${params.toString()}`, {
     headers: cookieHeader,
   });
@@ -28,25 +36,20 @@ try {
   } else {
     const data = await res.json();
     tickets = data.tickets ?? [];
+    total = data.total ?? 0;
+    totalPages = data.totalPages ?? 0;
   }
 } catch {
   loadError = loadError ?? "Could not load tickets. Check that the API is running and try again.";
 }
 
-const q = searchQuery.trim().toLowerCase();
-const visible = tickets.filter((t) => {
-  if (!q) return true;
-  return (
-    t.subject.toLowerCase().includes(q) ||
-    t.customerName.toLowerCase().includes(q) ||
-    t.customerEmail.toLowerCase().includes(q) ||
-    t.id.toLowerCase().includes(q)
-  );
-});
-
 function priorityColor(priority: string) {
   return PRIORITY_COLORS[priority.toLowerCase()] ?? "bg-muted text-muted-foreground border-border";
 }
+
+const pageParams: Record<string, string> = {};
+if (statusFilter) pageParams.status = statusFilter;
+if (searchQuery.trim()) pageParams.q = searchQuery.trim();
 ---
 
 <AdminLayout title="Support Tickets">
@@ -64,9 +67,9 @@ function priorityColor(priority: string) {
     <form method="get" class="flex flex-wrap items-center gap-3">
       <div class="relative flex-1 min-w-[200px] max-w-sm">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" name="q" value={searchQuery} placeholder="Search tickets..." class="flex h-9 w-full rounded-lg border border-input bg-transparent pl-8 pr-3 py-1.5 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
+        <input type="text" name="q" value={searchQuery} placeholder="Search tickets..." class="flex h-9 w-full rounded-lg border border-input bg-card pl-8 pr-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
       </div>
-      <select name="status" onchange="this.form.submit()" class="flex h-9 rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+      <select name="status" onchange="this.form.submit()" class="flex h-9 rounded-lg border border-input bg-card px-3 py-1.5 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
         <option value="">All Status</option>
         {TICKET_STATUSES.map((s) => (
           <option value={s} selected={statusFilter === s}>{TICKET_STATUS_LABELS[s]}</option>
@@ -78,72 +81,80 @@ function priorityColor(priority: string) {
     </form>
 
     <div class="rounded-xl border bg-card overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-border bg-muted/30">
-              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Ticket</th>
-              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Customer</th>
-              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
-              <th class="text-left py-3 px-4 font-medium text-muted-foreground">Priority</th>
-              <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Updated</th>
-              <th class="text-right py-3 px-4 font-medium text-muted-foreground"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((ticket) => (
-              <tr class="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
-                <td class="py-3 px-4">
-                  <a href={`/support/${ticket.id}`} class="font-medium text-foreground hover:underline block">
-                    {ticket.subject}
-                  </a>
-                  <p class="text-xs text-muted-foreground mt-0.5">{ticket.id}</p>
-                </td>
-                <td class="py-3 px-4">
-                  <p class="text-foreground">{ticket.customerName}</p>
-                  <p class="text-xs text-muted-foreground">{ticket.customerEmail}</p>
-                </td>
-                <td class="py-3 px-4">
-                  <span class:list={[
-                    "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium",
-                    TICKET_STATUS_COLORS[ticket.status],
-                  ]}>
-                    {TICKET_STATUS_LABELS[ticket.status]}
-                  </span>
-                </td>
-                <td class="py-3 px-4">
-                  <span class:list={[
-                    "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
-                    priorityColor(ticket.priority),
-                  ]}>
-                    {ticket.priority}
-                  </span>
-                </td>
-                <td class="py-3 px-4 text-muted-foreground text-xs hidden lg:table-cell">
-                  {new Date(ticket.updatedAt).toLocaleDateString()}
-                </td>
-                <td class="py-3 px-4 text-right">
-                  <a href={`/support/${ticket.id}`} class="text-xs text-primary hover:underline">View</a>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {loadError && (
-          <div class="px-4 py-12 text-center">
-            <p class="text-sm text-destructive">{loadError}</p>
-            <a href="/login" class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted transition-colors mt-4">
-              Sign in again
-            </a>
-          </div>
-        )}
-        {!loadError && visible.length === 0 && (
-          <div class="px-4 py-12 text-center">
-            <p class="text-sm font-medium text-foreground">No tickets found</p>
-            <p class="text-xs text-muted-foreground mt-1">Try adjusting your search or filters.</p>
-          </div>
-        )}
-      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Ticket</TableHead>
+            <TableHead>Customer</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Priority</TableHead>
+            <TableHead className="hidden lg:table-cell">Updated</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {tickets.map((ticket) => (
+            <TableRow data-href={`/support/${ticket.id}`} className="ticket-row cursor-pointer">
+              <TableCell>
+                <a href={`/support/${ticket.id}`} class="font-medium text-foreground hover:underline block row-link">
+                  {ticket.subject}
+                </a>
+                <p class="text-xs text-muted-foreground mt-0.5">{ticket.id}</p>
+              </TableCell>
+              <TableCell>
+                <p class="text-foreground">{ticket.customerName}</p>
+                <p class="text-xs text-muted-foreground">{ticket.customerEmail}</p>
+              </TableCell>
+              <TableCell>
+                <span class:list={[
+                  "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium",
+                  TICKET_STATUS_COLORS[ticket.status],
+                ]}>
+                  {TICKET_STATUS_LABELS[ticket.status]}
+                </span>
+              </TableCell>
+              <TableCell>
+                <span class:list={[
+                  "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+                  priorityColor(ticket.priority),
+                ]}>
+                  {ticket.priority}
+                </span>
+              </TableCell>
+              <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
+                {new Date(ticket.updatedAt).toLocaleDateString()}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {loadError && (
+        <div class="px-4 py-12 text-center">
+          <p class="text-sm text-destructive">{loadError}</p>
+          <a href="/login" class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted transition-colors mt-4">
+            Sign in again
+          </a>
+        </div>
+      )}
+      {!loadError && tickets.length === 0 && (
+        <div class="px-4 py-12 text-center">
+          <p class="text-sm font-medium text-foreground">No tickets found</p>
+          <p class="text-xs text-muted-foreground mt-1">Try adjusting your search or filters.</p>
+        </div>
+      )}
+      {!loadError && (
+        <Pagination page={page} totalPages={totalPages} total={total} basePath="/support" params={pageParams} />
+      )}
     </div>
   </div>
 </AdminLayout>
+
+<script>
+  document.querySelectorAll<HTMLTableRowElement>("tr.ticket-row").forEach((row) => {
+    row.addEventListener("click", (e) => {
+      // Let the inner subject link handle its own clicks (keyboard/middle-click safe).
+      if ((e.target as HTMLElement).closest("a")) return;
+      const href = row.dataset.href;
+      if (href) window.location.href = href;
+    });
+  });
+</script>

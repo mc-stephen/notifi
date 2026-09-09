@@ -53,6 +53,8 @@ mod tests {
                 oauth: None,
                 admin: None,
                 admin_users: None,
+                admin_projects: None,
+                admin_notifications: None,
                 projects: None,
                 audit: None,
                 recipients: None,

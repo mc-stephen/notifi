@@ -40,6 +40,8 @@ fn app_with_templates() -> (Router, Arc<FakeTemplatesStore>) {
                 oauth: None,
                 admin: None,
                 admin_users: None,
+                admin_projects: None,
+                admin_notifications: None,
                 projects: Some(projects),
                 audit: Some(audit),
                 recipients: None,

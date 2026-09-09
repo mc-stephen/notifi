@@ -199,17 +199,16 @@ impl TicketService {
     pub async fn list_all_tickets(
         &self,
         status: Option<&str>,
+        search: Option<&str>,
         limit: i64,
-        before: Option<&str>,
-    ) -> Result<Vec<AdminTicket>, AuthError> {
-        Ok(self
+        offset: i64,
+    ) -> Result<(Vec<AdminTicket>, i64), AuthError> {
+        let (records, total) = self
             .store
-            .list_all(status, limit, before)
+            .list_all(status, search, limit, offset)
             .await
-            .map_err(map_store_error)?
-            .into_iter()
-            .map(AdminTicket::from)
-            .collect())
+            .map_err(map_store_error)?;
+        Ok((records.into_iter().map(AdminTicket::from).collect(), total))
     }
 
     pub async fn get_any_ticket(&self, ticket_id: &str) -> Result<Option<AdminTicket>, AuthError> {

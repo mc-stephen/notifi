@@ -23,12 +23,16 @@ CREATE TABLE auth_users (
     email_verified_at TIMESTAMPTZ,
     oauth_provider    TEXT, -- 'github' | 'google'; NULL = email/password
     oauth_subject     TEXT, -- provider-side user id
+    status            TEXT        NOT NULL DEFAULT 'active'
+                      CHECK (status IN ('active', 'suspended')),
     last_login_at     TIMESTAMPTZ,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at        TIMESTAMPTZ,
     UNIQUE (oauth_provider, oauth_subject)
 );
+
+CREATE INDEX idx_auth_users_status ON auth_users(status) WHERE deleted_at IS NULL;
 
 -- Platform administrators: separate from customers (`auth_users`). Admins
 -- manage the Notifi platform itself; 2FA (TOTP) is enforced for all admins.
@@ -47,7 +51,7 @@ CREATE TABLE admin_users (
 
 CREATE INDEX idx_admin_users_email ON admin_users(email) WHERE deleted_at IS NULL;
 
--- Admin sign-in sessions (admin dashboard cookie `session_token`; only the
+-- Admin sign-in sessions (admin dashboard cookie `admin_session`; only the
 -- hash is stored server-side).
 CREATE TABLE admin_sessions (
     id         VARCHAR(26) PRIMARY KEY,
@@ -59,6 +63,21 @@ CREATE TABLE admin_sessions (
 );
 
 CREATE INDEX idx_admin_sessions_admin ON admin_sessions(admin_id);
+
+-- One-time password-reset tokens for platform admins (separate from the
+-- customer `auth_tokens` table, which references `auth_users`).
+-- Email delivery is not wired; raw tokens are surfaced via logs and, when
+-- explicitly enabled, in API responses (dev mode only).
+CREATE TABLE admin_password_reset_tokens (
+    id          VARCHAR(26) PRIMARY KEY,
+    admin_id    VARCHAR(26) NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+    token_hash  TEXT        NOT NULL UNIQUE,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_admin_reset_tokens_admin ON admin_password_reset_tokens(admin_id);
 
 -- Active sign-in sessions (dashboard cookie `session_token`; only the hash
 -- is stored server-side).
@@ -318,24 +337,61 @@ CREATE TABLE platform_support_ticket_messages (
 CREATE INDEX idx_ticket_messages_ticket ON platform_support_ticket_messages(ticket_id);
 
 -- ---------------------------------------------------------------------------
+-- admin notification broadcasts (must precede in-app: FK target)
+-- ---------------------------------------------------------------------------
+
+-- A broadcast is the admin-side record of one compose action; recipient rows
+-- in `platform_in_app_notifications` link back via `broadcast_id` and are
+-- only materialized when the broadcast is sent — scheduled broadcasts stay
+-- invisible to users until the worker sends them.
+CREATE TABLE platform_notification_broadcasts (
+    id              VARCHAR(26) PRIMARY KEY,
+    admin_id        VARCHAR(26) NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+    admin_email     TEXT        NOT NULL,
+    type            TEXT        NOT NULL,
+    title           TEXT        NOT NULL,
+    content         TEXT        NOT NULL,
+    audience        JSONB       NOT NULL DEFAULT '{}',
+    channels        TEXT[]      NOT NULL DEFAULT '{in_app}',
+    status          TEXT        NOT NULL DEFAULT 'sent'
+                    CHECK (status IN ('scheduled', 'sending', 'sent', 'cancelled')),
+    scheduled_for   TIMESTAMPTZ,
+    sent_at         TIMESTAMPTZ,
+    recipient_count BIGINT      NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT scheduled_needs_time CHECK (
+        status <> 'scheduled' OR scheduled_for IS NOT NULL
+    )
+);
+
+CREATE INDEX idx_broadcasts_admin_time
+    ON platform_notification_broadcasts(admin_id, created_at DESC);
+CREATE INDEX idx_broadcasts_due
+    ON platform_notification_broadcasts(scheduled_for)
+    WHERE status = 'scheduled';
+
+-- ---------------------------------------------------------------------------
 -- in-app notifications
 -- ---------------------------------------------------------------------------
 
 -- Personal only (per user), no project scope.
 -- origin: 'system' (auto-emitted on events) | 'admin' (manual, admin dashboard).
 -- content is markdown/HTML rendered by the dashboard detail panel.
+-- broadcast_id links rows materialized by an admin broadcast (NULL otherwise).
 CREATE TABLE platform_in_app_notifications (
-    id         VARCHAR(26) PRIMARY KEY,
-    user_id    VARCHAR(26) NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
-    type       TEXT NOT NULL,
-    origin     TEXT NOT NULL DEFAULT 'system'
-               CHECK (origin IN ('system', 'admin')),
-    title      TEXT NOT NULL,
-    content    TEXT NOT NULL,
-    read_at    TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at TIMESTAMPTZ
+    id           VARCHAR(26) PRIMARY KEY,
+    user_id      VARCHAR(26) NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+    type         TEXT NOT NULL,
+    origin       TEXT NOT NULL DEFAULT 'system'
+                 CHECK (origin IN ('system', 'admin')),
+    title        TEXT NOT NULL,
+    content      TEXT NOT NULL,
+    read_at      TIMESTAMPTZ,
+    broadcast_id VARCHAR(26) NULL REFERENCES platform_notification_broadcasts(id) ON DELETE SET NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at   TIMESTAMPTZ
 );
 
 CREATE INDEX idx_inapp_notifications_user_time ON platform_in_app_notifications(user_id, created_at DESC);
 CREATE INDEX idx_inapp_notifications_unread ON platform_in_app_notifications(user_id) WHERE read_at IS NULL AND deleted_at IS NULL;
+CREATE INDEX idx_inapp_broadcast ON platform_in_app_notifications(broadcast_id);

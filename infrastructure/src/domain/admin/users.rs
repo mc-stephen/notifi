@@ -54,9 +54,9 @@ impl AdminUsersService {
         search: Option<&str>,
         status: Option<UserStatus>,
         limit: i64,
-        before: Option<&str>,
-    ) -> Result<Vec<User>, AuthError> {
-        Ok(self.auth.list_users(search, status, limit, before).await?)
+        offset: i64,
+    ) -> Result<(Vec<User>, i64), AuthError> {
+        Ok(self.auth.list_users(search, status, limit, offset).await?)
     }
 
     pub async fn get_user_detail(&self, user_id: UserId) -> Result<Option<UserDetail>, AuthError> {

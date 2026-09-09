@@ -20,6 +20,10 @@ pub struct AppState {
     pub admin: Option<Arc<crate::domain::admin::AdminService>>,
     /// Admin user management (list/stats/suspend) — wired alongside admin/db.
     pub admin_users: Option<Arc<crate::domain::admin::AdminUsersService>>,
+    /// Admin project views (list/detail) — wired alongside admin/db.
+    pub admin_projects: Option<Arc<crate::domain::admin::AdminProjectsService>>,
+    /// Admin notification broadcasts — wired alongside admin/db.
+    pub admin_notifications: Option<Arc<crate::domain::admin::AdminNotificationsService>>,
     /// Project listing and environment gate — wired alongside auth.
     pub projects: Option<Arc<crate::domain::projects::ProjectService>>,
     /// Audit log listener + query surface — wired alongside auth/db.

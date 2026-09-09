@@ -1,0 +1,165 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import Pagination from "../../components/shared/pagination.astro";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../../components/ui/table";
+import type { AdminProject } from "../../lib/types";
+
+const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8080";
+const session = Astro.cookies.get("admin_session")?.value;
+const cookieHeader = session ? { Cookie: `admin_session=${session}` } : {};
+
+const environmentFilter = Astro.url.searchParams.get("environment") ?? "";
+const searchQuery = Astro.url.searchParams.get("q") ?? "";
+const page = Math.max(1, parseInt(Astro.url.searchParams.get("page") ?? "1", 10) || 1);
+const LIMIT = 25;
+
+let projects: AdminProject[] = [];
+let total = 0;
+let totalPages = 0;
+let loadError: string | null = null;
+try {
+  const params = new URLSearchParams();
+  if (environmentFilter) params.set("environment", environmentFilter);
+  if (searchQuery.trim()) params.set("search", searchQuery.trim());
+  params.set("limit", String(LIMIT));
+  params.set("page", String(page));
+  const res = await fetch(`${API_BASE}/admin/projects?${params.toString()}`, {
+    headers: cookieHeader,
+  });
+  if (res.status === 401) {
+    loadError = "Your session has expired. Please sign out and sign in again.";
+  } else if (res.status === 503) {
+    loadError = "Project service is unavailable. Check that the API database is connected.";
+  } else if (!res.ok) {
+    throw new Error(`Request failed (${res.status})`);
+  } else {
+    const data = await res.json();
+    projects = data.projects ?? [];
+    total = data.total ?? 0;
+    totalPages = data.totalPages ?? 0;
+  }
+} catch {
+  loadError = loadError ?? "Could not load projects. Check that the API is running and try again.";
+}
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+const pageParams: Record<string, string> = {};
+if (environmentFilter) pageParams.environment = environmentFilter;
+if (searchQuery.trim()) pageParams.q = searchQuery.trim();
+---
+
+<AdminLayout title="Projects">
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+        <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+        <span>/</span>
+        <span class="text-foreground font-medium">Projects</span>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Projects</h1>
+      <p class="text-sm text-muted-foreground">Every project created by platform users.</p>
+    </div>
+
+    <form method="get" class="flex flex-wrap items-center gap-3">
+      <div class="relative flex-1 min-w-[200px] max-w-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" name="q" value={searchQuery} placeholder="Search by name or slug..." class="flex h-9 w-full rounded-lg border border-input bg-card pl-8 pr-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
+      </div>
+      <select name="environment" onchange="this.form.submit()" class="flex h-9 rounded-lg border border-input bg-card px-3 py-1.5 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+        <option value="">All Environments</option>
+        <option value="development" selected={environmentFilter === "development"}>Development</option>
+        <option value="production" selected={environmentFilter === "production"}>Production</option>
+      </select>
+      <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors h-9">
+        Search
+      </button>
+    </form>
+
+    <div class="rounded-xl border bg-card overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Project</TableHead>
+            <TableHead>Owner</TableHead>
+            <TableHead>Environment</TableHead>
+            <TableHead className="hidden md:table-cell">Members</TableHead>
+            <TableHead className="hidden lg:table-cell">Created</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {projects.map((project) => (
+            <TableRow data-href={`/projects/${project.id}`} className="project-row cursor-pointer">
+              <TableCell>
+                <div class="flex items-center gap-3">
+                  <div class="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-xs font-medium text-primary shrink-0">
+                    {initials(project.name)}
+                  </div>
+                  <div class="min-w-0">
+                    <a href={`/projects/${project.id}`} class="font-medium text-foreground hover:underline block truncate row-link">
+                      {project.name}
+                    </a>
+                    <p class="text-xs text-muted-foreground truncate">{project.slug}</p>
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell>
+                <p class="text-foreground truncate">{project.ownerName ?? "—"}</p>
+                <p class="text-xs text-muted-foreground truncate">{project.ownerEmail ?? ""}</p>
+              </TableCell>
+              <TableCell>
+                <span class:list={[
+                  "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+                  project.environment === "production"
+                    ? "bg-success/10 text-success border-success/20"
+                    : "bg-muted text-muted-foreground border-border",
+                ]}>
+                  {project.environment}
+                </span>
+              </TableCell>
+              <TableCell className="hidden md:table-cell">{project.memberCount}</TableCell>
+              <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
+                {new Date(project.createdAt).toLocaleDateString()}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {loadError && (
+        <div class="px-4 py-12 text-center">
+          <p class="text-sm text-destructive">{loadError}</p>
+          <a href="/login" class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted transition-colors mt-4">
+            Sign in again
+          </a>
+        </div>
+      )}
+      {!loadError && projects.length === 0 && (
+        <div class="px-4 py-12 text-center">
+          <p class="text-sm font-medium text-foreground">No projects found</p>
+          <p class="text-xs text-muted-foreground mt-1">Try adjusting your search or filters.</p>
+        </div>
+      )}
+      {!loadError && (
+        <Pagination page={page} totalPages={totalPages} total={total} basePath="/projects" params={pageParams} />
+      )}
+    </div>
+  </div>
+</AdminLayout>
+
+<script>
+  document.querySelectorAll<HTMLTableRowElement>("tr.project-row").forEach((row) => {
+    row.addEventListener("click", (e) => {
+      // Let the inner name link handle its own clicks (keyboard/middle-click safe).
+      if ((e.target as HTMLElement).closest("a")) return;
+      const href = row.dataset.href;
+      if (href) window.location.href = href;
+    });
+  });
+</script>

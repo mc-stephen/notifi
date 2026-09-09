@@ -45,6 +45,8 @@ fn app_with_admin_users() -> Router {
             oauth: None,
             admin: Some(admin),
             admin_users: Some(admin_users),
+            admin_projects: None,
+            admin_notifications: None,
             projects: Some(projects),
             audit: Some(audit),
             recipients: None,
@@ -137,7 +139,8 @@ async fn admin_lists_users_with_search_and_status_filters() {
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["users"].as_array().unwrap().len(), 3);
-    assert_eq!(body["hasMore"], false);
+    assert_eq!(body["total"], 3);
+    assert_eq!(body["totalPages"], 1);
     assert_eq!(body["users"][0]["status"], "active");
     assert_eq!(body["users"][0]["emailVerified"], false);
 
@@ -210,7 +213,7 @@ async fn admin_user_list_paginates() {
     let res = request_with_cookie(
         app.clone(),
         "GET",
-        "/admin/users?limit=2",
+        "/admin/users?per_page=2",
         None,
         "admin_session", &admin_cookie,
     )
@@ -218,20 +221,24 @@ async fn admin_user_list_paginates() {
     let body = body_json(res).await;
     let page1 = body["users"].as_array().unwrap();
     assert_eq!(page1.len(), 2);
-    assert_eq!(body["hasMore"], true);
+    assert_eq!(body["page"], 1);
+    assert_eq!(body["perPage"], 2);
+    assert_eq!(body["total"], 3);
+    assert_eq!(body["totalPages"], 2);
 
-    let before = page1[1]["id"].as_str().unwrap();
     let res = request_with_cookie(
         app.clone(),
         "GET",
-        &format!("/admin/users?limit=2&before={before}"),
+        "/admin/users?per_page=2&page=2",
         None,
         "admin_session", &admin_cookie,
     )
     .await;
     let body = body_json(res).await;
     assert_eq!(body["users"].as_array().unwrap().len(), 1);
-    assert_eq!(body["hasMore"], false);
+    assert_eq!(body["page"], 2);
+    assert_eq!(body["total"], 3);
+    assert_eq!(body["totalPages"], 2);
 }
 
 #[tokio::test]

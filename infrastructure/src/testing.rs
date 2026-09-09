@@ -15,7 +15,10 @@ use crate::domain::audit::entities::AuditEntry;
 use crate::domain::notifications::entities::{NotificationOrigin, NotificationType};
 use crate::ports::audit_store::{AuditFilters, AuditStore};
 use crate::ports::auth_store::{AuthStore, BoxFut, StoreError};
-use crate::ports::notifications_store::{NotificationRecord, NotificationsStore};
+use crate::ports::notifications_store::{
+    BroadcastRecord, BroadcastRecipient, BroadcastStats, BroadcastStatus, NotificationRecord,
+    NotificationsStore,
+};
 use crate::ports::projects_store::{ProjectSummary, ProjectsStore};
 use crate::ports::recipients_store::{RecipientRecord, RecipientsStore};
 use crate::ports::templates_store::{
@@ -169,10 +172,9 @@ impl AuthStore for FakeAuthStore {
         search: Option<&str>,
         status: Option<crate::domain::auth::entities::UserStatus>,
         limit: i64,
-        before: Option<&str>,
-    ) -> BoxFut<'_, Result<Vec<User>, StoreError>> {
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<User>, i64), StoreError>> {
         let search_owned = search.map(|s| s.to_lowercase());
-        let before_owned = before.map(str::to_owned);
         let users = &self.users;
         Box::pin(async move {
             let all = users.read().map_err(lock_err)?;
@@ -193,14 +195,6 @@ impl AuthStore for FakeAuthStore {
                         true
                     }
                 })
-                .filter(|u| {
-                    if let Some(ref b) = before_owned {
-                        u.id.to_string() < *b
-                    } else {
-                        true
-                    }
-                })
-                .take(limit.max(0) as usize)
                 .cloned()
                 .collect();
             result.sort_by(|a, b| {
@@ -208,7 +202,13 @@ impl AuthStore for FakeAuthStore {
                     .cmp(&a.created_at)
                     .then(b.id.to_string().cmp(&a.id.to_string()))
             });
-            Ok(result)
+            let total = result.len() as i64;
+            let page: Vec<User> = result
+                .into_iter()
+                .skip(offset.max(0) as usize)
+                .take(limit.max(0) as usize)
+                .collect();
+            Ok((page, total))
         })
     }
 
@@ -225,6 +225,30 @@ impl AuthStore for FakeAuthStore {
                 return Ok(true);
             }
             Ok(false)
+        })
+    }
+
+    fn list_all_user_ids(
+        &self,
+        status: Option<crate::domain::auth::entities::UserStatus>,
+    ) -> BoxFut<'_, Result<Vec<crate::domain::auth::entities::UserId>, StoreError>> {
+        let users = &self.users;
+        Box::pin(async move {
+            let mut ids: Vec<crate::domain::auth::entities::UserId> = users
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .filter(|u| {
+                    if let Some(s) = status {
+                        u.status == s
+                    } else {
+                        true
+                    }
+                })
+                .map(|u| u.id)
+                .collect();
+            ids.sort();
+            Ok(ids)
         })
     }
 
@@ -502,6 +526,100 @@ impl ProjectsStore for FakeAuthStore {
             projects.push((user_id_str, record.clone()));
             Ok(record)
         })
+    }
+
+    // === Admin-scoped reads (no actor visibility checks) =================
+
+    fn list_all_projects(
+        &self,
+        search: Option<&str>,
+        environment: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<crate::ports::projects_store::AdminProjectRecord>, i64), StoreError>> {
+        let search_owned = search.map(|s| s.to_lowercase());
+        let environment_owned = environment.map(str::to_owned);
+        let projects = self.projects.read().unwrap().clone();
+        let users = self.users.read().unwrap().clone();
+        Box::pin(async move {
+            let mut result: Vec<crate::ports::projects_store::AdminProjectRecord> = projects
+                .iter()
+                .filter(|(_, p)| {
+                    if let Some(ref env) = environment_owned {
+                        p.environment == *env
+                    } else {
+                        true
+                    }
+                })
+                .filter(|(_, p)| {
+                    if let Some(ref q) = search_owned {
+                        p.name.to_lowercase().contains(q.as_str())
+                            || p.slug.to_lowercase().contains(q.as_str())
+                    } else {
+                        true
+                    }
+                })
+                .map(|(owner, p)| {
+                    let owner_user = users.iter().find(|u| u.id.to_string() == *owner);
+                    crate::ports::projects_store::AdminProjectRecord {
+                        project: p.clone(),
+                        owner_id: Some(owner.clone()),
+                        owner_name: owner_user.map(|u| u.name.clone()),
+                        owner_email: owner_user.map(|u| u.email.to_string()),
+                        member_count: 0,
+                        updated_at: p.created_at,
+                    }
+                })
+                .collect();
+            result.sort_by(|a, b| {
+                b.project
+                    .created_at
+                    .cmp(&a.project.created_at)
+                    .then(b.project.id.cmp(&a.project.id))
+            });
+            let total = result.len() as i64;
+            let page: Vec<crate::ports::projects_store::AdminProjectRecord> = result
+                .into_iter()
+                .skip(offset.max(0) as usize)
+                .take(limit.max(0) as usize)
+                .collect();
+            Ok((page, total))
+        })
+    }
+
+    fn get_any_project(
+        &self,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Option<crate::ports::projects_store::AdminProjectRecord>, StoreError>>
+    {
+        let project_id = project_id.to_string();
+        let projects = self.projects.read().unwrap().clone();
+        let users = self.users.read().unwrap().clone();
+        Box::pin(async move {
+            Ok(projects
+                .iter()
+                .find(|(_, p)| p.id == project_id)
+                .map(|(owner, p)| {
+                    let owner_user = users.iter().find(|u| u.id.to_string() == *owner);
+                    crate::ports::projects_store::AdminProjectRecord {
+                        project: p.clone(),
+                        owner_id: Some(owner.clone()),
+                        owner_name: owner_user.map(|u| u.name.clone()),
+                        owner_email: owner_user.map(|u| u.email.to_string()),
+                        member_count: 0,
+                        updated_at: p.created_at,
+                    }
+                }))
+        })
+    }
+
+    fn list_project_members(
+        &self,
+        _project_id: &str,
+    ) -> BoxFut<'_, Result<Vec<crate::ports::projects_store::ProjectMemberRecord>, StoreError>>
+    {
+        // The fake tracks ownership only, not membership rows.
+        Box::pin(async move { Ok(Vec::new()) })
     }
 }
 
@@ -1140,11 +1258,9 @@ impl TicketsStore for FakeTicketsStore {
                 .cloned()
                 .collect();
 
-            let mut result: Vec<TicketRecord> = filtered
-                .into_iter()
-                .take(limit as usize)
-                .collect();
+            let mut result: Vec<TicketRecord> = filtered.into_iter().collect();
             result.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
+            result.truncate(limit.max(0) as usize);
             Ok(result)
         })
     }
@@ -1281,11 +1397,12 @@ impl TicketsStore for FakeTicketsStore {
     fn list_all(
         &self,
         status: Option<&str>,
+        search: Option<&str>,
         limit: i64,
-        before: Option<&str>,
-    ) -> BoxFut<'_, Result<Vec<AdminTicketRecord>, StoreError>> {
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<AdminTicketRecord>, i64), StoreError>> {
         let status_owned = status.map(str::to_owned);
-        let before_owned = before.map(str::to_owned);
+        let search_owned = search.map(|s| s.to_lowercase());
         let tickets = &self.tickets;
         let users = self.users.read().unwrap().clone();
 
@@ -1302,8 +1419,12 @@ impl TicketsStore for FakeTicketsStore {
                     }
                 })
                 .filter(|t| {
-                    if let Some(ref b) = before_owned {
-                        t.id < *b
+                    if let Some(ref q) = search_owned {
+                        let (name, email) = Self::customer_identity(&users, &t.created_by);
+                        t.subject.to_lowercase().contains(q.as_str())
+                            || name.to_lowercase().contains(q.as_str())
+                            || email.to_lowercase().contains(q.as_str())
+                            || t.id.to_lowercase().contains(q.as_str())
                     } else {
                         true
                     }
@@ -1317,7 +1438,6 @@ impl TicketsStore for FakeTicketsStore {
                         customer_email,
                     }
                 })
-                .take(limit as usize)
                 .collect();
             result.sort_by(|a, b| {
                 b.ticket
@@ -1325,7 +1445,13 @@ impl TicketsStore for FakeTicketsStore {
                     .cmp(&a.ticket.created_at)
                     .then(b.ticket.id.cmp(&a.ticket.id))
             });
-            Ok(result)
+            let total = result.len() as i64;
+            let page: Vec<AdminTicketRecord> = result
+                .into_iter()
+                .skip(offset.max(0) as usize)
+                .take(limit.max(0) as usize)
+                .collect();
+            Ok((page, total))
         })
     }
 
@@ -1480,6 +1606,7 @@ impl TicketsStore for FakeTicketsStore {
 #[derive(Default)]
 pub struct FakeNotificationsStore {
     notifications: RwLock<Vec<NotificationRecord>>,
+    broadcasts: RwLock<Vec<BroadcastRecord>>,
 }
 
 impl FakeNotificationsStore {
@@ -1518,6 +1645,7 @@ impl NotificationsStore for FakeNotificationsStore {
                 read_at: None,
                 created_at: Utc::now(),
                 deleted_at: None,
+                broadcast_id: None,
             };
             notifications.write().map_err(lock_err)?.push(record.clone());
             Ok(record)
@@ -1655,6 +1783,187 @@ impl NotificationsStore for FakeNotificationsStore {
             } else {
                 Ok(false)
             }
+        })
+    }
+
+    // === Admin broadcast methods ===========================================
+
+    fn create_broadcast(&self, broadcast: &BroadcastRecord) -> BoxFut<'_, Result<(), StoreError>> {
+        let broadcasts = &self.broadcasts;
+        let broadcast = broadcast.clone();
+        Box::pin(async move {
+            broadcasts.write().map_err(lock_err)?.push(broadcast);
+            Ok(())
+        })
+    }
+
+    fn get_broadcast(&self, id: &str) -> BoxFut<'_, Result<Option<BroadcastRecord>, StoreError>> {
+        let broadcasts = &self.broadcasts;
+        let id = id.to_string();
+        Box::pin(async move {
+            Ok(broadcasts
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .find(|b| b.id == id)
+                .cloned())
+        })
+    }
+
+    fn list_broadcasts(
+        &self,
+        status: Option<BroadcastStatus>,
+        notification_type: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<BroadcastRecord>, i64), StoreError>> {
+        let status_owned = status;
+        let type_owned = notification_type.map(str::to_owned);
+        let broadcasts = &self.broadcasts;
+        Box::pin(async move {
+            let all = broadcasts.read().map_err(lock_err)?;
+            let mut result: Vec<BroadcastRecord> = all
+                .iter()
+                .filter(|b| {
+                    if let Some(s) = status_owned {
+                        b.status == s
+                    } else {
+                        true
+                    }
+                })
+                .filter(|b| {
+                    if let Some(ref t) = type_owned {
+                        b.notification_type.to_string() == *t
+                    } else {
+                        true
+                    }
+                })
+                .cloned()
+                .collect();
+            result.sort_by(|a, b| {
+                b.created_at
+                    .cmp(&a.created_at)
+                    .then(b.id.cmp(&a.id))
+            });
+            let total = result.len() as i64;
+            let page: Vec<BroadcastRecord> = result
+                .into_iter()
+                .skip(offset.max(0) as usize)
+                .take(limit.max(0) as usize)
+                .collect();
+            Ok((page, total))
+        })
+    }
+
+    fn create_many(
+        &self,
+        broadcast_id: &str,
+        notification_type: crate::domain::notifications::entities::NotificationType,
+        recipients: &[BroadcastRecipient],
+    ) -> BoxFut<'_, Result<i64, StoreError>> {
+        let notifications = &self.notifications;
+        let broadcast_id = broadcast_id.to_string();
+        let recipients = recipients.to_vec();
+        Box::pin(async move {
+            let mut list = notifications.write().map_err(lock_err)?;
+            for r in &recipients {
+                list.push(NotificationRecord {
+                    id: notifi_core::Ulid::new().to_string(),
+                    user_id: r.user_id.clone(),
+                    notification_type,
+                    origin: crate::domain::notifications::entities::NotificationOrigin::Admin,
+                    title: r.title.clone(),
+                    content: r.content.clone(),
+                    read_at: None,
+                    created_at: Utc::now(),
+                    deleted_at: None,
+                    broadcast_id: Some(broadcast_id.clone()),
+                });
+            }
+            Ok(recipients.len() as i64)
+        })
+    }
+
+    fn claim_due_scheduled(
+        &self,
+        now: chrono::DateTime<Utc>,
+        limit: i64,
+    ) -> BoxFut<'_, Result<Vec<BroadcastRecord>, StoreError>> {
+        let broadcasts = &self.broadcasts;
+        Box::pin(async move {
+            let mut all = broadcasts.write().map_err(lock_err)?;
+            let mut due: Vec<BroadcastRecord> = all
+                .iter_mut()
+                .filter(|b| {
+                    b.status == BroadcastStatus::Scheduled
+                        && b.scheduled_for.is_some_and(|t| t <= now)
+                })
+                .take(limit.max(0) as usize)
+                .map(|b| {
+                    b.status = BroadcastStatus::Sending;
+                    b.clone()
+                })
+                .collect();
+            due.sort_by(|a, b| {
+                a.scheduled_for
+                    .cmp(&b.scheduled_for)
+                    .then(a.id.cmp(&b.id))
+            });
+            Ok(due)
+        })
+    }
+
+    fn mark_broadcast_sent(
+        &self,
+        id: &str,
+        recipient_count: i64,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let broadcasts = &self.broadcasts;
+        let id = id.to_string();
+        Box::pin(async move {
+            let mut all = broadcasts.write().map_err(lock_err)?;
+            if let Some(b) = all
+                .iter_mut()
+                .find(|b| b.id == id && b.status == BroadcastStatus::Sending)
+            {
+                b.status = BroadcastStatus::Sent;
+                b.sent_at = Some(Utc::now());
+                b.recipient_count = recipient_count;
+                return Ok(true);
+            }
+            Ok(false)
+        })
+    }
+
+    fn cancel_broadcast(&self, id: &str) -> BoxFut<'_, Result<bool, StoreError>> {
+        let broadcasts = &self.broadcasts;
+        let id = id.to_string();
+        Box::pin(async move {
+            let mut all = broadcasts.write().map_err(lock_err)?;
+            if let Some(b) = all
+                .iter_mut()
+                .find(|b| b.id == id && b.status == BroadcastStatus::Scheduled)
+            {
+                b.status = BroadcastStatus::Cancelled;
+                return Ok(true);
+            }
+            Ok(false)
+        })
+    }
+
+    fn broadcast_read_stats(&self, id: &str) -> BoxFut<'_, Result<BroadcastStats, StoreError>> {
+        let notifications = &self.notifications;
+        let id = id.to_string();
+        Box::pin(async move {
+            let all = notifications.read().map_err(lock_err)?;
+            let mine: Vec<_> = all
+                .iter()
+                .filter(|n| n.broadcast_id.as_deref() == Some(id.as_str()) && n.deleted_at.is_none())
+                .collect();
+            Ok(BroadcastStats {
+                total: mine.len() as i64,
+                read: mine.iter().filter(|n| n.read_at.is_some()).count() as i64,
+            })
         })
     }
 }

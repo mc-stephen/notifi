@@ -48,23 +48,11 @@ impl NotificationService {
         title: &str,
         content: &str,
     ) -> Result<InAppNotification, AuthError> {
-        let title = title.trim();
-        let content = content.trim();
-
-        if title.is_empty() || title.len() > MAX_TITLE {
-            return Err(AuthError::Validation(
-                "title is required (300 characters max)".to_string(),
-            ));
-        }
-        if content.is_empty() || content.len() > MAX_CONTENT {
-            return Err(AuthError::Validation(
-                "content is required (100,000 characters max)".to_string(),
-            ));
-        }
+        let (title, content) = validate_content(title, content)?;
 
         let record = self
             .store
-            .create(user_id, notification_type, origin, title, content)
+            .create(user_id, notification_type, origin, &title, &content)
             .await
             .map_err(map_store_error)?;
 
@@ -151,4 +139,23 @@ fn map_store_error(err: StoreError) -> AuthError {
         ),
         StoreError::Storage(m) => AuthError::Storage(m),
     }
+}
+
+/// Shared title/content policy (also used by admin broadcasts).
+pub fn validate_content(title: &str, content: &str) -> Result<(String, String), AuthError> {
+    let title = title.trim();
+    let content = content.trim();
+
+    if title.is_empty() || title.len() > MAX_TITLE {
+        return Err(AuthError::Validation(
+            "title is required (300 characters max)".to_string(),
+        ));
+    }
+    if content.is_empty() || content.len() > MAX_CONTENT {
+        return Err(AuthError::Validation(
+            "content is required (100,000 characters max)".to_string(),
+        ));
+    }
+
+    Ok((title.to_string(), content.to_string()))
 }

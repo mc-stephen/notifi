@@ -150,6 +150,25 @@ fn run_inner() -> Result<(), String> {
             ))
         });
 
+        // Admin project views: list/detail across all platform projects.
+        let admin_projects = db.as_ref().map(|pool| {
+            std::sync::Arc::new(domain::admin::AdminProjectsService::new(
+                std::sync::Arc::new(infra::PgAuthStore::new(pool.clone())),
+            ))
+        });
+
+        // Admin notification broadcasts (in-app): compose, history, scheduling.
+        // Shares the auth + notifications stores with the services above.
+        let admin_notifications = db.as_ref().map(|pool| {
+            let auth_store = std::sync::Arc::new(infra::PgAuthStore::new(pool.clone()));
+            std::sync::Arc::new(domain::admin::AdminNotificationsService::new(
+                auth_store.clone(),
+                auth_store,
+                std::sync::Arc::new(infra::PgNotificationsStore::new(pool.clone())),
+                audit.clone().expect("audit service built with db"),
+            ))
+        });
+
         // Provider tester: always available (validates credentials before saving).
         let provider_tester: std::sync::Arc<dyn ports::ProviderTester + Send + Sync> = std::sync::Arc::new(infra::ConfigProviderTester::new());
 
@@ -235,6 +254,20 @@ fn run_inner() -> Result<(), String> {
                 "oauth disabled (no provider credentials); /app/auth/oauth routes will answer 503"
             );
         }
+        if admin_projects.is_none() {
+            tracing::warn!(
+                "admin project views disabled (needs database); /admin/projects routes will answer 503"
+            );
+        }
+        if admin_notifications.is_none() {
+            tracing::warn!(
+                "admin notifications disabled (needs database); /admin/notifications routes will answer 503"
+            );
+        }
+
+        // Cloned for the scheduled-broadcast worker below (AppState takes
+        // ownership of the original).
+        let admin_notifications_for_worker = admin_notifications.clone();
 
         let app = api::build_router(
             api::AppState {
@@ -244,6 +277,8 @@ fn run_inner() -> Result<(), String> {
                 oauth,
                 admin,
                 admin_users,
+                admin_projects,
+                admin_notifications,
                 projects,
                 audit,
                 recipients,
@@ -279,6 +314,34 @@ fn run_inner() -> Result<(), String> {
             port = config.server.port,
             "api listening"
         );
+
+        // Scheduled-broadcast worker: drains due broadcasts on an interval.
+        // Runs only when the admin notifications service is wired; stops
+        // with the process (a claimed-but-unsent row stays `sending` until
+        // an operator re-queues it — see ARCHITECTURE.md).
+        if let Some(notifications) = admin_notifications_for_worker.clone() {
+            tokio::spawn(async move {
+                let mut interval =
+                    tokio::time::interval(std::time::Duration::from_secs(30));
+                loop {
+                    interval.tick().await;
+                    match notifications
+                        .run_due_worker(chrono::Utc::now())
+                        .await
+                    {
+                        Ok(0) => {}
+                        Ok(n) => tracing::info!(
+                            sent = n,
+                            "scheduled notification worker sent broadcasts"
+                        ),
+                        Err(e) => tracing::error!(
+                            error = %e,
+                            "scheduled notification worker failed"
+                        ),
+                    }
+                }
+            });
+        }
 
         if let Err(e) = axum::serve(listener, app)
             .with_graceful_shutdown(shutdown_signal())

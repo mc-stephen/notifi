@@ -2,8 +2,9 @@ import { defineMiddleware } from "astro:middleware";
 
 const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8080";
 
-// Recovery pages reachable without a session (like /login).
-const PUBLIC_AUTH_PAGES = ["/login", "/password/forgot", "/password/reset"];
+// Auth pages reachable without a session: login, recovery, and the 2FA
+// code step (which carries its own pending credentials).
+const PUBLIC_AUTH_PAGES = ["/login", "/password/forgot", "/password/reset", "/auth/verify"];
 
 async function adminExists(): Promise<boolean> {
   try {
@@ -54,7 +55,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
 
   // Logged in: auth pages bounce to the app (2FA gate below may reroute).
-  if (session && (path === "/login" || path === "/auth/setup" || path.startsWith("/password/"))) {
+  if (
+    session &&
+    (path === "/login" ||
+      path === "/auth/setup" ||
+      path === "/auth/verify" ||
+      path.startsWith("/password/"))
+  ) {
     return context.redirect("/overview");
   }
 

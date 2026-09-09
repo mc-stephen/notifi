@@ -2,6 +2,8 @@
 
 pub mod dto;
 pub mod handlers;
+pub mod notifications;
+pub mod projects;
 pub mod routes;
 pub mod support;
 pub mod users;

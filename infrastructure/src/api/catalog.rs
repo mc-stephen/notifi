@@ -143,6 +143,13 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         description: "list projects the user owns or belongs to",
     },
     RouteInfo {
+        method: "POST",
+        path: "/app/projects",
+        surface: Surface::App,
+        feature: "projects",
+        description: "create a project owned by the user",
+    },
+    RouteInfo {
         method: "PATCH",
         path: "/app/projects/{id}/environment",
         surface: Surface::App,
@@ -443,6 +450,21 @@ pub const ADMIN_ROUTES: &[RouteInfo] = &[
         feature: "users",
         description: "revoke all sessions for a platform user",
     },
+    // -- admin projects feature ---------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/admin/projects",
+        surface: Surface::Admin,
+        feature: "projects",
+        description: "list all platform projects with owner info (admin view)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/admin/projects/{project_id}",
+        surface: Surface::Admin,
+        feature: "projects",
+        description: "fetch one platform project with owner + members (admin view)",
+    },
     // -- admin support feature ----------------------------------------------
     RouteInfo {
         method: "GET",
@@ -478,6 +500,35 @@ pub const ADMIN_ROUTES: &[RouteInfo] = &[
         surface: Surface::Admin,
         feature: "support",
         description: "set a ticket's status",
+    },
+    // -- admin notifications feature ----------------------------------------
+    RouteInfo {
+        method: "POST",
+        path: "/admin/notifications",
+        surface: Surface::Admin,
+        feature: "notifications",
+        description: "broadcast now, or schedule with sendAt",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/admin/notifications",
+        surface: Surface::Admin,
+        feature: "notifications",
+        description: "broadcast history (newest first)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/admin/notifications/{broadcast_id}",
+        surface: Surface::Admin,
+        feature: "notifications",
+        description: "one broadcast with read stats",
+    },
+    RouteInfo {
+        method: "DELETE",
+        path: "/admin/notifications/scheduled/{broadcast_id}",
+        surface: Surface::Admin,
+        feature: "notifications",
+        description: "cancel a scheduled broadcast",
     },
 ];
 

@@ -61,6 +61,7 @@ struct AdminTicketRow {
     deleted_at: Option<DateTime<Utc>>,
     customer_name: String,
     customer_email: String,
+    total_count: i64,
 }
 
 #[derive(sqlx::FromRow)]
@@ -485,34 +486,45 @@ impl TicketsStore for PgTicketsStore {
     fn list_all(
         &self,
         status: Option<&str>,
+        search: Option<&str>,
         limit: i64,
-        before: Option<&str>,
-    ) -> BoxFut<'_, Result<Vec<AdminTicketRecord>, StoreError>> {
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<AdminTicketRecord>, i64), StoreError>> {
         let pool = self.pool.clone();
         let status_owned = status.map(str::to_owned);
-        let before_owned = before.map(str::to_owned);
+        let search_owned = search.map(str::to_owned);
 
         Box::pin(async move {
             let rows = sqlx::query_as::<_, AdminTicketRow>(
                 "SELECT t.id, t.project_id, t.created_by, t.subject, t.category, t.priority,
                         t.description, t.status, t.created_at, t.updated_at, t.deleted_at,
-                        u.name AS customer_name, u.email AS customer_email
+                        u.name AS customer_name, u.email AS customer_email,
+                        COUNT(*) OVER() AS total_count
                  FROM platform_support_tickets t
                  JOIN auth_users u ON u.id = t.created_by
                  WHERE t.deleted_at IS NULL
                    AND ($1::text IS NULL OR t.status = $1)
-                   AND ($2::text IS NULL OR t.id < $2)
+                   AND ($2::text IS NULL
+                        OR t.subject ILIKE '%' || $2 || '%'
+                        OR u.name ILIKE '%' || $2 || '%'
+                        OR u.email ILIKE '%' || $2 || '%'
+                        OR t.id ILIKE '%' || $2 || '%')
                  ORDER BY t.created_at DESC, t.id DESC
-                 LIMIT $3",
+                 LIMIT $3 OFFSET $4",
             )
             .bind(&status_owned)
-            .bind(&before_owned)
+            .bind(&search_owned)
             .bind(limit)
+            .bind(offset)
             .fetch_all(&pool)
             .await
             .map_err(map_err)?;
 
-            Ok(rows.into_iter().map(AdminTicketRecord::from).collect())
+            let total = rows.first().map(|r| r.total_count).unwrap_or(0);
+            Ok((
+                rows.into_iter().map(AdminTicketRecord::from).collect(),
+                total,
+            ))
         })
     }
 
@@ -524,7 +536,8 @@ impl TicketsStore for PgTicketsStore {
             let row = sqlx::query_as::<_, AdminTicketRow>(
                 "SELECT t.id, t.project_id, t.created_by, t.subject, t.category, t.priority,
                         t.description, t.status, t.created_at, t.updated_at, t.deleted_at,
-                        u.name AS customer_name, u.email AS customer_email
+                        u.name AS customer_name, u.email AS customer_email,
+                        COUNT(*) OVER() AS total_count
                  FROM platform_support_tickets t
                  JOIN auth_users u ON u.id = t.created_by
                  WHERE t.id = $1

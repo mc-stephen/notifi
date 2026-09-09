@@ -30,6 +30,28 @@ fn require_admin_service(extension: MaybeAdminService) -> Result<Arc<AdminServic
         .ok_or_else(|| AuthError::NotConfigured.into())
 }
 
+/// Parses `?page=` / `?per_page=` (with legacy `?limit=` as the per-page
+/// alias). Returns `(page, per_page, offset)`.
+pub fn pagination(query: &HashMap<String, String>, default_per_page: i64) -> (i64, i64, i64) {
+    let per_page = query
+        .get("per_page")
+        .or_else(|| query.get("limit"))
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(default_per_page)
+        .clamp(1, 200);
+    let page = query
+        .get("page")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(1)
+        .max(1);
+    (page, per_page, (page - 1) * per_page)
+}
+
+/// Total pages for `total` items at `per_page` per page.
+pub fn total_pages(total: i64, per_page: i64) -> i64 {
+    (total + per_page - 1) / per_page
+}
+
 /// Extractor for admin endpoints that require an authenticated admin.
 #[derive(Debug, Clone)]
 pub struct CurrentAdmin(pub Arc<AdminUser>);

@@ -17,6 +17,9 @@ pub enum AuditAction {
     UserOnboardingCompleted,
     UserSuspended,
     UserRestored,
+    NotificationBroadcast,
+    NotificationScheduled,
+    NotificationCancelled,
     ProjectEnvironmentChanged,
     RecipientCreated,
     RecipientUpdated,
@@ -51,6 +54,9 @@ impl AuditAction {
             Self::SupportTicketStatusChanged => "support.ticket_status_changed",
             Self::UserSuspended => "user.suspended",
             Self::UserRestored => "user.restored",
+            Self::NotificationBroadcast => "notification.broadcast",
+            Self::NotificationScheduled => "notification.scheduled",
+            Self::NotificationCancelled => "notification.cancelled",
             Self::ProjectCreated => "project.created",
         }
     }

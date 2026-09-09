@@ -13,7 +13,6 @@ use super::super::super::auth::Problem;
 use super::dto::{AdminTicketDto, AdminTicketMessageDto, SetStatusRequest};
 
 const DEFAULT_LIMIT: i64 = 100;
-const MAX_LIMIT: i64 = 200;
 
 type MaybeTicketService = Option<Extension<Arc<TicketService>>>;
 
@@ -30,30 +29,28 @@ pub async fn list_tickets(
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let service = require_tickets_service(service)?;
-    let limit = query
-        .get("limit")
-        .and_then(|v| v.parse::<i64>().ok())
-        .unwrap_or(DEFAULT_LIMIT)
-        .clamp(1, MAX_LIMIT);
+    let (page, per_page, offset) = super::super::handlers::pagination(&query, DEFAULT_LIMIT);
 
-    let tickets = service
+    let (tickets, total) = service
         .list_all_tickets(
             query.get("status").map(String::as_str),
-            limit + 1,
-            query.get("before").map(String::as_str),
+            query.get("search").map(String::as_str),
+            per_page,
+            offset,
         )
         .await?;
 
-    let has_more = tickets.len() > limit as usize;
-    let dtos: Vec<AdminTicketDto> = tickets
-        .into_iter()
-        .take(limit as usize)
-        .map(AdminTicketDto::from)
-        .collect();
+    let dtos: Vec<AdminTicketDto> = tickets.into_iter().map(AdminTicketDto::from).collect();
 
     Ok((
         StatusCode::OK,
-        Json(serde_json::json!({ "tickets": dtos, "hasMore": has_more })),
+        Json(serde_json::json!({
+            "tickets": dtos,
+            "page": page,
+            "perPage": per_page,
+            "total": total,
+            "totalPages": super::super::handlers::total_pages(total, per_page),
+        })),
     ))
 }
 

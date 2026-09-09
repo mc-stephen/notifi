@@ -62,27 +62,6 @@ import AuthLayout from "../layouts/AuthLayout.astro";
         </div>
       </div>
 
-      <div id="totp-group" class="hidden space-y-2">
-        <label for="totp-code" class="text-sm font-medium text-foreground">Two-Factor Code</label>
-        <input
-          type="text"
-          id="totp-code"
-          name="totp-code"
-          autocomplete="one-time-code"
-          inputmode="numeric"
-          maxlength="6"
-          pattern="[0-9]{6}"
-          placeholder="000000"
-          class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 text-center tracking-[0.5em] font-mono"
-        />
-        <div class="flex items-center justify-between">
-          <p class="text-xs text-muted-foreground">Enter the 6-digit code from your authenticator app.</p>
-          <button type="button" id="cancel-totp" class="text-xs text-primary hover:underline">Cancel</button>
-        </div>
-      </div>
-
-      <div id="info-message" class="hidden rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-primary"></div>
-
       <div id="error-message" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
 
       <button
@@ -127,50 +106,28 @@ import AuthLayout from "../layouts/AuthLayout.astro";
 
   // Login form
   const loginForm = document.getElementById("login-form") as HTMLFormElement;
-  const totpGroup = document.getElementById("totp-group")!;
-  const infoDiv = document.getElementById("info-message")!;
   const errorDiv = document.getElementById("error-message")!;
   const submitBtn = document.getElementById("submit-btn") as HTMLButtonElement;
   const btnText = document.getElementById("btn-text")!;
   const btnSpinner = document.getElementById("btn-spinner")!;
-  const totpInput = document.getElementById("totp-code") as HTMLInputElement;
-  const cancelTotp = document.getElementById("cancel-totp")!;
-
-  function showInfo(message: string) {
-    infoDiv.textContent = message;
-    infoDiv.classList.remove("hidden");
-  }
 
   function showError(message: string) {
     errorDiv.textContent = message;
     errorDiv.classList.remove("hidden");
   }
 
-  // Cancel clears any partial session (e.g. after requires_totp_setup) and
-  // returns to a clean login form.
-  cancelTotp?.addEventListener("click", async () => {
-    try {
-      await auth.logout();
-    } catch {
-      // Best-effort: the form reset below matters, not the server call.
-    }
-    window.location.reload();
-  });
-
   loginForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
     errorDiv.classList.add("hidden");
-    infoDiv.classList.add("hidden");
     btnText.textContent = "";
     btnSpinner.classList.remove("hidden");
     submitBtn.disabled = true;
 
     const email = (document.getElementById("email") as HTMLInputElement).value;
     const password = (document.getElementById("password") as HTMLInputElement).value;
-    const totpCode = totpInput?.value || undefined;
 
     try {
-      const data = await auth.login({ email, password, totp_code: totpCode });
+      const data = await auth.login({ email, password });
 
       if (data.requires_totp_setup) {
         window.location.href = "/auth/totp";
@@ -178,9 +135,10 @@ import AuthLayout from "../layouts/AuthLayout.astro";
       }
 
       if (data.requires_totp) {
-        totpGroup.classList.remove("hidden");
-        totpInput.focus();
-        showInfo("Password accepted. Enter the 6-digit code from your authenticator app to finish signing in.");
+        // Hand the credentials to the dedicated 2FA page (cleared there
+        // after verify, cancel, or logout).
+        sessionStorage.setItem("pending_admin_auth", JSON.stringify({ email, password }));
+        window.location.href = "/auth/verify";
       } else {
         window.location.href = "/overview";
       }

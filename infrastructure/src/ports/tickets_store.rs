@@ -103,12 +103,16 @@ pub trait TicketsStore: Send + Sync {
     // === Admin-scoped methods (no actor visibility checks) =================
 
     /// Lists all tickets (newest first), with creator identity.
+    /// `search` matches subject, customer name/email, or id
+    /// (case-insensitive, substring). Returns the page plus the total
+    /// matching count.
     fn list_all(
         &self,
         status: Option<&str>,
+        search: Option<&str>,
         limit: i64,
-        before: Option<&str>,
-    ) -> BoxFut<'_, Result<Vec<AdminTicketRecord>, StoreError>>;
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<AdminTicketRecord>, i64), StoreError>>;
 
     /// Fetches any ticket by id, with creator identity.
     fn get_any(&self, ticket_id: &str) -> BoxFut<'_, Result<Option<AdminTicketRecord>, StoreError>>;

@@ -105,18 +105,26 @@ export const auth = {
 
 import type { AdminTicket, AdminTicketMessage, AdminTicketStatus } from "./types";
 import type { AdminUser, AdminUserDetail, AdminUserStatus } from "./types";
+import type { AdminProject, AdminProjectDetail } from "./types";
+import type { AdminBroadcast, BroadcastAudience } from "./types";
+
+export type PageInfo = {
+  page: number;
+  perPage: number;
+  total: number;
+  totalPages: number;
+};
 
 export type TicketListResponse = {
   tickets: AdminTicket[];
-  hasMore: boolean;
-};
+} & PageInfo;
 
 export const support = {
-  listTickets: (params?: { status?: string; limit?: number; before?: string }) => {
+  listTickets: (params?: { status?: string; limit?: number; page?: number }) => {
     const search = new URLSearchParams();
     if (params?.status) search.set("status", params.status);
     if (params?.limit) search.set("limit", String(params.limit));
-    if (params?.before) search.set("before", params.before);
+    if (params?.page) search.set("page", String(params.page));
     const query = search.toString();
     return request<TicketListResponse>(
       `/admin/support/tickets${query ? `?${query}` : ""}`,
@@ -150,16 +158,15 @@ export const support = {
 
 export type UserListResponse = {
   users: AdminUser[];
-  hasMore: boolean;
-};
+} & PageInfo;
 
 export const users = {
-  listUsers: (params?: { search?: string; status?: string; limit?: number; before?: string }) => {
+  listUsers: (params?: { search?: string; status?: string; limit?: number; page?: number }) => {
     const search = new URLSearchParams();
     if (params?.search) search.set("search", params.search);
     if (params?.status) search.set("status", params.status);
     if (params?.limit) search.set("limit", String(params.limit));
-    if (params?.before) search.set("before", params.before);
+    if (params?.page) search.set("page", String(params.page));
     const query = search.toString();
     return request<UserListResponse>(
       `/admin/users${query ? `?${query}` : ""}`,
@@ -181,5 +188,78 @@ export const users = {
     request<{ status: string }>(
       `/admin/users/${encodeURIComponent(id)}/sessions/revoke`,
       { method: "POST" },
+    ),
+};
+
+// ── Platform projects (admin view) ──────────────────────────────────────────
+
+export type ProjectListResponse = {
+  projects: AdminProject[];
+} & PageInfo;
+
+export const projects = {
+  listProjects: (params?: { search?: string; environment?: string; limit?: number; page?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.search) search.set("search", params.search);
+    if (params?.environment) search.set("environment", params.environment);
+    if (params?.limit) search.set("limit", String(params.limit));
+    if (params?.page) search.set("page", String(params.page));
+    const query = search.toString();
+    return request<ProjectListResponse>(
+      `/admin/projects${query ? `?${query}` : ""}`,
+    );
+  },
+
+  getProject: (id: string) =>
+    request<{ project: AdminProjectDetail }>(
+      `/admin/projects/${encodeURIComponent(id)}`,
+    ),
+};
+
+// ── Notification broadcasts (admin view) ────────────────────────────────────
+
+export type BroadcastListResponse = {
+  broadcasts: AdminBroadcast[];
+  page: number;
+  perPage: number;
+  total: number;
+  totalPages: number;
+};
+
+export const notifications = {
+  broadcast: (data: {
+    title: string;
+    content: string;
+    notificationType?: string;
+    channels?: string[];
+    audience: BroadcastAudience;
+    scheduledFor?: string;
+  }) =>
+    request<{ broadcast: { id: string; recipientCount: number; scheduled: boolean } }>(
+      "/admin/notifications",
+      { method: "POST", body: JSON.stringify(data) },
+    ),
+
+  listBroadcasts: (params?: { status?: string; type?: string; limit?: number; page?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.status) search.set("status", params.status);
+    if (params?.type) search.set("type", params.type);
+    if (params?.limit) search.set("limit", String(params.limit));
+    if (params?.page) search.set("page", String(params.page));
+    const query = search.toString();
+    return request<BroadcastListResponse>(
+      `/admin/notifications${query ? `?${query}` : ""}`,
+    );
+  },
+
+  getBroadcast: (id: string) =>
+    request<{ broadcast: AdminBroadcast }>(
+      `/admin/notifications/${encodeURIComponent(id)}`,
+    ),
+
+  cancelScheduled: (id: string) =>
+    request<{ status: string }>(
+      `/admin/notifications/scheduled/${encodeURIComponent(id)}`,
+      { method: "DELETE" },
     ),
 };

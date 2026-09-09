@@ -45,4 +45,49 @@ pub trait ProjectsStore: Send + Sync {
         project_id: &str,
         environment: &str,
     ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>>;
+
+    // === Admin-scoped reads (no actor visibility checks) =================
+
+    /// All projects (newest first) with owner identity + member count.
+    /// Returns the page plus the total matching count.
+    fn list_all_projects(
+        &self,
+        search: Option<&str>,
+        environment: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<AdminProjectRecord>, i64), StoreError>>;
+
+    /// Any project by id, with owner identity + member count.
+    fn get_any_project(
+        &self,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Option<AdminProjectRecord>, StoreError>>;
+
+    /// Members of a project with identity, for admin views.
+    fn list_project_members(
+        &self,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Vec<ProjectMemberRecord>, StoreError>>;
+}
+
+/// A project plus its owner's identity, for admin views. Owner fields are
+/// `None` when the creator account was deleted.
+#[derive(Debug, Clone)]
+pub struct AdminProjectRecord {
+    pub project: ProjectSummary,
+    pub owner_id: Option<String>,
+    pub owner_name: Option<String>,
+    pub owner_email: Option<String>,
+    pub member_count: i64,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// One project membership with the member's identity, for admin views.
+#[derive(Debug, Clone)]
+pub struct ProjectMemberRecord {
+    pub user_id: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub role: String,
 }

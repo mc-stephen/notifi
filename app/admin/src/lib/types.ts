@@ -26,16 +26,29 @@ export type AdminUserDetail = {
   notificationCount: number;
 };
 
-export type Organization = {
+export type AdminProjectMember = {
+  userId: string;
+  name?: string | null;
+  email?: string | null;
+  role: string;
+};
+
+export type AdminProject = {
   id: string;
   name: string;
   slug: string;
-  plan: string;
+  description?: string | null;
+  environment: string;
+  ownerId?: string | null;
+  ownerName?: string | null;
+  ownerEmail?: string | null;
   memberCount: number;
-  projectCount: number;
-  status: "active" | "restricted" | "suspended";
   createdAt: string;
-  monthlyNotifications: number;
+  updatedAt: string;
+};
+
+export type AdminProjectDetail = AdminProject & {
+  members: AdminProjectMember[];
 };
 
 export type AdminTicketStatus = "open" | "in_progress" | "resolved" | "closed";
@@ -64,17 +77,26 @@ export type AdminTicketMessage = {
   createdAt: string;
 };
 
-export type AdminNotification = {
+export type BroadcastStatus = "scheduled" | "sending" | "sent" | "cancelled";
+
+export type BroadcastAudience =
+  | { kind: "all" }
+  | { kind: "users"; userIds: string[] }
+  | { kind: "projects"; projectIds: string[] };
+
+export type AdminBroadcast = {
   id: string;
-  channel: string;
-  status: "queued" | "sent" | "delivered" | "failed";
-  subject?: string;
-  recipientEmail: string;
-  organization?: string;
-  provider?: string;
-  sentAt?: string;
-  deliveredAt?: string;
-  failureReason?: string;
+  adminEmail: string;
+  notificationType: string;
+  title: string;
+  content: string;
+  audienceKind?: string | null;
+  channels: string[];
+  status: BroadcastStatus;
+  scheduledFor?: string | null;
+  sentAt?: string | null;
+  recipientCount: number;
+  readCount: number;
   createdAt: string;
 };
 

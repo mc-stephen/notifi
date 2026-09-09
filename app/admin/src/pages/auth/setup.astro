@@ -1,5 +1,6 @@
 ---
 import AuthLayout from "../../layouts/AuthLayout.astro";
+import OtpInput from "../../components/admin/OtpInput.tsx";
 ---
 
 <AuthLayout title="Set Up Admin">
@@ -91,21 +92,11 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
         <code id="secret-value" class="block text-center text-xs font-mono bg-muted rounded-md px-3 py-2 break-all"></code>
       </div>
 
-      <form id="totp-form" class="space-y-4">
+      <form id="totp-form" class="space-y-6">
         <div class="space-y-2">
-          <label for="totp-code" class="text-sm font-medium text-foreground">Verification Code</label>
-          <input
-            type="text"
-            id="totp-code"
-            name="totp-code"
-            required
-            autocomplete="one-time-code"
-            inputmode="numeric"
-            maxlength="6"
-            pattern="[0-9]{6}"
-            placeholder="000000"
-            class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 text-center tracking-[0.5em] font-mono"
-          />
+          <label class="text-sm font-medium text-foreground">Verification Code</label>
+          <OtpInput client:load />
+          <input type="hidden" id="totp-code" />
         </div>
 
         <div id="totp-error" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
@@ -183,15 +174,17 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
   const totpBtn = document.getElementById("totp-btn") as HTMLButtonElement;
   const totpBtnText = document.getElementById("totp-btn-text")!;
   const totpBtnSpinner = document.getElementById("totp-btn-spinner")!;
+  const hiddenCode = document.getElementById("totp-code") as HTMLInputElement;
 
-  totpForm?.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  let verifying = false;
+
+  async function verifySetup(code: string) {
+    if (verifying) return;
+    verifying = true;
     totpError.classList.add("hidden");
     totpBtnText.textContent = "";
     totpBtnSpinner.classList.remove("hidden");
     totpBtn.disabled = true;
-
-    const code = (document.getElementById("totp-code") as HTMLInputElement).value;
 
     try {
       await auth.totpVerify(code);
@@ -200,9 +193,25 @@ import AuthLayout from "../../layouts/AuthLayout.astro";
       totpError.textContent = err instanceof ApiError ? err.message : "Verification failed. Please try again.";
       totpError.classList.remove("hidden");
     } finally {
+      verifying = false;
       totpBtnText.textContent = "Verify & Complete Setup";
       totpBtnSpinner.classList.add("hidden");
       totpBtn.disabled = false;
     }
+  }
+
+  totpForm?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (hiddenCode.value.length === 6) {
+      verifySetup(hiddenCode.value);
+    } else {
+      totpError.textContent = "Enter all 6 digits.";
+      totpError.classList.remove("hidden");
+    }
+  });
+
+  window.addEventListener("otp:complete", (e) => {
+    hiddenCode.value = (e as CustomEvent<string>).detail;
+    verifySetup(hiddenCode.value);
   });
 </script>
