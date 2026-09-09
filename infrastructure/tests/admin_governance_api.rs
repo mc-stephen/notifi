@@ -147,9 +147,27 @@ async fn bootstrap_admin_is_super() {
 
     let res = request_with_cookie(app.clone(), "GET", "/admin/admins", None, &cookie).await;
     assert_eq!(res.status(), StatusCode::OK);
-    let admins = body_json(res).await["admins"].as_array().unwrap().to_owned();
+    let body = body_json(res).await;
+    let admins = body["admins"].as_array().unwrap().to_owned();
     assert_eq!(admins.len(), 1);
     assert_eq!(admins[0]["isSuperAdmin"], true);
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["totalPages"], 1);
+    assert_eq!(body["page"], 1);
+
+    // Second page is empty but well-formed.
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        "/admin/admins?per_page=1&page=2",
+        None,
+        &cookie,
+    )
+    .await;
+    let body = body_json(res).await;
+    assert_eq!(body["admins"].as_array().unwrap().len(), 0);
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["page"], 2);
 }
 
 #[tokio::test]
@@ -207,7 +225,7 @@ async fn change_password_roundtrip() {
 }
 
 #[tokio::test]
-async fn non_super_create_needs_approval() {
+async fn only_super_admin_can_create_admins() {
     let app = app_with_admin();
     let (super_cookie, _) = bootstrap(app.clone()).await;
 
@@ -220,21 +238,16 @@ async fn non_super_create_needs_approval() {
     assert_eq!(status, StatusCode::OK);
     assert!(!second_cookie.is_empty());
 
-    // Non-super creates: pending, login blocked.
-    let (status, body) =
+    // Non-super creation is forbidden outright (no pending flow).
+    let (status, _) =
         create_admin_as(app.clone(), &second_cookie, "Third", "third@x.dev").await;
-    assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(body["pendingApproval"], true);
-    let third_id = body["admin"]["id"].as_str().unwrap().to_string();
-
-    let (status, _) = login_cookie(app.clone(), "third@x.dev", "Oth3r!Pass").await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
-    // Non-super cannot list approvals or decide.
+    // Non-super cannot list approvals either.
     let res = request_with_cookie(app.clone(), "GET", "/admin/approvals", None, &second_cookie).await;
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
 
-    // Super sees the pending request and approves.
+    // No create-kind requests exist.
     let res = request_with_cookie(
         app.clone(),
         "GET",
@@ -244,50 +257,11 @@ async fn non_super_create_needs_approval() {
     )
     .await;
     let approvals = body_json(res).await["approvals"].as_array().unwrap().to_owned();
-    assert_eq!(approvals.len(), 1);
-    assert_eq!(approvals[0]["kind"], "create");
-    let request_id = approvals[0]["id"].as_str().unwrap().to_string();
-
-    let res = request_with_cookie(
-        app.clone(),
-        "POST",
-        &format!("/admin/approvals/{request_id}/approve"),
-        None,
-        &second_cookie,
-    )
-    .await;
-    assert_eq!(res.status(), StatusCode::FORBIDDEN);
-
-    let res = request_with_cookie(
-        app.clone(),
-        "POST",
-        &format!("/admin/approvals/{request_id}/approve"),
-        None,
-        &super_cookie,
-    )
-    .await;
-    assert_eq!(res.status(), StatusCode::OK);
-
-    // Now the third admin signs in.
-    let (status, _) = login_cookie(app.clone(), "third@x.dev", "Oth3r!Pass").await;
-    assert_eq!(status, StatusCode::OK);
-
-    // Deciding twice conflicts.
-    let res = request_with_cookie(
-        app.clone(),
-        "POST",
-        &format!("/admin/approvals/{request_id}/approve"),
-        None,
-        &super_cookie,
-    )
-    .await;
-    assert_eq!(res.status(), StatusCode::CONFLICT);
-
-    let _ = third_id;
+    assert!(approvals.iter().all(|r| r["kind"] != "create"));
 }
 
 #[tokio::test]
-async fn removal_request_flow_and_super_protection() {
+async fn removal_is_super_only_with_protection() {
     let app = app_with_admin();
     let (super_cookie, super_id) = bootstrap(app.clone()).await;
     let (_, body) = create_admin_as(app.clone(), &super_cookie, "Second", "second@x.dev").await;
@@ -305,7 +279,7 @@ async fn removal_request_flow_and_super_protection() {
     .await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 
-    // No self-removal.
+    // Non-super callers are rejected before any other check (even self-removal).
     let res = request_with_cookie(
         app.clone(),
         "POST",
@@ -314,20 +288,20 @@ async fn removal_request_flow_and_super_protection() {
         &second_cookie,
     )
     .await;
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
 
-    // Non-super removal creates a pending request; target still active.
+    // Non-super removal is forbidden outright (no request flow) —
+    // authz runs before target checks.
     let res = request_with_cookie(
         app.clone(),
         "POST",
-        "/admin/admins/01J00000000000000000000000/remove",
+        &format!("/admin/admins/{super_id}/remove"),
         None,
         &second_cookie,
     )
     .await;
-    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
 
-    // Third admin for the removal target (requested by second).
     let (_, body) = create_admin_as(app.clone(), &super_cookie, "Third", "third@x.dev").await;
     let third_id = body["admin"]["id"].as_str().unwrap().to_string();
 
@@ -339,13 +313,9 @@ async fn removal_request_flow_and_super_protection() {
         &second_cookie,
     )
     .await;
-    assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(body_json(res).await["applied"], false);
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
 
-    let (status, _) = login_cookie(app.clone(), "third@x.dev", "Oth3r!Pass").await;
-    assert_eq!(status, StatusCode::OK);
-
-    // Super approves → gone: login fails, sessions dead, list hides them.
+    // No remove-kind requests exist anymore.
     let res = request_with_cookie(
         app.clone(),
         "GET",
@@ -355,23 +325,19 @@ async fn removal_request_flow_and_super_protection() {
     )
     .await;
     let approvals = body_json(res).await["approvals"].as_array().unwrap().to_owned();
-    let request_id = approvals
-        .iter()
-        .find(|r| r["kind"] == "remove")
-        .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    assert!(approvals.iter().all(|r| r["kind"] != "remove"));
 
+    // Super removes directly: applied immediately, login dead, list hides.
     let res = request_with_cookie(
         app.clone(),
         "POST",
-        &format!("/admin/approvals/{request_id}/approve"),
+        &format!("/admin/admins/{third_id}/remove"),
         None,
         &super_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res).await["applied"], true);
 
     let (status, _) = login_cookie(app.clone(), "third@x.dev", "Oth3r!Pass").await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -380,7 +346,7 @@ async fn removal_request_flow_and_super_protection() {
     let admins = body_json(res).await["admins"].as_array().unwrap().to_owned();
     assert!(!admins.iter().any(|a| a["id"] == third_id));
 
-    // Super removes directly: applied immediately.
+    // Super removes second directly too.
     let res = request_with_cookie(
         app.clone(),
         "POST",
@@ -390,22 +356,106 @@ async fn removal_request_flow_and_super_protection() {
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(body_json(res).await["applied"], true);
 
     let (status, _) = login_cookie(app.clone(), "second@x.dev", "Oth3r!Pass").await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
-async fn reject_create_removes_pending_admin() {
+async fn suspend_restore_is_super_only() {
+    let app = app_with_admin();
+    let (super_cookie, super_id) = bootstrap(app.clone()).await;
+    let (_, body) = create_admin_as(app.clone(), &super_cookie, "Second", "second@x.dev").await;
+    let second_id = body["admin"]["id"].as_str().unwrap().to_string();
+    let (_, second_cookie) = login_cookie(app.clone(), "second@x.dev", "Oth3r!Pass").await;
+
+    // Non-super suspend attempts are forbidden.
+    let res = request_with_cookie(
+        app.clone(),
+        "PATCH",
+        &format!("/admin/admins/{second_id}/status"),
+        Some(json!({"status": "suspended"})),
+        &second_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // Bad status values rejected.
+    let res = request_with_cookie(
+        app.clone(),
+        "PATCH",
+        &format!("/admin/admins/{second_id}/status"),
+        Some(json!({"status": "banned"})),
+        &super_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    // Super target and self are protected.
+    let res = request_with_cookie(
+        app.clone(),
+        "PATCH",
+        &format!("/admin/admins/{super_id}/status"),
+        Some(json!({"status": "suspended"})),
+        &super_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    // Suspend blocks login and kills sessions.
+    let res = request_with_cookie(
+        app.clone(),
+        "PATCH",
+        &format!("/admin/admins/{second_id}/status"),
+        Some(json!({"status": "suspended"})),
+        &super_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let (status, _) = login_cookie(app.clone(), "second@x.dev", "Oth3r!Pass").await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Suspend revokes sessions, so the old cookie is simply dead (401).
+    let res = request_with_cookie(app.clone(), "GET", "/admin/me", None, &second_cookie).await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+
+    // Restore reopens login.
+    let res = request_with_cookie(
+        app.clone(),
+        "PATCH",
+        &format!("/admin/admins/{second_id}/status"),
+        Some(json!({"status": "active"})),
+        &super_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let (status, _) = login_cookie(app.clone(), "second@x.dev", "Oth3r!Pass").await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn non_super_remove_creates_nothing() {
     let app = app_with_admin();
     let (super_cookie, _) = bootstrap(app.clone()).await;
     let (_, body) = create_admin_as(app.clone(), &super_cookie, "Second", "second@x.dev").await;
     assert_eq!(body["pendingApproval"], false);
     let (_, second_cookie) = login_cookie(app.clone(), "second@x.dev", "Oth3r!Pass").await;
 
-    let (_, body) = create_admin_as(app.clone(), &second_cookie, "Third", "third@x.dev").await;
+    let (_, body) = create_admin_as(app.clone(), &super_cookie, "Third", "third@x.dev").await;
     let third_id = body["admin"]["id"].as_str().unwrap().to_string();
+
+    // Forbidden outright — no pending row is created.
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        &format!("/admin/admins/{third_id}/remove"),
+        None,
+        &second_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
 
     let res = request_with_cookie(
         app.clone(),
@@ -415,23 +465,12 @@ async fn reject_create_removes_pending_admin() {
         &super_cookie,
     )
     .await;
-    let request_id = body_json(res).await["approvals"][0]["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    assert_eq!(
+        body_json(res).await["approvals"].as_array().unwrap().len(),
+        0
+    );
 
-    let res = request_with_cookie(
-        app.clone(),
-        "POST",
-        &format!("/admin/approvals/{request_id}/reject"),
-        None,
-        &super_cookie,
-    )
-    .await;
-    assert_eq!(res.status(), StatusCode::OK);
-
-    // Rejected invite is gone entirely.
-    let res = request_with_cookie(app.clone(), "GET", "/admin/admins", None, &super_cookie).await;
-    let admins = body_json(res).await["admins"].as_array().unwrap().to_owned();
-    assert!(!admins.iter().any(|a| a["id"] == third_id));
+    // Target untouched.
+    let (status, _) = login_cookie(app.clone(), "third@x.dev", "Oth3r!Pass").await;
+    assert_eq!(status, StatusCode::OK);
 }

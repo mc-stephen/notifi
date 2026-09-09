@@ -20,6 +20,11 @@ pub enum AuditAction {
     AdminPasswordChanged,
     AdminCreated,
     AdminApprovalDecided,
+    AdminLogin,
+    AdminLogout,
+    AdminTotpEnabled,
+    AdminRemovalRequested,
+    AdminSessionsRevoked,
     NotificationBroadcast,
     NotificationScheduled,
     NotificationCancelled,
@@ -60,11 +65,55 @@ impl AuditAction {
             Self::AdminPasswordChanged => "admin.password_changed",
             Self::AdminCreated => "admin.created",
             Self::AdminApprovalDecided => "admin.approval_decided",
+            Self::AdminLogin => "admin.login",
+            Self::AdminLogout => "admin.logout",
+            Self::AdminTotpEnabled => "admin.totp_enabled",
+            Self::AdminRemovalRequested => "admin.removal_requested",
+            Self::AdminSessionsRevoked => "admin.sessions_revoked",
             Self::NotificationBroadcast => "notification.broadcast",
             Self::NotificationScheduled => "notification.scheduled",
             Self::NotificationCancelled => "notification.cancelled",
             Self::ProjectCreated => "project.created",
         }
+    }
+}
+
+/// Who performed an audited action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActorType {
+    #[default]
+    User,
+    Admin,
+    System,
+}
+
+impl ActorType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Admin => "admin",
+            Self::System => "system",
+        }
+    }
+}
+
+impl std::str::FromStr for ActorType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "user" => Ok(Self::User),
+            "admin" => Ok(Self::Admin),
+            "system" => Ok(Self::System),
+            _ => Err(()),
+        }
+    }
+}
+
+impl std::fmt::Display for ActorType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -75,6 +124,9 @@ pub struct AuditEntry {
     pub id: String,
     /// The actor who performed the action; `None` for system/background.
     pub user_id: Option<String>,
+    /// Admin actor id, when `actor_type` is admin.
+    pub admin_id: Option<String>,
+    pub actor_type: ActorType,
     pub actor_name: Option<String>,
     pub event_type: String,
     pub message: String,
@@ -91,6 +143,8 @@ pub struct AuditEntry {
 pub struct AuditEvent {
     pub action: AuditAction,
     pub user_id: Option<String>,
+    pub admin_id: Option<String>,
+    pub actor_type: ActorType,
     pub actor_name: Option<String>,
     pub project_id: Option<String>,
     pub message: String,
@@ -109,6 +163,40 @@ impl AuditEvent {
         Self {
             action,
             user_id: user_id.map(str::to_owned),
+            admin_id: None,
+            actor_type: ActorType::User,
+            actor_name: actor_name.map(str::to_owned),
+            project_id: project_id.map(str::to_owned),
+            message,
+            metadata,
+        }
+    }
+
+    /// Attribute the event to a platform admin instead of a user.
+    pub fn with_admin(mut self, admin_id: &str, actor_name: Option<&str>) -> Self {
+        self.user_id = None;
+        self.admin_id = Some(admin_id.to_owned());
+        self.actor_type = ActorType::Admin;
+        if actor_name.is_some() {
+            self.actor_name = actor_name.map(str::to_owned);
+        }
+        self
+    }
+
+    /// Convenience for admin-attributed events.
+    pub fn new_admin(
+        action: AuditAction,
+        admin_id: &str,
+        actor_name: Option<&str>,
+        project_id: Option<&str>,
+        message: String,
+        metadata: Option<serde_json::Value>,
+    ) -> Self {
+        Self {
+            action,
+            user_id: None,
+            admin_id: Some(admin_id.to_owned()),
+            actor_type: ActorType::Admin,
             actor_name: actor_name.map(str::to_owned),
             project_id: project_id.map(str::to_owned),
             message,
@@ -122,6 +210,8 @@ impl AuditEntry {
         Self {
             id,
             user_id: event.user_id.clone(),
+            admin_id: event.admin_id.clone(),
+            actor_type: event.actor_type,
             actor_name: event.actor_name.clone(),
             event_type: event.action.event_type().to_string(),
             message: event.message.clone(),

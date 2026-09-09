@@ -112,6 +112,7 @@ export const auth = {
 // ── Admin accounts + approvals ──────────────────────────────────────────────
 
 import type { AdminAccount, ApprovalRequest } from "./types";
+import type { AuditLogEntry } from "./types";
 
 export const admins = {
   listAdmins: () => request<{ admins: AdminAccount[] }>("/admin/admins"),
@@ -126,6 +127,12 @@ export const admins = {
     request<{ status: string; applied: boolean }>(
       `/admin/admins/${encodeURIComponent(id)}/remove`,
       { method: "POST" },
+    ),
+
+  setStatus: (id: string, status: "active" | "suspended") =>
+    request<{ status: string }>(
+      `/admin/admins/${encodeURIComponent(id)}/status`,
+      { method: "PATCH", body: JSON.stringify({ status }) },
     ),
 
   listApprovals: (status?: string) => {
@@ -307,4 +314,39 @@ export const notifications = {
       `/admin/notifications/scheduled/${encodeURIComponent(id)}`,
       { method: "DELETE" },
     ),
+};
+
+// ── Audit logs (admin view) ─────────────────────────────────────────────────
+
+export type AuditLogListResponse = {
+  logs: AuditLogEntry[];
+  page: number;
+  perPage: number;
+  total: number;
+  totalPages: number;
+};
+
+export const audit = {
+  listLogs: (params?: {
+    search?: string;
+    eventType?: string;
+    actorType?: string;
+    actorId?: string;
+    projectId?: string;
+    limit?: number;
+    page?: number;
+  }) => {
+    const search = new URLSearchParams();
+    if (params?.search) search.set("search", params.search);
+    if (params?.eventType) search.set("eventType", params.eventType);
+    if (params?.actorType) search.set("actorType", params.actorType);
+    if (params?.actorId) search.set("actorId", params.actorId);
+    if (params?.projectId) search.set("projectId", params.projectId);
+    if (params?.limit) search.set("limit", String(params.limit));
+    if (params?.page) search.set("page", String(params.page));
+    const query = search.toString();
+    return request<AuditLogListResponse>(
+      `/admin/logs${query ? `?${query}` : ""}`,
+    );
+  },
 };

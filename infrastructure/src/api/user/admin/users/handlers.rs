@@ -113,13 +113,13 @@ pub async fn set_user_status(
 
 /// `POST /admin/users/:id/sessions/revoke` — revoke all sessions.
 pub async fn revoke_user_sessions(
-    CurrentAdmin(_admin): CurrentAdmin,
+    CurrentAdmin(admin): CurrentAdmin,
     service: MaybeUsersService,
     Path(user_id): Path<String>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let service = require_users_service(service)?;
     service
-        .revoke_user_sessions(parse_user_id(&user_id)?)
+        .revoke_user_sessions(&admin, parse_user_id(&user_id)?)
         .await?;
     Ok((
         StatusCode::OK,

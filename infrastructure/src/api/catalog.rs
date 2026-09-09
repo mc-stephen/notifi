@@ -448,7 +448,14 @@ pub const ADMIN_ROUTES: &[RouteInfo] = &[
         path: "/admin/admins/{admin_id}/remove",
         surface: Surface::Admin,
         feature: "admin",
-        description: "request (or, for super admin, apply) an admin removal",
+        description: "remove an admin (super admin only)",
+    },
+    RouteInfo {
+        method: "PATCH",
+        path: "/admin/admins/{admin_id}/status",
+        surface: Surface::Admin,
+        feature: "admin",
+        description: "suspend or restore an admin (super admin only)",
     },
     RouteInfo {
         method: "GET",
@@ -579,6 +586,14 @@ pub const ADMIN_ROUTES: &[RouteInfo] = &[
         surface: Surface::Admin,
         feature: "notifications",
         description: "cancel a scheduled broadcast",
+    },
+    // -- admin audit-log feature --------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/admin/logs",
+        surface: Surface::Admin,
+        feature: "logs",
+        description: "every audit entry, newest first (admin view)",
     },
 ];
 

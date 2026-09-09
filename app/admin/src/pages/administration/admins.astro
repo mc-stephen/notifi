@@ -1,11 +1,15 @@
 ---
 import AdminLayout from "../../layouts/AdminLayout.astro";
+import Pagination from "../../components/shared/pagination.astro";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../../components/ui/table";
 import type { AdminAccount, ApprovalRequest } from "../../lib/types";
 
 const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8080";
 const session = Astro.cookies.get("admin_session")?.value;
 const cookieHeader = session ? { Cookie: `admin_session=${session}` } : {};
+
+const page = Math.max(1, parseInt(Astro.url.searchParams.get("page") ?? "1", 10) || 1);
+const LIMIT = 25;
 
 async function apiGet(path: string) {
   const res = await fetch(`${API_BASE}${path}`, { headers: cookieHeader });
@@ -22,13 +26,17 @@ let admins: AdminAccount[] = [];
 let approvals: ApprovalRequest[] = [];
 let isSuperAdmin = false;
 let myId = "";
+let total = 0;
+let totalPages = 0;
 let loadError: string | null = null;
 try {
   const me = await apiGet("/admin/me");
   isSuperAdmin = me.isSuperAdmin ?? false;
   myId = me.id ?? "";
-  const data = await apiGet("/admin/admins");
+  const data = await apiGet(`/admin/admins?limit=${LIMIT}&page=${page}`);
   admins = data.admins ?? [];
+  total = data.total ?? 0;
+  totalPages = data.totalPages ?? 0;
   if (isSuperAdmin) {
     try {
       const pending = await apiGet("/admin/approvals?status=pending");
@@ -77,75 +85,106 @@ function statusColor(status: string) {
           <p class="text-sm text-muted-foreground mt-1">
             {isSuperAdmin
               ? "New admins you add are active immediately."
-              : "New admins need super-admin approval before they can sign in."}
+              : "Only the super admin can add admins."}
           </p>
         </div>
-        <button
-          id="add-admin-toggle"
-          class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 shrink-0"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-          Add Admin
-        </button>
+        {isSuperAdmin && (
+          <button
+            id="add-admin-toggle"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 shrink-0"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            Add Admin
+          </button>
+        )}
       </div>
     </div>
 
-    <div id="add-admin-card" class="hidden rounded-xl border bg-card">
-      <form id="add-admin-form" class="p-5 space-y-4">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div class="space-y-2">
-            <label for="new-name" class="text-sm font-medium text-foreground">Full Name</label>
-            <input
-              type="text"
-              id="new-name"
-              required
-              placeholder="Admin User"
-              class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            />
+    {isSuperAdmin && (
+    <div id="add-admin-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="add-admin-title">
+      <div class="absolute inset-0 bg-black/50" id="add-admin-backdrop"></div>
+      <div class="relative z-10 w-full max-w-md mx-4 rounded-xl border bg-card shadow-xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between p-5 border-b border-border">
+          <div>
+            <h2 id="add-admin-title" class="font-semibold text-foreground">Add Admin</h2>
+            <p class="text-sm text-muted-foreground mt-0.5">New admins need super-admin approval unless you are one.</p>
           </div>
-          <div class="space-y-2">
-            <label for="new-email" class="text-sm font-medium text-foreground">Email</label>
-            <input
-              type="email"
-              id="new-email"
-              required
-              placeholder="admin@notifi.dev"
-              class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            />
-          </div>
-        </div>
-        <div class="space-y-2">
-          <label for="new-password" class="text-sm font-medium text-foreground">Temporary Password</label>
-          <input
-            type="password"
-            id="new-password"
-            required
-            autocomplete="new-password"
-            placeholder="At least 8 characters"
-            class="flex h-9 w-full max-w-md rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          />
-          <p class="text-xs text-muted-foreground">Minimum 8 characters. Must include uppercase, lowercase, number, and special character.</p>
-        </div>
-        <div id="add-error" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
-        <div id="add-success" class="hidden rounded-lg border border-success/20 bg-success/5 p-3 text-sm text-success"></div>
-        <div class="flex gap-2">
-          <button
-            type="submit"
-            id="add-btn"
-            class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 disabled:pointer-events-none disabled:opacity-50"
-          >
-            Create Admin
-          </button>
           <button
             type="button"
-            id="add-cancel"
-            class="inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+            id="add-admin-close"
+            aria-label="Close dialog"
+            class="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
           >
-            Cancel
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
         </div>
-      </form>
+        <form id="add-admin-form" class="p-5 space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <label for="new-name" class="text-sm font-medium text-foreground">Full Name</label>
+              <input
+                type="text"
+                id="new-name"
+                required
+                placeholder="Admin User"
+                class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+            </div>
+            <div class="space-y-2">
+              <label for="new-email" class="text-sm font-medium text-foreground">Email</label>
+              <input
+                type="email"
+                id="new-email"
+                required
+                placeholder="admin@notifi.dev"
+                class="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+            </div>
+          </div>
+          <div class="space-y-2">
+            <label for="new-password" class="text-sm font-medium text-foreground">Temporary Password</label>
+            <div class="relative">
+              <input
+                type="password"
+                id="new-password"
+                required
+                autocomplete="new-password"
+                placeholder="At least 8 characters"
+                class="flex h-9 w-full rounded-lg border border-input bg-card pl-3 pr-10 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+              <button
+                type="button"
+                id="toggle-new-password"
+                class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Toggle password visibility"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="eye-new-password"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <p class="text-xs text-muted-foreground">Minimum 8 characters. Must include uppercase, lowercase, number, and special character.</p>
+          </div>
+          <div id="add-error" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
+          <div id="add-success" class="hidden rounded-lg border border-success/20 bg-success/5 p-3 text-sm text-success"></div>
+          <div class="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              id="add-cancel"
+              class="inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              id="add-btn"
+              class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 disabled:pointer-events-none disabled:opacity-50"
+            >
+              Create Admin
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
+    )}
 
     {isSuperAdmin && approvals.length > 0 && (
       <div class="rounded-xl border border-warning/30 bg-card overflow-hidden">
@@ -238,15 +277,43 @@ function statusColor(status: string) {
                 {admin.lastLoginAt ? new Date(admin.lastLoginAt).toLocaleString() : "—"}
               </TableCell>
               <TableCell className="text-right">
-                {!admin.isSuperAdmin && admin.id !== myId ? (
-                  <button
-                    type="button"
-                    data-remove={admin.id}
-                    data-name={admin.name}
-                    class="text-xs text-destructive hover:underline"
-                  >
-                    Remove
-                  </button>
+                {!admin.isSuperAdmin && admin.id !== myId && isSuperAdmin ? (
+                  <div class="relative inline-block row-menu">
+                    <button
+                      type="button"
+                      data-menu-btn={admin.id}
+                      aria-label={`Actions for ${admin.name}`}
+                      aria-haspopup="menu"
+                      class="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                    </button>
+                    <div
+                      data-menu={admin.id}
+                      role="menu"
+                      class="hidden absolute right-0 z-20 mt-1 w-40 rounded-lg border border-border bg-card shadow-lg py-1"
+                    >
+                      <button
+                        type="button"
+                        data-suspend={admin.id}
+                        data-name={admin.name}
+                        data-suspended={admin.status === "suspended" ? "true" : "false"}
+                        role="menuitem"
+                        class="flex w-full items-center px-3 py-2 text-xs font-medium text-foreground hover:bg-muted transition-colors text-left"
+                      >
+                        {admin.status === "suspended" ? "Unsuspend" : "Suspend"}
+                      </button>
+                      <button
+                        type="button"
+                        data-remove={admin.id}
+                        data-name={admin.name}
+                        role="menuitem"
+                        class="flex w-full items-center px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/5 transition-colors text-left"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <span class="text-xs text-muted-foreground">—</span>
                 )}
@@ -268,7 +335,36 @@ function statusColor(status: string) {
           <p class="text-sm font-medium text-foreground">No admins found</p>
         </div>
       )}
-      <div id="remove-error" class="hidden mx-4 mb-4 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
+      {!loadError && (
+        <Pagination page={page} totalPages={totalPages} total={total} basePath="/administration/admins" params={{}} />
+      )}
+    </div>
+
+    <div id="confirm-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="absolute inset-0 bg-black/50" id="confirm-backdrop"></div>
+      <div class="relative z-10 w-full max-w-sm mx-4 rounded-xl border bg-card shadow-xl">
+        <div class="p-5 space-y-2">
+          <h2 id="confirm-title" class="font-semibold text-foreground">Confirm</h2>
+          <p id="confirm-body" class="text-sm text-muted-foreground"></p>
+        </div>
+        <div id="confirm-error" class="hidden mx-5 mb-4 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
+        <div class="flex justify-end gap-2 p-5 pt-0">
+          <button
+            type="button"
+            id="confirm-cancel"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            id="confirm-go"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 disabled:pointer-events-none disabled:opacity-50"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </AdminLayout>
@@ -278,16 +374,43 @@ function statusColor(status: string) {
   import { passwordValid } from "../../lib/password";
 
   const toggle = document.getElementById("add-admin-toggle");
-  const card = document.getElementById("add-admin-card");
+  const modal = document.getElementById("add-admin-modal");
   const form = document.getElementById("add-admin-form") as HTMLFormElement;
   const addError = document.getElementById("add-error");
   const addSuccess = document.getElementById("add-success");
   const addBtn = document.getElementById("add-btn") as HTMLButtonElement;
 
-  toggle?.addEventListener("click", () => card?.classList.toggle("hidden"));
-  document.getElementById("add-cancel")?.addEventListener("click", () => {
-    card?.classList.add("hidden");
+  const EYE_OPEN = '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>';
+  const EYE_CLOSED = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" x2="23" y1="1" y2="23"/>';
+
+  document.getElementById("toggle-new-password")?.addEventListener("click", () => {
+    const input = document.getElementById("new-password") as HTMLInputElement;
+    const icon = document.getElementById("eye-new-password");
+    const shown = input.type === "password";
+    input.type = shown ? "text" : "password";
+    if (icon) icon.innerHTML = shown ? EYE_CLOSED : EYE_OPEN;
+  });
+
+  function openModal() {
+    modal?.classList.remove("hidden");
+    document.getElementById("new-name")?.focus();
+  }
+
+  function closeModal() {
+    modal?.classList.add("hidden");
     form?.reset();
+    addError?.classList.add("hidden");
+    addSuccess?.classList.add("hidden");
+  }
+
+  toggle?.addEventListener("click", openModal);
+  document.getElementById("add-admin-close")?.addEventListener("click", closeModal);
+  document.getElementById("add-cancel")?.addEventListener("click", closeModal);
+  document.getElementById("add-admin-backdrop")?.addEventListener("click", closeModal);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal && !modal.classList.contains("hidden")) {
+      closeModal();
+    }
   });
 
   function showAddError(message: string) {
@@ -312,11 +435,9 @@ function statusColor(status: string) {
 
     addBtn.disabled = true;
     try {
-      const res = await admins.createAdmin({ name, email, password });
+      await admins.createAdmin({ name, email, password });
       if (addSuccess) {
-        addSuccess.textContent = res.pendingApproval
-          ? `Admin created and pending super-admin approval.`
-          : `Admin created and active.`;
+        addSuccess.textContent = `Admin created and active.`;
         addSuccess.classList.remove("hidden");
       }
       form.reset();
@@ -328,30 +449,103 @@ function statusColor(status: string) {
     }
   });
 
-  function showRemoveError(message: string) {
-    const el = document.getElementById("remove-error");
-    if (!el) return;
-    el.textContent = message;
-    el.classList.remove("hidden");
+  // Row kebab menus: one open at a time, closed by outside click or Escape.
+  function closeAllMenus() {
+    document.querySelectorAll("[data-menu]").forEach((m) => m.classList.add("hidden"));
   }
 
+  document.querySelectorAll<HTMLButtonElement>("[data-menu-btn]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const menu = document.querySelector(`[data-menu="${btn.dataset.menuBtn}"]`);
+      const wasHidden = menu?.classList.contains("hidden");
+      closeAllMenus();
+      if (wasHidden) menu?.classList.remove("hidden");
+    });
+  });
+
+  document.addEventListener("click", () => closeAllMenus());
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeAllMenus();
+      closeConfirm();
+    }
+  });
+
+  // Confirm dialog: shared by suspend and remove.
+  const confirmModal = document.getElementById("confirm-modal");
+  const confirmTitle = document.getElementById("confirm-title")!;
+  const confirmBody = document.getElementById("confirm-body")!;
+  const confirmError = document.getElementById("confirm-error");
+  const confirmGo = document.getElementById("confirm-go") as HTMLButtonElement;
+  let confirmAction: (() => Promise<void>) | null = null;
+
+  function openConfirm(title: string, body: string, goLabel: string, action: () => Promise<void>) {
+    closeAllMenus();
+    confirmTitle.textContent = title;
+    confirmBody.textContent = body;
+    confirmGo.textContent = goLabel;
+    confirmError?.classList.add("hidden");
+    confirmAction = action;
+    confirmModal?.classList.remove("hidden");
+  }
+
+  function closeConfirm() {
+    confirmModal?.classList.add("hidden");
+    confirmAction = null;
+  }
+
+  document.getElementById("confirm-cancel")?.addEventListener("click", closeConfirm);
+  document.getElementById("confirm-backdrop")?.addEventListener("click", closeConfirm);
+
+  confirmGo?.addEventListener("click", async () => {
+    const action = confirmAction;
+    if (!action) return;
+    confirmGo.disabled = true;
+    try {
+      await action();
+      window.location.reload();
+    } catch (err) {
+      confirmGo.disabled = false;
+      if (confirmError) {
+        confirmError.textContent = err instanceof ApiError ? err.message : "Action failed. Please try again.";
+        confirmError.classList.remove("hidden");
+      }
+    }
+  });
+
   document.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", () => {
       const id = btn.dataset.remove!;
       const name = btn.dataset.name ?? "this admin";
-      if (!window.confirm(`Remove ${name}? A super admin must approve this unless you are one.`)) return;
-      btn.disabled = true;
-      try {
-        const res = await admins.removeAdmin(id);
-        if (res.applied) {
-          window.location.reload();
-        } else {
-          btn.disabled = false;
-          btn.textContent = "Removal requested";
-        }
-      } catch (err) {
-        btn.disabled = false;
-        showRemoveError(err instanceof ApiError ? err.message : "Remove failed. Please try again.");
+      openConfirm(
+        `Remove ${name}?`,
+        "This deactivates the account immediately and signs them out everywhere. This cannot be undone from here.",
+        "Remove Admin",
+        () => admins.removeAdmin(id).then(() => {}),
+      );
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-suspend]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.suspend!;
+      const name = btn.dataset.name ?? "this admin";
+      const suspended = btn.dataset.suspended === "true";
+      if (suspended) {
+        openConfirm(
+          `Restore ${name}?`,
+          "They will be able to sign in again immediately.",
+          "Restore Admin",
+          () => admins.setStatus(id, "active").then(() => {}),
+        );
+      } else {
+        openConfirm(
+          `Suspend ${name}?`,
+          "This blocks sign-in immediately and signs them out everywhere. You can restore them later.",
+          "Suspend Admin",
+          () => admins.setStatus(id, "suspended").then(() => {}),
+        );
       }
     });
   });

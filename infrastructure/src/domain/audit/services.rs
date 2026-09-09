@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::domain::audit::entities::{AuditEntry, AuditEvent};
 use crate::domain::auth::errors::AuthError;
-use crate::ports::audit_store::{AuditFilters, AuditStore};
+use crate::ports::audit_store::{AdminAuditFilters, AuditFilters, AuditStore};
 use notifi_core::Ulid;
 
 pub struct AuditService {
@@ -39,6 +39,20 @@ impl AuditService {
     ) -> Result<Vec<AuditEntry>, AuthError> {
         self.store
             .list(user_id, filters, limit, before_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Lists all audit entries (admin view), newest first, plus the total
+    /// matching count.
+    pub async fn list_all(
+        &self,
+        filters: AdminAuditFilters<'_>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<AuditEntry>, i64), AuthError> {
+        self.store
+            .list_all(filters, limit, offset)
             .await
             .map_err(Into::into)
     }

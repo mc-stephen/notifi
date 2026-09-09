@@ -281,10 +281,10 @@ impl TicketService {
         self.audit
             .record(
                 chrono::Utc::now(),
-                &AuditEvent::new(
+                &AuditEvent::new_admin(
                     AuditAction::SupportTicketReplied,
-                    Some(&admin.id.to_string()),
-                    None,
+                    &admin.id.to_string(),
+                    Some(&admin.name),
                     ticket.ticket.project_id.as_deref(),
                     format!("ticket '{}' replied to by support", ticket.ticket.subject),
                     Some(json!({ "ticket_id": ticket.ticket.id, "message_id": message.id })),
@@ -328,10 +328,10 @@ impl TicketService {
             self.audit
                 .record(
                     chrono::Utc::now(),
-                    &AuditEvent::new(
+                    &AuditEvent::new_admin(
                         AuditAction::SupportTicketStatusChanged,
-                        Some(&admin.id.to_string()),
-                        None,
+                        &admin.id.to_string(),
+                        Some(&admin.name),
                         ticket.ticket.project_id.as_deref(),
                         format!(
                             "ticket '{}' status changed from {} to {}",

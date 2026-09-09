@@ -23,8 +23,12 @@ pub trait AdminStore: Send + Sync {
     fn find_admin_by_email(&self, email: &str) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>>;
     /// Finds an admin by id.
     fn find_admin_by_id(&self, id: AdminUserId) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>>;
-    /// All non-deleted admins, oldest first.
-    fn list_admins(&self) -> BoxFut<'_, Result<Vec<AdminUser>, StoreError>>;
+    /// All non-deleted admins, oldest first, plus the total count.
+    fn list_admins(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<AdminUser>, i64), StoreError>>;
     /// Sets an admin's account status. Returns false when unknown/deleted.
     fn set_admin_status(
         &self,

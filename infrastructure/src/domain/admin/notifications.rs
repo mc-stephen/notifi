@@ -169,10 +169,10 @@ impl AdminNotificationsService {
         self.audit
             .record(
                 now,
-                &AuditEvent::new(
+                &AuditEvent::new_admin(
                     action,
-                    Some(&admin.id.to_string()),
-                    None,
+                    &admin.id.to_string(),
+                    Some(&admin.name),
                     None,
                     message,
                     Some(json!({
@@ -205,10 +205,10 @@ impl AdminNotificationsService {
         self.audit
             .record(
                 Utc::now(),
-                &AuditEvent::new(
+                &AuditEvent::new_admin(
                     AuditAction::NotificationCancelled,
-                    Some(&admin.id.to_string()),
-                    None,
+                    &admin.id.to_string(),
+                    Some(&admin.name),
                     None,
                     format!("admin '{}' cancelled broadcast '{id}'", admin.email),
                     Some(json!({ "broadcast_id": id })),

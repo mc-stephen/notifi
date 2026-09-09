@@ -161,15 +161,15 @@ export type Invoice = {
 
 export type AuditLogEntry = {
   id: string;
-  actor: string;
-  actorEmail: string;
-  action: string;
-  target: string;
-  targetType: string;
-  timestamp: string;
-  ipAddress?: string;
-  result: "success" | "failure";
-  metadata?: Record<string, unknown>;
+  userId?: string | null;
+  adminId?: string | null;
+  actorType: "user" | "admin" | "system";
+  actorName?: string | null;
+  eventType: string;
+  message: string;
+  projectId?: string | null;
+  metadata?: Record<string, unknown> | null;
+  occurredAt: string;
 };
 
 export type ProviderStatus = {

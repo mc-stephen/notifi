@@ -44,6 +44,12 @@ pub struct CreateAdminRequest {
     pub password: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetAdminStatusRequest {
+    pub status: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminAccountDto {

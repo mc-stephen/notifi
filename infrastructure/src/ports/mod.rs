@@ -14,7 +14,7 @@ pub mod recipients_store;
 pub mod templates_store;
 pub mod tickets_store;
 
-pub use audit_store::{AuditFilters, AuditStore};
+pub use audit_store::{AdminAuditFilters, AuditFilters, AuditStore};
 pub use auth_store::{AuthStore, BoxFut, OnboardingInput, StoreError};
 pub use channel_provider_store::ChannelProviderStore;
 pub use oauth::{

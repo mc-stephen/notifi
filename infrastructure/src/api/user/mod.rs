@@ -140,5 +140,9 @@ pub fn admin_router(state: &AppState) -> Router<AppState> {
     if let Some(notifications_service) = state.admin_notifications.clone() {
         admin_routes = admin_routes.layer(axum::Extension(notifications_service));
     }
+    // Admin log routes need the audit service (absent -> 503).
+    if let Some(audit_service) = state.audit.clone() {
+        admin_routes = admin_routes.layer(axum::Extension(audit_service));
+    }
     admin_routes
 }

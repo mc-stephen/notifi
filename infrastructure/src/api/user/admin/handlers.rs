@@ -19,11 +19,13 @@ use crate::domain::auth::errors::AuthError;
 use super::dto::{
     AdminAccountDto, AdminStatusResponse, ApprovalDto, BootstrapRequest, BootstrapResponse,
     ChangePasswordRequest, CreateAdminRequest, ForgotPasswordRequest, ResetPasswordRequest,
-    TotpSetupResponse, VerifyTotpRequest,
+    SetAdminStatusRequest, TotpSetupResponse, VerifyTotpRequest,
 };
 use super::super::auth::middleware::{ADMIN_SESSION_COOKIE, Problem};
 
 type MaybeAdminService = Option<Extension<Arc<AdminService>>>;
+
+const DEFAULT_ADMIN_LIMIT: i64 = 50;
 
 fn require_admin_service(extension: MaybeAdminService) -> Result<Arc<AdminService>, Problem> {
     extension
@@ -439,11 +441,19 @@ pub async fn change_password(
 pub async fn list_admins(
     CurrentAdmin(_admin): CurrentAdmin,
     service: MaybeAdminService,
+    Query(query): Query<HashMap<String, String>>,
 ) -> Result<Response, Problem> {
     let service = require_admin_service(service)?;
-    let admins = service.list_admins().await.map_err(Problem::from)?;
+    let (page, per_page, offset) = pagination(&query, DEFAULT_ADMIN_LIMIT);
+    let (admins, total) = service
+        .list_admins(per_page, offset)
+        .await
+        .map_err(Problem::from)?;
     let dtos: Vec<AdminAccountDto> = admins.into_iter().map(AdminAccountDto::from).collect();
-    Ok(Json(json!({ "admins": dtos })).into_response())
+    Ok(Json(
+        json!({ "admins": dtos, "page": page, "perPage": per_page, "total": total, "totalPages": total_pages(total, per_page) }),
+    )
+    .into_response())
 }
 
 /// `POST /admin/admins` — creates another admin. Super-admin creations go
@@ -483,6 +493,32 @@ pub async fn remove_admin(
         .await
         .map_err(Problem::from)?;
     Ok(Json(json!({ "status": "ok", "applied": applied })).into_response())
+}
+
+/// `PATCH /admin/admins/:id/status` — suspend or restore another admin.
+/// Super admins only; suspending revokes every session.
+pub async fn set_admin_status(
+    CurrentAdmin(caller): CurrentAdmin,
+    service: MaybeAdminService,
+    Path(admin_id): Path<String>,
+    Json(body): Json<SetAdminStatusRequest>,
+) -> Result<Response, Problem> {
+    let service = require_admin_service(service)?;
+    let suspended = match body.status.trim() {
+        "suspended" => true,
+        "active" => false,
+        _ => {
+            return Err(AuthError::Validation(
+                "invalid status (expected active or suspended)".to_string(),
+            )
+            .into())
+        }
+    };
+    service
+        .set_admin_status(&caller, parse_admin_id(&admin_id)?, suspended)
+        .await
+        .map_err(Problem::from)?;
+    Ok(Json(json!({ "status": "ok" })).into_response())
 }
 
 /// `GET /admin/approvals` — lists approval requests (super admin only).

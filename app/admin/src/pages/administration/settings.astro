@@ -35,74 +35,6 @@ import AdminLayout from "../../layouts/AdminLayout.astro";
         </div>
       </div>
 
-      <!-- Notifications -->
-      <div class="rounded-xl border bg-card">
-        <div class="p-5 border-b border-border">
-          <h2 class="font-semibold text-foreground">Notification Defaults</h2>
-          <p class="text-sm text-muted-foreground mt-0.5">Default settings for new projects</p>
-        </div>
-        <div class="p-5 space-y-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm font-medium text-foreground">Email Notifications</p>
-              <p class="text-xs text-muted-foreground">Enable email channel by default</p>
-            </div>
-            <button class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-primary transition-colors" role="switch" aria-checked="true">
-              <span class="pointer-events-none block size-4 rounded-full bg-background shadow-lg ring-0 translate-x-4"></span>
-            </button>
-          </div>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm font-medium text-foreground">Push Notifications</p>
-              <p class="text-xs text-muted-foreground">Enable push channel by default</p>
-            </div>
-            <button class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-primary transition-colors" role="switch" aria-checked="true">
-              <span class="pointer-events-none block size-4 rounded-full bg-background shadow-lg ring-0 translate-x-4"></span>
-            </button>
-          </div>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm font-medium text-foreground">SMS Notifications</p>
-              <p class="text-xs text-muted-foreground">Enable SMS channel by default</p>
-            </div>
-            <button class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-muted transition-colors" role="switch" aria-checked="false">
-              <span class="pointer-events-none block size-4 rounded-full bg-background shadow-lg ring-0 translate-x-0"></span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Security -->
-      <div class="rounded-xl border bg-card">
-        <div class="p-5 border-b border-border">
-          <h2 class="font-semibold text-foreground">Security</h2>
-          <p class="text-sm text-muted-foreground mt-0.5">Admin security settings</p>
-        </div>
-        <div class="p-5 space-y-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm font-medium text-foreground">Require 2FA for Admins</p>
-              <p class="text-xs text-muted-foreground">Enforce two-factor authentication</p>
-            </div>
-            <button class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-primary transition-colors" role="switch" aria-checked="true">
-              <span class="pointer-events-none block size-4 rounded-full bg-background shadow-lg ring-0 translate-x-4"></span>
-            </button>
-          </div>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm font-medium text-foreground">Session Timeout</p>
-              <p class="text-xs text-muted-foreground">Auto-logout after inactivity</p>
-            </div>
-            <select class="flex h-9 rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-              <option value="30">30 minutes</option>
-              <option value="60" selected>1 hour</option>
-              <option value="120">2 hours</option>
-              <option value="480">8 hours</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
       <!-- Change Password -->
       <div class="rounded-xl border bg-card">
         <div class="p-5 border-b border-border">
@@ -112,37 +44,46 @@ import AdminLayout from "../../layouts/AdminLayout.astro";
         <form id="password-form" class="p-5 space-y-4">
           <div class="space-y-2">
             <label for="current-password" class="text-sm font-medium text-foreground">Current Password</label>
-            <input
-              type="password"
-              id="current-password"
-              required
-              autocomplete="current-password"
-              placeholder="Enter current password"
-              class="flex h-9 w-full max-w-md rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            />
+            <div class="relative max-w-md">
+              <input
+                type="password"
+                id="current-password"
+                required
+                autocomplete="current-password"
+                placeholder="Enter current password"
+                class="flex h-9 w-full rounded-lg border border-input bg-card pl-3 pr-10 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+              <button
+                type="button"
+                id="toggle-current"
+                class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Toggle current password visibility"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="eye-current"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
           </div>
           <div class="space-y-2">
             <label for="new-password" class="text-sm font-medium text-foreground">New Password</label>
-            <input
-              type="password"
-              id="new-password"
-              required
-              autocomplete="new-password"
-              placeholder="At least 8 characters"
-              class="flex h-9 w-full max-w-md rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            />
+            <div class="relative max-w-md">
+              <input
+                type="password"
+                id="new-password"
+                required
+                autocomplete="new-password"
+                placeholder="At least 8 characters"
+                class="flex h-9 w-full rounded-lg border border-input bg-card pl-3 pr-10 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+              <button
+                type="button"
+                id="toggle-new"
+                class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Toggle new password visibility"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="eye-new"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
             <p class="text-xs text-muted-foreground">Minimum 8 characters. Must include uppercase, lowercase, number, and special character.</p>
-          </div>
-          <div class="space-y-2">
-            <label for="confirm-password" class="text-sm font-medium text-foreground">Confirm New Password</label>
-            <input
-              type="password"
-              id="confirm-password"
-              required
-              autocomplete="new-password"
-              placeholder="Repeat new password"
-              class="flex h-9 w-full max-w-md rounded-lg border border-input bg-card px-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            />
           </div>
 
           <div id="password-error" class="hidden max-w-md rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
@@ -163,12 +104,6 @@ import AdminLayout from "../../layouts/AdminLayout.astro";
           </button>
         </form>
       </div>
-
-      <div class="flex justify-end">
-        <button class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80">
-          Save Settings
-        </button>
-      </div>
     </div>
   </div>
 </AdminLayout>
@@ -180,12 +115,29 @@ import AdminLayout from "../../layouts/AdminLayout.astro";
   const form = document.getElementById("password-form") as HTMLFormElement;
   const currentInput = document.getElementById("current-password") as HTMLInputElement;
   const newInput = document.getElementById("new-password") as HTMLInputElement;
-  const confirmInput = document.getElementById("confirm-password") as HTMLInputElement;
   const errorDiv = document.getElementById("password-error");
   const successDiv = document.getElementById("password-success");
   const submitBtn = document.getElementById("password-btn") as HTMLButtonElement;
   const btnText = document.getElementById("password-btn-text");
   const btnSpinner = document.getElementById("password-btn-spinner");
+
+  const EYE_OPEN = '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>';
+  const EYE_CLOSED = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" x2="23" y1="1" y2="23"/>';
+
+  function attachToggle(buttonId: string, inputId: string, iconId: string) {
+    const button = document.getElementById(buttonId);
+    const input = document.getElementById(inputId) as HTMLInputElement;
+    const icon = document.getElementById(iconId);
+    let shown = false;
+    button?.addEventListener("click", () => {
+      shown = !shown;
+      input.type = shown ? "text" : "password";
+      if (icon) icon.innerHTML = shown ? EYE_CLOSED : EYE_OPEN;
+    });
+  }
+
+  attachToggle("toggle-current", "current-password", "eye-current");
+  attachToggle("toggle-new", "new-password", "eye-new");
 
   function showError(message: string) {
     if (!errorDiv) return;
@@ -200,10 +152,6 @@ import AdminLayout from "../../layouts/AdminLayout.astro";
 
     if (!passwordValid(newInput.value)) {
       showError("New password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.");
-      return;
-    }
-    if (newInput.value !== confirmInput.value) {
-      showError("New passwords do not match.");
       return;
     }
 

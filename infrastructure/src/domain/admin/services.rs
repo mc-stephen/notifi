@@ -89,6 +89,19 @@ impl AdminService {
         };
 
         self.store.create_admin(&admin).await?;
+        self.audit
+            .record(
+                now,
+                &AuditEvent::new_admin(
+                    AuditAction::AdminCreated,
+                    &admin.id.to_string(),
+                    Some(&admin.name),
+                    None,
+                    format!("admin '{}' bootstrapped as super admin", admin.email),
+                    None,
+                ),
+            )
+            .await;
         Ok(admin)
     }
 
@@ -129,6 +142,20 @@ impl AdminService {
         // Touch last_login_at
         let now = Utc::now();
         self.store.touch_admin_last_login(admin.id, now).await?;
+
+        self.audit
+            .record(
+                now,
+                &AuditEvent::new_admin(
+                    AuditAction::AdminLogin,
+                    &admin.id.to_string(),
+                    Some(&admin.name),
+                    None,
+                    format!("admin '{}' signed in", admin.email),
+                    None,
+                ),
+            )
+            .await;
 
         Ok(admin)
     }
@@ -181,6 +208,21 @@ impl AdminService {
             .await?
         {
             self.store.revoke_admin_session(session.id).await?;
+            if let Some(admin) = self.store.find_admin_by_id(session.admin_id).await? {
+                self.audit
+                    .record(
+                        Utc::now(),
+                        &AuditEvent::new_admin(
+                            AuditAction::AdminLogout,
+                            &admin.id.to_string(),
+                            Some(&admin.name),
+                            None,
+                            format!("admin '{}' signed out", admin.email),
+                            None,
+                        ),
+                    )
+                    .await;
+            }
         }
         Ok(())
     }
@@ -198,6 +240,21 @@ impl AdminService {
     /// Enables TOTP for an admin after successful code verification.
     pub async fn enable_totp(&self, admin_id: AdminUserId) -> Result<(), AuthError> {
         self.store.enable_totp(admin_id).await?;
+        if let Some(admin) = self.store.find_admin_by_id(admin_id).await? {
+            self.audit
+                .record(
+                    Utc::now(),
+                    &AuditEvent::new_admin(
+                        AuditAction::AdminTotpEnabled,
+                        &admin.id.to_string(),
+                        Some(&admin.name),
+                        None,
+                        format!("admin '{}' enabled two-factor authentication", admin.email),
+                        None,
+                    ),
+                )
+                .await;
+        }
         Ok(())
     }
 
@@ -292,10 +349,10 @@ impl AdminService {
         self.audit
             .record(
                 Utc::now(),
-                &AuditEvent::new(
+                &AuditEvent::new_admin(
                     AuditAction::AdminPasswordChanged,
-                    Some(&admin.id.to_string()),
-                    None,
+                    &admin.id.to_string(),
+                    Some(&admin.name),
                     None,
                     format!("admin '{}' changed their password", admin.email),
                     None,
@@ -309,8 +366,12 @@ impl AdminService {
     // admin governance (super admin supervision)
     // ------------------------------------------------------------------
 
-    pub async fn list_admins(&self) -> Result<Vec<AdminUser>, AuthError> {
-        Ok(self.store.list_admins().await?)
+    pub async fn list_admins(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<AdminUser>, i64), AuthError> {
+        Ok(self.store.list_admins(limit, offset).await?)
     }
 
     pub async fn list_approvals(
@@ -366,6 +427,8 @@ impl AdminService {
         email: &str,
         password: &str,
     ) -> Result<AdminUser, AuthError> {
+        require_super_admin(caller)?;
+
         let email = Email::parse(email)?;
         validate_password(password)?;
 
@@ -394,74 +457,39 @@ impl AdminService {
             totp_secret: None,
             totp_enabled: false,
             is_super_admin: false,
-            status: if caller.is_super_admin {
-                AdminStatus::Active
-            } else {
-                AdminStatus::Pending
-            },
+            status: AdminStatus::Active,
             created_at: now,
             last_login_at: None,
         };
         self.store.create_admin(&admin).await?;
 
-        if caller.is_super_admin {
-            self.audit
-                .record(
-                    now,
-                    &AuditEvent::new(
-                        AuditAction::AdminCreated,
-                        Some(&caller.id.to_string()),
-                        None,
-                        None,
-                        format!(
-                            "super admin '{}' created admin '{}'",
-                            caller.email, admin.email
-                        ),
-                        Some(json!({ "admin_id": admin.id.to_string() })),
+        self.audit
+            .record(
+                now,
+                &AuditEvent::new_admin(
+                    AuditAction::AdminCreated,
+                    &caller.id.to_string(),
+                    Some(&caller.name),
+                    None,
+                    format!(
+                        "super admin '{}' created admin '{}'",
+                        caller.email, admin.email
                     ),
-                )
-                .await;
-        } else {
-            self.store
-                .create_approval(&AdminApprovalRequest {
-                    id: notifi_core::Ulid::new().to_string(),
-                    kind: ApprovalKind::Create,
-                    target_admin_id: admin.id,
-                    requested_by: caller.id,
-                    status: ApprovalStatus::Pending,
-                    decided_by: None,
-                    decided_at: None,
-                    created_at: now,
-                })
-                .await?;
-            self.audit
-                .record(
-                    now,
-                    &AuditEvent::new(
-                        AuditAction::AdminCreated,
-                        Some(&caller.id.to_string()),
-                        None,
-                        None,
-                        format!(
-                            "admin '{}' requested creation of admin '{}' (pending approval)",
-                            caller.email, admin.email
-                        ),
-                        Some(json!({ "admin_id": admin.id.to_string() })),
-                    ),
-                )
-                .await;
-        }
+                    Some(json!({ "admin_id": admin.id.to_string() })),
+                ),
+            )
+            .await;
         Ok(admin)
     }
 
-    /// Requests (or, for the super admin, immediately applies) the removal
-    /// of another admin. Refuses self-removal and any action on the super
-    /// admin account.
+    /// Removes another admin. Super admins only; applies immediately.
+    /// Refuses self-removal and any action on the super admin account.
     pub async fn request_removal(
         &self,
         caller: &AdminUser,
         target_id: AdminUserId,
     ) -> Result<bool, AuthError> {
+        require_super_admin(caller)?;
         let target = self
             .store
             .find_admin_by_id(target_id)
@@ -479,42 +507,88 @@ impl AdminService {
         }
 
         let now = Utc::now();
-        if caller.is_super_admin {
-            self.apply_removal(&target).await?;
-            self.audit
-                .record(
-                    now,
-                    &AuditEvent::new(
-                        AuditAction::AdminApprovalDecided,
-                        Some(&caller.id.to_string()),
-                        None,
-                        None,
-                        format!(
-                            "super admin '{}' removed admin '{}'",
-                            caller.email, target.email
-                        ),
-                        Some(
-                            json!({ "admin_id": target.id.to_string(), "decision": "approved" }),
-                        ),
+        self.apply_removal(&target).await?;
+        self.audit
+            .record(
+                now,
+                &AuditEvent::new_admin(
+                    AuditAction::AdminApprovalDecided,
+                    &caller.id.to_string(),
+                    Some(&caller.name),
+                    None,
+                    format!(
+                        "super admin '{}' removed admin '{}'",
+                        caller.email, target.email
                     ),
-                )
-                .await;
-            return Ok(true);
+                    Some(
+                        json!({ "admin_id": target.id.to_string(), "decision": "approved" }),
+                    ),
+                ),
+            )
+            .await;
+        Ok(true)
+    }
+
+    /// Suspends or restores another admin. Super admins only; suspending
+    /// revokes every session. Refuses self-suspension and any action on the
+    /// super admin account.
+    pub async fn set_admin_status(
+        &self,
+        caller: &AdminUser,
+        target_id: AdminUserId,
+        suspended: bool,
+    ) -> Result<(), AuthError> {
+        require_super_admin(caller)?;
+        let target = self
+            .store
+            .find_admin_by_id(target_id)
+            .await?
+            .ok_or_else(|| AuthError::NotFound("admin not found".into()))?;
+        if target.is_super_admin {
+            return Err(AuthError::Validation(
+                "the super admin account cannot be suspended".to_string(),
+            ));
+        }
+        if target.id == caller.id {
+            return Err(AuthError::Validation(
+                "you cannot suspend your own admin account".to_string(),
+            ));
         }
 
-        self.store
-            .create_approval(&AdminApprovalRequest {
-                id: notifi_core::Ulid::new().to_string(),
-                kind: ApprovalKind::Remove,
-                target_admin_id: target.id,
-                requested_by: caller.id,
-                status: ApprovalStatus::Pending,
-                decided_by: None,
-                decided_at: None,
-                created_at: now,
-            })
-            .await?;
-        Ok(false)
+        let status = if suspended {
+            AdminStatus::Suspended
+        } else {
+            AdminStatus::Active
+        };
+        if target.status == status {
+            return Ok(());
+        }
+        self.store.set_admin_status(target.id, status).await?;
+        if suspended {
+            self.store.revoke_admin_sessions(target.id).await?;
+        }
+        self.audit
+            .record(
+                Utc::now(),
+                &AuditEvent::new_admin(
+                    AuditAction::AdminApprovalDecided,
+                    &caller.id.to_string(),
+                    Some(&caller.name),
+                    None,
+                    format!(
+                        "super admin '{}' {} admin '{}'",
+                        caller.email,
+                        if suspended { "suspended" } else { "restored" },
+                        target.email,
+                    ),
+                    Some(json!({
+                        "admin_id": target.id.to_string(),
+                        "decision": "approved",
+                    })),
+                ),
+            )
+            .await;
+        Ok(())
     }
 
     /// Decides a pending approval request. Super admins only.
@@ -578,10 +652,10 @@ impl AdminService {
         self.audit
             .record(
                 Utc::now(),
-                &AuditEvent::new(
+                &AuditEvent::new_admin(
                     AuditAction::AdminApprovalDecided,
-                    Some(&caller.id.to_string()),
-                    None,
+                    &caller.id.to_string(),
+                    Some(&caller.name),
                     None,
                     format!(
                         "super admin '{}' {decision} {} request for admin '{}'",

@@ -679,6 +679,73 @@ impl AuditStore for FakeAuditStore {
             Ok(mine)
         })
     }
+
+    fn list_all(
+        &self,
+        filters: crate::ports::audit_store::AdminAuditFilters<'_>,
+        limit: i64,
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<AuditEntry>, i64), StoreError>> {
+        let entries = self.entries.read().unwrap().clone();
+        let event_type = filters.event_type.map(str::to_owned);
+        let project_id = filters.project_id.map(str::to_owned);
+        let actor_type = filters.actor_type.map(str::to_owned);
+        let actor_id = filters.actor_id.map(str::to_owned);
+        let search = filters.search.map(|s| s.to_lowercase());
+        Box::pin(async move {
+            let mut result: Vec<AuditEntry> = entries
+                .into_iter()
+                .filter(|e| {
+                    if let Some(ref t) = event_type
+                        && e.event_type != *t
+                    {
+                        return false;
+                    }
+                    if let Some(ref p) = project_id
+                        && e.project_id.as_deref() != Some(p.as_str())
+                    {
+                        return false;
+                    }
+                    if let Some(ref t) = actor_type
+                        && e.actor_type.as_str() != t.as_str()
+                    {
+                        return false;
+                    }
+                    if let Some(ref a) = actor_id
+                        && e.user_id.as_deref() != Some(a.as_str())
+                        && e.admin_id.as_deref() != Some(a.as_str())
+                    {
+                        return false;
+                    }
+                    if let Some(ref q) = search {
+                        let haystack = format!(
+                            "{} {} {}",
+                            e.event_type,
+                            e.message,
+                            e.actor_name.as_deref().unwrap_or("")
+                        )
+                        .to_lowercase();
+                        if !haystack.contains(q.as_str()) {
+                            return false;
+                        }
+                    }
+                    true
+                })
+                .collect();
+            result.sort_by(|a, b| {
+                b.occurred_at
+                    .cmp(&a.occurred_at)
+                    .then(b.id.cmp(&a.id))
+            });
+            let total = result.len() as i64;
+            let page: Vec<AuditEntry> = result
+                .into_iter()
+                .skip(offset.max(0) as usize)
+                .take(limit.max(0) as usize)
+                .collect();
+            Ok((page, total))
+        })
+    }
 }
 
 /// In-memory [`RecipientsStore`] for tests.
@@ -2192,7 +2259,11 @@ impl AdminStore for FakeAdminStore {
         })
     }
 
-    fn list_admins(&self) -> BoxFut<'_, Result<Vec<AdminUser>, StoreError>> {
+    fn list_admins(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<AdminUser>, i64), StoreError>> {
         let admins = &self.admins;
         let deleted = self.deleted_admins.read().unwrap().clone();
         Box::pin(async move {
@@ -2208,7 +2279,13 @@ impl AdminStore for FakeAdminStore {
                     .cmp(&b.created_at)
                     .then(a.id.to_string().cmp(&b.id.to_string()))
             });
-            Ok(result)
+            let total = result.len() as i64;
+            let page: Vec<AdminUser> = result
+                .into_iter()
+                .skip(offset.max(0) as usize)
+                .take(limit.max(0) as usize)
+                .collect();
+            Ok((page, total))
         })
     }
 

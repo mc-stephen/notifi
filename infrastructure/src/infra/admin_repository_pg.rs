@@ -34,6 +34,7 @@ struct AdminUserRow {
     status: String,
     last_login_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
+    total_count: Option<i64>,
 }
 
 impl TryFrom<AdminUserRow> for AdminUser {
@@ -221,7 +222,8 @@ impl AdminStore for PgAdminStore {
         let email = email.to_string();
         Box::pin(async move {
             let row = sqlx::query_as::<_, AdminUserRow>(
-                "SELECT id, name, email, password_hash, totp_secret, totp_enabled, is_super_admin, status, last_login_at, created_at \
+                "SELECT id, name, email, password_hash, totp_secret, totp_enabled, is_super_admin, status, last_login_at, created_at, \
+                        NULL::bigint AS total_count \
                  FROM admin_users WHERE email = $1 AND deleted_at IS NULL",
             )
             .bind(&email)
@@ -237,7 +239,8 @@ impl AdminStore for PgAdminStore {
         let id_str = id.to_string();
         Box::pin(async move {
             let row = sqlx::query_as::<_, AdminUserRow>(
-                "SELECT id, name, email, password_hash, totp_secret, totp_enabled, is_super_admin, status, last_login_at, created_at \
+                "SELECT id, name, email, password_hash, totp_secret, totp_enabled, is_super_admin, status, last_login_at, created_at, \
+                        NULL::bigint AS total_count \
                  FROM admin_users WHERE id = $1 AND deleted_at IS NULL",
             )
             .bind(&id_str)
@@ -478,18 +481,31 @@ impl AdminStore for PgAdminStore {
         })
     }
 
-    fn list_admins(&self) -> BoxFut<'_, Result<Vec<AdminUser>, StoreError>> {
+    fn list_admins(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> BoxFut<'_, Result<(Vec<AdminUser>, i64), StoreError>> {
         let pool = self.pool.clone();
         Box::pin(async move {
             let rows = sqlx::query_as::<_, AdminUserRow>(
-                "SELECT id, name, email, password_hash, totp_secret, totp_enabled, is_super_admin, status, last_login_at, created_at \
+                "SELECT id, name, email, password_hash, totp_secret, totp_enabled, is_super_admin, status, last_login_at, created_at, \
+                        COUNT(*) OVER() AS total_count \
                  FROM admin_users WHERE deleted_at IS NULL \
-                 ORDER BY created_at ASC, id ASC",
+                 ORDER BY created_at ASC, id ASC \
+                 LIMIT $1 OFFSET $2",
             )
+            .bind(limit)
+            .bind(offset)
             .fetch_all(&pool)
             .await
             .map_err(map_err)?;
-            rows.into_iter().map(AdminUser::try_from).collect()
+            let total = rows.first().and_then(|r| r.total_count).unwrap_or(0);
+            let admins = rows
+                .into_iter()
+                .map(AdminUser::try_from)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((admins, total))
         })
     }
 

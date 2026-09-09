@@ -101,10 +101,10 @@ impl AdminUsersService {
             self.audit
                 .record(
                     chrono::Utc::now(),
-                    &AuditEvent::new(
+                    &AuditEvent::new_admin(
                         action,
-                        Some(&admin.id.to_string()),
-                        None,
+                        &admin.id.to_string(),
+                        Some(&admin.name),
                         None,
                         message,
                         Some(json!({ "user_id": user_id.to_string() })),
@@ -118,12 +118,28 @@ impl AdminUsersService {
             .ok_or_else(|| AuthError::NotFound("user not found".into()))
     }
 
-    pub async fn revoke_user_sessions(&self, user_id: UserId) -> Result<(), AuthError> {
-        self.auth
+    pub async fn revoke_user_sessions(&self, admin: &AdminUser, user_id: UserId) -> Result<(), AuthError> {
+        let user = self.auth
             .find_user_by_id(user_id)
             .await?
             .ok_or_else(|| AuthError::NotFound("user not found".into()))?;
         self.auth.revoke_all_sessions_for_user(user_id).await?;
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new_admin(
+                    AuditAction::AdminSessionsRevoked,
+                    &admin.id.to_string(),
+                    Some(&admin.name),
+                    None,
+                    format!(
+                        "admin '{}' revoked all sessions for user '{}'",
+                        admin.email, user.email
+                    ),
+                    Some(json!({ "user_id": user_id.to_string() })),
+                ),
+            )
+            .await;
         Ok(())
     }
 
