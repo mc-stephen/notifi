@@ -80,38 +80,6 @@ impl From<crate::domain::admin::entities::AdminUser> for AdminAccountDto {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ApprovalDto {
-    pub id: String,
-    pub kind: String,
-    pub target_admin_id: String,
-    pub target_name: Option<String>,
-    pub target_email: Option<String>,
-    pub requested_by: String,
-    pub requester_name: Option<String>,
-    pub status: String,
-    pub decided_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-}
-
-impl From<crate::domain::admin::services::AdminApprovalView> for ApprovalDto {
-    fn from(view: crate::domain::admin::services::AdminApprovalView) -> Self {
-        Self {
-            id: view.request.id,
-            kind: view.request.kind.as_str().to_string(),
-            target_admin_id: view.request.target_admin_id.to_string(),
-            target_name: view.target_name,
-            target_email: view.target_email,
-            requested_by: view.request.requested_by.to_string(),
-            requester_name: view.requester_name,
-            status: view.request.status.as_str().to_string(),
-            decided_at: view.request.decided_at,
-            created_at: view.request.created_at,
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AdminStatusResponse {
     pub admin_exists: bool,
 }

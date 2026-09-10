@@ -3,12 +3,49 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::projects::Project;
+use crate::domain::projects::{Project, ProjectMember};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateEnvironmentRequest {
     pub environment: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetRequire2faRequest {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddMemberRequest {
+    pub email: String,
+    pub role: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMemberDto {
+    pub user_id: String,
+    pub name: String,
+    pub email: String,
+    pub role: String,
+    pub has_2fa: bool,
+    pub last_active_at: Option<DateTime<Utc>>,
+}
+
+impl From<ProjectMember> for ProjectMemberDto {
+    fn from(member: ProjectMember) -> Self {
+        Self {
+            user_id: member.user_id,
+            name: member.name,
+            email: member.email,
+            role: member.role,
+            has_2fa: member.has_2fa,
+            last_active_at: member.last_active_at,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -26,6 +63,7 @@ pub struct ProjectDto {
     pub slug: String,
     pub description: Option<String>,
     pub environment: String,
+    pub require_2fa: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -37,6 +75,7 @@ impl From<Project> for ProjectDto {
             slug: project.slug,
             description: project.description,
             environment: project.environment,
+            require_2fa: project.require_2fa,
             created_at: project.created_at,
         }
     }

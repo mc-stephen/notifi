@@ -1,12 +1,12 @@
-pub mod twilio;
-pub mod local_nigeria;
-pub mod termii;
 pub mod africas_talking;
-pub mod smslive247;
+pub mod bird;
 pub mod ebulksms;
 pub mod infobip;
+pub mod local_nigeria;
+pub mod smslive247;
+pub mod termii;
+pub mod twilio;
 pub mod vonage;
-pub mod bird;
 
 use futures::future::BoxFuture;
 

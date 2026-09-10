@@ -5,10 +5,10 @@ use std::sync::Arc;
 use serde_json::json;
 
 use crate::domain::admin::entities::AdminUser;
+use crate::domain::audit::AuditService;
+use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::{User, UserId, UserStatus};
 use crate::domain::auth::errors::AuthError;
-use crate::domain::audit::entities::{AuditAction, AuditEvent};
-use crate::domain::audit::AuditService;
 use crate::ports::auth_store::AuthStore;
 use crate::ports::notifications_store::NotificationsStore;
 use crate::ports::projects_store::ProjectsStore;
@@ -118,8 +118,13 @@ impl AdminUsersService {
             .ok_or_else(|| AuthError::NotFound("user not found".into()))
     }
 
-    pub async fn revoke_user_sessions(&self, admin: &AdminUser, user_id: UserId) -> Result<(), AuthError> {
-        let user = self.auth
+    pub async fn revoke_user_sessions(
+        &self,
+        admin: &AdminUser,
+        user_id: UserId,
+    ) -> Result<(), AuthError> {
+        let user = self
+            .auth
             .find_user_by_id(user_id)
             .await?
             .ok_or_else(|| AuthError::NotFound("user not found".into()))?;
@@ -145,7 +150,10 @@ impl AdminUsersService {
 
     async fn detail_for(&self, user: User) -> Result<UserDetail, AuthError> {
         let projects = self.projects.list_projects(user.id).await?;
-        let tickets = self.tickets.count_tickets_for_user(&user.id.to_string()).await?;
+        let tickets = self
+            .tickets
+            .count_tickets_for_user(&user.id.to_string())
+            .await?;
         let notification_count = self.notifications.count_all_for_user(user.id).await?;
         Ok(UserDetail {
             user,

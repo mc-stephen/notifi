@@ -6,6 +6,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use serde_json::{Value, json};
 use server::api::build_router;
 use server::api::state::AppState;
 use server::domain::admin::{AdminService, AdminUsersService};
@@ -19,7 +20,6 @@ use server::ports::ProviderTester;
 use server::testing::{
     FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeNotificationsStore, FakeTicketsStore,
 };
-use serde_json::{Value, json};
 use tower::ServiceExt;
 
 fn app_with_admin_users() -> Router {
@@ -27,7 +27,11 @@ fn app_with_admin_users() -> Router {
     let audit = Arc::new(AuditService::new(Arc::new(FakeAuditStore::new())));
     let auth = Arc::new(AuthService::new(auth_store.clone(), true, audit.clone()));
     let projects = Arc::new(ProjectService::new(auth_store.clone(), audit.clone()));
-    let admin = Arc::new(AdminService::new(Box::new(FakeAdminStore::new()), true, audit.clone()));
+    let admin = Arc::new(AdminService::new(
+        Box::new(FakeAdminStore::new()),
+        true,
+        audit.clone(),
+    ));
     let tickets_store = Arc::new(FakeTicketsStore::new());
     let tickets = Arc::new(TicketService::new(tickets_store.clone(), audit.clone()));
     let admin_users = Arc::new(AdminUsersService::new(
@@ -48,13 +52,16 @@ fn app_with_admin_users() -> Router {
             admin_projects: None,
             admin_notifications: None,
             projects: Some(projects),
+            project_members: None,
             audit: Some(audit),
             recipients: None,
             templates: None,
             channel_providers: None,
             tickets: Some(tickets),
             notifications: None,
-            provider_tester: Arc::new(ConfigProviderTester::new()) as Arc<dyn ProviderTester + Send + Sync>,
+            billing: None,
+            provider_tester: Arc::new(ConfigProviderTester::new())
+                as Arc<dyn ProviderTester + Send + Sync>,
         },
         &AppConfig::default(),
     )
@@ -93,7 +100,9 @@ async fn request_with_cookie(
     if !cookie.is_empty() {
         builder = builder.header("cookie", format!("{cookie_name}={cookie}"));
     }
-    let body = body.map(|b| Body::from(b.to_string())).unwrap_or_else(Body::empty);
+    let body = body
+        .map(|b| Body::from(b.to_string()))
+        .unwrap_or_else(Body::empty);
     app.oneshot(builder.body(body).unwrap()).await.unwrap()
 }
 
@@ -103,7 +112,8 @@ async fn signup(app: Router, name: &str, email: &str) -> (String, String) {
         "POST",
         "/app/auth/signup",
         Some(json!({"name": name, "email": email, "password": "Sup3rSecret!"})),
-        "session_token", "",
+        "session_token",
+        "",
     )
     .await;
     assert_eq!(res.status(), StatusCode::CREATED);
@@ -119,7 +129,8 @@ async fn bootstrap_admin(app: Router) -> String {
         "POST",
         "/admin/bootstrap",
         Some(json!({"name": "Root", "email": "root@notifi.dev", "password": "Adm1n!Pass"})),
-        "admin_session", "",
+        "admin_session",
+        "",
     )
     .await;
     assert_eq!(res.status(), StatusCode::CREATED);
@@ -135,7 +146,15 @@ async fn admin_lists_users_with_search_and_status_filters() {
     signup(app.clone(), "Carol Clark", "carol@x.dev").await;
 
     // All three, newest first.
-    let res = request_with_cookie(app.clone(), "GET", "/admin/users", None, "admin_session", &admin_cookie).await;
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        "/admin/users",
+        None,
+        "admin_session",
+        &admin_cookie,
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["users"].as_array().unwrap().len(), 3);
@@ -150,7 +169,8 @@ async fn admin_lists_users_with_search_and_status_filters() {
         "GET",
         "/admin/users?search=alice",
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     let body = body_json(res).await;
@@ -163,7 +183,8 @@ async fn admin_lists_users_with_search_and_status_filters() {
         "PATCH",
         &format!("/admin/users/{alice}/status"),
         Some(json!({"status": "suspended"})),
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -174,7 +195,8 @@ async fn admin_lists_users_with_search_and_status_filters() {
         "GET",
         "/admin/users?status=suspended",
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     let body = body_json(res).await;
@@ -185,7 +207,8 @@ async fn admin_lists_users_with_search_and_status_filters() {
         "GET",
         "/admin/users?status=active",
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(body_json(res).await["users"].as_array().unwrap().len(), 2);
@@ -196,7 +219,8 @@ async fn admin_lists_users_with_search_and_status_filters() {
         "GET",
         "/admin/users?status=banned",
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
@@ -215,7 +239,8 @@ async fn admin_user_list_paginates() {
         "GET",
         "/admin/users?per_page=2",
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     let body = body_json(res).await;
@@ -231,7 +256,8 @@ async fn admin_user_list_paginates() {
         "GET",
         "/admin/users?per_page=2&page=2",
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     let body = body_json(res).await;
@@ -259,7 +285,8 @@ async fn admin_user_detail_reports_stats() {
             "priority": "Low",
             "description": "please help",
         })),
-        "session_token", &user_cookie,
+        "session_token",
+        &user_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::CREATED);
@@ -269,7 +296,8 @@ async fn admin_user_detail_reports_stats() {
         "GET",
         &format!("/admin/users/{user_id}"),
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -293,13 +321,22 @@ async fn suspend_blocks_login_and_restore_reopens() {
         "PATCH",
         &format!("/admin/users/{user_id}/status"),
         Some(json!({"status": "suspended"})),
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
     // Old session is dead.
-    let res = request_with_cookie(app.clone(), "GET", "/app/auth/me", None, "session_token", &user_cookie).await;
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        "/app/auth/me",
+        None,
+        "session_token",
+        &user_cookie,
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
     // Password login is blocked with 403.
@@ -308,7 +345,8 @@ async fn suspend_blocks_login_and_restore_reopens() {
         "POST",
         "/app/auth/login",
         Some(json!({"email": "gone@x.dev", "password": "Sup3rSecret!"})),
-        "session_token", "",
+        "session_token",
+        "",
     )
     .await;
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
@@ -319,7 +357,8 @@ async fn suspend_blocks_login_and_restore_reopens() {
         "PATCH",
         &format!("/admin/users/{user_id}/status"),
         Some(json!({"status": "active"})),
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -329,7 +368,8 @@ async fn suspend_blocks_login_and_restore_reopens() {
         "POST",
         "/app/auth/login",
         Some(json!({"email": "gone@x.dev", "password": "Sup3rSecret!"})),
-        "session_token", "",
+        "session_token",
+        "",
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -387,7 +427,15 @@ async fn admin_and_user_sessions_coexist_in_one_jar() {
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let res = request_with_cookie(app.clone(), "GET", "/admin/me", None, "admin_session", &admin_cookie).await;
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        "/admin/me",
+        None,
+        "admin_session",
+        &admin_cookie,
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::OK);
 
     // Admin logout does not disturb the dashboard session.
@@ -402,7 +450,15 @@ async fn admin_and_user_sessions_coexist_in_one_jar() {
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let res = request_with_cookie(app.clone(), "GET", "/admin/me", None, "admin_session", &admin_cookie).await;
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        "/admin/me",
+        None,
+        "admin_session",
+        &admin_cookie,
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
     let res = request_with_cookie(
@@ -424,9 +480,25 @@ async fn admin_users_endpoints_validate_input_and_auth() {
     let (user_cookie, user_id) = signup(app.clone(), "V User", "v@x.dev").await;
 
     // Customer sessions are rejected.
-    let res = request_with_cookie(app.clone(), "GET", "/admin/users", None, "session_token", &user_cookie).await;
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        "/admin/users",
+        None,
+        "session_token",
+        &user_cookie,
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
-    let res = request_with_cookie(app.clone(), "GET", "/admin/users", None, "admin_session", "").await;
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        "/admin/users",
+        None,
+        "admin_session",
+        "",
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
     // Unknown user and malformed id.
@@ -435,7 +507,8 @@ async fn admin_users_endpoints_validate_input_and_auth() {
         "GET",
         "/admin/users/01J00000000000000000000000",
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
@@ -445,7 +518,8 @@ async fn admin_users_endpoints_validate_input_and_auth() {
         "GET",
         "/admin/users/not-a-ulid",
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
@@ -456,7 +530,8 @@ async fn admin_users_endpoints_validate_input_and_auth() {
         "PATCH",
         &format!("/admin/users/{user_id}/status"),
         Some(json!({"status": "banned"})),
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
@@ -467,11 +542,20 @@ async fn admin_users_endpoints_validate_input_and_auth() {
         "POST",
         &format!("/admin/users/{user_id}/sessions/revoke"),
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
-    let res = request_with_cookie(app.clone(), "GET", "/app/auth/me", None, "session_token", &user_cookie).await;
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        "/app/auth/me",
+        None,
+        "session_token",
+        &user_cookie,
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     let res = request_with_cookie(
         app.clone(),

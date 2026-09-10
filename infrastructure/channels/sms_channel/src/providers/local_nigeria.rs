@@ -1,6 +1,6 @@
-use serde::Deserialize;
-use reqwest::Client;
 use futures::future::BoxFuture;
+use reqwest::Client;
+use serde::Deserialize;
 
 use super::SmsSender;
 

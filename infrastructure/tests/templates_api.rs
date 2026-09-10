@@ -10,6 +10,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use serde_json::{Value, json};
 use server::api::build_router;
 use server::api::state::AppState;
 use server::domain::audit::AuditService;
@@ -20,7 +21,6 @@ use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
 use server::testing::{FakeAuditStore, FakeAuthStore, FakeTemplatesStore};
-use serde_json::{Value, json};
 use tower::ServiceExt;
 
 /// App wired with fake auth + templates services.
@@ -43,13 +43,16 @@ fn app_with_templates() -> (Router, Arc<FakeTemplatesStore>) {
                 admin_projects: None,
                 admin_notifications: None,
                 projects: Some(projects),
+                project_members: None,
                 audit: Some(audit),
                 recipients: None,
                 templates: Some(templates),
                 channel_providers: None,
                 tickets: None,
                 notifications: None,
-                provider_tester: std::sync::Arc::new(ConfigProviderTester::new()) as std::sync::Arc<dyn ProviderTester + Send + Sync>,
+                billing: None,
+                provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
+                    as std::sync::Arc<dyn ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
         ),
@@ -71,8 +74,7 @@ async fn signup_and_login_on(app: Router, email: &str) -> (String, String) {
                 .uri("/app/auth/signup")
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({"name": "Jane", "email": email, "password": "Sup3rSecret!"})
-                        .to_string(),
+                    json!({"name": "Jane", "email": email, "password": "Sup3rSecret!"}).to_string(),
                 ))
                 .unwrap(),
         )
@@ -120,11 +122,7 @@ async fn post_with_cookie(
     .unwrap()
 }
 
-async fn get_with_cookie(
-    app: Router,
-    uri: &str,
-    cookie: &str,
-) -> axum::response::Response {
+async fn get_with_cookie(app: Router, uri: &str, cookie: &str) -> axum::response::Response {
     app.oneshot(
         Request::builder()
             .method("GET")
@@ -137,11 +135,7 @@ async fn get_with_cookie(
     .unwrap()
 }
 
-async fn delete_with_cookie(
-    app: Router,
-    uri: &str,
-    cookie: &str,
-) -> axum::response::Response {
+async fn delete_with_cookie(app: Router, uri: &str, cookie: &str) -> axum::response::Response {
     app.oneshot(
         Request::builder()
             .method("DELETE")
@@ -257,7 +251,12 @@ async fn create_and_list_and_get_and_delete_roundtrip() {
     assert_eq!(got["attachments"][0]["url"], "https://cdn.example/logo.png");
 
     // list
-    let res = get_with_cookie(app.clone(), &format!("/app/projects/{pid}/templates"), &token).await;
+    let res = get_with_cookie(
+        app.clone(),
+        &format!("/app/projects/{pid}/templates"),
+        &token,
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::OK);
     let list = body_json(res).await;
     assert_eq!(list["templates"].as_array().unwrap().len(), 1);
@@ -274,8 +273,16 @@ async fn create_and_list_and_get_and_delete_roundtrip() {
     assert_eq!(body_json(res).await["status"], "ok");
 
     // gone from list
-    let res = get_with_cookie(app.clone(), &format!("/app/projects/{pid}/templates"), &token).await;
-    assert_eq!(body_json(res).await["templates"].as_array().unwrap().len(), 0);
+    let res = get_with_cookie(
+        app.clone(),
+        &format!("/app/projects/{pid}/templates"),
+        &token,
+    )
+    .await;
+    assert_eq!(
+        body_json(res).await["templates"].as_array().unwrap().len(),
+        0
+    );
 }
 
 #[tokio::test]
@@ -298,7 +305,10 @@ async fn update_changes_content_and_replaces_attachments() {
     )
     .await;
     assert_eq!(res.status(), StatusCode::CREATED);
-    let tid = body_json(res).await["template"]["id"].as_str().unwrap().to_string();
+    let tid = body_json(res).await["template"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // Update: new content, replaced attachments.
     let res = patch_with_cookie(
@@ -345,14 +355,30 @@ async fn templates_are_isolated_per_project() {
     )
     .await;
     assert_eq!(res.status(), StatusCode::CREATED);
-    let tid = body_json(res).await["template"]["id"].as_str().unwrap().to_string();
+    let tid = body_json(res).await["template"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // User B's list must not show A's template.
-    let res = get_with_cookie(app.clone(), &format!("/app/projects/{pid_b}/templates"), &token_b).await;
-    assert_eq!(body_json(res).await["templates"].as_array().unwrap().len(), 0);
+    let res = get_with_cookie(
+        app.clone(),
+        &format!("/app/projects/{pid_b}/templates"),
+        &token_b,
+    )
+    .await;
+    assert_eq!(
+        body_json(res).await["templates"].as_array().unwrap().len(),
+        0
+    );
 
     // User B fetching under project B must 404.
-    let res = get_with_cookie(app.clone(), &format!("/app/projects/{pid_b}/templates/{tid}"), &token_b).await;
+    let res = get_with_cookie(
+        app.clone(),
+        &format!("/app/projects/{pid_b}/templates/{tid}"),
+        &token_b,
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
 

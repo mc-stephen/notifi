@@ -6,6 +6,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use serde_json::{Value, json};
 use server::api::build_router;
 use server::api::state::AppState;
 use server::domain::admin::{AdminNotificationsService, AdminService};
@@ -20,7 +21,6 @@ use server::ports::ProviderTester;
 use server::testing::{
     FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeNotificationsStore, FakeTicketsStore,
 };
-use serde_json::{Value, json};
 use tower::ServiceExt;
 
 fn app_with_admin_notifications() -> Router {
@@ -28,7 +28,11 @@ fn app_with_admin_notifications() -> Router {
     let audit = Arc::new(AuditService::new(Arc::new(FakeAuditStore::new())));
     let auth = Arc::new(AuthService::new(auth_store.clone(), true, audit.clone()));
     let projects = Arc::new(ProjectService::new(auth_store.clone(), audit.clone()));
-    let admin = Arc::new(AdminService::new(Box::new(FakeAdminStore::new()), true, audit.clone()));
+    let admin = Arc::new(AdminService::new(
+        Box::new(FakeAdminStore::new()),
+        true,
+        audit.clone(),
+    ));
     let tickets_store = Arc::new(FakeTicketsStore::new());
     let tickets = Arc::new(TicketService::new(tickets_store, audit.clone()));
     let notifications_store = Arc::new(FakeNotificationsStore::new());
@@ -50,13 +54,16 @@ fn app_with_admin_notifications() -> Router {
             admin_projects: None,
             admin_notifications: Some(admin_notifications),
             projects: Some(projects),
+            project_members: None,
             audit: Some(audit),
             recipients: None,
             templates: None,
             channel_providers: None,
             tickets: Some(tickets),
             notifications: Some(notifications),
-            provider_tester: Arc::new(ConfigProviderTester::new()) as Arc<dyn ProviderTester + Send + Sync>,
+            billing: None,
+            provider_tester: Arc::new(ConfigProviderTester::new())
+                as Arc<dyn ProviderTester + Send + Sync>,
         },
         &AppConfig::default(),
     )
@@ -95,7 +102,9 @@ async fn request_with_cookie(
     if !cookie.is_empty() {
         builder = builder.header("cookie", format!("{cookie_name}={cookie}"));
     }
-    let body = body.map(|b| Body::from(b.to_string())).unwrap_or_else(Body::empty);
+    let body = body
+        .map(|b| Body::from(b.to_string()))
+        .unwrap_or_else(Body::empty);
     app.oneshot(builder.body(body).unwrap()).await.unwrap()
 }
 

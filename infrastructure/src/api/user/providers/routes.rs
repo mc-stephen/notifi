@@ -1,5 +1,5 @@
-use axum::Router;
 use super::handlers;
+use axum::Router;
 
 pub fn routes<S>() -> Router<S>
 where

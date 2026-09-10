@@ -7,8 +7,8 @@ use crate::domain::auth::entities::UserId;
 use crate::domain::support::entities::{MessageAuthor, TicketStatus};
 use crate::ports::auth_store::StoreError;
 use crate::ports::tickets_store::{
-    AdminTicketMessageRecord, AdminTicketRecord, TicketCounts, TicketMessageRecord, TicketRecord,
-    TicketsStore, BoxFut,
+    AdminTicketMessageRecord, AdminTicketRecord, BoxFut, TicketCounts, TicketMessageRecord,
+    TicketRecord, TicketsStore,
 };
 
 pub struct PgTicketsStore {
@@ -88,7 +88,10 @@ impl From<AdminTicketRow> for AdminTicketRecord {
                 category: row.category,
                 priority: row.priority,
                 description: row.description,
-                status: row.status.parse::<TicketStatus>().unwrap_or(TicketStatus::Open),
+                status: row
+                    .status
+                    .parse::<TicketStatus>()
+                    .unwrap_or(TicketStatus::Open),
                 created_at: row.created_at,
                 updated_at: row.updated_at,
                 deleted_at: row.deleted_at,
@@ -128,7 +131,10 @@ struct TicketMessageRow {
 
 impl From<TicketMessageRow> for TicketMessageRecord {
     fn from(row: TicketMessageRow) -> Self {
-        let author = row.author_type.parse::<MessageAuthor>().unwrap_or(MessageAuthor::Customer);
+        let author = row
+            .author_type
+            .parse::<MessageAuthor>()
+            .unwrap_or(MessageAuthor::Customer);
         Self {
             id: row.id,
             ticket_id: row.ticket_id,
@@ -142,7 +148,10 @@ impl From<TicketMessageRow> for TicketMessageRecord {
 
 impl From<TicketRow> for TicketRecord {
     fn from(row: TicketRow) -> Self {
-        let status = row.status.parse::<TicketStatus>().unwrap_or(TicketStatus::Open);
+        let status = row
+            .status
+            .parse::<TicketStatus>()
+            .unwrap_or(TicketStatus::Open);
         Self {
             id: row.id,
             project_id: row.project_id,
@@ -434,11 +443,7 @@ impl TicketsStore for PgTicketsStore {
         })
     }
 
-    fn reopen(
-        &self,
-        actor: UserId,
-        ticket_id: &str,
-    ) -> BoxFut<'_, Result<bool, StoreError>> {
+    fn reopen(&self, actor: UserId, ticket_id: &str) -> BoxFut<'_, Result<bool, StoreError>> {
         let pool = self.pool.clone();
         let actor_str = actor.to_string();
         let ticket_id_owned = ticket_id.to_string();
@@ -528,7 +533,10 @@ impl TicketsStore for PgTicketsStore {
         })
     }
 
-    fn get_any(&self, ticket_id: &str) -> BoxFut<'_, Result<Option<AdminTicketRecord>, StoreError>> {
+    fn get_any(
+        &self,
+        ticket_id: &str,
+    ) -> BoxFut<'_, Result<Option<AdminTicketRecord>, StoreError>> {
         let pool = self.pool.clone();
         let ticket_id_owned = ticket_id.to_string();
 
@@ -578,7 +586,10 @@ impl TicketsStore for PgTicketsStore {
             .await
             .map_err(map_err)?;
 
-            Ok(rows.into_iter().map(AdminTicketMessageRecord::from).collect())
+            Ok(rows
+                .into_iter()
+                .map(AdminTicketMessageRecord::from)
+                .collect())
         })
     }
 

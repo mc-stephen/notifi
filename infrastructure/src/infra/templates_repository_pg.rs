@@ -378,16 +378,14 @@ impl TemplatesStore for PgTemplatesStore {
         let project_id = project_id.to_string();
         let template_id = template_id.to_string();
         Box::pin(async move {
-            let result = sqlx::query(
-                &format!(
-                    "UPDATE platform_templates
+            let result = sqlx::query(&format!(
+                "UPDATE platform_templates
                      SET deleted_at = now(), updated_at = now()
                      WHERE id = $2
                        AND project_id = $3
                        AND deleted_at IS NULL
                        AND {VISIBLE_PROJECT}"
-                ),
-            )
+            ))
             .bind(&actor)
             .bind(&template_id)
             .bind(&project_id)

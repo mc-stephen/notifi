@@ -3,6 +3,7 @@
 pub mod admin;
 pub mod audit;
 pub mod auth;
+pub mod billing;
 pub mod channels;
 pub mod notifications;
 pub mod projects;

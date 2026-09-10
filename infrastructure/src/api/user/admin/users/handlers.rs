@@ -6,12 +6,12 @@ use axum::Json;
 use axum::extract::{Extension, Path, Query};
 use axum::http::StatusCode;
 
+use super::super::super::auth::Problem;
+use super::super::handlers::CurrentAdmin;
+use super::dto::{AdminUserDetailDto, AdminUserDto, SetUserStatusRequest};
 use crate::domain::admin::users::AdminUsersService;
 use crate::domain::auth::entities::{UserId, UserStatus};
 use crate::domain::auth::errors::AuthError;
-use super::super::handlers::CurrentAdmin;
-use super::super::super::auth::Problem;
-use super::dto::{AdminUserDetailDto, AdminUserDto, SetUserStatusRequest};
 
 const DEFAULT_LIMIT: i64 = 50;
 
@@ -24,9 +24,7 @@ fn require_users_service(extension: MaybeUsersService) -> Result<Arc<AdminUsersS
 }
 
 fn parse_user_id(raw: &str) -> Result<UserId, Problem> {
-    UserId::from_str(raw).map_err(|_| {
-        AuthError::Validation("invalid user id".to_string()).into()
-    })
+    UserId::from_str(raw).map_err(|_| AuthError::Validation("invalid user id".to_string()).into())
 }
 
 /// `GET /admin/users` — list platform users (newest first).
@@ -121,8 +119,5 @@ pub async fn revoke_user_sessions(
     service
         .revoke_user_sessions(&admin, parse_user_id(&user_id)?)
         .await?;
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::json!({ "status": "ok" })),
-    ))
+    Ok((StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))))
 }

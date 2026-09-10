@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use crate::domain::auth::entities::UserId;
 use crate::domain::auth::errors::AuthError;
-use crate::domain::notifications::entities::{InAppNotification, NotificationOrigin, NotificationType};
+use crate::domain::notifications::entities::{
+    InAppNotification, NotificationOrigin, NotificationType,
+};
 use crate::ports::auth_store::StoreError;
 use crate::ports::notifications_store::NotificationsStore;
 
@@ -25,8 +27,14 @@ impl NotificationService {
         title: &str,
         content: &str,
     ) -> Result<InAppNotification, AuthError> {
-        self.create_inner(user_id, notification_type, NotificationOrigin::System, title, content)
-            .await
+        self.create_inner(
+            user_id,
+            notification_type,
+            NotificationOrigin::System,
+            title,
+            content,
+        )
+        .await
     }
 
     pub async fn create_admin(
@@ -36,8 +44,14 @@ impl NotificationService {
         title: &str,
         content: &str,
     ) -> Result<InAppNotification, AuthError> {
-        self.create_inner(user_id, notification_type, NotificationOrigin::Admin, title, content)
-            .await
+        self.create_inner(
+            user_id,
+            notification_type,
+            NotificationOrigin::Admin,
+            title,
+            content,
+        )
+        .await
     }
 
     async fn create_inner(
@@ -110,21 +124,14 @@ impl NotificationService {
             .map(InAppNotification::from))
     }
 
-    pub async fn mark_all_read(
-        &self,
-        user_id: UserId,
-    ) -> Result<i64, AuthError> {
+    pub async fn mark_all_read(&self, user_id: UserId) -> Result<i64, AuthError> {
         self.store
             .mark_all_read(user_id)
             .await
             .map_err(map_store_error)
     }
 
-    pub async fn delete(
-        &self,
-        user_id: UserId,
-        notification_id: &str,
-    ) -> Result<bool, AuthError> {
+    pub async fn delete(&self, user_id: UserId, notification_id: &str) -> Result<bool, AuthError> {
         self.store
             .delete(user_id, notification_id)
             .await
@@ -134,9 +141,9 @@ impl NotificationService {
 
 fn map_store_error(err: StoreError) -> AuthError {
     match err {
-        StoreError::Conflict => AuthError::Conflict(
-            "A notification with this ID already exists.".to_string(),
-        ),
+        StoreError::Conflict => {
+            AuthError::Conflict("A notification with this ID already exists.".to_string())
+        }
         StoreError::Storage(m) => AuthError::Storage(m),
     }
 }

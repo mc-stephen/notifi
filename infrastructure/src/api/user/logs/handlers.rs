@@ -10,10 +10,10 @@ use axum::Json;
 use axum::extract::{Extension, Query};
 use axum::http::StatusCode;
 
+use super::super::auth::{CurrentUser, Problem};
+use super::dto::LogDto;
 use crate::domain::audit::AuditService;
 use crate::ports::audit_store::AuditFilters;
-use super::dto::LogDto;
-use super::super::auth::{CurrentUser, Problem};
 
 const DEFAULT_LIMIT: i64 = 100;
 const MAX_LIMIT: i64 = 500;
@@ -38,7 +38,12 @@ pub async fn list_logs(
     };
 
     let entries = service
-        .list(&user.id.to_string(), filters, limit, query.get("before").map(String::as_str))
+        .list(
+            &user.id.to_string(),
+            filters,
+            limit,
+            query.get("before").map(String::as_str),
+        )
         .await?;
 
     let logs: Vec<LogDto> = entries.into_iter().map(LogDto::from).collect();

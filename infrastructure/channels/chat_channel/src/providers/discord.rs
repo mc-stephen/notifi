@@ -13,5 +13,8 @@ pub enum DiscordAuth {
     #[serde(rename = "webhook")]
     Webhook { webhook_url: String },
     #[serde(rename = "bot")]
-    BotApi { bot_token: String, channel_id: String },
+    BotApi {
+        bot_token: String,
+        channel_id: String,
+    },
 }

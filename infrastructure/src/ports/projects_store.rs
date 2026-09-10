@@ -21,12 +21,25 @@ pub struct ProjectSummary {
     pub description: Option<String>,
     /// The project-level environment gate: `development` | `production`.
     pub environment: String,
+    /// New members must have TOTP 2FA enabled when true.
+    pub require_2fa: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// A project plus the caller's access context for member management.
+#[derive(Debug, Clone)]
+pub struct ProjectAccess {
+    pub project: ProjectSummary,
+    /// Creator's user id (`None` when the creator account was deleted).
+    pub created_by: Option<String>,
+    /// Caller's membership role, if any (creator need not be a member row).
+    pub member_role: Option<String>,
 }
 
 pub trait ProjectsStore: Send + Sync {
     /// All projects the user owns or belongs to, oldest first.
-    fn list_projects(&self, user_id: UserId) -> BoxFut<'_, Result<Vec<ProjectSummary>, StoreError>>;
+    fn list_projects(&self, user_id: UserId)
+    -> BoxFut<'_, Result<Vec<ProjectSummary>, StoreError>>;
 
     /// Creates a new project owned by the user.
     fn create_project(
@@ -45,6 +58,39 @@ pub trait ProjectsStore: Send + Sync {
         project_id: &str,
         environment: &str,
     ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>>;
+
+    /// The project plus the caller's access context; `None` when missing
+    /// or invisible (indistinguishable on purpose).
+    fn get_project_access(
+        &self,
+        user_id: UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Option<ProjectAccess>, StoreError>>;
+
+    /// Flips the 2FA requirement for new members. Returns the new flag,
+    /// or `None` when the project doesn't exist.
+    fn set_require_2fa(
+        &self,
+        project_id: &str,
+        enabled: bool,
+    ) -> BoxFut<'_, Result<Option<bool>, StoreError>>;
+
+    /// Adds a membership row. Returns false when the user is already a
+    /// member (unique violation surfaces as `Conflict` instead).
+    fn insert_member(
+        &self,
+        project_id: &str,
+        user_id: UserId,
+        role: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>>;
+
+    /// Team memberships for a project the caller belongs to, ordered by
+    /// name. Visibility is enforced inside; outsiders get an empty list.
+    fn list_members(
+        &self,
+        actor: UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Vec<TeamMemberRecord>, StoreError>>;
 
     // === Admin-scoped reads (no actor visibility checks) =================
 
@@ -90,4 +136,16 @@ pub struct ProjectMemberRecord {
     pub name: Option<String>,
     pub email: Option<String>,
     pub role: String,
+}
+
+/// One team membership as seen by project members: identity, role,
+/// 2FA standing, and last activity for the team table.
+#[derive(Debug, Clone)]
+pub struct TeamMemberRecord {
+    pub user_id: String,
+    pub name: String,
+    pub email: String,
+    pub role: String,
+    pub has_2fa: bool,
+    pub last_active_at: Option<chrono::DateTime<chrono::Utc>>,
 }

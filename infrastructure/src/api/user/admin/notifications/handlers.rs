@@ -6,16 +6,14 @@ use axum::Json;
 use axum::extract::{Extension, Path, Query};
 use axum::http::StatusCode;
 
-use crate::domain::admin::notifications::{
-    AdminNotificationsService, Audience, BroadcastInput,
-};
+use super::super::super::auth::Problem;
+use super::super::handlers::{CurrentAdmin, pagination, total_pages};
+use super::dto::{AudienceRequest, BroadcastCreatedDto, BroadcastDto, BroadcastRequest};
+use crate::domain::admin::notifications::{AdminNotificationsService, Audience, BroadcastInput};
 use crate::domain::auth::entities::UserId;
 use crate::domain::auth::errors::AuthError;
 use crate::domain::notifications::entities::NotificationType;
 use crate::ports::notifications_store::BroadcastStatus;
-use super::super::handlers::{CurrentAdmin, pagination, total_pages};
-use super::super::super::auth::Problem;
-use super::dto::{AudienceRequest, BroadcastCreatedDto, BroadcastDto, BroadcastRequest};
 
 const DEFAULT_LIMIT: i64 = 25;
 
@@ -172,11 +170,6 @@ pub async fn cancel_scheduled(
     Path(broadcast_id): Path<String>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let service = require_notifications_service(service)?;
-    service
-        .cancel_broadcast(&admin, &broadcast_id)
-        .await?;
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::json!({ "status": "ok" })),
-    ))
+    service.cancel_broadcast(&admin, &broadcast_id).await?;
+    Ok((StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))))
 }

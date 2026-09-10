@@ -4,7 +4,7 @@ How to obtain GitHub and Google OAuth credentials for local development.
 Both providers are free; the server only needs the client id/secret pairs
 from its environment (see `infrastructure/.env`, which is gitignored).
 
-Complements §3 of the auth contract (`app/dashboard/app/auth/API_CONTRACT.md`)
+Complements §3 of the auth contract (`app/user-dashboard/app/auth/API_CONTRACT.md`)
 and the `OAuthConfig` section in `ARCHITECTURE.md` §18.
 
 ## Env keys

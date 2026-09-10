@@ -10,7 +10,6 @@
 
 use serde::Serialize;
 
-
 /// Which API surface a route belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -134,6 +133,34 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         feature: "auth",
         description: "re-issue the verification email (always 200)",
     },
+    RouteInfo {
+        method: "POST",
+        path: "/app/auth/totp/setup",
+        surface: Surface::App,
+        feature: "auth",
+        description: "start 2FA setup (secret + authenticator URI)",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/auth/totp/verify",
+        surface: Surface::App,
+        feature: "auth",
+        description: "verify a code and enable 2FA",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/auth/totp/disable",
+        surface: Surface::App,
+        feature: "auth",
+        description: "disable 2FA (password when set + valid code)",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/auth/totp/challenge",
+        surface: Surface::App,
+        feature: "auth",
+        description: "complete login for a TOTP account with email + code",
+    },
     // -- projects feature ----------------------------------------------------
     RouteInfo {
         method: "GET",
@@ -155,6 +182,27 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         surface: Surface::App,
         feature: "projects",
         description: "switch the project-level environment gate",
+    },
+    RouteInfo {
+        method: "PATCH",
+        path: "/app/projects/{id}/require-2fa",
+        surface: Surface::App,
+        feature: "projects",
+        description: "flip the new-members-must-have-2FA flag (owner/admin)",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/projects/{id}/members",
+        surface: Surface::App,
+        feature: "projects",
+        description: "add an existing account to the team (owner/admin)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/app/projects/{id}/members",
+        surface: Surface::App,
+        feature: "projects",
+        description: "team roster with 2FA standing",
     },
     // -- logs feature -------------------------------------------------------
     RouteInfo {
@@ -352,6 +400,42 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         feature: "notifications",
         description: "soft-delete a notification",
     },
+    // -- billing feature ----------------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/app/billing/plans",
+        surface: Surface::App,
+        feature: "billing",
+        description: "active pricing plans for the customer grid",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/app/billing/subscription",
+        surface: Surface::App,
+        feature: "billing",
+        description: "project subscription (?project_id=), free ensured on first read",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/billing/subscriptions",
+        surface: Surface::App,
+        feature: "billing",
+        description: "subscribe or change plan (record-only, no charging yet)",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/billing/subscriptions/cancel",
+        surface: Surface::App,
+        feature: "billing",
+        description: "cancel a subscription, keeping history",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/billing/subscriptions/renew",
+        surface: Surface::App,
+        feature: "billing",
+        description: "restart the current period (422 when the plan retired)",
+    },
 ];
 
 /// Platform administration (`/admin`). Mirrors
@@ -441,7 +525,7 @@ pub const ADMIN_ROUTES: &[RouteInfo] = &[
         path: "/admin/admins",
         surface: Surface::Admin,
         feature: "admin",
-        description: "create another admin (pending unless created by super admin)",
+        description: "create another admin (super admin only)",
     },
     RouteInfo {
         method: "POST",
@@ -456,27 +540,6 @@ pub const ADMIN_ROUTES: &[RouteInfo] = &[
         surface: Surface::Admin,
         feature: "admin",
         description: "suspend or restore an admin (super admin only)",
-    },
-    RouteInfo {
-        method: "GET",
-        path: "/admin/approvals",
-        surface: Surface::Admin,
-        feature: "admin",
-        description: "list approval requests (super admin only)",
-    },
-    RouteInfo {
-        method: "POST",
-        path: "/admin/approvals/{request_id}/approve",
-        surface: Surface::Admin,
-        feature: "admin",
-        description: "approve a request (super admin only)",
-    },
-    RouteInfo {
-        method: "POST",
-        path: "/admin/approvals/{request_id}/reject",
-        surface: Surface::Admin,
-        feature: "admin",
-        description: "reject a request (super admin only)",
     },
     // -- admin users feature ------------------------------------------------
     RouteInfo {
@@ -594,6 +657,49 @@ pub const ADMIN_ROUTES: &[RouteInfo] = &[
         surface: Surface::Admin,
         feature: "logs",
         description: "every audit entry, newest first (admin view)",
+    },
+    // -- admin billing feature ----------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/admin/billing/plans",
+        surface: Surface::Admin,
+        feature: "billing",
+        description: "every plan with live subscriber counts",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/admin/billing/plans",
+        surface: Surface::Admin,
+        feature: "billing",
+        description: "create a pricing plan",
+    },
+    RouteInfo {
+        method: "PATCH",
+        path: "/admin/billing/plans/{plan_id}",
+        surface: Surface::Admin,
+        feature: "billing",
+        description: "update a plan (or archive via isActive false)",
+    },
+    RouteInfo {
+        method: "DELETE",
+        path: "/admin/billing/plans/{plan_id}",
+        surface: Surface::Admin,
+        feature: "billing",
+        description: "delete a plan (409 while subscribers remain)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/admin/billing/plans/{plan_id}/subscriptions",
+        surface: Surface::Admin,
+        feature: "billing",
+        description: "who holds this plan (project + owner)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/admin/billing/subscribers/history",
+        surface: Surface::Admin,
+        feature: "billing",
+        description: "trailing monthly subscriber snapshots, replayed from audit events",
     },
 ];
 

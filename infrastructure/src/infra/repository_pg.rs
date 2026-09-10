@@ -14,12 +14,11 @@ use ulid::Ulid;
 use crate::domain::auth::entities::{
     AuthToken, AuthTokenId, Session, SessionId, TokenPurpose, User, UserId,
 };
-use crate::ports::auth_store::{
-    AuthStore, BoxFut, OnboardingInput, StoreError,
-};
-use crate::ports::projects_store::{ProjectSummary, ProjectsStore};
 use crate::domain::auth::value_objects::Email;
-
+use crate::ports::auth_store::{AuthStore, BoxFut, OnboardingInput, StoreError};
+use crate::ports::projects_store::{
+    ProjectAccess, ProjectSummary, ProjectsStore, TeamMemberRecord,
+};
 /// PostgreSQL-backed auth store.
 pub struct PgAuthStore {
     pool: PgPool,
@@ -41,6 +40,8 @@ struct UserRow {
     oauth_provider: Option<String>,
     oauth_subject: Option<String>,
     email_verified_at: Option<DateTime<Utc>>,
+    totp_secret: Option<String>,
+    totp_enabled: bool,
     status: String,
     created_at: DateTime<Utc>,
     last_login_at: Option<DateTime<Utc>>,
@@ -56,6 +57,8 @@ struct UserListRow {
     oauth_provider: Option<String>,
     oauth_subject: Option<String>,
     email_verified_at: Option<DateTime<Utc>>,
+    totp_secret: Option<String>,
+    totp_enabled: bool,
     status: String,
     created_at: DateTime<Utc>,
     last_login_at: Option<DateTime<Utc>>,
@@ -75,6 +78,8 @@ impl TryFrom<UserListRow> for User {
             oauth_provider: row.oauth_provider,
             oauth_subject: row.oauth_subject,
             email_verified_at: row.email_verified_at,
+            totp_secret: row.totp_secret,
+            totp_enabled: row.totp_enabled,
             status: row.status,
             created_at: row.created_at,
             last_login_at: row.last_login_at,
@@ -95,6 +100,8 @@ impl TryFrom<UserRow> for User {
             oauth_provider: row.oauth_provider,
             oauth_subject: row.oauth_subject,
             email_verified_at: row.email_verified_at,
+            totp_secret: row.totp_secret,
+            totp_enabled: row.totp_enabled,
             status: row
                 .status
                 .parse::<crate::domain::auth::entities::UserStatus>()
@@ -134,7 +141,11 @@ fn slugify(name: &str) -> String {
         }
     }
     let trimmed = slug.trim_matches('-').to_string();
-    if trimmed.is_empty() { "project".to_string() } else { trimmed }
+    if trimmed.is_empty() {
+        "project".to_string()
+    } else {
+        trimmed
+    }
 }
 
 /// Appends `-2`, `-3`, ... until the candidate is free; falls back to a
@@ -144,7 +155,11 @@ const MAX_SLUG_ATTEMPTS: u32 = 50;
 /// Project slugs are globally unique (`UNIQUE (slug)`).
 async fn unique_project_slug(tx: &mut PgConnection, base: &str) -> Result<String, StoreError> {
     for n in 0..MAX_SLUG_ATTEMPTS {
-        let candidate = if n == 0 { base.to_string() } else { format!("{base}-{n}") };
+        let candidate = if n == 0 {
+            base.to_string()
+        } else {
+            format!("{base}-{n}")
+        };
         let taken = sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS(SELECT 1 FROM platform_projects WHERE slug = $1)",
         )
@@ -176,7 +191,7 @@ async fn insert_project(
     let row = sqlx::query_as::<_, ProjectRow>(
         "INSERT INTO platform_projects (id, name, slug, description, created_by)
          VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, name, slug, description, environment, created_at",
+         RETURNING id, name, slug, description, environment, require_2fa, created_at",
     )
     .bind(&project_id)
     .bind(name)
@@ -184,6 +199,21 @@ async fn insert_project(
     .bind(description)
     .bind(created_by)
     .fetch_one(&mut *conn)
+    .await
+    .map_err(map_err)?;
+    // Every project bills from birth: seed the free monthly subscription
+    // in the same transaction (covers both /app/projects and onboarding,
+    // which share this funnel). Reads lazily ensure as a backstop for
+    // rows predating this.
+    sqlx::query(
+        "INSERT INTO project_subscriptions
+             (id, project_id, plan_id, status, billing_cycle,
+              current_period_start, current_period_end)
+         VALUES ($1, $2, 'free', 'active', 'monthly', now(), now() + INTERVAL '30 days')",
+    )
+    .bind(Ulid::new().to_string())
+    .bind(&project_id)
+    .execute(&mut *conn)
     .await
     .map_err(map_err)?;
     ProjectSummary::try_from(row)
@@ -221,7 +251,8 @@ impl AuthStore for PgAuthStore {
         Box::pin(async move {
             let row = sqlx::query_as::<_, UserRow>(
                 "SELECT id, name, email, password_hash, avatar_url,
-                        email_verified_at, oauth_provider, oauth_subject, status,
+                        email_verified_at, oauth_provider, oauth_subject, totp_secret,
+                        totp_enabled, status,
                         created_at, last_login_at
                  FROM auth_users WHERE email = $1 AND deleted_at IS NULL",
             )
@@ -238,7 +269,8 @@ impl AuthStore for PgAuthStore {
         Box::pin(async move {
             let row = sqlx::query_as::<_, UserRow>(
                 "SELECT id, name, email, password_hash, avatar_url,
-                        email_verified_at, oauth_provider, oauth_subject, status,
+                        email_verified_at, oauth_provider, oauth_subject, totp_secret,
+                        totp_enabled, status,
                         created_at, last_login_at
                  FROM auth_users WHERE id = $1 AND deleted_at IS NULL",
             )
@@ -307,6 +339,51 @@ impl AuthStore for PgAuthStore {
         })
     }
 
+    fn set_totp_secret(
+        &self,
+        user_id: UserId,
+        secret: String,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let pool = self.pool.clone();
+        Box::pin(async move {
+            sqlx::query("UPDATE auth_users SET totp_secret = $2, updated_at = now() WHERE id = $1")
+                .bind(user_id.to_string())
+                .bind(secret)
+                .execute(&pool)
+                .await
+                .map_err(map_err)?;
+            Ok(())
+        })
+    }
+
+    fn enable_totp(&self, user_id: UserId) -> BoxFut<'_, Result<(), StoreError>> {
+        let pool = self.pool.clone();
+        Box::pin(async move {
+            sqlx::query(
+                "UPDATE auth_users SET totp_enabled = TRUE, updated_at = now() WHERE id = $1",
+            )
+            .bind(user_id.to_string())
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(())
+        })
+    }
+
+    fn disable_totp(&self, user_id: UserId) -> BoxFut<'_, Result<(), StoreError>> {
+        let pool = self.pool.clone();
+        Box::pin(async move {
+            sqlx::query(
+                "UPDATE auth_users SET totp_enabled = FALSE, totp_secret = NULL, updated_at = now() WHERE id = $1",
+            )
+            .bind(user_id.to_string())
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(())
+        })
+    }
+
     fn list_users(
         &self,
         search: Option<&str>,
@@ -320,7 +397,8 @@ impl AuthStore for PgAuthStore {
         Box::pin(async move {
             let rows = sqlx::query_as::<_, UserListRow>(
                 "SELECT id, name, email, password_hash, avatar_url,
-                        email_verified_at, oauth_provider, oauth_subject, status,
+                        email_verified_at, oauth_provider, oauth_subject, totp_secret,
+                        totp_enabled, status,
                         created_at, last_login_at,
                         COUNT(*) OVER() AS total_count
                  FROM auth_users
@@ -387,9 +465,8 @@ impl AuthStore for PgAuthStore {
             .map_err(map_err)?;
             ids.into_iter()
                 .map(|id| {
-                    parse_id(&id).map_err(|e| {
-                        StoreError::Storage(format!("invalid user id in db: {e}"))
-                    })
+                    parse_id(&id)
+                        .map_err(|e| StoreError::Storage(format!("invalid user id in db: {e}")))
                 })
                 .collect::<Result<Vec<UserId>, _>>()
         })
@@ -556,7 +633,8 @@ impl AuthStore for PgAuthStore {
         Box::pin(async move {
             let row = sqlx::query_as::<_, UserRow>(
                 "SELECT id, name, email, password_hash, avatar_url,
-                        email_verified_at, oauth_provider, oauth_subject, status,
+                        email_verified_at, oauth_provider, oauth_subject, totp_secret,
+                        totp_enabled, status,
                         created_at, last_login_at
                  FROM auth_users
                  WHERE oauth_provider = $1 AND oauth_subject = $2 AND deleted_at IS NULL",
@@ -648,6 +726,7 @@ struct ProjectRow {
     slug: String,
     description: Option<String>,
     environment: String,
+    require_2fa: bool,
     created_at: DateTime<Utc>,
 }
 
@@ -661,6 +740,7 @@ impl TryFrom<ProjectRow> for ProjectSummary {
             slug: row.slug,
             description: row.description,
             environment: row.environment,
+            require_2fa: row.require_2fa,
             created_at: row.created_at,
         })
     }
@@ -673,6 +753,7 @@ struct AdminProjectRow {
     slug: String,
     description: Option<String>,
     environment: String,
+    require_2fa: bool,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     owner_id: Option<String>,
@@ -693,6 +774,7 @@ impl TryFrom<AdminProjectRow> for crate::ports::projects_store::AdminProjectReco
                 slug: row.slug,
                 description: row.description,
                 environment: row.environment,
+                require_2fa: row.require_2fa,
                 created_at: row.created_at,
             },
             owner_id: row.owner_id,
@@ -712,7 +794,7 @@ impl ProjectsStore for PgAuthStore {
         let pool = self.pool.clone();
         Box::pin(async move {
             let rows = sqlx::query_as::<_, ProjectRow>(
-                "SELECT id, name, slug, description, environment, created_at
+                "SELECT id, name, slug, description, environment, require_2fa, created_at
                  FROM platform_projects p
                  WHERE p.deleted_at IS NULL
                    AND (
@@ -780,7 +862,7 @@ impl ProjectsStore for PgAuthStore {
                               AND pm.deleted_at IS NULL
                         )
                    )
-                 RETURNING id, name, slug, description, environment, created_at",
+                  RETURNING id, name, slug, description, environment, require_2fa, created_at",
             )
             .bind(user_id.to_string())
             .bind(&project_id)
@@ -793,6 +875,216 @@ impl ProjectsStore for PgAuthStore {
         })
     }
 
+    fn get_project_access(
+        &self,
+        user_id: UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Option<ProjectAccess>, StoreError>> {
+        let pool = self.pool.clone();
+        let user_id = user_id.to_string();
+        let project_id = project_id.to_string();
+        Box::pin(async move {
+            #[derive(sqlx::FromRow)]
+            struct AccessRow {
+                id: String,
+                name: String,
+                slug: String,
+                description: Option<String>,
+                environment: String,
+                require_2fa: bool,
+                created_at: DateTime<Utc>,
+                created_by: Option<String>,
+                member_role: Option<String>,
+            }
+            let row: Option<AccessRow> = sqlx::query_as(
+                "SELECT p.id, p.name, p.slug, p.description, p.environment,
+                        p.require_2fa, p.created_at, p.created_by,
+                        (SELECT pm.role FROM platform_project_members pm
+                         WHERE pm.project_id = p.id AND pm.user_id = $1
+                           AND pm.deleted_at IS NULL) AS member_role
+                 FROM platform_projects p
+                 WHERE p.id = $2 AND p.deleted_at IS NULL
+                   AND (p.created_by = $1
+                        OR EXISTS (SELECT 1 FROM platform_project_members pm
+                                   WHERE pm.project_id = p.id AND pm.user_id = $1
+                                     AND pm.deleted_at IS NULL))",
+            )
+            .bind(&user_id)
+            .bind(&project_id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+            row.map(|row| {
+                ProjectSummary::try_from(ProjectRow {
+                    id: row.id,
+                    name: row.name,
+                    slug: row.slug,
+                    description: row.description,
+                    environment: row.environment,
+                    require_2fa: row.require_2fa,
+                    created_at: row.created_at,
+                })
+                .map(|project| ProjectAccess {
+                    project,
+                    created_by: row.created_by,
+                    member_role: row.member_role,
+                })
+            })
+            .transpose()
+        })
+    }
+
+    fn set_require_2fa(
+        &self,
+        project_id: &str,
+        enabled: bool,
+    ) -> BoxFut<'_, Result<Option<bool>, StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        Box::pin(async move {
+            let row: Option<(bool,)> = sqlx::query_as(
+                "UPDATE platform_projects SET require_2fa = $2, updated_at = now()
+                 WHERE id = $1 AND deleted_at IS NULL
+                 RETURNING require_2fa",
+            )
+            .bind(project_id)
+            .bind(enabled)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(row.map(|row| row.0))
+        })
+    }
+
+    fn insert_member(
+        &self,
+        project_id: &str,
+        user_id: UserId,
+        role: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        let member_id = user_id.to_string();
+        let role = role.to_string();
+        Box::pin(async move {
+            // Reactivate soft-deleted rows instead of conflicting on the
+            // (project_id, user_id) unique pair.
+            let revived: Option<(String,)> = sqlx::query_as(
+                "UPDATE platform_project_members SET role = $3, deleted_at = NULL,
+                        updated_at = now()
+                 WHERE project_id = $1 AND user_id = $2 AND deleted_at IS NOT NULL
+                 RETURNING id",
+            )
+            .bind(&project_id)
+            .bind(&member_id)
+            .bind(&role)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+            if revived.is_some() {
+                return Ok(true);
+            }
+            let existing: Option<(String,)> = sqlx::query_as(
+                "SELECT id FROM platform_project_members
+                 WHERE project_id = $1 AND user_id = $2 AND deleted_at IS NULL",
+            )
+            .bind(&project_id)
+            .bind(&member_id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+            if existing.is_some() {
+                return Ok(false);
+            }
+            sqlx::query(
+                "INSERT INTO platform_project_members (id, project_id, user_id, role)
+                 VALUES ($1, $2, $3, $4)",
+            )
+            .bind(Ulid::new().to_string())
+            .bind(&project_id)
+            .bind(&member_id)
+            .bind(&role)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(true)
+        })
+    }
+
+    fn list_members(
+        &self,
+        actor: UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Vec<TeamMemberRecord>, StoreError>> {
+        let pool = self.pool.clone();
+        let actor = actor.to_string();
+        let project_id = project_id.to_string();
+        Box::pin(async move {
+            #[derive(sqlx::FromRow)]
+            struct MemberRow {
+                user_id: String,
+                name: String,
+                email: String,
+                role: String,
+                has_2fa: bool,
+                last_active_at: Option<DateTime<Utc>>,
+            }
+            // Creator first as implicit owner, then membership rows.
+            // Callers outside the project see nothing.
+            let creator: Option<MemberRow> = sqlx::query_as(
+                "SELECT u.id AS user_id, u.name, u.email, 'owner' AS role,
+                        u.totp_enabled AS has_2fa, u.last_login_at
+                 FROM platform_projects p
+                 JOIN auth_users u ON u.id = p.created_by AND u.deleted_at IS NULL
+                 WHERE p.id = $1 AND p.deleted_at IS NULL
+                   AND (p.created_by = $2
+                        OR EXISTS (SELECT 1 FROM platform_project_members pm
+                                   WHERE pm.project_id = p.id AND pm.user_id = $2
+                                     AND pm.deleted_at IS NULL))",
+            )
+            .bind(&project_id)
+            .bind(&actor)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+            let mut rows: Vec<MemberRow> = sqlx::query_as(
+                "SELECT u.id AS user_id, u.name, u.email, pm.role,
+                        u.totp_enabled AS has_2fa, u.last_login_at
+                 FROM platform_project_members pm
+                 JOIN auth_users u ON u.id = pm.user_id AND u.deleted_at IS NULL
+                 WHERE pm.project_id = $1 AND pm.deleted_at IS NULL
+                   AND EXISTS (SELECT 1 FROM platform_projects p
+                               WHERE p.id = $1 AND p.deleted_at IS NULL
+                                 AND (p.created_by = $2
+                                      OR EXISTS (SELECT 1 FROM platform_project_members mine
+                                                 WHERE mine.project_id = p.id AND mine.user_id = $2
+                                                   AND mine.deleted_at IS NULL)))
+                 ORDER BY u.name",
+            )
+            .bind(&project_id)
+            .bind(&actor)
+            .fetch_all(&pool)
+            .await
+            .map_err(map_err)?;
+            if let Some(owner) = creator
+                && !rows.iter().any(|r| r.user_id == owner.user_id)
+            {
+                rows.insert(0, owner);
+            }
+            Ok(rows
+                .into_iter()
+                .map(|r| TeamMemberRecord {
+                    user_id: r.user_id,
+                    name: r.name,
+                    email: r.email,
+                    role: r.role,
+                    has_2fa: r.has_2fa,
+                    last_active_at: r.last_active_at,
+                })
+                .collect())
+        })
+    }
+
     // === Admin-scoped reads (no actor visibility checks) =================
 
     fn list_all_projects(
@@ -801,14 +1093,15 @@ impl ProjectsStore for PgAuthStore {
         environment: Option<&str>,
         limit: i64,
         offset: i64,
-    ) -> BoxFut<'_, Result<(Vec<crate::ports::projects_store::AdminProjectRecord>, i64), StoreError>> {
+    ) -> BoxFut<'_, Result<(Vec<crate::ports::projects_store::AdminProjectRecord>, i64), StoreError>>
+    {
         let pool = self.pool.clone();
         let search_owned = search.map(str::to_owned);
         let environment_owned = environment.map(str::to_owned);
         Box::pin(async move {
             let rows = sqlx::query_as::<_, AdminProjectRow>(
                 "SELECT p.id, p.name, p.slug, p.description, p.environment,
-                        p.created_at, p.updated_at,
+                        p.require_2fa, p.created_at, p.updated_at,
                         u.id AS owner_id, u.name AS owner_name, u.email AS owner_email,
                         (SELECT COUNT(*) FROM platform_project_members pm
                          WHERE pm.project_id = p.id AND pm.deleted_at IS NULL) AS member_count,
@@ -847,7 +1140,7 @@ impl ProjectsStore for PgAuthStore {
         Box::pin(async move {
             let row = sqlx::query_as::<_, AdminProjectRow>(
                 "SELECT p.id, p.name, p.slug, p.description, p.environment,
-                        p.created_at, p.updated_at,
+                        p.require_2fa, p.created_at, p.updated_at,
                         u.id AS owner_id, u.name AS owner_name, u.email AS owner_email,
                         (SELECT COUNT(*) FROM platform_project_members pm
                          WHERE pm.project_id = p.id AND pm.deleted_at IS NULL) AS member_count,
@@ -886,14 +1179,14 @@ impl ProjectsStore for PgAuthStore {
             .map_err(map_err)?;
             Ok(rows
                 .into_iter()
-                .map(
-                    |(user_id, name, email, role)| crate::ports::projects_store::ProjectMemberRecord {
+                .map(|(user_id, name, email, role)| {
+                    crate::ports::projects_store::ProjectMemberRecord {
                         user_id,
                         name,
                         email,
                         role,
-                    },
-                )
+                    }
+                })
                 .collect())
         })
     }
@@ -990,6 +1283,8 @@ mod pg_tests {
             email_verified_at: None,
             oauth_provider: None,
             oauth_subject: None,
+            totp_secret: None,
+            totp_enabled: false,
             status: crate::domain::auth::entities::UserStatus::Active,
             created_at: Utc::now(),
             last_login_at: None,

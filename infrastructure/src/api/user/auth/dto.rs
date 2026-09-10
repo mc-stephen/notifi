@@ -1,6 +1,6 @@
 //! Request/response shapes for the auth API.
 //!
-//! Field names follow the dashboard contract (`app/dashboard/app/auth/
+//! Field names follow the dashboard contract (`app/user-dashboard/app/auth/
 //! API_CONTRACT.md`) — camelCase on the wire.
 
 use chrono::{DateTime, Utc};
@@ -15,6 +15,30 @@ pub struct LoginRequest {
     pub password: String,
     #[serde(default)]
     pub remember_me: bool,
+    /// Second-step code for TOTP-enabled accounts.
+    #[serde(default)]
+    pub totp_code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifyTotpRequest {
+    pub code: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisableTotpRequest {
+    #[serde(default)]
+    pub password: Option<String>,
+    pub code: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TotpChallengeRequest {
+    pub email: String,
+    pub code: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,6 +110,7 @@ pub struct UserDto {
     #[serde(rename = "avatar")]
     pub avatar_url: Option<String>,
     pub email_verified: bool,
+    pub totp_enabled: bool,
     pub created_at: DateTime<Utc>,
     pub last_login_at: Option<DateTime<Utc>>,
 }
@@ -98,6 +123,7 @@ impl From<&User> for UserDto {
             email: user.email.as_str().to_string(),
             avatar_url: user.avatar_url.clone(),
             email_verified: user.email_verified(),
+            totp_enabled: user.totp_enabled,
             created_at: user.created_at,
             last_login_at: user.last_login_at,
         }

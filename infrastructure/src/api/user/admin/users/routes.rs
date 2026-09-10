@@ -1,6 +1,6 @@
+use super::handlers;
 use axum::Router;
 use axum::routing::{get, patch, post};
-use super::handlers;
 
 pub fn router<S>() -> Router<S>
 where

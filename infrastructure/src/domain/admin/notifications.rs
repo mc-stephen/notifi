@@ -7,15 +7,15 @@ use chrono::{DateTime, Utc};
 use serde_json::json;
 
 use crate::domain::admin::entities::AdminUser;
+use crate::domain::audit::AuditService;
+use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::{UserId, UserStatus};
 use crate::domain::auth::errors::AuthError;
-use crate::domain::audit::entities::{AuditAction, AuditEvent};
-use crate::domain::audit::AuditService;
 use crate::domain::notifications::entities::NotificationType;
 use crate::domain::notifications::services::validate_content;
 use crate::ports::auth_store::AuthStore;
 use crate::ports::notifications_store::{
-    BroadcastRecord, BroadcastRecipient, BroadcastStats, BroadcastStatus, NotificationsStore,
+    BroadcastRecipient, BroadcastRecord, BroadcastStats, BroadcastStatus, NotificationsStore,
 };
 use crate::ports::projects_store::ProjectsStore;
 
@@ -287,9 +287,7 @@ impl AdminNotificationsService {
                         .auth
                         .find_user_by_id(*id)
                         .await?
-                        .ok_or_else(|| {
-                            AuthError::Validation(format!("unknown user '{id}'"))
-                        })?;
+                        .ok_or_else(|| AuthError::Validation(format!("unknown user '{id}'")))?;
                     if user.status != UserStatus::Active {
                         return Err(AuthError::Validation(format!(
                             "user '{}' is not active",
@@ -301,11 +299,10 @@ impl AdminNotificationsService {
             }
             Audience::Projects(project_ids) => {
                 for pid in project_ids {
-                    let record = self
-                        .projects
-                        .get_any_project(pid)
-                        .await?
-                        .ok_or_else(|| AuthError::Validation(format!("unknown project '{pid}'")))?;
+                    let record =
+                        self.projects.get_any_project(pid).await?.ok_or_else(|| {
+                            AuthError::Validation(format!("unknown project '{pid}'"))
+                        })?;
                     if let Some(owner) = record.owner_id
                         && self.is_active_id(&owner).await?
                     {

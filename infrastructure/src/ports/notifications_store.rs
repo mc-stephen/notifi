@@ -109,16 +109,10 @@ pub trait NotificationsStore: Send + Sync {
         before: Option<&str>,
     ) -> BoxFut<'_, Result<Vec<NotificationRecord>, StoreError>>;
 
-    fn count_unread(
-        &self,
-        user_id: UserId,
-    ) -> BoxFut<'_, Result<i64, StoreError>>;
+    fn count_unread(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>>;
 
     /// Total non-deleted notifications for a user (admin stats).
-    fn count_all_for_user(
-        &self,
-        user_id: UserId,
-    ) -> BoxFut<'_, Result<i64, StoreError>>;
+    fn count_all_for_user(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>>;
 
     fn get(
         &self,
@@ -133,10 +127,7 @@ pub trait NotificationsStore: Send + Sync {
         read: bool,
     ) -> BoxFut<'_, Result<Option<NotificationRecord>, StoreError>>;
 
-    fn mark_all_read(
-        &self,
-        user_id: UserId,
-    ) -> BoxFut<'_, Result<i64, StoreError>>;
+    fn mark_all_read(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>>;
 
     fn delete(
         &self,

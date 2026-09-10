@@ -21,9 +21,7 @@ use sha2::{Digest, Sha256};
 
 use crate::domain::auth::value_objects::{new_token, urlsafe_b64};
 use crate::ports::auth_store::BoxFut;
-use crate::ports::oauth::{
-    AuthorizeStart, OAuthError, OAuthIdentityProvider, OAuthProfile,
-};
+use crate::ports::oauth::{AuthorizeStart, OAuthError, OAuthIdentityProvider, OAuthProfile};
 
 const GITHUB_AUTHORIZE_URL: &str = "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
@@ -372,7 +370,10 @@ fn decode_id_token(id_token: &str) -> Option<OAuthProfile> {
         subject: value.get("sub")?.as_str()?.to_string(),
         email: value.get("email")?.as_str()?.to_string(),
         email_verified: value.get("email_verified")?.as_bool().unwrap_or(false),
-        name: value.get("name").and_then(|v| v.as_str()).map(str::to_string),
+        name: value
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
         avatar_url: value
             .get("picture")
             .and_then(|v| v.as_str())
@@ -383,8 +384,7 @@ fn decode_id_token(id_token: &str) -> Option<OAuthProfile> {
 /// URL-safe base64 without padding → raw bytes (inverse of
 /// [`crate::domain::auth::value_objects::urlsafe_b64`]).
 fn urlsafe_b64_decode(input: &str) -> Result<Vec<u8>, OAuthError> {
-    const CHARS: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const CHARS: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
     let mut out = Vec::with_capacity(input.len() * 3 / 4);
     let mut acc: u32 = 0;
@@ -434,7 +434,10 @@ mod tests {
         assert_eq!(profile.email, "Ada@Example.COM");
         assert!(profile.email_verified);
         assert_eq!(profile.name.as_deref(), Some("Ada Lovelace"));
-        assert_eq!(profile.avatar_url.as_deref(), Some("https://example.com/p.png"));
+        assert_eq!(
+            profile.avatar_url.as_deref(),
+            Some("https://example.com/p.png")
+        );
     }
 
     #[test]
@@ -447,7 +450,14 @@ mod tests {
 
     #[test]
     fn base64url_roundtrip() {
-        for sample in [b"".as_slice(), b"f", b"fo", b"foo", b"foobar", b"hello world"] {
+        for sample in [
+            b"".as_slice(),
+            b"f",
+            b"fo",
+            b"foo",
+            b"foobar",
+            b"hello world",
+        ] {
             let encoded = urlsafe_b64(sample);
             let decoded = urlsafe_b64_decode(&encoded).expect("valid encoding");
             assert_eq!(decoded, sample);

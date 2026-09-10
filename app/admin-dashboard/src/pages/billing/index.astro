@@ -1,0 +1,270 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import SubscriberHistoryPanel from "../../components/billing/SubscriberHistoryPanel.tsx";
+import PlansManager from "../../components/billing/PlansManager.tsx";
+import {
+  mockSubscriptions,
+  mockPayments,
+} from "../../data/billing";
+
+// .==================================
+// Admin /billing: Plans + Subscribers + Activity tabs.
+// Plans tab edits the live catalog (see lib/plans.ts);
+// subscriber counts below load live on the client (see
+// page script) — nothing numeric paints from mock.
+// The history chart is still mock until a backend
+// history endpoint exists.
+// .==================================
+---
+
+<AdminLayout title="Billing">
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+        <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
+        <span>/</span>
+        <span class="text-foreground font-medium">Billing</span>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Billing</h1>
+      <p class="text-sm text-muted-foreground">Pricing plans, subscribers, and payment activity.</p>
+    </div>
+
+    <div class="border-b border-border">
+      <div class="flex gap-0 -mb-px">
+        <button class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-primary text-primary" data-tab="plans">Plans</button>
+        <button class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors" data-tab="subscribers">Subscribers</button>
+        <button class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors" data-tab="activity">Activity</button>
+      </div>
+    </div>
+
+    <!-- Tab: Plans -->
+    <div id="tab-plans" class="tab-content space-y-4">
+      <PlansManager client:load />
+    </div>
+
+    <!-- Tab: Subscribers -->
+    <div id="tab-subscribers" class="tab-content hidden space-y-4">
+      <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="rounded-xl border bg-card p-4 col-span-2 lg:col-span-1">
+          <p class="text-sm text-muted-foreground">Active Subscribers</p>
+          <p id="active-subscribers-total" class="text-2xl font-bold text-foreground mt-1">—</p>
+          <p id="subscriber-delta" class="text-xs text-muted-foreground mt-1">…</p>
+        </div>
+        <div id="subscriber-plan-grid" class="col-span-2 lg:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4" aria-label="Loading subscriber counts">
+          {[0, 1, 2, 3].map(() => (
+            <div class="rounded-xl border bg-card p-4 animate-pulse">
+              <div class="h-4 w-1/2 rounded bg-muted" />
+              <div class="h-8 w-1/3 rounded bg-muted mt-2" />
+            </div>
+          ))}
+        </div>
+        <p id="subscriber-sync-error" class="hidden col-span-2 lg:col-span-5 text-xs text-destructive"></p>
+      </div>
+
+      <div class="rounded-xl border bg-card">
+        <div class="p-5 border-b border-border flex items-center justify-between">
+          <div>
+            <h2 class="font-semibold text-foreground">Subscriber history</h2>
+            <p class="text-sm text-muted-foreground mt-0.5">Active subscribers per plan · last 12 months</p>
+          </div>
+          <span class="text-xs text-muted-foreground rounded-md border px-2 py-1">12M</span>
+        </div>
+        <div class="p-5">
+          <SubscriberHistoryPanel client:load />
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Activity -->
+    <div id="tab-activity" class="tab-content hidden space-y-4">
+      <div class="rounded-xl border bg-card overflow-hidden">
+        <div class="p-5 border-b border-border flex items-center justify-between">
+          <h2 class="font-semibold text-foreground">Subscriptions</h2>
+          <a href="/billing/subscriptions" class="text-xs text-muted-foreground hover:text-foreground transition-colors">View all →</a>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border bg-muted/30">
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground">Customer</th>
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground">Plan</th>
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Amount</th>
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Renewal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mockSubscriptions.map((sub) => (
+                <tr class="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
+                  <td class="py-3 px-4">
+                    <p class="font-medium text-foreground">{sub.customerName}</p>
+                    <p class="text-xs text-muted-foreground">{sub.customerEmail}</p>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">{sub.plan}</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class:list={[
+                      "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+                      sub.status === "active" && "bg-success/10 text-success border-success/20",
+                      sub.status === "past_due" && "bg-warning/10 text-warning border-warning/20",
+                      sub.status === "cancelled" && "bg-destructive/10 text-destructive border-destructive/20",
+                    ]}>
+                      {sub.status}
+                    </span>
+                  </td>
+                  <td class="py-3 px-4 text-foreground hidden md:table-cell">${sub.amount}/mo</td>
+                  <td class="py-3 px-4 text-muted-foreground text-xs hidden lg:table-cell">
+                    {new Date(sub.renewalDate).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="rounded-xl border bg-card overflow-hidden">
+        <div class="p-5 border-b border-border flex items-center justify-between">
+          <h2 class="font-semibold text-foreground">Recent Payments</h2>
+          <div class="flex items-center gap-3">
+            <a href="/billing/invoices" class="text-xs text-muted-foreground hover:text-foreground transition-colors">Invoices →</a>
+            <a href="/billing/payments" class="text-xs text-muted-foreground hover:text-foreground transition-colors">View all →</a>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border bg-muted/30">
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground">Customer</th>
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground">Amount</th>
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Method</th>
+                <th class="text-left py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mockPayments.map((pay) => (
+                <tr class="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
+                  <td class="py-3 px-4 font-medium text-foreground">{pay.customerName}</td>
+                  <td class="py-3 px-4 text-foreground">${pay.amount}</td>
+                  <td class="py-3 px-4">
+                    <span class:list={[
+                      "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+                      pay.status === "succeeded" && "bg-success/10 text-success border-success/20",
+                      pay.status === "failed" && "bg-destructive/10 text-destructive border-destructive/20",
+                      pay.status === "pending" && "bg-warning/10 text-warning border-warning/20",
+                      pay.status === "refunded" && "bg-info/10 text-info border-info/20",
+                    ]}>
+                      {pay.status}
+                    </span>
+                    {pay.failureReason && (
+                      <p class="text-xs text-destructive mt-1">{pay.failureReason}</p>
+                    )}
+                  </td>
+                  <td class="py-3 px-4 text-muted-foreground hidden md:table-cell">{pay.paymentMethod}</td>
+                  <td class="py-3 px-4 text-muted-foreground text-xs hidden lg:table-cell">
+                    {new Date(pay.createdAt).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</AdminLayout>
+
+<script>
+  // .==================================
+  // Tab switching (same pattern as /notifications).
+  // Persists per browser via localStorage.
+  // .==================================
+  import { fetchPlans, subscribePlans } from "../../lib/plans";
+
+  const TAB_KEY = "billing-active-tab";
+  const tabBtns = document.querySelectorAll<HTMLButtonElement>(".tab-btn");
+  const tabContents = document.querySelectorAll<HTMLElement>(".tab-content");
+
+  function setActiveTab(btn: HTMLButtonElement) {
+    tabBtns.forEach((b) => {
+      const active = b === btn;
+      b.classList.toggle("border-primary", active);
+      b.classList.toggle("text-primary", active);
+      b.classList.toggle("border-transparent", !active);
+      b.classList.toggle("text-muted-foreground", !active);
+    });
+  }
+
+  function switchTab(name: string) {
+    tabContents.forEach((c) => c.classList.toggle("hidden", c.id !== `tab-${name}`));
+    tabBtns.forEach((b) => {
+      if (b.dataset.tab === name) setActiveTab(b);
+    });
+    try {
+      localStorage.setItem(TAB_KEY, name);
+    } catch {
+      // storage unavailable — tab just won't persist
+    }
+  }
+
+  tabBtns.forEach((btn) => {
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab ?? "plans"));
+  });
+
+  try {
+    const saved = localStorage.getItem(TAB_KEY);
+    if (saved && document.getElementById(`tab-${saved}`)) switchTab(saved);
+  } catch {
+    // ignore
+  }
+
+  // .==================================
+  // Subscriber counts follow the live catalog so Plans-tab
+  // edits (add/archive) show up here without a reload.
+  // Skeletons paint first; failures keep them (the Plans
+  // tab owns the error UI). The hero delta is painted by
+  // the history panel island from live points.
+  // .==================================
+  function esc(value: string) {
+    return value.replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    })[c] ?? c);
+  }
+
+  async function syncSubscriberCounts() {
+    let plans;
+    try {
+      plans = await fetchPlans();
+    } catch {
+      // Plans tab owns the error UI; note it here and keep skeletons.
+      const errEl = document.getElementById("subscriber-sync-error");
+      if (errEl) {
+        errEl.textContent = "Could not load subscriber counts. Check that the API is running.";
+        errEl.classList.remove("hidden");
+      }
+      return;
+    }
+    const totalEl = document.getElementById("active-subscribers-total");
+    if (totalEl) {
+      totalEl.textContent = String(plans.reduce((n, p) => n + p.activeSubscribers, 0));
+    }
+    const grid = document.getElementById("subscriber-plan-grid");
+    if (!grid) return;
+    grid.innerHTML = plans
+      .map(
+        (p) => `<div class="rounded-xl border bg-card p-4 ${p.isActive ? "" : "opacity-75"}">` +
+          `<p class="text-sm text-muted-foreground">${esc(p.name)}${p.isActive ? "" : " (archived)"}</p>` +
+          `<p class="text-2xl font-bold text-foreground mt-1">${p.activeSubscribers}</p></div>`,
+      )
+      .join("");
+  }
+
+  syncSubscriberCounts();
+  subscribePlans(syncSubscriberCounts);
+</script>

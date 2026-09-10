@@ -14,10 +14,8 @@ use crate::domain::auth::errors::AuthError;
 use crate::domain::templates::TemplateService;
 use crate::ports::templates_store::AttachmentInput;
 
-use super::dto::{
-    AttachmentInputDto, CreateTemplateRequest, TemplateDto, UpdateTemplateRequest,
-};
 use super::super::auth::{CurrentUser, Problem};
+use super::dto::{AttachmentInputDto, CreateTemplateRequest, TemplateDto, UpdateTemplateRequest};
 
 const DEFAULT_LIMIT: i64 = 20;
 const MAX_LIMIT: i64 = 100;

@@ -76,10 +76,9 @@ impl TryFrom<BroadcastRow> for BroadcastRecord {
             content: row.content,
             audience: row.audience,
             channels: row.channels,
-            status: row
-                .status
-                .parse::<BroadcastStatus>()
-                .map_err(|_| StoreError::Storage(format!("invalid broadcast status: {}", row.status)))?,
+            status: row.status.parse::<BroadcastStatus>().map_err(|_| {
+                StoreError::Storage(format!("invalid broadcast status: {}", row.status))
+            })?,
             scheduled_for: row.scheduled_for,
             sent_at: row.sent_at,
             recipient_count: row.recipient_count,
@@ -178,10 +177,7 @@ impl NotificationsStore for PgNotificationsStore {
         })
     }
 
-    fn count_unread(
-        &self,
-        user_id: UserId,
-    ) -> BoxFut<'_, Result<i64, StoreError>> {
+    fn count_unread(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>> {
         let pool = self.pool.clone();
         let user_str = user_id.to_string();
 
@@ -199,10 +195,7 @@ impl NotificationsStore for PgNotificationsStore {
         })
     }
 
-    fn count_all_for_user(
-        &self,
-        user_id: UserId,
-    ) -> BoxFut<'_, Result<i64, StoreError>> {
+    fn count_all_for_user(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>> {
         let pool = self.pool.clone();
         let user_str = user_id.to_string();
 
@@ -283,10 +276,7 @@ impl NotificationsStore for PgNotificationsStore {
         })
     }
 
-    fn mark_all_read(
-        &self,
-        user_id: UserId,
-    ) -> BoxFut<'_, Result<i64, StoreError>> {
+    fn mark_all_read(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>> {
         let pool = self.pool.clone();
         let user_str = user_id.to_string();
 

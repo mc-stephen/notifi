@@ -66,51 +66,6 @@ impl std::fmt::Display for AdminStatus {
     }
 }
 
-/// An approval request for a sensitive admin action.
-#[derive(Debug, Clone)]
-pub struct AdminApprovalRequest {
-    pub id: String,
-    pub kind: ApprovalKind,
-    pub target_admin_id: AdminUserId,
-    pub requested_by: AdminUserId,
-    pub status: ApprovalStatus,
-    pub decided_by: Option<AdminUserId>,
-    pub decided_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ApprovalKind {
-    Create,
-    Remove,
-}
-
-impl ApprovalKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Create => "create",
-            Self::Remove => "remove",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ApprovalStatus {
-    Pending,
-    Approved,
-    Rejected,
-}
-
-impl ApprovalStatus {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::Approved => "approved",
-            Self::Rejected => "rejected",
-        }
-    }
-}
-
 /// A signed-in admin browser session (cookie-backed).
 #[derive(Debug, Clone)]
 pub struct AdminSession {

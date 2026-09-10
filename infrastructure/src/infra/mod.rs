@@ -3,6 +3,7 @@
 
 pub mod admin_repository_pg;
 pub mod audit_repository_pg;
+pub mod billing_repository_pg;
 pub mod channel_provider_repository_pg;
 pub mod config;
 pub mod db;
@@ -17,6 +18,7 @@ pub mod templates_repository_pg;
 pub mod tickets_repository_pg;
 
 pub use admin_repository_pg::PgAdminStore;
+pub use billing_repository_pg::PgBillingStore;
 pub use channel_provider_repository_pg::PgChannelProviderStore;
 pub use notifications_repository_pg::PgNotificationsStore;
 pub use provider_tester::ConfigProviderTester;

@@ -1,5 +1,6 @@
 //! Admin HTTP surface (mounted at `/admin`).
 
+pub mod billing;
 pub mod dto;
 pub mod handlers;
 pub mod logs;

@@ -47,11 +47,8 @@ pub struct OAuthRuntime {
 
 pub trait OAuthIdentityProvider: Send + Sync {
     /// Builds the consent redirect for `provider` (`github` | `google`).
-    fn authorize_url(
-        &self,
-        provider: &str,
-        csrf_state: &str,
-    ) -> Result<AuthorizeStart, OAuthError>;
+    fn authorize_url(&self, provider: &str, csrf_state: &str)
+    -> Result<AuthorizeStart, OAuthError>;
 
     /// Exchanges an authorization code for the signer-in's profile.
     fn exchange_code(

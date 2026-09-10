@@ -6,8 +6,7 @@ use std::pin::Pin;
 use chrono::{DateTime, Utc};
 
 use crate::domain::admin::entities::{
-    AdminApprovalRequest, AdminPasswordResetToken, AdminSession, AdminSessionId, AdminStatus,
-    AdminUser, AdminUserId,
+    AdminPasswordResetToken, AdminSession, AdminSessionId, AdminStatus, AdminUser, AdminUserId,
 };
 use crate::ports::auth_store::StoreError;
 
@@ -20,9 +19,13 @@ pub trait AdminStore: Send + Sync {
     /// Creates a new admin user.
     fn create_admin(&self, admin: &AdminUser) -> BoxFut<'_, Result<(), StoreError>>;
     /// Finds an admin by email.
-    fn find_admin_by_email(&self, email: &str) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>>;
+    fn find_admin_by_email(&self, email: &str)
+    -> BoxFut<'_, Result<Option<AdminUser>, StoreError>>;
     /// Finds an admin by id.
-    fn find_admin_by_id(&self, id: AdminUserId) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>>;
+    fn find_admin_by_id(
+        &self,
+        id: AdminUserId,
+    ) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>>;
     /// All non-deleted admins, oldest first, plus the total count.
     fn list_admins(
         &self,
@@ -38,11 +41,19 @@ pub trait AdminStore: Send + Sync {
     /// Soft-deletes an admin. Returns false when unknown/already deleted.
     fn soft_delete_admin(&self, id: AdminUserId) -> BoxFut<'_, Result<bool, StoreError>>;
     /// Stores the TOTP secret for an admin.
-    fn set_totp_secret(&self, id: AdminUserId, secret: String) -> BoxFut<'_, Result<(), StoreError>>;
+    fn set_totp_secret(
+        &self,
+        id: AdminUserId,
+        secret: String,
+    ) -> BoxFut<'_, Result<(), StoreError>>;
     /// Enables TOTP for an admin.
     fn enable_totp(&self, id: AdminUserId) -> BoxFut<'_, Result<(), StoreError>>;
     /// Updates the admin's last login timestamp.
-    fn touch_admin_last_login(&self, id: AdminUserId, at: DateTime<Utc>) -> BoxFut<'_, Result<(), StoreError>>;
+    fn touch_admin_last_login(
+        &self,
+        id: AdminUserId,
+        at: DateTime<Utc>,
+    ) -> BoxFut<'_, Result<(), StoreError>>;
     /// Creates a new admin session.
     fn create_admin_session(&self, session: &AdminSession) -> BoxFut<'_, Result<(), StoreError>>;
     /// Finds an admin session by its token hash.
@@ -80,23 +91,4 @@ pub trait AdminStore: Send + Sync {
         &self,
         id: crate::domain::admin::entities::AdminPasswordResetTokenId,
     ) -> BoxFut<'_, Result<(), StoreError>>;
-    /// Creates an approval request.
-    fn create_approval(
-        &self,
-        request: &AdminApprovalRequest,
-    ) -> BoxFut<'_, Result<(), StoreError>>;
-    /// Finds an approval request by id.
-    fn find_approval(&self, id: &str) -> BoxFut<'_, Result<Option<AdminApprovalRequest>, StoreError>>;
-    /// Lists approval requests, newest first, optionally filtered by status.
-    fn list_approvals(
-        &self,
-        status: Option<&str>,
-    ) -> BoxFut<'_, Result<Vec<AdminApprovalRequest>, StoreError>>;
-    /// Decides a pending request. Returns false unless it was pending.
-    fn decide_approval(
-        &self,
-        id: &str,
-        approved: bool,
-        decided_by: AdminUserId,
-    ) -> BoxFut<'_, Result<bool, StoreError>>;
 }

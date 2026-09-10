@@ -6,12 +6,12 @@
 
 use std::sync::Arc;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
+use crate::domain::audit::AuditService;
+use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::UserId;
 use crate::domain::auth::errors::AuthError;
-use crate::domain::audit::entities::{AuditAction, AuditEvent};
-use crate::domain::audit::AuditService;
 use crate::domain::recipients::entities::Recipient;
 use crate::ports::auth_store::StoreError;
 use crate::ports::recipients_store::RecipientsStore;
@@ -57,7 +57,11 @@ impl RecipientService {
                 "contacts must be a JSON object".to_string(),
             ));
         }
-        let contacts = if contacts.is_null() { json!({}) } else { contacts };
+        let contacts = if contacts.is_null() {
+            json!({})
+        } else {
+            contacts
+        };
 
         let record = self
             .store

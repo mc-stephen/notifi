@@ -10,9 +10,9 @@ use axum::Json;
 use axum::extract::{Extension, Path, Query};
 use axum::http::StatusCode;
 
-use crate::domain::recipients::RecipientService;
-use super::dto::{CreateRecipientRequest, RecipientDto, UpdateRecipientRequest};
 use super::super::auth::{CurrentUser, Problem};
+use super::dto::{CreateRecipientRequest, RecipientDto, UpdateRecipientRequest};
+use crate::domain::recipients::RecipientService;
 
 const DEFAULT_LIMIT: i64 = 20;
 const MAX_LIMIT: i64 = 100;
@@ -85,7 +85,9 @@ pub async fn get_recipient(
     let recipient = service
         .get(user.id, &project_id, &recipient_id)
         .await?
-        .ok_or_else(|| crate::domain::auth::errors::AuthError::NotFound("recipient not found".into()))?;
+        .ok_or_else(|| {
+            crate::domain::auth::errors::AuthError::NotFound("recipient not found".into())
+        })?;
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "recipient": RecipientDto::from(recipient) })),

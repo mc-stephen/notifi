@@ -109,6 +109,17 @@ fn run_inner() -> Result<(), String> {
             ))
         });
 
+        // Project team management: 2FA gate flag + member invites. Needs
+        // user lookup (TOTP status), so it holds both stores.
+        let project_members = db.as_ref().map(|pool| {
+            let store = std::sync::Arc::new(infra::PgAuthStore::new(pool.clone()));
+            std::sync::Arc::new(domain::projects::ProjectMembersService::new(
+                store.clone(),
+                store,
+                audit.clone().expect("audit service built with db"),
+            ))
+        });
+
         // Recipients slice: brand end-users, scoped to a project the caller
         // belongs to. Shares the audit service for create/delete events.
         let recipients = db.as_ref().map(|pool| {
@@ -135,6 +146,16 @@ fn run_inner() -> Result<(), String> {
         let tickets = db.as_ref().map(|pool| {
             std::sync::Arc::new(domain::support::TicketService::new(
                 std::sync::Arc::new(infra::PgTicketsStore::new(pool.clone())),
+                audit.clone().expect("audit service built with db"),
+            ))
+        });
+
+        // Billing: plan catalog + per-project subscriptions (record-only;
+        // no payment provider yet). New projects land on free via lazy
+        // ensure on first subscription read.
+        let billing = db.as_ref().map(|pool| {
+            std::sync::Arc::new(domain::billing::BillingService::new(
+                std::sync::Arc::new(infra::PgBillingStore::new(pool.clone())),
                 audit.clone().expect("audit service built with db"),
             ))
         });
@@ -240,6 +261,11 @@ fn run_inner() -> Result<(), String> {
                 "support tickets disabled (needs database); /app/support/tickets routes will answer 503"
             );
         }
+        if billing.is_none() {
+            tracing::warn!(
+                "billing disabled (needs database); /app/billing + /admin/billing routes will answer 503"
+            );
+        }
         if admin_users.is_none() {
             tracing::warn!(
                 "admin user management disabled (needs database); /admin/users routes will answer 503"
@@ -281,11 +307,13 @@ fn run_inner() -> Result<(), String> {
                 admin_projects,
                 admin_notifications,
                 projects,
+                project_members,
                 audit,
                 recipients,
                 templates,
                 channel_providers,
                 tickets,
+                billing,
                 notifications,
                 provider_tester,
             },

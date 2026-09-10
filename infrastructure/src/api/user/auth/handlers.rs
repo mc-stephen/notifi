@@ -14,16 +14,17 @@ use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use serde_json::{Value, json};
 
+use super::dto::{
+    CompleteOnboardingRequest, DisableTotpRequest, ForgotPasswordRequest, LoginRequest,
+    ResendVerificationRequest, ResetPasswordRequest, SessionDto, SignupRequest,
+    TotpChallengeRequest, UserDto, VerifyEmailRequest, VerifyTotpRequest,
+};
+use super::middleware::{CurrentUser, Problem, SESSION_COOKIE};
 use crate::domain::auth::AuthService;
 use crate::domain::auth::entities::User;
 use crate::domain::auth::errors::AuthError;
-use crate::ports::oauth::{OAuthError, OAuthRuntime};
 use crate::domain::auth::value_objects::new_token;
-use super::dto::{
-    CompleteOnboardingRequest, ForgotPasswordRequest, LoginRequest, ResendVerificationRequest,
-    ResetPasswordRequest, SessionDto, SignupRequest, UserDto, VerifyEmailRequest,
-};
-use super::middleware::{CurrentUser, Problem, SESSION_COOKIE};
+use crate::ports::oauth::{OAuthError, OAuthRuntime};
 
 type MaybeService = Option<Extension<Arc<AuthService>>>;
 type MaybeOAuth = Option<Extension<Arc<OAuthRuntime>>>;
@@ -114,10 +115,9 @@ pub async fn oauth_start(
     oauth: MaybeOAuth,
 ) -> Result<Response, Problem> {
     if !valid_oauth_provider(&provider) {
-        return Err(AuthError::Validation(format!(
-            "unsupported OAuth provider '{provider}'"
-        ))
-        .into());
+        return Err(
+            AuthError::Validation(format!("unsupported OAuth provider '{provider}'")).into(),
+        );
     }
     let runtime = require_oauth(oauth)?;
 
@@ -196,10 +196,39 @@ pub async fn oauth_callback(
         .exchange_code(&provider, code, verifier_cookie.value())
         .await
         .map_err(oauth_problem)?;
-    let issued = service
-        .login_with_oauth(&provider, profile)
-        .await
-        .map_err(Problem::from)?;
+    let issued = match service.login_with_oauth(&provider, profile).await {
+        // TOTP-enabled account: no session — the login page's OTP step
+        // completes via POST /app/auth/totp/challenge.
+        Err(AuthError::TotpRequired) => {
+            let clear = |kind: &str| {
+                Cookie::build(oauth_temp_cookie(&provider, kind))
+                    .path(format!("/app/auth/oauth/{provider}/callback"))
+                    .build()
+            };
+            if mode == "popup" {
+                // Email rides the postMessage so the OTP step knows which
+                // account is completing (email alone proves nothing).
+                return Ok((
+                    jar.remove(clear("state"))
+                        .remove(clear("verifier"))
+                        .remove(clear("mode")),
+                    Html(popup_html(
+                        &runtime.dashboard_url,
+                        &json!({ "type": "oauth:totp_required" }),
+                    )),
+                )
+                    .into_response());
+            }
+            let mut url = runtime.dashboard_url.trim_end_matches('/').to_string();
+            url.push_str("/auth/login?totp=1");
+            let jar = jar
+                .remove(clear("state"))
+                .remove(clear("verifier"))
+                .remove(clear("mode"));
+            return Ok((jar, Redirect::to(&url)).into_response());
+        }
+        issued => issued.map_err(Problem::from)?,
+    };
 
     // Session cookie (signup/login semantics: rememberMe=false → 1 day).
     let session_cookie = Cookie::build((SESSION_COOKIE, issued.raw_token))
@@ -277,16 +306,28 @@ pub async fn signup(
 
 /// `POST /app/auth/login` — verifies credentials, starts a session, sets the
 /// httpOnly `session_token` cookie (30 days with `rememberMe`, else 1 day).
+/// TOTP-enabled accounts without a code get `{requires_totp: true}` and no
+/// session; they complete via `totpCode` here or `POST /totp/challenge`.
 pub async fn login(
     jar: CookieJar,
     service: MaybeService,
     Json(request): Json<LoginRequest>,
 ) -> Result<Response, Problem> {
     let service = require_service(service)?;
-    let issued = service
-        .login(&request.email, &request.password, request.remember_me)
+    let issued = match service
+        .login(
+            &request.email,
+            &request.password,
+            request.remember_me,
+            request.totp_code.as_deref(),
+        )
         .await
-        .map_err(Problem::from)?;
+    {
+        Err(AuthError::TotpRequired) => {
+            return Ok(Json(json!({ "requiresTotp": true })).into_response());
+        }
+        issued => issued.map_err(Problem::from)?,
+    };
 
     let ttl_days = if request.remember_me { 30 } else { 1 };
     let user_dto = UserDto::from(&issued.user);
@@ -321,19 +362,14 @@ pub async fn logout(jar: CookieJar, service: MaybeService) -> Result<Response, P
 }
 
 /// `GET /app/auth/me` — the signed-in user (requires a valid session cookie).
-pub async fn me(
-    current_user: CurrentUser,
-    service: MaybeService,
-) -> Result<Response, Problem> {
+pub async fn me(current_user: CurrentUser, service: MaybeService) -> Result<Response, Problem> {
     let service = require_service(service)?;
     let user = current_user.0;
     let flag = onboarding_flag(&service, &user).await;
-    Ok(ok_json(
-        json!({
-            "user": UserDto::from(user.as_ref()),
-            "onboardingCompleted": flag,
-        }),
-    ))
+    Ok(ok_json(json!({
+        "user": UserDto::from(user.as_ref()),
+        "onboardingCompleted": flag,
+    })))
 }
 
 /// `POST /app/auth/onboarding/complete` — persists the first organization +
@@ -361,6 +397,88 @@ pub async fn complete_onboarding(
         .map_err(Problem::from)?;
 
     Ok(ok_json(json!({ "status": "ok" })))
+}
+
+/// `POST /app/auth/totp/setup` — starts (or resumes) 2FA setup, returning
+/// the secret + authenticator URI. Refused while 2FA is already enabled.
+pub async fn totp_setup(
+    current_user: CurrentUser,
+    service: MaybeService,
+) -> Result<Response, Problem> {
+    let service = require_service(service)?;
+    let (totp_secret, totp_uri) = service
+        .totp_setup(current_user.0.id)
+        .await
+        .map_err(Problem::from)?;
+    Ok(ok_json(
+        json!({ "totpSecret": totp_secret, "totpUri": totp_uri }),
+    ))
+}
+
+/// `POST /app/auth/totp/verify` — verifies a code against the pending
+/// secret and enables 2FA.
+pub async fn totp_verify(
+    current_user: CurrentUser,
+    service: MaybeService,
+    Json(request): Json<VerifyTotpRequest>,
+) -> Result<Response, Problem> {
+    let service = require_service(service)?;
+    service
+        .totp_verify(current_user.0.id, &request.code)
+        .await
+        .map_err(Problem::from)?;
+    Ok(ok_json(json!({ "status": "ok" })))
+}
+
+/// `POST /app/auth/totp/disable` — disables 2FA. Requires the current
+/// password when the account has one, plus a valid TOTP code.
+pub async fn totp_disable(
+    current_user: CurrentUser,
+    service: MaybeService,
+    Json(request): Json<DisableTotpRequest>,
+) -> Result<Response, Problem> {
+    let service = require_service(service)?;
+    service
+        .totp_disable(
+            current_user.0.id,
+            request.password.as_deref(),
+            &request.code,
+        )
+        .await
+        .map_err(Problem::from)?;
+    Ok(ok_json(json!({ "status": "ok" })))
+}
+
+/// `POST /app/auth/totp/challenge` — completes login for a TOTP-enabled
+/// account with email + code (used after the OAuth detour, where no
+/// password exists to resend). Issues a short session on success.
+pub async fn totp_challenge(
+    jar: CookieJar,
+    service: MaybeService,
+    Json(request): Json<TotpChallengeRequest>,
+) -> Result<Response, Problem> {
+    let service = require_service(service)?;
+    let issued = service
+        .totp_challenge(&request.email, &request.code)
+        .await
+        .map_err(Problem::from)?;
+    let user_dto = UserDto::from(&issued.user);
+    let body = json!({
+        "user": user_dto.clone(),
+        "session": SessionDto {
+            user: user_dto,
+            token: issued.raw_token.clone(),
+            expires_at: issued.session.expires_at,
+            onboarding_completed: onboarding_flag(&service, &issued.user).await,
+        },
+    });
+    let cookie = Cookie::build((SESSION_COOKIE, issued.raw_token))
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .path("/")
+        .max_age(time::Duration::days(1));
+    let jar = jar.add(cookie);
+    Ok((jar, Json(body)).into_response())
 }
 
 /// `POST /app/auth/password/forgot` — always 200; never reveals whether the

@@ -7,5 +7,6 @@ Single-file dev-stage squash, applied automatically at server boot (`src/infra/d
   **append-only** — never edit or delete an applied file, only add the next
   number, per `docs/ARCHITECTURE.md` §19).
 - Tables are domain-prefixed: `auth_*` (identity), `platform_*` (projects,
-  members, recipients, templates, provider configs), `audit_logs` (append-only
-  audit trail), `event_outbox` (transactional outbox).
+  members, recipients, templates, provider configs), `billing_plans` +
+  `project_subscriptions` (pricing catalog + per-project subscriptions),
+  `audit_logs` (append-only audit trail), `event_outbox` (transactional outbox).

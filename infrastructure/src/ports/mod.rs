@@ -5,6 +5,7 @@
 pub mod admin_store;
 pub mod audit_store;
 pub mod auth_store;
+pub mod billing_store;
 pub mod channel_provider_store;
 pub mod notifications_store;
 pub mod oauth;
@@ -17,9 +18,7 @@ pub mod tickets_store;
 pub use audit_store::{AdminAuditFilters, AuditFilters, AuditStore};
 pub use auth_store::{AuthStore, BoxFut, OnboardingInput, StoreError};
 pub use channel_provider_store::ChannelProviderStore;
-pub use oauth::{
-    AuthorizeStart, OAuthError, OAuthIdentityProvider, OAuthProfile, OAuthRuntime,
-};
+pub use oauth::{AuthorizeStart, OAuthError, OAuthIdentityProvider, OAuthProfile, OAuthRuntime};
 pub use projects_store::{ProjectSummary, ProjectsStore};
 pub use provider_tester::{ProviderTester, TestResult};
 pub use recipients_store::{RecipientRecord, RecipientsStore};

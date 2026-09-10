@@ -8,13 +8,13 @@ use chrono::Utc;
 use serde_json::json;
 
 use crate::domain::admin::entities::{
-    AdminApprovalRequest, AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession,
-    AdminSessionId, AdminStatus, AdminUser, AdminUserId, ApprovalKind, ApprovalStatus,
+    AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession, AdminSessionId, AdminStatus,
+    AdminUser, AdminUserId,
 };
+use crate::domain::audit::AuditService;
+use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::errors::AuthError;
 use crate::domain::auth::value_objects::{Email, hash_token, new_token, validate_password};
-use crate::domain::audit::entities::{AuditAction, AuditEvent};
-use crate::domain::audit::AuditService;
 use crate::ports::admin_store::AdminStore;
 
 pub struct AdminService {
@@ -69,7 +69,12 @@ impl AdminService {
             ));
         }
 
-        if self.store.find_admin_by_email(email.as_str()).await?.is_some() {
+        if self
+            .store
+            .find_admin_by_email(email.as_str())
+            .await?
+            .is_some()
+        {
             return Err(AuthError::EmailAlreadyExists);
         }
 
@@ -374,52 +379,7 @@ impl AdminService {
         Ok(self.store.list_admins(limit, offset).await?)
     }
 
-    pub async fn list_approvals(
-        &self,
-        caller: &AdminUser,
-        status: Option<&str>,
-    ) -> Result<Vec<AdminApprovalRequest>, AuthError> {
-        require_super_admin(caller)?;
-        if let Some(s) = status {
-            match s {
-                "pending" | "approved" | "rejected" => {}
-                _ => {
-                    return Err(AuthError::Validation(
-                        "invalid status (expected pending, approved, or rejected)".to_string(),
-                    ))
-                }
-            }
-        }
-        Ok(self.store.list_approvals(status).await?)
-    }
-
-    /// Pending/decided requests with target + requester display names.
-    pub async fn list_approval_views(
-        &self,
-        caller: &AdminUser,
-        status: Option<&str>,
-    ) -> Result<Vec<AdminApprovalView>, AuthError> {
-        let requests = self.list_approvals(caller, status).await?;
-        let mut views = Vec::with_capacity(requests.len());
-        for request in requests {
-            let target = self.store.find_admin_by_id(request.target_admin_id).await?;
-            let requester = self
-                .store
-                .find_admin_by_id(request.requested_by)
-                .await?;
-            views.push(AdminApprovalView {
-                request,
-                target_name: target.as_ref().map(|a| a.name.clone()),
-                target_email: target.as_ref().map(|a| a.email.to_string()),
-                requester_name: requester.as_ref().map(|a| a.name.clone()),
-            });
-        }
-        Ok(views)
-    }
-
-    /// Creates another admin. Super-admin creations go active immediately;
-    /// everyone else's land `pending` with an approval request and cannot
-    /// sign in until approved.
+    /// Creates another admin. Super admins only; going active immediately.
     pub async fn invite_admin(
         &self,
         caller: &AdminUser,
@@ -488,7 +448,7 @@ impl AdminService {
         &self,
         caller: &AdminUser,
         target_id: AdminUserId,
-    ) -> Result<bool, AuthError> {
+    ) -> Result<(), AuthError> {
         require_super_admin(caller)?;
         let target = self
             .store
@@ -520,13 +480,11 @@ impl AdminService {
                         "super admin '{}' removed admin '{}'",
                         caller.email, target.email
                     ),
-                    Some(
-                        json!({ "admin_id": target.id.to_string(), "decision": "approved" }),
-                    ),
+                    Some(json!({ "admin_id": target.id.to_string(), "decision": "approved" })),
                 ),
             )
             .await;
-        Ok(true)
+        Ok(())
     }
 
     /// Suspends or restores another admin. Super admins only; suspending
@@ -591,105 +549,12 @@ impl AdminService {
         Ok(())
     }
 
-    /// Decides a pending approval request. Super admins only.
-    pub async fn decide_approval(
-        &self,
-        caller: &AdminUser,
-        request_id: &str,
-        approve: bool,
-    ) -> Result<(), AuthError> {
-        require_super_admin(caller)?;
-
-        let request = self
-            .store
-            .find_approval(request_id)
-            .await?
-            .ok_or_else(|| AuthError::NotFound("approval request not found".into()))?;
-        if request.status != ApprovalStatus::Pending {
-            return Err(AuthError::Conflict(
-                "this request has already been decided".to_string(),
-            ));
-        }
-
-        let target = self
-            .store
-            .find_admin_by_id(request.target_admin_id)
-            .await?
-            .ok_or_else(|| AuthError::NotFound("target admin not found".into()))?;
-        if target.is_super_admin {
-            return Err(AuthError::Validation(
-                "the super admin account cannot be removed or suspended".to_string(),
-            ));
-        }
-
-        if approve {
-            match request.kind {
-                ApprovalKind::Create => {
-                    self.store
-                        .set_admin_status(target.id, AdminStatus::Active)
-                        .await?;
-                }
-                ApprovalKind::Remove => {
-                    self.apply_removal(&target).await?;
-                }
-            }
-        } else if request.kind == ApprovalKind::Create {
-            // Rejected invites vanish entirely.
-            self.store.soft_delete_admin(target.id).await?;
-        }
-
-        let decided = self
-            .store
-            .decide_approval(request_id, approve, caller.id)
-            .await?;
-        if !decided {
-            return Err(AuthError::Conflict(
-                "this request has already been decided".to_string(),
-            ));
-        }
-
-        let decision = if approve { "approved" } else { "rejected" };
-        self.audit
-            .record(
-                Utc::now(),
-                &AuditEvent::new_admin(
-                    AuditAction::AdminApprovalDecided,
-                    &caller.id.to_string(),
-                    Some(&caller.name),
-                    None,
-                    format!(
-                        "super admin '{}' {decision} {} request for admin '{}'",
-                        caller.email,
-                        request.kind.as_str(),
-                        target.email,
-                    ),
-                    Some(json!({
-                        "request_id": request_id,
-                        "kind": request.kind.as_str(),
-                        "decision": decision,
-                        "admin_id": target.id.to_string(),
-                    })),
-                ),
-            )
-            .await;
-        Ok(())
-    }
-
     /// Deactivates an admin: soft-delete + revoke every session.
     async fn apply_removal(&self, target: &AdminUser) -> Result<(), AuthError> {
         self.store.soft_delete_admin(target.id).await?;
         self.store.revoke_admin_sessions(target.id).await?;
         Ok(())
     }
-}
-
-/// An approval request bundled with display names for the UI.
-#[derive(Debug, Clone)]
-pub struct AdminApprovalView {
-    pub request: AdminApprovalRequest,
-    pub target_name: Option<String>,
-    pub target_email: Option<String>,
-    pub requester_name: Option<String>,
 }
 
 /// Rejects sign-in/session use for anything but active accounts.

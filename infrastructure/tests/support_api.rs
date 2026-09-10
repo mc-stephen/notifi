@@ -6,6 +6,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use serde_json::{Value, json};
 use server::api::build_router;
 use server::api::state::AppState;
 use server::domain::audit::AuditService;
@@ -16,7 +17,6 @@ use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
 use server::testing::{FakeAuditStore, FakeAuthStore, FakeRecipientsStore, FakeTicketsStore};
-use serde_json::{Value, json};
 use tower::ServiceExt;
 
 fn app_with_tickets() -> (Router, Arc<FakeTicketsStore>, Arc<FakeRecipientsStore>) {
@@ -39,13 +39,16 @@ fn app_with_tickets() -> (Router, Arc<FakeTicketsStore>, Arc<FakeRecipientsStore
                 admin_projects: None,
                 admin_notifications: None,
                 projects: Some(projects),
+                project_members: None,
                 audit: Some(audit),
                 recipients: None,
                 templates: None,
                 channel_providers: None,
                 tickets: Some(tickets),
                 notifications: None,
-                provider_tester: Arc::new(ConfigProviderTester::new()) as Arc<dyn ProviderTester + Send + Sync>,
+                billing: None,
+                provider_tester: Arc::new(ConfigProviderTester::new())
+                    as Arc<dyn ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
         ),
@@ -68,8 +71,7 @@ async fn signup_and_login_on(app: Router, email: &str) -> (String, String) {
                 .uri("/app/auth/signup")
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({"name": "Jane", "email": email, "password": "Sup3rSecret!"})
-                        .to_string(),
+                    json!({"name": "Jane", "email": email, "password": "Sup3rSecret!"}).to_string(),
                 ))
                 .unwrap(),
         )
@@ -117,11 +119,7 @@ async fn post_with_cookie(
     .unwrap()
 }
 
-async fn get_with_cookie(
-    app: Router,
-    uri: &str,
-    cookie: &str,
-) -> axum::response::Response {
+async fn get_with_cookie(app: Router, uri: &str, cookie: &str) -> axum::response::Response {
     app.oneshot(
         Request::builder()
             .method("GET")
@@ -205,8 +203,14 @@ async fn create_personal_ticket_and_list() {
 #[tokio::test]
 async fn create_project_ticket_and_get() {
     let (app, tickets_store, recipients_store) = app_with_tickets();
-    let (token, _uid, pid) =
-        onboard_project_on(app.clone(), &recipients_store, &tickets_store, "tkt2@example.com", "My App").await;
+    let (token, _uid, pid) = onboard_project_on(
+        app.clone(),
+        &recipients_store,
+        &tickets_store,
+        "tkt2@example.com",
+        "My App",
+    )
+    .await;
 
     // create project-scoped ticket
     let res = post_with_cookie(
@@ -228,24 +232,34 @@ async fn create_project_ticket_and_get() {
     let tid = created["id"].as_str().unwrap().to_string();
 
     // get single
-    let res = get_with_cookie(
-        app.clone(),
-        &format!("/app/support/tickets/{tid}"),
-        &token,
-    )
-    .await;
+    let res = get_with_cookie(app.clone(), &format!("/app/support/tickets/{tid}"), &token).await;
     assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(body_json(res).await["ticket"]["subject"], "API rate limit issue");
+    assert_eq!(
+        body_json(res).await["ticket"]["subject"],
+        "API rate limit issue"
+    );
 }
 
 #[tokio::test]
 async fn project_tickets_visible_to_members() {
     let (app, tickets_store, recipients_store) = app_with_tickets();
 
-    let (token_a, _uid_a, pid) =
-        onboard_project_on(app.clone(), &recipients_store, &tickets_store, "tkt3a@example.com", "App A").await;
-    let (token_b, _uid_b, _pid_b) =
-        onboard_project_on(app.clone(), &recipients_store, &tickets_store, "tkt3b@example.com", "App B").await;
+    let (token_a, _uid_a, pid) = onboard_project_on(
+        app.clone(),
+        &recipients_store,
+        &tickets_store,
+        "tkt3a@example.com",
+        "App A",
+    )
+    .await;
+    let (token_b, _uid_b, _pid_b) = onboard_project_on(
+        app.clone(),
+        &recipients_store,
+        &tickets_store,
+        "tkt3b@example.com",
+        "App B",
+    )
+    .await;
 
     // Grant B access to A's project.
     recipients_store.seed_visible(&_uid_b, &pid);
@@ -279,8 +293,14 @@ async fn project_tickets_visible_to_members() {
 async fn personal_ticket_invisible_to_others() {
     let (app, tickets_store, recipients_store) = app_with_tickets();
     let (token_a, _uid_a) = signup_and_login_on(app.clone(), "tkt4a@example.com").await;
-    let (token_b, _uid_b, pid_b) =
-        onboard_project_on(app.clone(), &recipients_store, &tickets_store, "tkt4b@example.com", "App B").await;
+    let (token_b, _uid_b, pid_b) = onboard_project_on(
+        app.clone(),
+        &recipients_store,
+        &tickets_store,
+        "tkt4b@example.com",
+        "App B",
+    )
+    .await;
 
     // Grant A access to B's project.
     recipients_store.seed_visible(&_uid_a, &pid_b);
@@ -394,7 +414,10 @@ async fn list_messages_and_send_reply() {
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(body_json(res).await["messages"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        body_json(res).await["messages"].as_array().unwrap().len(),
+        0
+    );
 
     // Send a reply.
     let res = post_with_cookie(
@@ -417,7 +440,10 @@ async fn list_messages_and_send_reply() {
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(body_json(res).await["messages"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        body_json(res).await["messages"].as_array().unwrap().len(),
+        1
+    );
 }
 
 #[tokio::test]
@@ -425,10 +451,22 @@ async fn project_tickets_are_isolated_by_project_id() {
     let (app, tickets_store, recipients_store) = app_with_tickets();
 
     // Two users, each with their own project.
-    let (token_a, _uid_a, pid_a) =
-        onboard_project_on(app.clone(), &recipients_store, &tickets_store, "iso1@example.com", "Project A").await;
-    let (token_b, _uid_b, pid_b) =
-        onboard_project_on(app.clone(), &recipients_store, &tickets_store, "iso2@example.com", "Project B").await;
+    let (token_a, _uid_a, pid_a) = onboard_project_on(
+        app.clone(),
+        &recipients_store,
+        &tickets_store,
+        "iso1@example.com",
+        "Project A",
+    )
+    .await;
+    let (token_b, _uid_b, pid_b) = onboard_project_on(
+        app.clone(),
+        &recipients_store,
+        &tickets_store,
+        "iso2@example.com",
+        "Project B",
+    )
+    .await;
 
     // A creates a ticket scoped to project A.
     let res = post_with_cookie(

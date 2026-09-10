@@ -4,9 +4,9 @@ use axum::Json;
 use axum::extract::{Extension, Path, Query};
 use axum::http::StatusCode;
 
-use crate::domain::notifications::NotificationService;
-use super::dto::{InAppNotificationDto, ListNotificationsQuery, SetReadRequest};
 use super::super::auth::{CurrentUser, Problem};
+use super::dto::{InAppNotificationDto, ListNotificationsQuery, SetReadRequest};
+use crate::domain::notifications::NotificationService;
 
 const MAX_LIMIT: i64 = 200;
 
@@ -19,7 +19,12 @@ pub async fn list_notifications(
     let limit = query.limit.clamp(1, MAX_LIMIT);
 
     let notifications = service
-        .list(user.id, query.unread_only, limit + 1, query.before.as_deref())
+        .list(
+            user.id,
+            query.unread_only,
+            limit + 1,
+            query.before.as_deref(),
+        )
         .await?;
 
     let has_more = notifications.len() > limit as usize;
@@ -41,10 +46,7 @@ pub async fn count_unread(
     Extension(service): Extension<Arc<NotificationService>>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let count = service.count_unread(user.id).await?;
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::json!({ "count": count })),
-    ))
+    Ok((StatusCode::OK, Json(serde_json::json!({ "count": count }))))
 }
 
 /// `GET /app/notifications/:id` — one notification.
@@ -104,7 +106,10 @@ pub async fn delete_notification(
 ) -> Result<StatusCode, Problem> {
     let deleted = service.delete(user.id, &notification_id).await?;
     if !deleted {
-        return Err(crate::domain::auth::errors::AuthError::NotFound("notification not found".into()).into());
+        return Err(crate::domain::auth::errors::AuthError::NotFound(
+            "notification not found".into(),
+        )
+        .into());
     }
     Ok(StatusCode::NO_CONTENT)
 }

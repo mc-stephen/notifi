@@ -94,8 +94,7 @@ pub fn new_token() -> (String, String) {
 /// URL-safe base64 without padding (RFC 7636 §Appendix A shape), used for
 /// PKCE S256 `code_challenge` values.
 pub fn urlsafe_b64(bytes: &[u8]) -> String {
-    const CHARS: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const CHARS: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let b1 = chunk[0] as u32;

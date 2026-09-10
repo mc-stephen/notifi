@@ -452,7 +452,7 @@ These are the only existing deviations; converge without breaking current builds
 
 | App | Current | Migrate to | Effort |
 |---|---|---|---|
-| Dashboard (`app/dashboard/app/globals.css`) | Primary hue `202.8` (cyan-steel), chart-1 same | Hue `280`; keep structure (oklch values swap; dark primary becomes `oklch(0.65 0.22 280)`) | Token swap only |
+| Dashboard (`app/user-dashboard/app/globals.css`) | Primary hue `202.8` (cyan-steel), chart-1 same | Hue `280`; keep structure (oklch values swap; dark primary becomes `oklch(0.65 0.22 280)`) | Token swap only |
 | Status (`app/status/src/styles/global.css`) | Accent `#2563eb`, Inter/JetBrains Mono | Violet `oklch(0.515 0.235 280)` light / `oklch(0.65 0.22 280)` dark; Geist + Geist Mono; keep the status-specific semantic palette (operational/degraded/… is domain data, not brand) | Token + font swap |
 | Docs (Fumadocs) | Already violet per `shared/identity` | Align neutral scale + radii to this document | Minor |
 

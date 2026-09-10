@@ -82,12 +82,14 @@ impl EmailSender {
         // For SMTP config, use lettre directly
         match &self.config {
             config::EmailConfig::Smtp(smtp_config) => {
-                let creds = Credentials::new(smtp_config.username.clone(), smtp_config.password.clone());
+                let creds =
+                    Credentials::new(smtp_config.username.clone(), smtp_config.password.clone());
 
-                let mailer = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&smtp_config.host)
-                    .port(smtp_config.port)
-                    .credentials(creds)
-                    .build();
+                let mailer =
+                    AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&smtp_config.host)
+                        .port(smtp_config.port)
+                        .credentials(creds)
+                        .build();
 
                 mailer
                     .send(email)

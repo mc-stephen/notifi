@@ -11,7 +11,10 @@ where
     S: Clone + Send + Sync + 'static,
 {
     Router::new()
-        .route("/", post(handlers::create_template).get(handlers::list_templates))
+        .route(
+            "/",
+            post(handlers::create_template).get(handlers::list_templates),
+        )
         .route(
             "/{template_id}",
             get(handlers::get_template)

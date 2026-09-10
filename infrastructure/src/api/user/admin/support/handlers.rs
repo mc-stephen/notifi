@@ -5,12 +5,12 @@ use axum::Json;
 use axum::extract::{Extension, Path, Query};
 use axum::http::StatusCode;
 
+use super::super::super::auth::Problem;
+use super::super::handlers::CurrentAdmin;
+use super::dto::{AdminTicketDto, AdminTicketMessageDto, SetStatusRequest};
 use crate::api::user::support::dto::{SendReplyRequest, TicketMessageDto};
 use crate::domain::auth::errors::AuthError;
 use crate::domain::support::TicketService;
-use super::super::handlers::CurrentAdmin;
-use super::super::super::auth::Problem;
-use super::dto::{AdminTicketDto, AdminTicketMessageDto, SetStatusRequest};
 
 const DEFAULT_LIMIT: i64 = 100;
 
@@ -84,8 +84,10 @@ pub async fn list_messages(
         .await?
         .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
     let messages = service.list_any_messages(&ticket_id).await?;
-    let dtos: Vec<AdminTicketMessageDto> =
-        messages.into_iter().map(AdminTicketMessageDto::from).collect();
+    let dtos: Vec<AdminTicketMessageDto> = messages
+        .into_iter()
+        .map(AdminTicketMessageDto::from)
+        .collect();
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "messages": dtos })),
@@ -100,7 +102,9 @@ pub async fn send_reply(
     Json(body): Json<SendReplyRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let service = require_tickets_service(service)?;
-    let message = service.add_admin_reply(&admin, &ticket_id, &body.body).await?;
+    let message = service
+        .add_admin_reply(&admin, &ticket_id, &body.body)
+        .await?;
     Ok((
         StatusCode::CREATED,
         Json(serde_json::json!({ "message": TicketMessageDto::from(message) })),

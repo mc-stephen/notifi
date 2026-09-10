@@ -3,12 +3,12 @@ use std::sync::Arc;
 use serde_json::json;
 
 use crate::domain::admin::entities::AdminUser;
+use crate::domain::audit::AuditService;
+use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::UserId;
 use crate::domain::auth::errors::AuthError;
-use crate::domain::audit::entities::{AuditAction, AuditEvent};
-use crate::domain::audit::AuditService;
-use crate::domain::support::entities::{AdminTicket, AdminTicketMessage, Ticket, TicketMessage};
 use crate::domain::support::entities::TicketStatus;
+use crate::domain::support::entities::{AdminTicket, AdminTicketMessage, Ticket, TicketMessage};
 use crate::ports::auth_store::StoreError;
 use crate::ports::tickets_store::TicketsStore;
 
@@ -106,11 +106,7 @@ impl TicketService {
             .collect())
     }
 
-    pub async fn get(
-        &self,
-        actor: UserId,
-        ticket_id: &str,
-    ) -> Result<Option<Ticket>, AuthError> {
+    pub async fn get(&self, actor: UserId, ticket_id: &str) -> Result<Option<Ticket>, AuthError> {
         Ok(self
             .store
             .get(actor, ticket_id)
@@ -357,9 +353,9 @@ impl TicketService {
 
 fn map_store_error(err: StoreError) -> AuthError {
     match err {
-        StoreError::Conflict => AuthError::Conflict(
-            "A ticket with this ID already exists.".to_string(),
-        ),
+        StoreError::Conflict => {
+            AuthError::Conflict("A ticket with this ID already exists.".to_string())
+        }
         StoreError::Storage(m) => AuthError::Storage(m),
     }
 }

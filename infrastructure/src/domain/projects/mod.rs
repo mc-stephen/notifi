@@ -8,5 +8,5 @@
 pub mod entities;
 pub mod services;
 
-pub use entities::Project;
-pub use services::ProjectService;
+pub use entities::{Project, ProjectMember};
+pub use services::{MEMBER_ROLES, ProjectMembersService, ProjectService};

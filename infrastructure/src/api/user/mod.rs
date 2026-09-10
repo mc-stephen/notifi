@@ -4,6 +4,7 @@
 
 pub mod admin;
 pub mod auth;
+pub mod billing;
 pub mod channel_configs;
 pub mod logs;
 pub mod notifications;
@@ -45,6 +46,9 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
     if let Some(service) = state.projects.clone() {
         project_routes = project_routes.layer(axum::Extension(service));
     }
+    if let Some(service) = state.project_members.clone() {
+        project_routes = project_routes.layer(axum::Extension(service));
+    }
 
     let mut log_routes = logs::routes::router();
     if let Some(auth_service) = state.auth.clone() {
@@ -82,7 +86,8 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
     if let Some(svc) = state.notifications.clone() {
         channel_config_routes = channel_config_routes.layer(axum::Extension(svc));
     }
-    channel_config_routes = channel_config_routes.layer(axum::Extension(state.provider_tester.clone()));
+    channel_config_routes =
+        channel_config_routes.layer(axum::Extension(state.provider_tester.clone()));
 
     let mut support_routes = support::routes::router();
     if let Some(auth_service) = state.auth.clone() {
@@ -100,15 +105,27 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
         notification_routes = notification_routes.layer(axum::Extension(service));
     }
 
+    let mut billing_routes = billing::routes::router();
+    if let Some(auth_service) = state.auth.clone() {
+        billing_routes = billing_routes.layer(axum::Extension(auth_service));
+    }
+    if let Some(service) = state.billing.clone() {
+        billing_routes = billing_routes.layer(axum::Extension(service));
+    }
+
     Router::new()
         .nest("/auth", auth_routes)
         .nest("/providers", provider_routes)
         .nest("/projects", project_routes)
         .nest("/projects/{project_id}/recipients", recipient_routes)
         .nest("/projects/{project_id}/templates", template_routes)
-        .nest("/projects/{project_id}/channel-configs", channel_config_routes)
+        .nest(
+            "/projects/{project_id}/channel-configs",
+            channel_config_routes,
+        )
         .nest("/support", support_routes)
         .nest("/notifications", notification_routes)
+        .nest("/billing", billing_routes)
         .nest("/logs", log_routes)
 }
 
@@ -143,6 +160,10 @@ pub fn admin_router(state: &AppState) -> Router<AppState> {
     // Admin log routes need the audit service (absent -> 503).
     if let Some(audit_service) = state.audit.clone() {
         admin_routes = admin_routes.layer(axum::Extension(audit_service));
+    }
+    // Admin billing routes need the billing service (absent -> 503).
+    if let Some(billing_service) = state.billing.clone() {
+        admin_routes = admin_routes.layer(axum::Extension(billing_service));
     }
     admin_routes
 }

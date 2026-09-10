@@ -62,6 +62,17 @@ pub trait AuthStore: Send + Sync {
         user_id: UserId,
         at: DateTime<Utc>,
     ) -> BoxFut<'_, Result<(), StoreError>>;
+    /// Stores a TOTP secret (base32), starting 2FA setup. Enabling happens
+    /// separately after the user proves possession with a valid code.
+    fn set_totp_secret(
+        &self,
+        user_id: UserId,
+        secret: String,
+    ) -> BoxFut<'_, Result<(), StoreError>>;
+    /// Enables TOTP 2FA for the account.
+    fn enable_totp(&self, user_id: UserId) -> BoxFut<'_, Result<(), StoreError>>;
+    /// Disables TOTP 2FA and clears the secret.
+    fn disable_totp(&self, user_id: UserId) -> BoxFut<'_, Result<(), StoreError>>;
     /// Lists users (newest first) with optional search/status filters.
     /// `search` matches name or email (case-insensitive, substring).
     /// Returns the page plus the total matching count.

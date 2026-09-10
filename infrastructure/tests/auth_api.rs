@@ -10,19 +10,19 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use chrono::{Duration, Utc};
 use http_body_util::BodyExt;
+use serde_json::{Value, json};
 use server::api::build_router;
 use server::api::state::AppState;
+use server::domain::audit::AuditService;
 use server::domain::auth::{
-    AuthToken as AuthTokenEntity, AuthTokenId, AuthService, TokenPurpose, hash_token,
+    AuthService, AuthToken as AuthTokenEntity, AuthTokenId, TokenPurpose, hash_token,
 };
 use server::domain::projects::ProjectService;
-use server::domain::audit::AuditService;
 use server::ports::auth_store::{AuthStore, BoxFut};
 use server::ports::oauth::{
     AuthorizeStart, OAuthError, OAuthIdentityProvider, OAuthProfile, OAuthRuntime,
 };
 use server::testing::{FakeAuditStore, FakeAuthStore};
-use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use server::infra::config::AppConfig;
@@ -46,13 +46,16 @@ fn app() -> (Router, Arc<FakeAuthStore>) {
                 admin_projects: None,
                 admin_notifications: None,
                 projects: None,
+                project_members: None,
                 audit: Some(audit),
                 recipients: None,
                 templates: None,
                 channel_providers: None,
                 tickets: None,
                 notifications: None,
-                provider_tester: std::sync::Arc::new(ConfigProviderTester::new()) as std::sync::Arc<dyn ProviderTester + Send + Sync>,
+                billing: None,
+                provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
+                    as std::sync::Arc<dyn ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
         ),
@@ -73,13 +76,16 @@ fn app_without_auth() -> Router {
             admin_projects: None,
             admin_notifications: None,
             projects: None,
+            project_members: None,
             audit: None,
             recipients: None,
             templates: None,
-                channel_providers: None,
-                tickets: None,
-                notifications: None,
-            provider_tester: std::sync::Arc::new(ConfigProviderTester::new()) as std::sync::Arc<dyn ProviderTester + Send + Sync>,
+            channel_providers: None,
+            tickets: None,
+            notifications: None,
+            billing: None,
+            provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
+                as std::sync::Arc<dyn ProviderTester + Send + Sync>,
         },
         &AppConfig::default(),
     )
@@ -108,13 +114,16 @@ fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
                 admin_projects: None,
                 admin_notifications: None,
                 projects: None,
+                project_members: None,
                 audit: Some(audit),
                 recipients: None,
                 templates: None,
                 channel_providers: None,
                 tickets: None,
                 notifications: None,
-                provider_tester: std::sync::Arc::new(ConfigProviderTester::new()) as std::sync::Arc<dyn ProviderTester + Send + Sync>,
+                billing: None,
+                provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
+                    as std::sync::Arc<dyn ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
         ),
@@ -217,9 +226,11 @@ fn set_cookies(response: &axum::response::Response) -> Vec<String> {
 
 /// Value of `<name>=…` from a list of raw set-cookie strings.
 fn cookie_value(cookies: &[String], name: &str) -> Option<String> {
-    cookies
-        .iter()
-        .find_map(|c| c.split(';').next().and_then(|pair| pair.strip_prefix(&format!("{name}=")).map(str::to_string)))
+    cookies.iter().find_map(|c| {
+        c.split(';')
+            .next()
+            .and_then(|pair| pair.strip_prefix(&format!("{name}=")).map(str::to_string))
+    })
 }
 
 /// Signs a user up and logs them in on `app`; returns (raw session token, user id).
@@ -308,7 +319,10 @@ async fn onboarding_complete_flips_the_flag_and_is_idempotent() {
         json!({"email": "onboard@example.com", "password": "Sup3rSecret!", "rememberMe": false}),
     )
     .await;
-    assert_eq!(body_json(res).await["session"]["onboardingCompleted"], false);
+    assert_eq!(
+        body_json(res).await["session"]["onboardingCompleted"],
+        false
+    );
     let res = get_with_cookie_on(app.clone(), "/app/auth/me", Some(&token)).await;
     assert_eq!(body_json(res).await["onboardingCompleted"], false);
 
@@ -338,8 +352,7 @@ async fn onboarding_complete_flips_the_flag_and_is_idempotent() {
     assert_eq!(body_json(res).await["session"]["onboardingCompleted"], true);
 
     // idempotent replay
-    let res = post_json_with_cookie(app, "/app/auth/onboarding/complete", payload, &token)
-        .await;
+    let res = post_json_with_cookie(app, "/app/auth/onboarding/complete", payload, &token).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res).await["alreadyCompleted"], true);
 }
@@ -837,13 +850,16 @@ fn app_with_projects() -> (Router, Arc<FakeAuthStore>) {
                 admin_projects: None,
                 admin_notifications: None,
                 projects: Some(projects),
+                project_members: None,
                 audit: Some(audit),
                 recipients: None,
                 templates: None,
                 channel_providers: None,
                 tickets: None,
                 notifications: None,
-                provider_tester: std::sync::Arc::new(ConfigProviderTester::new()) as std::sync::Arc<dyn ProviderTester + Send + Sync>,
+                billing: None,
+                provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
+                    as std::sync::Arc<dyn ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
         ),
@@ -921,7 +937,10 @@ async fn patch_environment_switches_gate() {
 
     // verify via list
     let res = get_with_cookie_on(app, "/app/projects", Some(&token)).await;
-    assert_eq!(body_json(res).await["projects"][0]["environment"], "production");
+    assert_eq!(
+        body_json(res).await["projects"][0]["environment"],
+        "production"
+    );
 }
 
 #[tokio::test]
@@ -1010,9 +1029,8 @@ async fn logs_return_recorded_actions_after_signup_and_login() {
     let logs = body["logs"].as_array().unwrap();
     // signup then login produce two account-scoped entries for this user
     assert!(
-        logs.iter().any(|l| {
-            l["eventType"] == "user.signup" && l["userId"] == uid
-        }),
+        logs.iter()
+            .any(|l| { l["eventType"] == "user.signup" && l["userId"] == uid }),
         "expected user.signup for this user, got {logs:?}"
     );
     assert!(
@@ -1056,10 +1074,8 @@ async fn logs_record_project_environment_switch() {
     let logs = body["logs"].as_array().unwrap();
     assert!(
         logs.iter().any(|l| {
-            l["eventType"] == "project.environment_changed"
-                && l["projectId"] == project_id
+            l["eventType"] == "project.environment_changed" && l["projectId"] == project_id
         }),
         "expected the environment switch entry, got {logs:?}"
     );
 }
-

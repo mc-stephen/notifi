@@ -10,6 +10,7 @@ pub struct Project {
     pub slug: String,
     pub description: Option<String>,
     pub environment: String,
+    pub require_2fa: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -21,7 +22,19 @@ impl From<crate::ports::projects_store::ProjectSummary> for Project {
             slug: summary.slug,
             description: summary.description,
             environment: summary.environment,
+            require_2fa: summary.require_2fa,
             created_at: summary.created_at,
         }
     }
+}
+
+/// A membership created through the team invite flow.
+#[derive(Debug, Clone)]
+pub struct ProjectMember {
+    pub user_id: String,
+    pub name: String,
+    pub email: String,
+    pub role: String,
+    pub has_2fa: bool,
+    pub last_active_at: Option<DateTime<Utc>>,
 }

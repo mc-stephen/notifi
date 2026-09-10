@@ -6,6 +6,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use serde_json::{Value, json};
 use server::api::build_router;
 use server::api::state::AppState;
 use server::domain::admin::AdminService;
@@ -17,7 +18,6 @@ use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
 use server::testing::{FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeTicketsStore};
-use serde_json::{Value, json};
 use tower::ServiceExt;
 
 fn app_with_admin() -> Router {
@@ -25,8 +25,15 @@ fn app_with_admin() -> Router {
     let audit = Arc::new(AuditService::new(Arc::new(FakeAuditStore::new())));
     let auth = Arc::new(AuthService::new(auth_store.clone(), true, audit.clone()));
     let projects = Arc::new(ProjectService::new(auth_store.clone(), audit.clone()));
-    let admin = Arc::new(AdminService::new(Box::new(FakeAdminStore::new()), true, audit.clone()));
-    let tickets = Arc::new(TicketService::new(Arc::new(FakeTicketsStore::new()), audit.clone()));
+    let admin = Arc::new(AdminService::new(
+        Box::new(FakeAdminStore::new()),
+        true,
+        audit.clone(),
+    ));
+    let tickets = Arc::new(TicketService::new(
+        Arc::new(FakeTicketsStore::new()),
+        audit.clone(),
+    ));
     build_router(
         AppState {
             db: None,
@@ -38,13 +45,16 @@ fn app_with_admin() -> Router {
             admin_projects: None,
             admin_notifications: None,
             projects: Some(projects),
+            project_members: None,
             audit: Some(audit),
             recipients: None,
             templates: None,
             channel_providers: None,
             tickets: Some(tickets),
             notifications: None,
-            provider_tester: Arc::new(ConfigProviderTester::new()) as Arc<dyn ProviderTester + Send + Sync>,
+            billing: None,
+            provider_tester: Arc::new(ConfigProviderTester::new())
+                as Arc<dyn ProviderTester + Send + Sync>,
         },
         &AppConfig::default(),
     )
@@ -76,13 +86,9 @@ async fn post(app: Router, uri: &str, body: Value, cookie: &str) -> axum::respon
     if !cookie.is_empty() {
         builder = builder.header("cookie", format!("admin_session={cookie}"));
     }
-    app.oneshot(
-        builder
-            .body(Body::from(body.to_string()))
-            .unwrap(),
-    )
-    .await
-    .unwrap()
+    app.oneshot(builder.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap()
 }
 
 async fn bootstrap(app: Router) -> String {
@@ -187,12 +193,18 @@ async fn admin_totp_setup_reuses_pending_secret() {
 
     let res = post(app.clone(), "/admin/totp/setup", json!({}), &cookie).await;
     assert_eq!(res.status(), StatusCode::OK);
-    let first = body_json(res).await["totpSecret"].as_str().unwrap().to_string();
+    let first = body_json(res).await["totpSecret"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // Second call without ?regenerate returns the same pending secret.
     let res = post(app.clone(), "/admin/totp/setup", json!({}), &cookie).await;
     assert_eq!(res.status(), StatusCode::OK);
-    let second = body_json(res).await["totpSecret"].as_str().unwrap().to_string();
+    let second = body_json(res).await["totpSecret"]
+        .as_str()
+        .unwrap()
+        .to_string();
     assert_eq!(first, second);
 
     // Explicit rotation issues a fresh secret.
@@ -209,6 +221,9 @@ async fn admin_totp_setup_reuses_pending_secret() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let rotated = body_json(res).await["totpSecret"].as_str().unwrap().to_string();
+    let rotated = body_json(res).await["totpSecret"]
+        .as_str()
+        .unwrap()
+        .to_string();
     assert_ne!(first, rotated);
 }

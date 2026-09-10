@@ -10,7 +10,7 @@ use ulid::Ulid;
 
 use crate::domain::auth::entities::UserId;
 use crate::ports::auth_store::StoreError;
-use crate::ports::recipients_store::{RecipientRecord, RecipientsStore, BoxFut};
+use crate::ports::recipients_store::{BoxFut, RecipientRecord, RecipientsStore};
 
 pub struct PgRecipientsStore {
     pool: PgPool,
@@ -142,9 +142,8 @@ impl RecipientsStore for PgRecipientsStore {
         let search = search.map(str::to_owned);
         let before = before.map(str::to_owned);
         Box::pin(async move {
-            let rows = sqlx::query_as::<_, RecipientRow>(
-                &format!(
-                    "SELECT id, project_id, user_id, name, contacts, created_at
+            let rows = sqlx::query_as::<_, RecipientRow>(&format!(
+                "SELECT id, project_id, user_id, name, contacts, created_at
                      FROM platform_recipients
                      WHERE project_id = $2
                        AND deleted_at IS NULL
@@ -154,8 +153,7 @@ impl RecipientsStore for PgRecipientsStore {
                        AND ($4::text IS NULL OR id < $4)
                      ORDER BY created_at DESC, id DESC
                      LIMIT $5"
-                ),
-            )
+            ))
             .bind(actor.to_string())
             .bind(&project_id)
             .bind(&search)
@@ -179,16 +177,14 @@ impl RecipientsStore for PgRecipientsStore {
         let project_id = project_id.to_string();
         let recipient_id = recipient_id.to_string();
         Box::pin(async move {
-            let row = sqlx::query_as::<_, RecipientRow>(
-                &format!(
-                    "SELECT id, project_id, user_id, name, contacts, created_at
+            let row = sqlx::query_as::<_, RecipientRow>(&format!(
+                "SELECT id, project_id, user_id, name, contacts, created_at
                      FROM platform_recipients
                      WHERE id = $2
                        AND project_id = $3
                        AND deleted_at IS NULL
                        AND {VISIBLE_PROJECT}"
-                ),
-            )
+            ))
             .bind(actor.to_string())
             .bind(&recipient_id)
             .bind(&project_id)
@@ -213,17 +209,15 @@ impl RecipientsStore for PgRecipientsStore {
         let recipient_id = recipient_id.to_string();
         let name = name.to_string();
         Box::pin(async move {
-            let row = sqlx::query_as::<_, RecipientRow>(
-                &format!(
-                    "UPDATE platform_recipients
+            let row = sqlx::query_as::<_, RecipientRow>(&format!(
+                "UPDATE platform_recipients
                      SET name = $4, contacts = $5, updated_at = now()
                      WHERE id = $2
                        AND project_id = $3
                        AND deleted_at IS NULL
                        AND {VISIBLE_PROJECT}
                      RETURNING id, project_id, user_id, name, contacts, created_at"
-                ),
-            )
+            ))
             .bind(actor.to_string())
             .bind(&recipient_id)
             .bind(&project_id)
@@ -247,16 +241,14 @@ impl RecipientsStore for PgRecipientsStore {
         let project_id = project_id.to_string();
         let recipient_id = recipient_id.to_string();
         Box::pin(async move {
-            let result = sqlx::query(
-                &format!(
-                    "UPDATE platform_recipients
+            let result = sqlx::query(&format!(
+                "UPDATE platform_recipients
                      SET deleted_at = now(), updated_at = now()
                      WHERE id = $2
                        AND project_id = $3
                        AND deleted_at IS NULL
                        AND {VISIBLE_PROJECT}"
-                ),
-            )
+            ))
             .bind(actor.to_string())
             .bind(&recipient_id)
             .bind(&project_id)

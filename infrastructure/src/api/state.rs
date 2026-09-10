@@ -26,6 +26,9 @@ pub struct AppState {
     pub admin_notifications: Option<Arc<crate::domain::admin::AdminNotificationsService>>,
     /// Project listing and environment gate — wired alongside auth.
     pub projects: Option<Arc<crate::domain::projects::ProjectService>>,
+    /// Project team management (2FA gate flag + member invites) — wired
+    /// alongside auth/db.
+    pub project_members: Option<Arc<crate::domain::projects::ProjectMembersService>>,
     /// Audit log listener + query surface — wired alongside auth/db.
     pub audit: Option<Arc<crate::domain::audit::AuditService>>,
     /// Recipient (brand end-user) management — wired alongside auth/db.
@@ -36,6 +39,8 @@ pub struct AppState {
     pub channel_providers: Option<Arc<dyn crate::ports::ChannelProviderStore + Send + Sync>>,
     /// Support tickets — wired alongside auth/db.
     pub tickets: Option<Arc<crate::domain::support::TicketService>>,
+    /// Billing plans + per-project subscriptions — wired alongside auth/db.
+    pub billing: Option<Arc<crate::domain::billing::BillingService>>,
     /// In-app notifications (personal, per-user) — wired alongside auth/db.
     pub notifications: Option<Arc<crate::domain::notifications::NotificationService>>,
     /// Provider connection tester — always available.

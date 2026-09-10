@@ -7,10 +7,10 @@ pub mod services;
 pub mod users;
 
 pub use entities::{
-    AdminApprovalRequest, AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession,
-    AdminSessionId, AdminStatus, AdminUser, AdminUserId, ApprovalKind, ApprovalStatus,
+    AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession, AdminSessionId, AdminStatus,
+    AdminUser, AdminUserId,
 };
 pub use notifications::{AdminNotificationsService, Audience, BroadcastInput, BroadcastResult};
 pub use projects::{AdminProjectsService, ProjectDetail};
-pub use services::{AdminApprovalView, AdminService};
+pub use services::AdminService;
 pub use users::{AdminUsersService, UserDetail};

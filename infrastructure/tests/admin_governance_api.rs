@@ -6,6 +6,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use serde_json::{Value, json};
 use server::api::build_router;
 use server::api::state::AppState;
 use server::domain::admin::AdminService;
@@ -17,7 +18,6 @@ use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
 use server::testing::{FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeTicketsStore};
-use serde_json::{Value, json};
 use tower::ServiceExt;
 
 fn app_with_admin() -> Router {
@@ -30,7 +30,10 @@ fn app_with_admin() -> Router {
         true,
         audit.clone(),
     ));
-    let tickets = Arc::new(TicketService::new(Arc::new(FakeTicketsStore::new()), audit.clone()));
+    let tickets = Arc::new(TicketService::new(
+        Arc::new(FakeTicketsStore::new()),
+        audit.clone(),
+    ));
     build_router(
         AppState {
             db: None,
@@ -42,13 +45,16 @@ fn app_with_admin() -> Router {
             admin_projects: None,
             admin_notifications: None,
             projects: Some(projects),
+            project_members: None,
             audit: Some(audit),
             recipients: None,
             templates: None,
             channel_providers: None,
             tickets: Some(tickets),
             notifications: None,
-            provider_tester: Arc::new(ConfigProviderTester::new()) as Arc<dyn ProviderTester + Send + Sync>,
+            billing: None,
+            provider_tester: Arc::new(ConfigProviderTester::new())
+                as Arc<dyn ProviderTester + Send + Sync>,
         },
         &AppConfig::default(),
     )
@@ -86,7 +92,9 @@ async fn request_with_cookie(
     if !cookie.is_empty() {
         builder = builder.header("cookie", format!("admin_session={cookie}"));
     }
-    let body = body.map(|b| Body::from(b.to_string())).unwrap_or_else(Body::empty);
+    let body = body
+        .map(|b| Body::from(b.to_string()))
+        .unwrap_or_else(Body::empty);
     app.oneshot(builder.body(body).unwrap()).await.unwrap()
 }
 
@@ -230,24 +238,21 @@ async fn only_super_admin_can_create_admins() {
     let (super_cookie, _) = bootstrap(app.clone()).await;
 
     // Super creates directly: active immediately.
-    let (status, body) = create_admin_as(app.clone(), &super_cookie, "Second", "second@x.dev").await;
+    let (status, _) = create_admin_as(app.clone(), &super_cookie, "Second", "second@x.dev").await;
     assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(body["pendingApproval"], false);
-    let (status, second_cookie) =
-        login_cookie(app.clone(), "second@x.dev", "Oth3r!Pass").await;
+    let (status, second_cookie) = login_cookie(app.clone(), "second@x.dev", "Oth3r!Pass").await;
     assert_eq!(status, StatusCode::OK);
     assert!(!second_cookie.is_empty());
 
-    // Non-super creation is forbidden outright (no pending flow).
-    let (status, _) =
-        create_admin_as(app.clone(), &second_cookie, "Third", "third@x.dev").await;
+    // Non-super creation is forbidden outright.
+    let (status, _) = create_admin_as(app.clone(), &second_cookie, "Third", "third@x.dev").await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
-    // Non-super cannot list approvals either.
-    let res = request_with_cookie(app.clone(), "GET", "/admin/approvals", None, &second_cookie).await;
-    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    // Approval endpoints are gone entirely.
+    let res =
+        request_with_cookie(app.clone(), "GET", "/admin/approvals", None, &second_cookie).await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
-    // No create-kind requests exist.
     let res = request_with_cookie(
         app.clone(),
         "GET",
@@ -256,8 +261,7 @@ async fn only_super_admin_can_create_admins() {
         &super_cookie,
     )
     .await;
-    let approvals = body_json(res).await["approvals"].as_array().unwrap().to_owned();
-    assert!(approvals.iter().all(|r| r["kind"] != "create"));
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -315,7 +319,7 @@ async fn removal_is_super_only_with_protection() {
     .await;
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
 
-    // No remove-kind requests exist anymore.
+    // No remove-kind requests exist anymore (endpoint is gone).
     let res = request_with_cookie(
         app.clone(),
         "GET",
@@ -324,10 +328,9 @@ async fn removal_is_super_only_with_protection() {
         &super_cookie,
     )
     .await;
-    let approvals = body_json(res).await["approvals"].as_array().unwrap().to_owned();
-    assert!(approvals.iter().all(|r| r["kind"] != "remove"));
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
-    // Super removes directly: applied immediately, login dead, list hides.
+    // Super removes directly: login dead, list hides.
     let res = request_with_cookie(
         app.clone(),
         "POST",
@@ -337,13 +340,15 @@ async fn removal_is_super_only_with_protection() {
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(body_json(res).await["applied"], true);
 
     let (status, _) = login_cookie(app.clone(), "third@x.dev", "Oth3r!Pass").await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
     let res = request_with_cookie(app.clone(), "GET", "/admin/admins", None, &super_cookie).await;
-    let admins = body_json(res).await["admins"].as_array().unwrap().to_owned();
+    let admins = body_json(res).await["admins"]
+        .as_array()
+        .unwrap()
+        .to_owned();
     assert!(!admins.iter().any(|a| a["id"] == third_id));
 
     // Super removes second directly too.
@@ -439,14 +444,13 @@ async fn suspend_restore_is_super_only() {
 async fn non_super_remove_creates_nothing() {
     let app = app_with_admin();
     let (super_cookie, _) = bootstrap(app.clone()).await;
-    let (_, body) = create_admin_as(app.clone(), &super_cookie, "Second", "second@x.dev").await;
-    assert_eq!(body["pendingApproval"], false);
+    let _ = create_admin_as(app.clone(), &super_cookie, "Second", "second@x.dev").await;
     let (_, second_cookie) = login_cookie(app.clone(), "second@x.dev", "Oth3r!Pass").await;
 
     let (_, body) = create_admin_as(app.clone(), &super_cookie, "Third", "third@x.dev").await;
     let third_id = body["admin"]["id"].as_str().unwrap().to_string();
 
-    // Forbidden outright — no pending row is created.
+    // Forbidden outright — and the approvals surface is gone entirely.
     let res = request_with_cookie(
         app.clone(),
         "POST",
@@ -465,10 +469,7 @@ async fn non_super_remove_creates_nothing() {
         &super_cookie,
     )
     .await;
-    assert_eq!(
-        body_json(res).await["approvals"].as_array().unwrap().len(),
-        0
-    );
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     // Target untouched.
     let (status, _) = login_cookie(app.clone(), "third@x.dev", "Oth3r!Pass").await;

@@ -18,7 +18,12 @@ impl ConfigProviderTester {
 
 #[async_trait]
 impl ProviderTester for ConfigProviderTester {
-    async fn test(&self, channel_id: &str, provider_id: &str, config: &serde_json::Value) -> TestResult {
+    async fn test(
+        &self,
+        channel_id: &str,
+        provider_id: &str,
+        config: &serde_json::Value,
+    ) -> TestResult {
         match channel_id {
             "email" => test_email_provider(provider_id, config).await,
             "sms" => test_sms_provider(provider_id, config).await,
@@ -51,17 +56,32 @@ async fn test_email_provider(provider_id: &str, config: &serde_json::Value) -> T
 async fn test_smtp(config: &serde_json::Value) -> TestResult {
     let host = config.get("host").and_then(|v| v.as_str()).unwrap_or("");
     let port = config.get("port").and_then(|v| v.as_u64()).unwrap_or(587) as u16;
-    let username = config.get("username").and_then(|v| v.as_str()).unwrap_or("");
-    let password = config.get("password").and_then(|v| v.as_str()).unwrap_or("");
+    let username = config
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let password = config
+        .get("password")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     if host.is_empty() {
-        return TestResult { success: false, message: "SMTP host is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "SMTP host is required".to_string(),
+        };
     }
     if username.is_empty() {
-        return TestResult { success: false, message: "SMTP username is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "SMTP username is required".to_string(),
+        };
     }
     if password.is_empty() {
-        return TestResult { success: false, message: "SMTP password is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "SMTP password is required".to_string(),
+        };
     }
 
     // Try to connect to the SMTP server
@@ -82,7 +102,10 @@ async fn test_sendgrid(config: &serde_json::Value) -> TestResult {
     let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
 
     if api_key.is_empty() {
-        return TestResult { success: false, message: "SendGrid API key is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "SendGrid API key is required".to_string(),
+        };
     }
 
     // Validate API key format (starts with SG.)
@@ -123,7 +146,10 @@ async fn test_resend(config: &serde_json::Value) -> TestResult {
     let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
 
     if api_key.is_empty() {
-        return TestResult { success: false, message: "Resend API key is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Resend API key is required".to_string(),
+        };
     }
 
     // Try to verify the API key
@@ -153,18 +179,33 @@ async fn test_resend(config: &serde_json::Value) -> TestResult {
 }
 
 async fn test_aws_ses(config: &serde_json::Value) -> TestResult {
-    let access_key = config.get("access_key").and_then(|v| v.as_str()).unwrap_or("");
-    let secret_key = config.get("secret_key").and_then(|v| v.as_str()).unwrap_or("");
+    let access_key = config
+        .get("access_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let secret_key = config
+        .get("secret_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let region = config.get("region").and_then(|v| v.as_str()).unwrap_or("");
 
     if access_key.is_empty() {
-        return TestResult { success: false, message: "AWS access key is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "AWS access key is required".to_string(),
+        };
     }
     if secret_key.is_empty() {
-        return TestResult { success: false, message: "AWS secret key is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "AWS secret key is required".to_string(),
+        };
     }
     if region.is_empty() {
-        return TestResult { success: false, message: "AWS region is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "AWS region is required".to_string(),
+        };
     }
 
     // Basic format validation
@@ -182,10 +223,16 @@ async fn test_aws_ses(config: &serde_json::Value) -> TestResult {
 }
 
 async fn test_postmark(config: &serde_json::Value) -> TestResult {
-    let server_token = config.get("server_token").and_then(|v| v.as_str()).unwrap_or("");
+    let server_token = config
+        .get("server_token")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     if server_token.is_empty() {
-        return TestResult { success: false, message: "Postmark server token is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Postmark server token is required".to_string(),
+        };
     }
 
     // Try to verify the server token
@@ -220,10 +267,16 @@ async fn test_mailgun(config: &serde_json::Value) -> TestResult {
     let domain = config.get("domain").and_then(|v| v.as_str()).unwrap_or("");
 
     if api_key.is_empty() {
-        return TestResult { success: false, message: "Mailgun API key is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Mailgun API key is required".to_string(),
+        };
     }
     if domain.is_empty() {
-        return TestResult { success: false, message: "Mailgun domain is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Mailgun domain is required".to_string(),
+        };
     }
 
     // Try to verify the API key
@@ -256,7 +309,10 @@ async fn test_brevo(config: &serde_json::Value) -> TestResult {
     let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
 
     if api_key.is_empty() {
-        return TestResult { success: false, message: "Brevo API key is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Brevo API key is required".to_string(),
+        };
     }
 
     // Try to verify the API key
@@ -295,20 +351,34 @@ async fn test_sms_provider(provider_id: &str, config: &serde_json::Value) -> Tes
         "vonage" => test_vonage(config).await,
         _ => TestResult {
             success: true,
-            message: format!("SMS provider {provider_id} credentials saved (validation not available)"),
+            message: format!(
+                "SMS provider {provider_id} credentials saved (validation not available)"
+            ),
         },
     }
 }
 
 async fn test_twilio_sms(config: &serde_json::Value) -> TestResult {
-    let account_sid = config.get("account_sid").and_then(|v| v.as_str()).unwrap_or("");
-    let auth_token = config.get("auth_token").and_then(|v| v.as_str()).unwrap_or("");
+    let account_sid = config
+        .get("account_sid")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let auth_token = config
+        .get("auth_token")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     if account_sid.is_empty() {
-        return TestResult { success: false, message: "Twilio Account SID is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Twilio Account SID is required".to_string(),
+        };
     }
     if auth_token.is_empty() {
-        return TestResult { success: false, message: "Twilio Auth Token is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Twilio Auth Token is required".to_string(),
+        };
     }
 
     // Validate Account SID format (starts with AC)
@@ -322,7 +392,9 @@ async fn test_twilio_sms(config: &serde_json::Value) -> TestResult {
     // Try to verify credentials
     let client = reqwest::Client::new();
     match client
-        .get(format!("https://api.twilio.com/2010-04-01/Accounts/{account_sid}.json"))
+        .get(format!(
+            "https://api.twilio.com/2010-04-01/Accounts/{account_sid}.json"
+        ))
         .basic_auth(account_sid, Some(auth_token))
         .send()
         .await
@@ -349,7 +421,10 @@ async fn test_termii(config: &serde_json::Value) -> TestResult {
     let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
 
     if api_key.is_empty() {
-        return TestResult { success: false, message: "Termii API key is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Termii API key is required".to_string(),
+        };
     }
 
     TestResult {
@@ -360,13 +435,22 @@ async fn test_termii(config: &serde_json::Value) -> TestResult {
 
 async fn test_africas_talking(config: &serde_json::Value) -> TestResult {
     let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
-    let username = config.get("username").and_then(|v| v.as_str()).unwrap_or("");
+    let username = config
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     if api_key.is_empty() {
-        return TestResult { success: false, message: "Africa's Talking API key is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Africa's Talking API key is required".to_string(),
+        };
     }
     if username.is_empty() {
-        return TestResult { success: false, message: "Africa's Talking username is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Africa's Talking username is required".to_string(),
+        };
     }
 
     TestResult {
@@ -377,13 +461,22 @@ async fn test_africas_talking(config: &serde_json::Value) -> TestResult {
 
 async fn test_infobip(config: &serde_json::Value) -> TestResult {
     let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
-    let base_url = config.get("base_url").and_then(|v| v.as_str()).unwrap_or("");
+    let base_url = config
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     if api_key.is_empty() {
-        return TestResult { success: false, message: "Infobip API key is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Infobip API key is required".to_string(),
+        };
     }
     if base_url.is_empty() {
-        return TestResult { success: false, message: "Infobip base URL is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Infobip base URL is required".to_string(),
+        };
     }
 
     TestResult {
@@ -394,13 +487,22 @@ async fn test_infobip(config: &serde_json::Value) -> TestResult {
 
 async fn test_vonage(config: &serde_json::Value) -> TestResult {
     let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
-    let api_secret = config.get("api_secret").and_then(|v| v.as_str()).unwrap_or("");
+    let api_secret = config
+        .get("api_secret")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     if api_key.is_empty() {
-        return TestResult { success: false, message: "Vonage API key is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Vonage API key is required".to_string(),
+        };
     }
     if api_secret.is_empty() {
-        return TestResult { success: false, message: "Vonage API secret is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Vonage API secret is required".to_string(),
+        };
     }
 
     TestResult {
@@ -416,16 +518,24 @@ async fn test_push_provider(provider_id: &str, config: &serde_json::Value) -> Te
         "onesignal" => test_onesignal(config).await,
         _ => TestResult {
             success: true,
-            message: format!("Push provider {provider_id} credentials saved (validation not available)"),
+            message: format!(
+                "Push provider {provider_id} credentials saved (validation not available)"
+            ),
         },
     }
 }
 
 async fn test_fcm(config: &serde_json::Value) -> TestResult {
-    let service_account_key = config.get("service_account_key").and_then(|v| v.as_str()).unwrap_or("");
+    let service_account_key = config
+        .get("service_account_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     if service_account_key.is_empty() {
-        return TestResult { success: false, message: "FCM service account key is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "FCM service account key is required".to_string(),
+        };
     }
 
     // Try to parse as JSON
@@ -439,7 +549,8 @@ async fn test_fcm(config: &serde_json::Value) -> TestResult {
             } else {
                 TestResult {
                     success: false,
-                    message: "Invalid FCM service account key (missing 'type: service_account')".to_string(),
+                    message: "Invalid FCM service account key (missing 'type: service_account')"
+                        .to_string(),
                 }
             }
         }
@@ -453,20 +564,38 @@ async fn test_fcm(config: &serde_json::Value) -> TestResult {
 async fn test_apns(config: &serde_json::Value) -> TestResult {
     let key_id = config.get("key_id").and_then(|v| v.as_str()).unwrap_or("");
     let team_id = config.get("team_id").and_then(|v| v.as_str()).unwrap_or("");
-    let bundle_id = config.get("bundle_id").and_then(|v| v.as_str()).unwrap_or("");
-    let private_key = config.get("private_key").and_then(|v| v.as_str()).unwrap_or("");
+    let bundle_id = config
+        .get("bundle_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let private_key = config
+        .get("private_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     if key_id.is_empty() {
-        return TestResult { success: false, message: "APNS Key ID is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "APNS Key ID is required".to_string(),
+        };
     }
     if team_id.is_empty() {
-        return TestResult { success: false, message: "APNS Team ID is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "APNS Team ID is required".to_string(),
+        };
     }
     if bundle_id.is_empty() {
-        return TestResult { success: false, message: "APNS Bundle ID is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "APNS Bundle ID is required".to_string(),
+        };
     }
     if private_key.is_empty() {
-        return TestResult { success: false, message: "APNS Private Key is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "APNS Private Key is required".to_string(),
+        };
     }
 
     // Check if private key looks like a P8 key
@@ -488,10 +617,16 @@ async fn test_onesignal(config: &serde_json::Value) -> TestResult {
     let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
 
     if app_id.is_empty() {
-        return TestResult { success: false, message: "OneSignal App ID is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "OneSignal App ID is required".to_string(),
+        };
     }
     if api_key.is_empty() {
-        return TestResult { success: false, message: "OneSignal API key is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "OneSignal API key is required".to_string(),
+        };
     }
 
     TestResult {
@@ -507,14 +642,22 @@ async fn test_chat_provider(provider_id: &str, config: &serde_json::Value) -> Te
         "discord" => test_discord(config).await,
         _ => TestResult {
             success: true,
-            message: format!("Chat provider {provider_id} credentials saved (validation not available)"),
+            message: format!(
+                "Chat provider {provider_id} credentials saved (validation not available)"
+            ),
         },
     }
 }
 
 async fn test_slack(config: &serde_json::Value) -> TestResult {
-    let webhook_url = config.get("webhook_url").and_then(|v| v.as_str()).unwrap_or("");
-    let bot_token = config.get("bot_token").and_then(|v| v.as_str()).unwrap_or("");
+    let webhook_url = config
+        .get("webhook_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let bot_token = config
+        .get("bot_token")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     if webhook_url.is_empty() && bot_token.is_empty() {
         return TestResult {
@@ -550,14 +693,23 @@ async fn test_slack(config: &serde_json::Value) -> TestResult {
 }
 
 async fn test_telegram(config: &serde_json::Value) -> TestResult {
-    let bot_token = config.get("bot_token").and_then(|v| v.as_str()).unwrap_or("");
+    let bot_token = config
+        .get("bot_token")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let chat_id = config.get("chat_id").and_then(|v| v.as_str()).unwrap_or("");
 
     if bot_token.is_empty() {
-        return TestResult { success: false, message: "Telegram bot token is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Telegram bot token is required".to_string(),
+        };
     }
     if chat_id.is_empty() {
-        return TestResult { success: false, message: "Telegram chat ID is required".to_string() };
+        return TestResult {
+            success: false,
+            message: "Telegram chat ID is required".to_string(),
+        };
     }
 
     // Validate bot token format (numbers:alphanumeric)
@@ -594,8 +746,14 @@ async fn test_telegram(config: &serde_json::Value) -> TestResult {
 }
 
 async fn test_discord(config: &serde_json::Value) -> TestResult {
-    let webhook_url = config.get("webhook_url").and_then(|v| v.as_str()).unwrap_or("");
-    let bot_token = config.get("bot_token").and_then(|v| v.as_str()).unwrap_or("");
+    let webhook_url = config
+        .get("webhook_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let bot_token = config
+        .get("bot_token")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     if webhook_url.is_empty() && bot_token.is_empty() {
         return TestResult {
@@ -606,7 +764,9 @@ async fn test_discord(config: &serde_json::Value) -> TestResult {
 
     if !webhook_url.is_empty() {
         // Try to verify webhook URL format
-        if !webhook_url.contains("discord.com/api/webhooks/") && !webhook_url.contains("discordapp.com/api/webhooks/") {
+        if !webhook_url.contains("discord.com/api/webhooks/")
+            && !webhook_url.contains("discordapp.com/api/webhooks/")
+        {
             return TestResult {
                 success: false,
                 message: "Invalid Discord webhook URL".to_string(),

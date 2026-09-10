@@ -6,6 +6,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use serde_json::{Value, json};
 use server::api::build_router;
 use server::api::state::AppState;
 use server::domain::admin::AdminService;
@@ -17,7 +18,6 @@ use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
 use server::testing::{FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeTicketsStore};
-use serde_json::{Value, json};
 use tower::ServiceExt;
 
 fn app_with_admin_logs() -> Router {
@@ -30,7 +30,10 @@ fn app_with_admin_logs() -> Router {
         true,
         audit.clone(),
     ));
-    let tickets = Arc::new(TicketService::new(Arc::new(FakeTicketsStore::new()), audit.clone()));
+    let tickets = Arc::new(TicketService::new(
+        Arc::new(FakeTicketsStore::new()),
+        audit.clone(),
+    ));
     build_router(
         AppState {
             db: None,
@@ -42,13 +45,16 @@ fn app_with_admin_logs() -> Router {
             admin_projects: None,
             admin_notifications: None,
             projects: Some(projects),
+            project_members: None,
             audit: Some(audit),
             recipients: None,
             templates: None,
             channel_providers: None,
             tickets: Some(tickets),
             notifications: None,
-            provider_tester: Arc::new(ConfigProviderTester::new()) as Arc<dyn ProviderTester + Send + Sync>,
+            billing: None,
+            provider_tester: Arc::new(ConfigProviderTester::new())
+                as Arc<dyn ProviderTester + Send + Sync>,
         },
         &AppConfig::default(),
     )
@@ -87,7 +93,9 @@ async fn request_with_cookie(
     if !cookie.is_empty() {
         builder = builder.header("cookie", format!("{cookie_name}={cookie}"));
     }
-    let body = body.map(|b| Body::from(b.to_string())).unwrap_or_else(Body::empty);
+    let body = body
+        .map(|b| Body::from(b.to_string()))
+        .unwrap_or_else(Body::empty);
     app.oneshot(builder.body(body).unwrap()).await.unwrap()
 }
 

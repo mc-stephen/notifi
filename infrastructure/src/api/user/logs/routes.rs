@@ -1,8 +1,8 @@
 //! Audit-log routes — mounted by the parent `v1_router` under `/logs`.
 
+use super::handlers;
 use axum::Router;
 use axum::routing::get;
-use super::handlers;
 
 pub fn router<S>() -> Router<S>
 where

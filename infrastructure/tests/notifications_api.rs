@@ -6,6 +6,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use serde_json::{Value, json};
 use server::api::build_router;
 use server::api::state::AppState;
 use server::domain::audit::AuditService;
@@ -15,7 +16,6 @@ use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
 use server::testing::{FakeAuditStore, FakeAuthStore, FakeNotificationsStore};
-use serde_json::{Value, json};
 use tower::ServiceExt;
 
 fn app_with_notifications() -> (Router, Arc<FakeNotificationsStore>) {
@@ -36,13 +36,16 @@ fn app_with_notifications() -> (Router, Arc<FakeNotificationsStore>) {
                 admin_projects: None,
                 admin_notifications: None,
                 projects: None,
+                project_members: None,
                 audit: Some(audit),
                 recipients: None,
                 templates: None,
                 channel_providers: None,
                 tickets: None,
                 notifications: Some(notifications),
-                provider_tester: Arc::new(ConfigProviderTester::new()) as Arc<dyn ProviderTester + Send + Sync>,
+                billing: None,
+                provider_tester: Arc::new(ConfigProviderTester::new())
+                    as Arc<dyn ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
         ),
@@ -64,8 +67,7 @@ async fn signup_and_login_on(app: Router, email: &str) -> String {
                 .uri("/app/auth/signup")
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({"name": "Test", "email": email, "password": "Sup3rSecret!"})
-                        .to_string(),
+                    json!({"name": "Test", "email": email, "password": "Sup3rSecret!"}).to_string(),
                 ))
                 .unwrap(),
         )
@@ -115,7 +117,9 @@ async fn get_with_cookie_on(
     if let Some(c) = cookie {
         builder = builder.header("cookie", format!("session_token={c}"));
     }
-    app.oneshot(builder.body(Body::empty()).unwrap()).await.unwrap()
+    app.oneshot(builder.body(Body::empty()).unwrap())
+        .await
+        .unwrap()
 }
 
 async fn patch_with_cookie_on(
@@ -181,13 +185,7 @@ async fn mark_all_read_returns_zero_when_nothing_to_mark() {
     let (app, _store) = app_with_notifications();
     let token = signup_and_login_on(app.clone(), "notif-mark-all@example.com").await;
 
-    let res = patch_with_cookie_on(
-        app,
-        "/app/notifications/read-all",
-        &token,
-        json!({}),
-    )
-    .await;
+    let res = patch_with_cookie_on(app, "/app/notifications/read-all", &token, json!({})).await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["updated"], 0);
@@ -198,12 +196,7 @@ async fn get_nonexistent_notification_returns_404() {
     let (app, _store) = app_with_notifications();
     let token = signup_and_login_on(app.clone(), "notif-404@example.com").await;
 
-    let res = get_with_cookie_on(
-        app,
-        "/app/notifications/nonexistent-id",
-        Some(&token),
-    )
-    .await;
+    let res = get_with_cookie_on(app, "/app/notifications/nonexistent-id", Some(&token)).await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
 

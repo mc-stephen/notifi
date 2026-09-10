@@ -36,7 +36,7 @@
 
 ```
 notifi/                         # repo root
-├── app/dashboard/              # Next.js 16 + React 19 frontend
+├── app/user-dashboard/          # Next.js 16 + React 19 frontend
 ├── infrastructure/             # Rust server (single crate + channel plugins)
 │   ├── src/                    # server crate source
 │   │   ├── api/                # HTTP presentation (axum handlers + routes)

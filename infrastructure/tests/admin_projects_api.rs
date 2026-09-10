@@ -6,6 +6,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use serde_json::{Value, json};
 use server::api::build_router;
 use server::api::state::AppState;
 use server::domain::admin::{AdminProjectsService, AdminService};
@@ -16,10 +17,7 @@ use server::domain::support::TicketService;
 use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
-use server::testing::{
-    FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeTicketsStore,
-};
-use serde_json::{Value, json};
+use server::testing::{FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeTicketsStore};
 use tower::ServiceExt;
 
 fn app_with_admin_projects() -> Router {
@@ -27,7 +25,11 @@ fn app_with_admin_projects() -> Router {
     let audit = Arc::new(AuditService::new(Arc::new(FakeAuditStore::new())));
     let auth = Arc::new(AuthService::new(auth_store.clone(), true, audit.clone()));
     let projects = Arc::new(ProjectService::new(auth_store.clone(), audit.clone()));
-    let admin = Arc::new(AdminService::new(Box::new(FakeAdminStore::new()), true, audit.clone()));
+    let admin = Arc::new(AdminService::new(
+        Box::new(FakeAdminStore::new()),
+        true,
+        audit.clone(),
+    ));
     let tickets_store = Arc::new(FakeTicketsStore::new());
     let tickets = Arc::new(TicketService::new(tickets_store, audit.clone()));
     let admin_projects = Arc::new(AdminProjectsService::new(auth_store));
@@ -42,13 +44,16 @@ fn app_with_admin_projects() -> Router {
             admin_projects: Some(admin_projects),
             admin_notifications: None,
             projects: Some(projects),
+            project_members: None,
             audit: Some(audit),
             recipients: None,
             templates: None,
             channel_providers: None,
             tickets: Some(tickets),
             notifications: None,
-            provider_tester: Arc::new(ConfigProviderTester::new()) as Arc<dyn ProviderTester + Send + Sync>,
+            billing: None,
+            provider_tester: Arc::new(ConfigProviderTester::new())
+                as Arc<dyn ProviderTester + Send + Sync>,
         },
         &AppConfig::default(),
     )
@@ -87,7 +92,9 @@ async fn request_with_cookie(
     if !cookie.is_empty() {
         builder = builder.header("cookie", format!("{cookie_name}={cookie}"));
     }
-    let body = body.map(|b| Body::from(b.to_string())).unwrap_or_else(Body::empty);
+    let body = body
+        .map(|b| Body::from(b.to_string()))
+        .unwrap_or_else(Body::empty);
     app.oneshot(builder.body(body).unwrap()).await.unwrap()
 }
 
@@ -119,7 +126,10 @@ async fn create_project_as(app: Router, cookie: &str, name: &str) -> String {
     )
     .await;
     assert_eq!(res.status(), StatusCode::CREATED);
-    body_json(res).await["project"]["id"].as_str().unwrap().to_string()
+    body_json(res).await["project"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string()
 }
 
 async fn bootstrap_admin(app: Router) -> String {
@@ -176,7 +186,10 @@ async fn admin_lists_all_projects_with_owner_info() {
         &admin_cookie,
     )
     .await;
-    assert_eq!(body_json(res).await["projects"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        body_json(res).await["projects"].as_array().unwrap().len(),
+        1
+    );
 
     // Environment filter (all start as development).
     let res = request_with_cookie(
@@ -188,7 +201,10 @@ async fn admin_lists_all_projects_with_owner_info() {
         &admin_cookie,
     )
     .await;
-    assert_eq!(body_json(res).await["projects"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        body_json(res).await["projects"].as_array().unwrap().len(),
+        0
+    );
 
     // Pagination.
     let res = request_with_cookie(

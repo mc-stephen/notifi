@@ -1,8 +1,8 @@
-pub mod fcm;
 pub mod apns;
+pub mod braze_airship;
+pub mod fcm;
 pub mod onesignal;
 pub mod pushy;
-pub mod braze_airship;
 
 /// All supported push providers. THIS IS THE SOURCE OF TRUTH.
 #[derive(Debug, Clone)]

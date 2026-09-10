@@ -19,8 +19,6 @@ use axum::Router;
 
 use crate::infra::config::AppConfig;
 
-
-
 /// Builds the application router: ops routes at the root plus the three
 /// API surfaces — all wrapped in the global middleware chain.
 pub fn build_router(state: AppState, config: &AppConfig) -> Router {
@@ -56,13 +54,16 @@ mod tests {
                 admin_projects: None,
                 admin_notifications: None,
                 projects: None,
+                project_members: None,
                 audit: None,
                 recipients: None,
                 templates: None,
                 channel_providers: None,
                 tickets: None,
                 notifications: None,
-                provider_tester: std::sync::Arc::new(crate::infra::ConfigProviderTester::new()) as std::sync::Arc<dyn crate::ports::ProviderTester + Send + Sync>,
+                billing: None,
+                provider_tester: std::sync::Arc::new(crate::infra::ConfigProviderTester::new())
+                    as std::sync::Arc<dyn crate::ports::ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
         )

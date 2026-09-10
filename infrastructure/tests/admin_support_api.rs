@@ -6,6 +6,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use serde_json::{Value, json};
 use server::api::build_router;
 use server::api::state::AppState;
 use server::domain::admin::AdminService;
@@ -19,7 +20,6 @@ use server::ports::ProviderTester;
 use server::testing::{
     FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeRecipientsStore, FakeTicketsStore,
 };
-use serde_json::{Value, json};
 use tower::ServiceExt;
 
 fn app_with_admin_support() -> (Router, Arc<FakeTicketsStore>) {
@@ -27,7 +27,11 @@ fn app_with_admin_support() -> (Router, Arc<FakeTicketsStore>) {
     let audit = Arc::new(AuditService::new(Arc::new(FakeAuditStore::new())));
     let auth = Arc::new(AuthService::new(auth_store.clone(), true, audit.clone()));
     let projects = Arc::new(ProjectService::new(auth_store.clone(), audit.clone()));
-    let admin = Arc::new(AdminService::new(Box::new(FakeAdminStore::new()), true, audit.clone()));
+    let admin = Arc::new(AdminService::new(
+        Box::new(FakeAdminStore::new()),
+        true,
+        audit.clone(),
+    ));
     let tickets_store = Arc::new(FakeTicketsStore::new());
     let tickets = Arc::new(TicketService::new(tickets_store.clone(), audit.clone()));
     let _recipients_store = Arc::new(FakeRecipientsStore::new());
@@ -43,13 +47,16 @@ fn app_with_admin_support() -> (Router, Arc<FakeTicketsStore>) {
                 admin_projects: None,
                 admin_notifications: None,
                 projects: Some(projects),
+                project_members: None,
                 audit: Some(audit),
                 recipients: None,
                 templates: None,
                 channel_providers: None,
                 tickets: Some(tickets),
                 notifications: None,
-                provider_tester: Arc::new(ConfigProviderTester::new()) as Arc<dyn ProviderTester + Send + Sync>,
+                billing: None,
+                provider_tester: Arc::new(ConfigProviderTester::new())
+                    as Arc<dyn ProviderTester + Send + Sync>,
             },
             &AppConfig::default(),
         ),
@@ -77,7 +84,11 @@ fn session_cookie_from(res: &axum::response::Response) -> String {
         .to_string()
 }
 
-async fn signup_and_login(app: Router, tickets: &FakeTicketsStore, email: &str) -> (String, String) {
+async fn signup_and_login(
+    app: Router,
+    tickets: &FakeTicketsStore,
+    email: &str,
+) -> (String, String) {
     let res = app
         .clone()
         .oneshot(
@@ -86,8 +97,7 @@ async fn signup_and_login(app: Router, tickets: &FakeTicketsStore, email: &str) 
                 .uri("/app/auth/signup")
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({"name": "Jane", "email": email, "password": "Sup3rSecret!"})
-                        .to_string(),
+                    json!({"name": "Jane", "email": email, "password": "Sup3rSecret!"}).to_string(),
                 ))
                 .unwrap(),
         )
@@ -156,7 +166,9 @@ async fn request_with_cookie(
     if !cookie.is_empty() {
         builder = builder.header("cookie", format!("{cookie_name}={cookie}"));
     }
-    let body = body.map(|b| Body::from(b.to_string())).unwrap_or_else(Body::empty);
+    let body = body
+        .map(|b| Body::from(b.to_string()))
+        .unwrap_or_else(Body::empty);
     app.oneshot(builder.body(body).unwrap()).await.unwrap()
 }
 
@@ -188,7 +200,15 @@ async fn admin_lists_all_tickets_with_customer_identity() {
     let admin_cookie = bootstrap_admin(app.clone(), &tickets).await;
     let ticket_id = create_ticket_as(app.clone(), &user_cookie).await;
 
-    let res = request_with_cookie(app.clone(), "GET", "/admin/support/tickets", None, "admin_session", &admin_cookie).await;
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        "/admin/support/tickets",
+        None,
+        "admin_session",
+        &admin_cookie,
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     let list = body["tickets"].as_array().unwrap();
@@ -214,7 +234,8 @@ async fn admin_views_thread_and_replies_as_support() {
         "GET",
         &format!("/admin/support/tickets/{ticket_id}"),
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -225,11 +246,15 @@ async fn admin_views_thread_and_replies_as_support() {
         "GET",
         &format!("/admin/support/tickets/{ticket_id}/messages"),
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(body_json(res).await["messages"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        body_json(res).await["messages"].as_array().unwrap().len(),
+        0
+    );
 
     // Admin replies.
     let res = request_with_cookie(
@@ -237,7 +262,8 @@ async fn admin_views_thread_and_replies_as_support() {
         "POST",
         &format!("/admin/support/tickets/{ticket_id}/messages"),
         Some(json!({"body": "We are looking into this."})),
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::CREATED);
@@ -250,7 +276,8 @@ async fn admin_views_thread_and_replies_as_support() {
         "GET",
         &format!("/app/support/tickets/{ticket_id}/messages"),
         None,
-        "session_token", &user_cookie,
+        "session_token",
+        &user_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -258,7 +285,10 @@ async fn admin_views_thread_and_replies_as_support() {
     let messages = body["messages"].as_array().unwrap();
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0]["author"].as_str().unwrap(), "support");
-    assert_eq!(messages[0]["body"].as_str().unwrap(), "We are looking into this.");
+    assert_eq!(
+        messages[0]["body"].as_str().unwrap(),
+        "We are looking into this."
+    );
 
     // Admin thread shows the support author's name.
     let res = request_with_cookie(
@@ -266,7 +296,8 @@ async fn admin_views_thread_and_replies_as_support() {
         "GET",
         &format!("/admin/support/tickets/{ticket_id}/messages"),
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -289,7 +320,8 @@ async fn admin_sets_ticket_status() {
             "PATCH",
             &format!("/admin/support/tickets/{ticket_id}"),
             Some(json!({"status": status})),
-            "admin_session", &admin_cookie,
+            "admin_session",
+            &admin_cookie,
         )
         .await;
         assert_eq!(res.status(), StatusCode::OK);
@@ -303,7 +335,8 @@ async fn admin_sets_ticket_status() {
         "PATCH",
         &format!("/admin/support/tickets/{ticket_id}"),
         Some(json!({"status": "waiting"})),
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
@@ -321,7 +354,8 @@ async fn admin_reply_moves_resolved_ticket_to_in_progress() {
         "PATCH",
         &format!("/admin/support/tickets/{ticket_id}"),
         Some(json!({"status": "resolved"})),
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -331,7 +365,8 @@ async fn admin_reply_moves_resolved_ticket_to_in_progress() {
         "POST",
         &format!("/admin/support/tickets/{ticket_id}/messages"),
         Some(json!({"body": "Actually, one more thing to check."})),
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::CREATED);
@@ -341,10 +376,14 @@ async fn admin_reply_moves_resolved_ticket_to_in_progress() {
         "GET",
         &format!("/admin/support/tickets/{ticket_id}"),
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
-    assert_eq!(body_json(res).await["ticket"]["status"].as_str().unwrap(), "in_progress");
+    assert_eq!(
+        body_json(res).await["ticket"]["status"].as_str().unwrap(),
+        "in_progress"
+    );
 }
 
 #[tokio::test]
@@ -359,7 +398,8 @@ async fn admin_cannot_reply_to_closed_ticket() {
         "PATCH",
         &format!("/admin/support/tickets/{ticket_id}"),
         Some(json!({"status": "closed"})),
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -369,7 +409,8 @@ async fn admin_cannot_reply_to_closed_ticket() {
         "POST",
         &format!("/admin/support/tickets/{ticket_id}/messages"),
         Some(json!({"body": "Hello?"})),
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::CONFLICT);
@@ -383,7 +424,15 @@ async fn admin_endpoints_require_admin_session() {
     let ticket_id = create_ticket_as(app.clone(), &user_cookie).await;
 
     // No cookie at all.
-    let res = request_with_cookie(app.clone(), "GET", "/admin/support/tickets", None, "admin_session", "").await;
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        "/admin/support/tickets",
+        None,
+        "admin_session",
+        "",
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
     // A customer session is not an admin session.
@@ -392,7 +441,8 @@ async fn admin_endpoints_require_admin_session() {
         "GET",
         &format!("/admin/support/tickets/{ticket_id}"),
         None,
-        "session_token", &user_cookie,
+        "session_token",
+        &user_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -402,7 +452,8 @@ async fn admin_endpoints_require_admin_session() {
         "POST",
         &format!("/admin/support/tickets/{ticket_id}/messages"),
         Some(json!({"body": "hi"})),
-        "session_token", &user_cookie,
+        "session_token",
+        &user_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -413,7 +464,8 @@ async fn admin_endpoints_require_admin_session() {
         "GET",
         "/admin/support/tickets/01J0000000000000000000000",
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
@@ -424,7 +476,15 @@ async fn admin_me_returns_current_admin() {
     let (app, tickets) = app_with_admin_support();
     let admin_cookie = bootstrap_admin(app.clone(), &tickets).await;
 
-    let res = request_with_cookie(app.clone(), "GET", "/admin/me", None, "admin_session", &admin_cookie).await;
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        "/admin/me",
+        None,
+        "admin_session",
+        &admin_cookie,
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["email"].as_str().unwrap(), "root@notifi.dev");
@@ -445,7 +505,8 @@ async fn admin_get_unknown_ticket_is_404() {
         "GET",
         "/admin/support/tickets/01J0000000000000000000000",
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
@@ -455,7 +516,8 @@ async fn admin_get_unknown_ticket_is_404() {
         "GET",
         "/admin/support/tickets/01J0000000000000000000000/messages",
         None,
-        "admin_session", &admin_cookie,
+        "admin_session",
+        &admin_cookie,
     )
     .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);

@@ -1,10 +1,10 @@
-pub mod smtp;
-pub mod sendgrid;
-pub mod resend;
 pub mod aws_ses;
-pub mod postmark;
-pub mod mailgun;
 pub mod brevo;
+pub mod mailgun;
+pub mod postmark;
+pub mod resend;
+pub mod sendgrid;
+pub mod smtp;
 
 /// All supported email providers. THIS IS THE SOURCE OF TRUTH.
 /// To add a new provider: create providers/new_provider.rs, add variant here.

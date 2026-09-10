@@ -1,6 +1,6 @@
-use serde::Deserialize;
-use reqwest::Client;
 use futures::future::BoxFuture;
+use reqwest::Client;
+use serde::Deserialize;
 
 use super::SmsSender;
 
@@ -37,7 +37,10 @@ impl SmsSender for TwilioProvider {
         let to = to.to_string();
         let text = text.to_string();
         let client = self.client.clone();
-        let auth = (self.config.account_sid.clone(), self.config.auth_token.clone());
+        let auth = (
+            self.config.account_sid.clone(),
+            self.config.auth_token.clone(),
+        );
 
         Box::pin(async move {
             let params = [("From", from), ("To", to), ("Body", text)];

@@ -94,11 +94,7 @@ pub trait TicketsStore: Send + Sync {
         body: &str,
     ) -> BoxFut<'_, Result<Option<TicketMessageRecord>, StoreError>>;
 
-    fn reopen(
-        &self,
-        actor: UserId,
-        ticket_id: &str,
-    ) -> BoxFut<'_, Result<bool, StoreError>>;
+    fn reopen(&self, actor: UserId, ticket_id: &str) -> BoxFut<'_, Result<bool, StoreError>>;
 
     // === Admin-scoped methods (no actor visibility checks) =================
 
@@ -115,7 +111,8 @@ pub trait TicketsStore: Send + Sync {
     ) -> BoxFut<'_, Result<(Vec<AdminTicketRecord>, i64), StoreError>>;
 
     /// Fetches any ticket by id, with creator identity.
-    fn get_any(&self, ticket_id: &str) -> BoxFut<'_, Result<Option<AdminTicketRecord>, StoreError>>;
+    fn get_any(&self, ticket_id: &str)
+    -> BoxFut<'_, Result<Option<AdminTicketRecord>, StoreError>>;
 
     /// Lists messages for any ticket, with author display names.
     fn list_messages_any(
@@ -141,8 +138,6 @@ pub trait TicketsStore: Send + Sync {
     ) -> BoxFut<'_, Result<bool, StoreError>>;
 
     /// Counts non-deleted tickets created by a user (admin stats).
-    fn count_tickets_for_user(
-        &self,
-        user_id: &str,
-    ) -> BoxFut<'_, Result<TicketCounts, StoreError>>;
+    fn count_tickets_for_user(&self, user_id: &str)
+    -> BoxFut<'_, Result<TicketCounts, StoreError>>;
 }

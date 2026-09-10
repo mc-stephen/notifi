@@ -25,6 +25,10 @@ pub struct User {
     /// OAuth provider; `(provider, subject)` is unique per user.
     pub oauth_provider: Option<String>,
     pub oauth_subject: Option<String>,
+    /// TOTP secret (base32-encoded); set once 2FA setup starts.
+    pub totp_secret: Option<String>,
+    /// Whether TOTP 2FA is enforced for this account at login.
+    pub totp_enabled: bool,
     pub status: UserStatus,
     pub created_at: DateTime<Utc>,
     pub last_login_at: Option<DateTime<Utc>>,

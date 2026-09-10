@@ -1,10 +1,10 @@
-use axum::extract::{Extension, Path};
 use axum::Json;
+use axum::extract::{Extension, Path};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::domain::channels::{ProjectProviderConfig, ProjectProviderConfigInput};
 use crate::domain::auth::errors::AuthError;
+use crate::domain::channels::{ProjectProviderConfig, ProjectProviderConfigInput};
 use crate::domain::notifications::{NotificationService, NotificationType};
 use crate::ports::channel_provider_store::ChannelProviderStore;
 use crate::ports::provider_tester::ProviderTester;
@@ -78,7 +78,9 @@ pub async fn test_config(
     Path(_project_id): Path<String>,
     Json(req): Json<TestProviderConfigRequest>,
 ) -> Result<Json<TestProviderConfigResponse>, Problem> {
-    let result = tester.test(&req.channel_id, &req.provider_id, &req.config).await;
+    let result = tester
+        .test(&req.channel_id, &req.provider_id, &req.config)
+        .await;
 
     Ok(Json(TestProviderConfigResponse {
         success: result.success,

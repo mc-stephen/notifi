@@ -11,5 +11,10 @@ pub struct TestResult {
 #[async_trait]
 pub trait ProviderTester: Send + Sync {
     /// Test a provider connection with the given config.
-    async fn test(&self, channel_id: &str, provider_id: &str, config: &serde_json::Value) -> TestResult;
+    async fn test(
+        &self,
+        channel_id: &str,
+        provider_id: &str,
+        config: &serde_json::Value,
+    ) -> TestResult;
 }

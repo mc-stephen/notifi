@@ -10,13 +10,13 @@ use chrono::{DateTime, Utc};
 
 use notifi_core::Ulid;
 
-use crate::domain::auth::entities::{AuthToken, Session, TokenPurpose, User, UserId};
 use crate::domain::audit::entities::AuditEntry;
+use crate::domain::auth::entities::{AuthToken, Session, TokenPurpose, User, UserId};
 use crate::domain::notifications::entities::{NotificationOrigin, NotificationType};
 use crate::ports::audit_store::{AuditFilters, AuditStore};
 use crate::ports::auth_store::{AuthStore, BoxFut, StoreError};
 use crate::ports::notifications_store::{
-    BroadcastRecord, BroadcastRecipient, BroadcastStats, BroadcastStatus, NotificationRecord,
+    BroadcastRecipient, BroadcastRecord, BroadcastStats, BroadcastStatus, NotificationRecord,
     NotificationsStore,
 };
 use crate::ports::projects_store::{ProjectSummary, ProjectsStore};
@@ -38,6 +38,8 @@ pub struct FakeAuthStore {
     onboarded: RwLock<Vec<String>>,
     /// Projects seeded for a user: (owner_user_id, ProjectSummary).
     projects: RwLock<Vec<(String, ProjectSummary)>>,
+    /// Project memberships: (project_id, user_id, role).
+    members: RwLock<Vec<(String, String, String)>>,
 }
 
 impl FakeAuthStore {
@@ -73,6 +75,15 @@ impl FakeAuthStore {
             .write()
             .unwrap()
             .push((user_id.to_string(), project));
+    }
+
+    /// Seeds a membership row for member-management tests.
+    pub fn seed_member(&self, project_id: &str, user_id: &str, role: &str) {
+        self.members.write().unwrap().push((
+            project_id.to_string(),
+            user_id.to_string(),
+            role.to_string(),
+        ));
     }
 }
 
@@ -162,6 +173,50 @@ impl AuthStore for FakeAuthStore {
             let mut users = users.write().map_err(lock_err)?;
             if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
                 user.last_login_at = Some(at);
+            }
+            Ok(())
+        })
+    }
+
+    fn set_totp_secret(
+        &self,
+        user_id: crate::domain::auth::entities::UserId,
+        secret: String,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let users = &self.users;
+        Box::pin(async move {
+            let mut users = users.write().map_err(lock_err)?;
+            if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
+                user.totp_secret = Some(secret);
+            }
+            Ok(())
+        })
+    }
+
+    fn enable_totp(
+        &self,
+        user_id: crate::domain::auth::entities::UserId,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let users = &self.users;
+        Box::pin(async move {
+            let mut users = users.write().map_err(lock_err)?;
+            if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
+                user.totp_enabled = true;
+            }
+            Ok(())
+        })
+    }
+
+    fn disable_totp(
+        &self,
+        user_id: crate::domain::auth::entities::UserId,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let users = &self.users;
+        Box::pin(async move {
+            let mut users = users.write().map_err(lock_err)?;
+            if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
+                user.totp_enabled = false;
+                user.totp_secret = None;
             }
             Ok(())
         })
@@ -452,7 +507,10 @@ impl AuthStore for FakeAuthStore {
 }
 
 impl ProjectsStore for FakeAuthStore {
-    fn list_projects(&self, user_id: UserId) -> BoxFut<'_, Result<Vec<ProjectSummary>, StoreError>> {
+    fn list_projects(
+        &self,
+        user_id: UserId,
+    ) -> BoxFut<'_, Result<Vec<ProjectSummary>, StoreError>> {
         let projects = &self.projects;
         Box::pin(async move {
             let owned = projects.read().map_err(lock_err)?;
@@ -483,6 +541,137 @@ impl ProjectsStore for FakeAuthStore {
                     p.environment = environment;
                     p.clone()
                 }))
+        })
+    }
+
+    fn get_project_access(
+        &self,
+        user_id: UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Option<crate::ports::projects_store::ProjectAccess>, StoreError>> {
+        use crate::ports::projects_store::ProjectAccess;
+        let project_id = project_id.to_string();
+        let user_id_str = user_id.to_string();
+        let projects = self.projects.read().unwrap().clone();
+        let members = self.members.read().unwrap().clone();
+        Box::pin(async move {
+            Ok(projects
+                .into_iter()
+                .find(|(_, p)| p.id == project_id)
+                .and_then(|(owner, p)| {
+                    let is_owner = owner == user_id_str;
+                    let member_role = members
+                        .iter()
+                        .find(|(pid, uid, _)| *pid == project_id && *uid == user_id_str)
+                        .map(|(_, _, role)| role.clone());
+                    if !is_owner && member_role.is_none() {
+                        return None;
+                    }
+                    Some(ProjectAccess {
+                        project: p,
+                        created_by: Some(owner),
+                        member_role,
+                    })
+                }))
+        })
+    }
+
+    fn set_require_2fa(
+        &self,
+        project_id: &str,
+        enabled: bool,
+    ) -> BoxFut<'_, Result<Option<bool>, StoreError>> {
+        let project_id = project_id.to_string();
+        let projects = &self.projects;
+        Box::pin(async move {
+            let mut projects = projects.write().map_err(lock_err)?;
+            Ok(projects
+                .iter_mut()
+                .find(|(_, p)| p.id == project_id)
+                .map(|(_, p)| {
+                    p.require_2fa = enabled;
+                    enabled
+                }))
+        })
+    }
+
+    fn insert_member(
+        &self,
+        project_id: &str,
+        user_id: UserId,
+        role: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let project_id = project_id.to_string();
+        let member_id = user_id.to_string();
+        let role = role.to_string();
+        let members = &self.members;
+        Box::pin(async move {
+            let mut members = members.write().map_err(lock_err)?;
+            if members
+                .iter()
+                .any(|(pid, uid, _)| *pid == project_id && *uid == member_id)
+            {
+                return Ok(false);
+            }
+            members.push((project_id, member_id, role));
+            Ok(true)
+        })
+    }
+
+    fn list_members(
+        &self,
+        user_id: UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Vec<crate::ports::projects_store::TeamMemberRecord>, StoreError>> {
+        use crate::ports::projects_store::TeamMemberRecord;
+        let project_id = project_id.to_string();
+        let user_id_str = user_id.to_string();
+        let projects = self.projects.read().unwrap().clone();
+        let members = self.members.read().unwrap().clone();
+        let users = self.users.read().unwrap().clone();
+        Box::pin(async move {
+            let Some((owner, _)) = projects.iter().find(|(_, p)| p.id == project_id) else {
+                return Ok(Vec::new());
+            };
+            let visible = *owner == user_id_str
+                || members
+                    .iter()
+                    .any(|(pid, uid, _)| *pid == project_id && *uid == user_id_str);
+            if !visible {
+                return Ok(Vec::new());
+            }
+            let mut out: Vec<TeamMemberRecord> = Vec::new();
+            // Creator first as implicit owner.
+            if let Some(creator) = users.iter().find(|u| u.id.to_string() == *owner) {
+                out.push(TeamMemberRecord {
+                    user_id: owner.clone(),
+                    name: creator.name.clone(),
+                    email: creator.email.as_str().to_string(),
+                    role: "owner".to_string(),
+                    has_2fa: creator.totp_enabled,
+                    last_active_at: creator.last_login_at,
+                });
+            }
+            let mut rest: Vec<TeamMemberRecord> = members
+                .iter()
+                .filter(|(pid, uid, _)| *pid == project_id && *uid != *owner)
+                .filter_map(|(_, uid, role)| {
+                    users
+                        .iter()
+                        .find(|u| u.id.to_string() == *uid)
+                        .map(|u| TeamMemberRecord {
+                            user_id: uid.clone(),
+                            name: u.name.clone(),
+                            email: u.email.as_str().to_string(),
+                            role: role.clone(),
+                            has_2fa: u.totp_enabled,
+                            last_active_at: u.last_login_at,
+                        })
+                })
+                .collect();
+            rest.sort_by(|a, b| a.name.cmp(&b.name));
+            out.extend(rest);
+            Ok(out)
         })
     }
 
@@ -521,6 +710,7 @@ impl ProjectsStore for FakeAuthStore {
                 slug,
                 description,
                 environment: "development".to_string(),
+                require_2fa: false,
                 created_at: chrono::Utc::now(),
             };
             projects.push((user_id_str, record.clone()));
@@ -536,7 +726,8 @@ impl ProjectsStore for FakeAuthStore {
         environment: Option<&str>,
         limit: i64,
         offset: i64,
-    ) -> BoxFut<'_, Result<(Vec<crate::ports::projects_store::AdminProjectRecord>, i64), StoreError>> {
+    ) -> BoxFut<'_, Result<(Vec<crate::ports::projects_store::AdminProjectRecord>, i64), StoreError>>
+    {
         let search_owned = search.map(|s| s.to_lowercase());
         let environment_owned = environment.map(str::to_owned);
         let projects = self.projects.read().unwrap().clone();
@@ -732,11 +923,7 @@ impl AuditStore for FakeAuditStore {
                     true
                 })
                 .collect();
-            result.sort_by(|a, b| {
-                b.occurred_at
-                    .cmp(&a.occurred_at)
-                    .then(b.id.cmp(&a.id))
-            });
+            result.sort_by(|a, b| b.occurred_at.cmp(&a.occurred_at).then(b.id.cmp(&a.id)));
             let total = result.len() as i64;
             let page: Vec<AuditEntry> = result
                 .into_iter()
@@ -805,10 +992,7 @@ impl RecipientsStore for FakeRecipientsStore {
         let name = name.to_string();
         let visible = self.visible.read().unwrap().clone();
         Box::pin(async move {
-            if !visible
-                .iter()
-                .any(|(u, p)| *u == actor && *p == project_id)
-            {
+            if !visible.iter().any(|(u, p)| *u == actor && *p == project_id) {
                 return Err(StoreError::Storage(
                     "project not found or not visible".to_string(),
                 ));
@@ -1264,10 +1448,7 @@ impl TicketsStore for FakeTicketsStore {
                 deleted_at: None,
             };
 
-            tickets
-                .write()
-                .map_err(lock_err)?
-                .push(record.clone());
+            tickets.write().map_err(lock_err)?.push(record.clone());
 
             Ok(record)
         })
@@ -1300,12 +1481,16 @@ impl TicketsStore for FakeTicketsStore {
                     // specific project — and only if the actor has visibility.
                     if let Some(ref pid) = project_id_owned {
                         return t.project_id.as_deref() == Some(pid.as_str())
-                            && visible.iter().any(|(u, p)| *u == actor_str && p.as_str() == pid.as_str());
+                            && visible
+                                .iter()
+                                .any(|(u, p)| *u == actor_str && p.as_str() == pid.as_str());
                     }
                     // No project filter — show all tickets visible to the actor.
                     let matches_creator = t.created_by == actor_str;
                     let matches_project = t.project_id.is_some()
-                        && visible.iter().any(|(u, p)| *u == actor_str && p.as_str() == t.project_id.as_deref().unwrap_or(""));
+                        && visible.iter().any(|(u, p)| {
+                            *u == actor_str && p.as_str() == t.project_id.as_deref().unwrap_or("")
+                        });
                     (t.project_id.is_none() && matches_creator) || matches_project
                 })
                 .filter(|t| {
@@ -1351,7 +1536,9 @@ impl TicketsStore for FakeTicketsStore {
                 if t.project_id.is_none() {
                     return t.created_by == actor_str;
                 }
-                visible.iter().any(|(u, p)| *u == actor_str && p.as_str() == t.project_id.as_deref().unwrap_or(""))
+                visible.iter().any(|(u, p)| {
+                    *u == actor_str && p.as_str() == t.project_id.as_deref().unwrap_or("")
+                })
             });
             Ok(found.cloned())
         })
@@ -1372,13 +1559,17 @@ impl TicketsStore for FakeTicketsStore {
             let ticket = tickets.iter().find(|t| {
                 t.id == ticket_id
                     && t.deleted_at.is_none()
-                    && (t.project_id.is_none()
-                        && t.created_by == actor_str
+                    && (t.project_id.is_none() && t.created_by == actor_str
                         || t.project_id.is_some()
-                            && visible.iter().any(|(u, p)| *u == actor_str && p.as_str() == t.project_id.as_deref().unwrap_or("")))
+                            && visible.iter().any(|(u, p)| {
+                                *u == actor_str
+                                    && p.as_str() == t.project_id.as_deref().unwrap_or("")
+                            }))
             });
             if ticket.is_none() {
-                return Err(StoreError::Storage("ticket not found or not visible".to_string()));
+                return Err(StoreError::Storage(
+                    "ticket not found or not visible".to_string(),
+                ));
             }
             let mut result: Vec<TicketMessageRecord> = messages
                 .into_iter()
@@ -1405,10 +1596,12 @@ impl TicketsStore for FakeTicketsStore {
             let ticket = tickets.iter().find(|t| {
                 t.id == ticket_id
                     && t.deleted_at.is_none()
-                    && (t.project_id.is_none()
-                        && t.created_by == actor_str
+                    && (t.project_id.is_none() && t.created_by == actor_str
                         || t.project_id.is_some()
-                            && visible.iter().any(|(u, p)| *u == actor_str && p.as_str() == t.project_id.as_deref().unwrap_or("")))
+                            && visible.iter().any(|(u, p)| {
+                                *u == actor_str
+                                    && p.as_str() == t.project_id.as_deref().unwrap_or("")
+                            }))
             });
             if ticket.is_none() {
                 return Ok(None);
@@ -1423,7 +1616,13 @@ impl TicketsStore for FakeTicketsStore {
             };
             self.messages.write().unwrap().push(record.clone());
             // Touch updated_at on the ticket.
-            if let Some(t) = self.tickets.write().unwrap().iter_mut().find(|t| t.id == ticket_id) {
+            if let Some(t) = self
+                .tickets
+                .write()
+                .unwrap()
+                .iter_mut()
+                .find(|t| t.id == ticket_id)
+            {
                 t.updated_at = Utc::now();
             }
             Ok(Some(record))
@@ -1444,12 +1643,13 @@ impl TicketsStore for FakeTicketsStore {
             if let Some(t) = tickets.iter_mut().find(|t| {
                 t.id == ticket_id
                     && t.deleted_at.is_none()
-                    && (t.project_id.is_none()
-                        && t.created_by == actor_str
+                    && (t.project_id.is_none() && t.created_by == actor_str
                         || t.project_id.is_some()
-                            && visible.iter().any(|(u, p)| *u == actor_str && p.as_str() == t.project_id.as_deref().unwrap_or("")))
-            })
-            && t.status == crate::domain::support::entities::TicketStatus::Resolved
+                            && visible.iter().any(|(u, p)| {
+                                *u == actor_str
+                                    && p.as_str() == t.project_id.as_deref().unwrap_or("")
+                            }))
+            }) && t.status == crate::domain::support::entities::TicketStatus::Resolved
             {
                 t.status = crate::domain::support::entities::TicketStatus::Open;
                 t.updated_at = Utc::now();
@@ -1522,7 +1722,10 @@ impl TicketsStore for FakeTicketsStore {
         })
     }
 
-    fn get_any(&self, ticket_id: &str) -> BoxFut<'_, Result<Option<AdminTicketRecord>, StoreError>> {
+    fn get_any(
+        &self,
+        ticket_id: &str,
+    ) -> BoxFut<'_, Result<Option<AdminTicketRecord>, StoreError>> {
         let ticket_id = ticket_id.to_string();
         let tickets = &self.tickets;
         let users = self.users.read().unwrap().clone();
@@ -1714,7 +1917,10 @@ impl NotificationsStore for FakeNotificationsStore {
                 deleted_at: None,
                 broadcast_id: None,
             };
-            notifications.write().map_err(lock_err)?.push(record.clone());
+            notifications
+                .write()
+                .map_err(lock_err)?
+                .push(record.clone());
             Ok(record)
         })
     }
@@ -1742,10 +1948,7 @@ impl NotificationsStore for FakeNotificationsStore {
         })
     }
 
-    fn count_unread(
-        &self,
-        user_id: UserId,
-    ) -> BoxFut<'_, Result<i64, StoreError>> {
+    fn count_unread(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>> {
         let user_str = user_id.to_string();
         let all = self.notifications.read().unwrap().clone();
         Box::pin(async move {
@@ -1757,10 +1960,7 @@ impl NotificationsStore for FakeNotificationsStore {
         })
     }
 
-    fn count_all_for_user(
-        &self,
-        user_id: UserId,
-    ) -> BoxFut<'_, Result<i64, StoreError>> {
+    fn count_all_for_user(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>> {
         let user_str = user_id.to_string();
         let all = self.notifications.read().unwrap().clone();
         Box::pin(async move {
@@ -1810,10 +2010,7 @@ impl NotificationsStore for FakeNotificationsStore {
         })
     }
 
-    fn mark_all_read(
-        &self,
-        user_id: UserId,
-    ) -> BoxFut<'_, Result<i64, StoreError>> {
+    fn mark_all_read(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>> {
         let user_str = user_id.to_string();
         let notifications = &self.notifications;
         Box::pin(async move {
@@ -1907,11 +2104,7 @@ impl NotificationsStore for FakeNotificationsStore {
                 })
                 .cloned()
                 .collect();
-            result.sort_by(|a, b| {
-                b.created_at
-                    .cmp(&a.created_at)
-                    .then(b.id.cmp(&a.id))
-            });
+            result.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
             let total = result.len() as i64;
             let page: Vec<BroadcastRecord> = result
                 .into_iter()
@@ -1971,11 +2164,7 @@ impl NotificationsStore for FakeNotificationsStore {
                     b.clone()
                 })
                 .collect();
-            due.sort_by(|a, b| {
-                a.scheduled_for
-                    .cmp(&b.scheduled_for)
-                    .then(a.id.cmp(&b.id))
-            });
+            due.sort_by(|a, b| a.scheduled_for.cmp(&b.scheduled_for).then(a.id.cmp(&b.id)));
             Ok(due)
         })
     }
@@ -2025,7 +2214,9 @@ impl NotificationsStore for FakeNotificationsStore {
             let all = notifications.read().map_err(lock_err)?;
             let mine: Vec<_> = all
                 .iter()
-                .filter(|n| n.broadcast_id.as_deref() == Some(id.as_str()) && n.deleted_at.is_none())
+                .filter(|n| {
+                    n.broadcast_id.as_deref() == Some(id.as_str()) && n.deleted_at.is_none()
+                })
                 .collect();
             Ok(BroadcastStats {
                 total: mine.len() as i64,
@@ -2040,8 +2231,8 @@ impl NotificationsStore for FakeNotificationsStore {
 // ------------------------------------------------------------------
 
 use crate::domain::admin::entities::{
-    AdminApprovalRequest, AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession,
-    AdminSessionId, AdminStatus, AdminUser, AdminUserId, ApprovalStatus,
+    AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession, AdminSessionId, AdminStatus,
+    AdminUser, AdminUserId,
 };
 use crate::ports::admin_store::AdminStore;
 
@@ -2051,7 +2242,6 @@ pub struct FakeAdminStore {
     sessions: RwLock<Vec<AdminSession>>,
     reset_tokens: RwLock<Vec<AdminPasswordResetToken>>,
     deleted_admins: RwLock<Vec<AdminUserId>>,
-    approvals: RwLock<Vec<AdminApprovalRequest>>,
 }
 
 impl FakeAdminStore {
@@ -2067,9 +2257,7 @@ impl FakeAdminStore {
 impl AdminStore for FakeAdminStore {
     fn admin_exists(&self) -> BoxFut<'_, Result<bool, StoreError>> {
         let admins = &self.admins;
-        Box::pin(async move {
-            Ok(!admins.read().map_err(lock_err)?.is_empty())
-        })
+        Box::pin(async move { Ok(!admins.read().map_err(lock_err)?.is_empty()) })
     }
 
     fn create_admin(&self, admin: &AdminUser) -> BoxFut<'_, Result<(), StoreError>> {
@@ -2081,7 +2269,10 @@ impl AdminStore for FakeAdminStore {
         })
     }
 
-    fn find_admin_by_email(&self, email: &str) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>> {
+    fn find_admin_by_email(
+        &self,
+        email: &str,
+    ) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>> {
         let admins = &self.admins;
         let email = email.to_string();
         let deleted = self.deleted_admins.read().unwrap().clone();
@@ -2095,7 +2286,10 @@ impl AdminStore for FakeAdminStore {
         })
     }
 
-    fn find_admin_by_id(&self, id: AdminUserId) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>> {
+    fn find_admin_by_id(
+        &self,
+        id: AdminUserId,
+    ) -> BoxFut<'_, Result<Option<AdminUser>, StoreError>> {
         let admins = &self.admins;
         let deleted = self.deleted_admins.read().unwrap().clone();
         Box::pin(async move {
@@ -2108,7 +2302,11 @@ impl AdminStore for FakeAdminStore {
         })
     }
 
-    fn set_totp_secret(&self, id: AdminUserId, secret: String) -> BoxFut<'_, Result<(), StoreError>> {
+    fn set_totp_secret(
+        &self,
+        id: AdminUserId,
+        secret: String,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
         let admins = &self.admins;
         Box::pin(async move {
             let mut admins = admins.write().map_err(lock_err)?;
@@ -2130,7 +2328,11 @@ impl AdminStore for FakeAdminStore {
         })
     }
 
-    fn touch_admin_last_login(&self, id: AdminUserId, at: DateTime<Utc>) -> BoxFut<'_, Result<(), StoreError>> {
+    fn touch_admin_last_login(
+        &self,
+        id: AdminUserId,
+        at: DateTime<Utc>,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
         let admins = &self.admins;
         Box::pin(async move {
             let mut admins = admins.write().map_err(lock_err)?;
@@ -2313,11 +2515,7 @@ impl AdminStore for FakeAdminStore {
         let admins = &self.admins;
         let deleted = &self.deleted_admins;
         Box::pin(async move {
-            let exists = admins
-                .read()
-                .map_err(lock_err)?
-                .iter()
-                .any(|a| a.id == id);
+            let exists = admins.read().map_err(lock_err)?.iter().any(|a| a.id == id);
             if !exists {
                 return Ok(false);
             }
@@ -2329,85 +2527,497 @@ impl AdminStore for FakeAdminStore {
             Ok(true)
         })
     }
+}
 
-    fn create_approval(
-        &self,
-        request: &AdminApprovalRequest,
-    ) -> BoxFut<'_, Result<(), StoreError>> {
-        let approvals = &self.approvals;
-        let request = request.clone();
-        Box::pin(async move {
-            approvals.write().map_err(lock_err)?.push(request);
-            Ok(())
-        })
+// ---------------------------------------------------------------------------
+// FakeBillingStore — in-memory [`BillingStore`] for tests.
+// ---------------------------------------------------------------------------
+
+use crate::domain::billing::entities::{BillingCycle, SubscriptionStatus};
+use crate::domain::billing::{NewPlan, UpdatePlan};
+use crate::ports::billing_store::{BillingStore, PlanRecord, SubscriptionRecord};
+
+fn seed_plan(
+    id: &str,
+    name: &str,
+    price_cents: Option<i64>,
+    interval: &str,
+    capabilities: serde_json::Value,
+    yearly_discount: Option<serde_json::Value>,
+) -> PlanRecord {
+    let now = chrono::Utc::now();
+    PlanRecord {
+        id: id.to_string(),
+        name: name.to_string(),
+        price_cents,
+        currency: "USD".to_string(),
+        interval: interval.to_string(),
+        capabilities: Some(capabilities),
+        yearly_discount,
+        is_active: true,
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+/// In-memory [`BillingStore`]. Plans seed to the catalog defaults;
+/// subscriptions start empty (lazily ensured as free per project).
+#[derive(Default)]
+pub struct FakeBillingStore {
+    plans: RwLock<Vec<PlanRecord>>,
+    subs: RwLock<Vec<SubscriptionRecord>>,
+    /// (user_id, project_id) pairs the actor may access.
+    visible: RwLock<Vec<(String, String)>>,
+    /// project_id -> project name, for admin subscriber views.
+    projects: RwLock<Vec<(String, String)>>,
+    /// project_id -> seeded birth timestamp, for history replay.
+    /// Recorded at seed time (tests seed before acting), so events
+    /// always postdate births as in production.
+    born: RwLock<Vec<(String, chrono::DateTime<chrono::Utc>)>>,
+    /// user_id -> (name, email), for admin subscriber views.
+    users: RwLock<Vec<(String, String, String)>>,
+}
+
+impl FakeBillingStore {
+    pub fn new() -> Self {
+        let store = Self::default();
+        let mut plans = store.plans.write().unwrap();
+        plans.push(seed_plan(
+            "free",
+            "Free",
+            Some(0),
+            "month",
+            serde_json::json!({"notificationsPerMonth": 1000, "channels": ["email"], "teamMembers": 1, "retentionDays": 7, "support": "Community", "branding": false, "apiCalls": 10000}),
+            None,
+        ));
+        plans.push(seed_plan(
+            "starter",
+            "Starter",
+            Some(1900),
+            "month",
+            serde_json::json!({"notificationsPerMonth": 10000, "channels": ["email", "sms", "push"], "teamMembers": 3, "retentionDays": 30, "support": "Email", "branding": false, "apiCalls": 100000}),
+            Some(serde_json::json!({"kind": "percent", "value": 10})),
+        ));
+        plans.push(seed_plan(
+            "pro",
+            "Pro",
+            Some(9900),
+            "month",
+            serde_json::json!({"notificationsPerMonth": 100000, "channels": ["all"], "teamMembers": 10, "retentionDays": 90, "support": "Priority", "branding": true, "apiCalls": null}),
+            Some(serde_json::json!({"kind": "percent", "value": 20})),
+        ));
+        plans.push(seed_plan(
+            "enterprise",
+            "Enterprise",
+            None,
+            "custom",
+            serde_json::json!({"notificationsPerMonth": null, "channels": ["all"], "teamMembers": null, "retentionDays": null, "support": "Dedicated", "branding": true, "apiCalls": null}),
+            None,
+        ));
+        drop(plans);
+        store
     }
 
-    fn find_approval(&self, id: &str) -> BoxFut<'_, Result<Option<AdminApprovalRequest>, StoreError>> {
-        let approvals = &self.approvals;
-        let id = id.to_string();
-        Box::pin(async move {
-            Ok(approvals
-                .read()
-                .map_err(lock_err)?
-                .iter()
-                .find(|r| r.id == id)
-                .cloned())
-        })
+    /// Grants `user_id` access to `project_id`.
+    pub fn seed_visible(&self, user_id: &str, project_id: &str) {
+        self.visible
+            .write()
+            .unwrap()
+            .push((user_id.to_string(), project_id.to_string()));
+        // Birth recorded at seed time: tests seed before acting, so
+        // events always postdate births as in production.
+        let mut born = self.born.write().unwrap();
+        if !born.iter().any(|(id, _)| id == project_id) {
+            born.push((project_id.to_string(), chrono::Utc::now()));
+        }
     }
 
-    fn list_approvals(
-        &self,
-        status: Option<&str>,
-    ) -> BoxFut<'_, Result<Vec<AdminApprovalRequest>, StoreError>> {
-        let status_owned = status.map(str::to_owned);
-        let approvals = &self.approvals;
-        Box::pin(async move {
-            let mut result: Vec<AdminApprovalRequest> = approvals
-                .read()
-                .map_err(lock_err)?
-                .iter()
-                .filter(|r| {
-                    if let Some(ref s) = status_owned {
-                        r.status.as_str() == s.as_str()
-                    } else {
-                        true
-                    }
-                })
-                .cloned()
-                .collect();
-            result.sort_by(|a, b| {
-                b.created_at
-                    .cmp(&a.created_at)
-                    .then(b.id.cmp(&a.id))
-            });
-            Ok(result)
-        })
+    /// Seeds a project's display name for admin subscriber views.
+    pub fn seed_billing_project(&self, project_id: &str, name: &str) {
+        self.projects
+            .write()
+            .unwrap()
+            .push((project_id.to_string(), name.to_string()));
     }
 
-    fn decide_approval(
+    /// Seeds a customer's identity for admin subscriber views.
+    pub fn seed_billing_user(&self, user_id: &str, name: &str, email: &str) {
+        self.users.write().unwrap().push((
+            user_id.to_string(),
+            name.to_string(),
+            email.to_string(),
+        ));
+    }
+
+    fn is_visible(&self, user_id: &str, project_id: &str) -> bool {
+        self.visible
+            .read()
+            .unwrap()
+            .iter()
+            .any(|(u, p)| u == user_id && p == project_id)
+    }
+
+    fn ordered(plans: Vec<PlanRecord>) -> Vec<PlanRecord> {
+        let mut out = plans;
+        out.sort_by(|a, b| match (a.price_cents, b.price_cents) {
+            (None, None) => std::cmp::Ordering::Equal,
+            (None, _) => std::cmp::Ordering::Greater,
+            (_, None) => std::cmp::Ordering::Less,
+            (Some(x), Some(y)) => x.cmp(&y).then(a.id.cmp(&b.id)),
+        });
+        out
+    }
+}
+
+impl BillingStore for FakeBillingStore {
+    fn project_visible(
         &self,
-        id: &str,
-        approved: bool,
-        decided_by: AdminUserId,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
     ) -> BoxFut<'_, Result<bool, StoreError>> {
-        let approvals = &self.approvals;
-        let id = id.to_string();
+        let visible = self.is_visible(&actor.to_string(), project_id);
+        Box::pin(async move { Ok(visible) })
+    }
+
+    fn list_active_plans(&self) -> BoxFut<'_, Result<Vec<PlanRecord>, StoreError>> {
+        let plans: Vec<PlanRecord> = self
+            .plans
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|p| p.is_active)
+            .cloned()
+            .collect();
+        Box::pin(async move { Ok(Self::ordered(plans)) })
+    }
+
+    fn get_plan(&self, plan_id: &str) -> BoxFut<'_, Result<Option<PlanRecord>, StoreError>> {
+        let plan_id = plan_id.to_string();
+        let found = self
+            .plans
+            .read()
+            .unwrap()
+            .iter()
+            .find(|p| p.id == plan_id)
+            .cloned();
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn get_subscription(
+        &self,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Option<SubscriptionRecord>, StoreError>> {
+        let project_id = project_id.to_string();
+        let found = self
+            .subs
+            .read()
+            .unwrap()
+            .iter()
+            .find(|s| s.project_id == project_id)
+            .cloned();
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn ensure_free_subscription(
+        &self,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<SubscriptionRecord, StoreError>> {
+        let project_id = project_id.to_string();
+        let subs = &self.subs;
         Box::pin(async move {
-            let mut approvals = approvals.write().map_err(lock_err)?;
-            if let Some(r) = approvals
-                .iter_mut()
-                .find(|r| r.id == id && r.status == ApprovalStatus::Pending)
-            {
-                r.status = if approved {
-                    ApprovalStatus::Approved
-                } else {
-                    ApprovalStatus::Rejected
-                };
-                r.decided_by = Some(decided_by);
-                r.decided_at = Some(Utc::now());
-                return Ok(true);
+            let mut list = subs.write().map_err(lock_err)?;
+            if let Some(existing) = list.iter().find(|s| s.project_id == project_id) {
+                return Ok(existing.clone());
             }
-            Ok(false)
+            let now = chrono::Utc::now();
+            let record = SubscriptionRecord {
+                id: Ulid::new().to_string(),
+                project_id: project_id.clone(),
+                plan_id: "free".to_string(),
+                status: SubscriptionStatus::Active,
+                billing_cycle: BillingCycle::Monthly,
+                cancel_at_period_end: false,
+                period_start: now,
+                period_end: now + chrono::Duration::days(30),
+                created_at: now,
+                updated_at: now,
+            };
+            list.push(record.clone());
+            Ok(record)
+        })
+    }
+
+    fn set_subscription(
+        &self,
+        project_id: &str,
+        plan_id: &str,
+        status: SubscriptionStatus,
+        billing_cycle: BillingCycle,
+        period_start: chrono::DateTime<chrono::Utc>,
+        period_end: chrono::DateTime<chrono::Utc>,
+    ) -> BoxFut<'_, Result<SubscriptionRecord, StoreError>> {
+        let project_id = project_id.to_string();
+        let plan_id = plan_id.to_string();
+        let subs = &self.subs;
+        Box::pin(async move {
+            let mut list = subs.write().map_err(lock_err)?;
+            if let Some(existing) = list.iter_mut().find(|s| s.project_id == project_id) {
+                existing.plan_id = plan_id;
+                existing.status = status;
+                existing.billing_cycle = billing_cycle;
+                existing.cancel_at_period_end = false;
+                existing.period_start = period_start;
+                existing.period_end = period_end;
+                existing.updated_at = chrono::Utc::now();
+                return Ok(existing.clone());
+            }
+            let now = chrono::Utc::now();
+            let record = SubscriptionRecord {
+                id: Ulid::new().to_string(),
+                project_id,
+                plan_id,
+                status,
+                billing_cycle,
+                cancel_at_period_end: false,
+                period_start,
+                period_end,
+                created_at: now,
+                updated_at: now,
+            };
+            list.push(record.clone());
+            Ok(record)
+        })
+    }
+
+    fn set_subscription_status(
+        &self,
+        project_id: &str,
+        status: SubscriptionStatus,
+    ) -> BoxFut<'_, Result<Option<SubscriptionRecord>, StoreError>> {
+        let project_id = project_id.to_string();
+        let subs = &self.subs;
+        Box::pin(async move {
+            let mut list = subs.write().map_err(lock_err)?;
+            Ok(list
+                .iter_mut()
+                .find(|s| s.project_id == project_id)
+                .map(|s| {
+                    s.status = status;
+                    s.updated_at = chrono::Utc::now();
+                    s.clone()
+                }))
+        })
+    }
+
+    fn set_cancel_at_period_end(
+        &self,
+        project_id: &str,
+        cancel: bool,
+    ) -> BoxFut<'_, Result<Option<SubscriptionRecord>, StoreError>> {
+        let project_id = project_id.to_string();
+        let subs = &self.subs;
+        Box::pin(async move {
+            let mut list = subs.write().map_err(lock_err)?;
+            Ok(list
+                .iter_mut()
+                .find(|s| s.project_id == project_id)
+                .map(|s| {
+                    s.cancel_at_period_end = cancel;
+                    s.updated_at = chrono::Utc::now();
+                    s.clone()
+                }))
+        })
+    }
+
+    fn list_all_plans(&self) -> BoxFut<'_, Result<Vec<PlanRecord>, StoreError>> {
+        let plans = self.plans.read().unwrap().clone();
+        Box::pin(async move { Ok(Self::ordered(plans)) })
+    }
+
+    fn list_projects_with_created(
+        &self,
+    ) -> BoxFut<'_, Result<Vec<crate::ports::billing_store::ProjectBirth>, StoreError>> {
+        let born = self.born.read().unwrap().clone();
+        let visible = self.visible.read().unwrap().clone();
+        let projects = self.projects.read().unwrap().clone();
+        Box::pin(async move {
+            let mut ids: Vec<String> = visible.iter().map(|(_, p)| p.clone()).collect();
+            for (id, _) in projects.iter() {
+                if !ids.contains(id) {
+                    ids.push(id.clone());
+                }
+            }
+            // Unknown birth (never seeded) falls back to now; seeded
+            // births predate test actions, as in production.
+            let now = chrono::Utc::now();
+            Ok(ids
+                .into_iter()
+                .map(|id| {
+                    let at = born
+                        .iter()
+                        .find(|(b, _)| *b == id)
+                        .map(|(_, at)| *at)
+                        .unwrap_or(now);
+                    (id, at)
+                })
+                .collect())
+        })
+    }
+
+    fn count_active_subscribers(&self, plan_id: &str) -> BoxFut<'_, Result<i64, StoreError>> {
+        let plan_id = plan_id.to_string();
+        let count = self
+            .subs
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|s| {
+                s.plan_id == plan_id
+                    && matches!(
+                        s.status,
+                        SubscriptionStatus::Active | SubscriptionStatus::PastDue
+                    )
+            })
+            .count() as i64;
+        Box::pin(async move { Ok(count) })
+    }
+
+    fn create_plan(&self, id: &str, input: &NewPlan) -> BoxFut<'_, Result<PlanRecord, StoreError>> {
+        let id = id.to_string();
+        let name = input.name.clone();
+        let price_cents = input.price_cents;
+        let capabilities =
+            serde_json::to_value(&input.capabilities).unwrap_or(serde_json::Value::Null);
+        let yearly_discount = input
+            .yearly_discount
+            .as_ref()
+            .and_then(|d| serde_json::to_value(d).ok());
+        let plans = &self.plans;
+        Box::pin(async move {
+            let mut list = plans.write().map_err(lock_err)?;
+            if list
+                .iter()
+                .any(|p| p.id == id || p.name.to_lowercase() == name.to_lowercase())
+            {
+                return Err(StoreError::Conflict);
+            }
+            let now = chrono::Utc::now();
+            let record = PlanRecord {
+                id,
+                name,
+                price_cents,
+                currency: "USD".to_string(),
+                interval: if price_cents.is_none() {
+                    "custom".to_string()
+                } else {
+                    "month".to_string()
+                },
+                capabilities: Some(capabilities),
+                yearly_discount,
+                is_active: true,
+                created_at: now,
+                updated_at: now,
+            };
+            list.push(record.clone());
+            Ok(record)
+        })
+    }
+
+    fn update_plan(
+        &self,
+        plan_id: &str,
+        input: &UpdatePlan,
+    ) -> BoxFut<'_, Result<Option<PlanRecord>, StoreError>> {
+        let plan_id = plan_id.to_string();
+        let name = input.name.clone();
+        let price_cents = input.price_cents;
+        let capabilities =
+            serde_json::to_value(&input.capabilities).unwrap_or(serde_json::Value::Null);
+        let yearly_discount = input
+            .yearly_discount
+            .as_ref()
+            .and_then(|d| serde_json::to_value(d).ok());
+        let is_active = input.is_active;
+        let plans = &self.plans;
+        Box::pin(async move {
+            let mut list = plans.write().map_err(lock_err)?;
+            if list
+                .iter()
+                .any(|p| p.id != plan_id && p.name.to_lowercase() == name.to_lowercase())
+            {
+                return Err(StoreError::Conflict);
+            }
+            Ok(list.iter_mut().find(|p| p.id == plan_id).map(|p| {
+                p.name = name.clone();
+                p.price_cents = price_cents;
+                p.interval = if price_cents.is_none() {
+                    "custom".to_string()
+                } else {
+                    "month".to_string()
+                };
+                p.capabilities = Some(capabilities.clone());
+                p.yearly_discount = yearly_discount.clone();
+                p.is_active = is_active;
+                p.updated_at = chrono::Utc::now();
+                p.clone()
+            }))
+        })
+    }
+
+    fn delete_plan(&self, plan_id: &str) -> BoxFut<'_, Result<bool, StoreError>> {
+        let plan_id = plan_id.to_string();
+        let plans = &self.plans;
+        Box::pin(async move {
+            let mut list = plans.write().map_err(lock_err)?;
+            let before = list.len();
+            list.retain(|p| p.id != plan_id);
+            Ok(list.len() != before)
+        })
+    }
+
+    fn list_subscribers(
+        &self,
+        plan_id: &str,
+    ) -> BoxFut<'_, Result<Vec<crate::ports::billing_store::SubscriberRecord>, StoreError>> {
+        use crate::domain::billing::entities::SubscriptionStatus;
+        let plan_id = plan_id.to_string();
+        let subs = self.subs.read().unwrap().clone();
+        let projects = self.projects.read().unwrap().clone();
+        let users = self.users.read().unwrap().clone();
+        // Owner lookup mirrors the Postgres join: the first visible actor
+        // recorded for the project stands in for its creator.
+        let visible = self.visible.read().unwrap().clone();
+        Box::pin(async move {
+            let mut out = Vec::new();
+            for s in subs.into_iter().filter(|s| {
+                s.plan_id == plan_id
+                    && matches!(
+                        s.status,
+                        SubscriptionStatus::Active | SubscriptionStatus::PastDue
+                    )
+            }) {
+                let project_name = projects
+                    .iter()
+                    .find(|(id, _)| *id == s.project_id)
+                    .map(|(_, name)| name.clone())
+                    .unwrap_or_else(|| s.project_id.clone());
+                let owner = visible.iter().find(|(_, p)| *p == s.project_id);
+                let (customer_name, customer_email) = owner
+                    .and_then(|(u, _)| {
+                        users
+                            .iter()
+                            .find(|(id, _, _)| id == u)
+                            .map(|(_, n, e)| (Some(n.clone()), Some(e.clone())))
+                    })
+                    .unwrap_or((None, None));
+                out.push(crate::ports::billing_store::SubscriberRecord {
+                    subscription: s,
+                    project_name,
+                    customer_name,
+                    customer_email,
+                });
+            }
+            Ok(out)
         })
     }
 }

@@ -2,6 +2,10 @@
 -- Clean-origin schema for the Notifi server (dev-stage squash of all
 -- migrations into a single file — from production onward migrations
 -- are append-only, see ARCHITECTURE.md §19).
+-- Re-squashed 2026-09-10: folds in admin governance (super-admin +
+-- status; the dropped approval-request flow is omitted entirely),
+-- audit actor attribution, billing catalog + subscriptions, and user
+-- TOTP + project 2FA requirement.
 --
 -- Conventions:
 --   * All ids are ULIDs stored as 26-char strings (see notifi_core::id).
@@ -23,6 +27,8 @@ CREATE TABLE auth_users (
     email_verified_at TIMESTAMPTZ,
     oauth_provider    TEXT, -- 'github' | 'google'; NULL = email/password
     oauth_subject     TEXT, -- provider-side user id
+    totp_secret       TEXT, -- base32 TOTP secret; set once 2FA setup starts
+    totp_enabled      BOOLEAN NOT NULL DEFAULT FALSE,
     status            TEXT        NOT NULL DEFAULT 'active'
                       CHECK (status IN ('active', 'suspended')),
     last_login_at     TIMESTAMPTZ,
@@ -43,6 +49,9 @@ CREATE TABLE admin_users (
     password_hash TEXT        NOT NULL,
     totp_secret   TEXT,
     totp_enabled  BOOLEAN     NOT NULL DEFAULT FALSE,
+    is_super_admin BOOLEAN    NOT NULL DEFAULT FALSE,
+    status        TEXT        NOT NULL DEFAULT 'active'
+                  CHECK (status IN ('pending', 'active', 'suspended')),
     last_login_at TIMESTAMPTZ,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -119,6 +128,7 @@ CREATE TABLE platform_projects (
     created_by  VARCHAR(26) REFERENCES auth_users(id) ON DELETE SET NULL,
     environment TEXT        NOT NULL DEFAULT 'development'
                CHECK (environment IN ('development', 'production')),
+    require_2fa BOOLEAN     NOT NULL DEFAULT FALSE,
     version     INT         NOT NULL DEFAULT 1,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -160,7 +170,8 @@ CREATE TABLE platform_project_members (
     project_id VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
     user_id    VARCHAR(26) NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
     role       TEXT        NOT NULL
-               CHECK (role IN ('owner', 'admin', 'editor', 'viewer')),
+               -- Team roles follow the dashboard union; 'editor' predates it.
+               CHECK (role IN ('owner', 'admin', 'developer', 'viewer', 'billing', 'editor')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at TIMESTAMPTZ,
@@ -215,6 +226,9 @@ CREATE INDEX idx_outbox_pending
 CREATE TABLE audit_logs (
     id           VARCHAR(26) PRIMARY KEY,
     user_id      VARCHAR(26) REFERENCES auth_users(id) ON DELETE SET NULL,
+    actor_type   TEXT        NOT NULL DEFAULT 'user'
+                 CHECK (actor_type IN ('user', 'admin', 'system')),
+    admin_id     VARCHAR(26) NULL REFERENCES admin_users(id) ON DELETE SET NULL,
     actor_name   TEXT,
     event_type   TEXT        NOT NULL,
     message      TEXT        NOT NULL,
@@ -228,6 +242,13 @@ CREATE INDEX idx_audit_logs_user_time
 
 CREATE INDEX idx_audit_logs_time
     ON audit_logs (occurred_at DESC);
+
+CREATE INDEX idx_audit_logs_actor_time
+    ON audit_logs (actor_type, occurred_at DESC);
+
+CREATE INDEX idx_audit_logs_admin_time
+    ON audit_logs (admin_id, occurred_at DESC)
+    WHERE admin_id IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- recipients (brand end-users)
@@ -395,3 +416,60 @@ CREATE TABLE platform_in_app_notifications (
 CREATE INDEX idx_inapp_notifications_user_time ON platform_in_app_notifications(user_id, created_at DESC);
 CREATE INDEX idx_inapp_notifications_unread ON platform_in_app_notifications(user_id) WHERE read_at IS NULL AND deleted_at IS NULL;
 CREATE INDEX idx_inapp_broadcast ON platform_in_app_notifications(broadcast_id);
+
+-- ---------------------------------------------------------------------------
+-- billing: plan catalog + per-project subscriptions
+-- ---------------------------------------------------------------------------
+
+-- Billing is per project, not per account. Subscriptions are created
+-- lazily: the first read for a project without a row inserts the free
+-- plan, so new projects land on free by default.
+CREATE TABLE billing_plans (
+    id          VARCHAR(64) PRIMARY KEY,
+    name        TEXT        NOT NULL UNIQUE,
+    price_cents BIGINT CHECK (price_cents IS NULL OR price_cents >= 0),
+    currency    TEXT        NOT NULL DEFAULT 'USD',
+    interval    TEXT        NOT NULL DEFAULT 'month'
+                CHECK (interval IN ('month', 'year', 'custom')),
+    capabilities JSONB      NOT NULL DEFAULT '{}',
+    -- NULL = monthly only; otherwise {"kind": "percent"|"fixed", "value": N}
+    -- where percent is (0,100) and fixed is cents off the 12-month total.
+    yearly_discount JSONB,
+    is_active   BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE project_subscriptions (
+    id                   VARCHAR(26) PRIMARY KEY,
+    project_id           VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
+    plan_id              VARCHAR(64) NOT NULL REFERENCES billing_plans(id),
+    status               TEXT        NOT NULL DEFAULT 'active'
+                         CHECK (status IN ('active', 'past_due', 'cancelled')),
+    billing_cycle        TEXT        NOT NULL DEFAULT 'monthly'
+                         CHECK (billing_cycle IN ('monthly', 'yearly')),
+    -- Paid plan ends at period end, then reverts to free.
+    cancel_at_period_end BOOLEAN     NOT NULL DEFAULT FALSE,
+    current_period_start TIMESTAMPTZ NOT NULL DEFAULT now(),
+    current_period_end   TIMESTAMPTZ NOT NULL DEFAULT now() + INTERVAL '30 days',
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (project_id)
+);
+
+CREATE INDEX idx_subscriptions_plan ON project_subscriptions(plan_id);
+
+-- Seed catalog mirrors the admin console defaults.
+INSERT INTO billing_plans (id, name, price_cents, currency, interval, capabilities, yearly_discount, is_active) VALUES
+    ('free', 'Free', 0, 'USD', 'month',
+     '{"notificationsPerMonth": 1000, "channels": ["email"], "teamMembers": 1, "retentionDays": 7, "support": "Community", "branding": false, "apiCalls": 10000}',
+     NULL, TRUE),
+    ('starter', 'Starter', 1900, 'USD', 'month',
+     '{"notificationsPerMonth": 10000, "channels": ["email", "sms", "push"], "teamMembers": 3, "retentionDays": 30, "support": "Email", "branding": false, "apiCalls": 100000}',
+     '{"kind": "percent", "value": 10}', TRUE),
+    ('pro', 'Pro', 9900, 'USD', 'month',
+     '{"notificationsPerMonth": 100000, "channels": ["all"], "teamMembers": 10, "retentionDays": 90, "support": "Priority", "branding": true, "apiCalls": null}',
+     '{"kind": "percent", "value": 20}', TRUE),
+    ('enterprise', 'Enterprise', NULL, 'USD', 'custom',
+     '{"notificationsPerMonth": null, "channels": ["all"], "teamMembers": null, "retentionDays": null, "support": "Dedicated", "branding": true, "apiCalls": null}',
+     NULL, TRUE);

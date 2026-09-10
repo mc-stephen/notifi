@@ -6,10 +6,10 @@
 
 use std::sync::Arc;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::audit::AuditService;
+use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::UserId;
 use crate::domain::auth::errors::AuthError;
 use crate::domain::templates::entities::Template;
@@ -57,27 +57,35 @@ impl TemplateService {
             Some(d) if d.len() > MAX_DESCRIPTION => {
                 return Err(AuthError::Validation(
                     "description too long (2000 characters max)".to_string(),
-                ))
+                ));
             }
             other => other.map(str::trim).filter(|s| !s.is_empty()),
         };
         let channel = channel.trim();
         if channel.is_empty() {
-            return Err(AuthError::Validation(
-                "channel is required".to_string(),
-            ));
+            return Err(AuthError::Validation("channel is required".to_string()));
         }
         if !content.is_null() && !content.is_object() {
             return Err(AuthError::Validation(
                 "content must be a JSON object".to_string(),
             ));
         }
-        let content = if content.is_null() { json!({}) } else { content };
+        let content = if content.is_null() {
+            json!({})
+        } else {
+            content
+        };
 
         let record = self
             .store
             .create(
-                actor, project_id, name, description, channel, content, attachments,
+                actor,
+                project_id,
+                name,
+                description,
+                channel,
+                content,
+                attachments,
             )
             .await
             .map_err(map_store_error)?;
@@ -160,22 +168,24 @@ impl TemplateService {
             Some(d) if d.len() > MAX_DESCRIPTION => {
                 return Err(AuthError::Validation(
                     "description too long (2000 characters max)".to_string(),
-                ))
+                ));
             }
             other => other.map(str::trim).filter(|s| !s.is_empty()),
         };
         let channel = channel.trim();
         if channel.is_empty() {
-            return Err(AuthError::Validation(
-                "channel is required".to_string(),
-            ));
+            return Err(AuthError::Validation("channel is required".to_string()));
         }
         if !content.is_null() && !content.is_object() {
             return Err(AuthError::Validation(
                 "content must be a JSON object".to_string(),
             ));
         }
-        let content = if content.is_null() { json!({}) } else { content };
+        let content = if content.is_null() {
+            json!({})
+        } else {
+            content
+        };
 
         // Preserve existing attachments when the caller didn't supply any.
         let attachments = match attachments {
@@ -203,7 +213,13 @@ impl TemplateService {
         let record = self
             .store
             .update(
-                actor, project_id, template_id, name, description, channel, content,
+                actor,
+                project_id,
+                template_id,
+                name,
+                description,
+                channel,
+                content,
                 attachments,
             )
             .await
@@ -264,9 +280,9 @@ impl TemplateService {
 
 fn map_store_error(err: StoreError) -> AuthError {
     match err {
-        StoreError::Conflict => AuthError::Conflict(
-            "A template with this id already exists.".to_string(),
-        ),
+        StoreError::Conflict => {
+            AuthError::Conflict("A template with this id already exists.".to_string())
+        }
         StoreError::Storage(m) => AuthError::Storage(m),
     }
 }

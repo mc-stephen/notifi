@@ -4,9 +4,9 @@
 //! Generic over the parent state: handlers pull their dependencies from
 //! request extensions (`Arc<AuthService>`), so no `AppState` coupling.
 
+use super::handlers;
 use axum::Router;
 use axum::routing::{get, post};
-use super::handlers;
 
 pub fn router<S>() -> Router<S>
 where
@@ -22,6 +22,10 @@ where
         .route("/password/reset", post(handlers::reset_password))
         .route("/verify-email", post(handlers::verify_email))
         .route("/verify-email/resend", post(handlers::resend_verification))
+        .route("/totp/setup", post(handlers::totp_setup))
+        .route("/totp/verify", post(handlers::totp_verify))
+        .route("/totp/disable", post(handlers::totp_disable))
+        .route("/totp/challenge", post(handlers::totp_challenge))
         .route("/oauth/{provider}", get(handlers::oauth_start))
         .route("/oauth/{provider}/callback", get(handlers::oauth_callback))
 }

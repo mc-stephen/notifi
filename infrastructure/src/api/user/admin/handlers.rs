@@ -5,23 +5,23 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Extension, FromRequestParts, Path, Query};
-use axum::http::request::Parts;
 use axum::http::StatusCode;
+use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use serde_json::json;
-use totp_rs::{TOTP, Secret, Rfc6238};
+use totp_rs::{Rfc6238, Secret, TOTP};
 
-use crate::domain::admin::AdminService;
-use crate::domain::admin::entities::{AdminUser, AdminUserId};
-use crate::domain::auth::errors::AuthError;
+use super::super::auth::middleware::{ADMIN_SESSION_COOKIE, Problem};
 use super::dto::{
-    AdminAccountDto, AdminStatusResponse, ApprovalDto, BootstrapRequest, BootstrapResponse,
+    AdminAccountDto, AdminStatusResponse, BootstrapRequest, BootstrapResponse,
     ChangePasswordRequest, CreateAdminRequest, ForgotPasswordRequest, ResetPasswordRequest,
     SetAdminStatusRequest, TotpSetupResponse, VerifyTotpRequest,
 };
-use super::super::auth::middleware::{ADMIN_SESSION_COOKIE, Problem};
+use crate::domain::admin::AdminService;
+use crate::domain::admin::entities::{AdminUser, AdminUserId};
+use crate::domain::auth::errors::AuthError;
 
 type MaybeAdminService = Option<Extension<Arc<AdminService>>>;
 
@@ -110,17 +110,16 @@ fn generate_totp_secret() -> Result<(Vec<u8>, String), AuthError> {
 /// Builds a TOTP instance from a base32 secret string.
 fn build_totp_from_base32(base32: &str) -> Result<TOTP, AuthError> {
     let secret = Secret::Encoded(base32.to_string());
-    let secret_raw = secret.to_raw().map_err(|e| {
-        AuthError::Storage(format!("invalid TOTP secret: {e}"))
-    })?;
-    let rfc = Rfc6238::with_defaults(secret_raw.to_bytes().map_err(|e| {
-        AuthError::Storage(format!("TOTP secret conversion failed: {e}"))
-    })?).map_err(|e| {
-        AuthError::Storage(format!("TOTP config failed: {e}"))
-    })?;
-    TOTP::from_rfc6238(rfc).map_err(|e| {
-        AuthError::Storage(format!("TOTP creation failed: {e}"))
-    })
+    let secret_raw = secret
+        .to_raw()
+        .map_err(|e| AuthError::Storage(format!("invalid TOTP secret: {e}")))?;
+    let rfc = Rfc6238::with_defaults(
+        secret_raw
+            .to_bytes()
+            .map_err(|e| AuthError::Storage(format!("TOTP secret conversion failed: {e}")))?,
+    )
+    .map_err(|e| AuthError::Storage(format!("TOTP config failed: {e}")))?;
+    TOTP::from_rfc6238(rfc).map_err(|e| AuthError::Storage(format!("TOTP creation failed: {e}")))
 }
 
 /// `GET /admin/status` — returns whether any admin user exists.
@@ -247,16 +246,19 @@ pub async fn login(
 
     // TOTP enabled: verify the supplied code.
     if admin.totp_enabled {
-        let totp_secret = admin.totp_secret.as_ref().ok_or_else(|| {
-            AuthError::Validation("TOTP has not been set up yet".to_string())
-        })?;
+        let totp_secret = admin
+            .totp_secret
+            .as_ref()
+            .ok_or_else(|| AuthError::Validation("TOTP has not been set up yet".to_string()))?;
         let totp = build_totp_from_base32(totp_secret)?;
-        let code = request.totp_code.as_deref().ok_or_else(|| {
-            AuthError::Validation("TOTP code required".to_string())
-        })?;
-        if !totp.check_current(code).map_err(|e| {
-            AuthError::Storage(format!("TOTP verification failed: {e}"))
-        })? {
+        let code = request
+            .totp_code
+            .as_deref()
+            .ok_or_else(|| AuthError::Validation("TOTP code required".to_string()))?;
+        if !totp
+            .check_current(code)
+            .map_err(|e| AuthError::Storage(format!("TOTP verification failed: {e}")))?
+        {
             return Err(AuthError::TotpInvalid.into());
         }
     }
@@ -339,16 +341,14 @@ pub async fn totp_verify(
 
     let totp = build_totp_from_base32(totp_secret)?;
 
-    if !totp.check_current(&request.code).map_err(|e| {
-        AuthError::Storage(format!("TOTP verification failed: {e}"))
-    })? {
+    if !totp
+        .check_current(&request.code)
+        .map_err(|e| AuthError::Storage(format!("TOTP verification failed: {e}")))?
+    {
         return Err(AuthError::TotpInvalid.into());
     }
 
-    service
-        .enable_totp(admin.id)
-        .await
-        .map_err(Problem::from)?;
+    service.enable_totp(admin.id).await.map_err(Problem::from)?;
 
     Ok(Json(json!({ "status": "ok" })).into_response())
 }
@@ -456,8 +456,8 @@ pub async fn list_admins(
     .into_response())
 }
 
-/// `POST /admin/admins` — creates another admin. Super-admin creations go
-/// active immediately; everyone else's land pending with an approval request.
+/// `POST /admin/admins` — creates another admin. Super admins only;
+/// going active immediately.
 pub async fn create_admin(
     CurrentAdmin(caller): CurrentAdmin,
     service: MaybeAdminService,
@@ -468,19 +468,17 @@ pub async fn create_admin(
         .invite_admin(&caller, &request.name, &request.email, &request.password)
         .await
         .map_err(Problem::from)?;
-    let pending = admin.status != crate::domain::admin::entities::AdminStatus::Active;
     Ok((
         StatusCode::CREATED,
         Json(json!({
             "admin": AdminAccountDto::from(admin),
-            "pendingApproval": pending,
         })),
     )
         .into_response())
 }
 
-/// `POST /admin/admins/:id/remove` — requests (or, for the super admin,
-/// immediately applies) the removal of another admin.
+/// `POST /admin/admins/:id/remove` — removes another admin.
+/// Super admins only; applies immediately.
 pub async fn remove_admin(
     CurrentAdmin(caller): CurrentAdmin,
     service: MaybeAdminService,
@@ -488,11 +486,11 @@ pub async fn remove_admin(
 ) -> Result<Response, Problem> {
     let service = require_admin_service(service)?;
     let target = parse_admin_id(&admin_id)?;
-    let applied = service
+    service
         .request_removal(&caller, target)
         .await
         .map_err(Problem::from)?;
-    Ok(Json(json!({ "status": "ok", "applied": applied })).into_response())
+    Ok(Json(json!({ "status": "ok" })).into_response())
 }
 
 /// `PATCH /admin/admins/:id/status` — suspend or restore another admin.
@@ -511,7 +509,7 @@ pub async fn set_admin_status(
             return Err(AuthError::Validation(
                 "invalid status (expected active or suspended)".to_string(),
             )
-            .into())
+            .into());
         }
     };
     service
@@ -521,58 +519,10 @@ pub async fn set_admin_status(
     Ok(Json(json!({ "status": "ok" })).into_response())
 }
 
-/// `GET /admin/approvals` — lists approval requests (super admin only).
-pub async fn list_approvals(
-    CurrentAdmin(caller): CurrentAdmin,
-    service: MaybeAdminService,
-    Query(query): Query<HashMap<String, String>>,
-) -> Result<Response, Problem> {
-    let service = require_admin_service(service)?;
-    let views = service
-        .list_approval_views(&caller, query.get("status").map(String::as_str))
-        .await
-        .map_err(Problem::from)?;
-    let dtos: Vec<ApprovalDto> = views.into_iter().map(ApprovalDto::from).collect();
-    Ok(Json(json!({ "approvals": dtos })).into_response())
-}
-
-/// `POST /admin/approvals/:id/approve` — approves a request (super only).
-pub async fn approve_request(
-    CurrentAdmin(caller): CurrentAdmin,
-    service: MaybeAdminService,
-    Path(request_id): Path<String>,
-) -> Result<Response, Problem> {
-    decide_request(caller, service, &request_id, true).await
-}
-
-/// `POST /admin/approvals/:id/reject` — rejects a request (super only).
-pub async fn reject_request(
-    CurrentAdmin(caller): CurrentAdmin,
-    service: MaybeAdminService,
-    Path(request_id): Path<String>,
-) -> Result<Response, Problem> {
-    decide_request(caller, service, &request_id, false).await
-}
-
-async fn decide_request(
-    caller: Arc<AdminUser>,
-    service: MaybeAdminService,
-    request_id: &str,
-    approve: bool,
-) -> Result<Response, Problem> {
-    let service = require_admin_service(service)?;
-    service
-        .decide_approval(&caller, request_id, approve)
-        .await
-        .map_err(Problem::from)?;
-    Ok(Json(json!({ "status": "ok" })).into_response())
-}
-
 fn parse_admin_id(raw: &str) -> Result<AdminUserId, Problem> {
     use std::str::FromStr;
-    AdminUserId::from_str(raw).map_err(|_| {
-        AuthError::Validation("invalid admin id".to_string()).into()
-    })
+    AdminUserId::from_str(raw)
+        .map_err(|_| AuthError::Validation("invalid admin id".to_string()).into())
 }
 
 /// Login request body.

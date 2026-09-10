@@ -1,8 +1,8 @@
+pub mod discord;
+pub mod ms_teams;
 pub mod slack;
 pub mod telegram;
 pub mod whatsapp_business;
-pub mod discord;
-pub mod ms_teams;
 
 /// All supported chat providers. THIS IS THE SOURCE OF TRUTH.
 #[derive(Debug, Clone)]

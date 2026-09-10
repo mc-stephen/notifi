@@ -1,6 +1,6 @@
 //! Unified auth error model mapped to RFC 9457 problem documents.
 //!
-//! Messages match the dashboard contract (`app/dashboard/app/auth/
+//! Messages match the dashboard contract (`app/user-dashboard/app/auth/
 //! API_CONTRACT.md`); the verify-email page branches on detail containing
 //! the word "expired", so that wording is load-bearing.
 
@@ -28,6 +28,8 @@ pub enum AuthError {
     NotFound(String),
     /// A unique constraint was violated (e.g. duplicate brand user_id).
     Conflict(String),
+    /// The plan is retired: no new purchases or renewals onto it.
+    PlanRetired(String),
     /// Auth routes are mounted but the service is unavailable (no database).
     NotConfigured,
     /// Endpoint exists but its real implementation hasn't landed yet.
@@ -53,6 +55,7 @@ impl std::fmt::Display for AuthError {
             Self::Forbidden(m) => write!(f, "forbidden: {m}"),
             Self::NotFound(m) => write!(f, "not found: {m}"),
             Self::Conflict(m) => write!(f, "conflict: {m}"),
+            Self::PlanRetired(m) => write!(f, "plan retired: {m}"),
             Self::NotConfigured => write!(f, "auth service not configured"),
             Self::NotImplemented(m) => write!(f, "not implemented: {m}"),
             Self::Storage(m) => write!(f, "storage failure: {m}"),
@@ -94,15 +97,22 @@ impl IntoApiError for AuthError {
                 "Unauthorized",
                 "Authentication required.",
             ),
-            Self::Forbidden(detail) => ApiError::new(403, "about:blank", "Forbidden", detail.clone()),
+            Self::Forbidden(detail) => {
+                ApiError::new(403, "about:blank", "Forbidden", detail.clone())
+            }
             Self::NotConfigured => ApiError::new(
                 503,
                 "about:blank",
                 "Service Unavailable",
                 "auth is unavailable because the database is not configured.",
             ),
-            Self::NotFound(detail) => ApiError::new(404, "about:blank", "Not Found", detail.clone()),
+            Self::NotFound(detail) => {
+                ApiError::new(404, "about:blank", "Not Found", detail.clone())
+            }
             Self::Conflict(detail) => ApiError::new(409, "about:blank", "Conflict", detail.clone()),
+            Self::PlanRetired(detail) => {
+                ApiError::new(422, "about:blank", "Unprocessable Entity", detail.clone())
+            }
             Self::NotImplemented(detail) => {
                 ApiError::new(501, "about:blank", "Not Implemented", detail.clone())
             }
