@@ -1,8 +1,8 @@
 "use client";
 
 import * as z from "zod";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Mail, User } from "lucide-react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch, Controller } from "react-hook-form";
@@ -47,9 +47,29 @@ const signupSchema = z.object({
 type SignupFormValues = z.infer<typeof signupSchema>;
 
 export default function SignupPage() {
+  // useSearchParams requires a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={null}>
+      <SignupForm />
+    </Suspense>
+  );
+}
+
+function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { signup, loginWithOAuth, isLoading } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
+
+  // Deep link back (e.g. /invite/:token): after signup the session is
+  // fresh, so the invite page can be visited directly — no onboarding
+  // gate blocks it.
+  const resolveDestination = (fallback: string) => {
+    const next = searchParams.get("next");
+    return next && next.startsWith("/") && !next.startsWith("//")
+      ? next
+      : fallback;
+  };
 
   const {
     register,
@@ -87,7 +107,7 @@ export default function SignupPage() {
       return;
     }
 
-    router.push("/onboarding/welcome");
+    router.push(resolveDestination("/onboarding/welcome"));
   };
 
   const handleGitHub = async () => {
@@ -99,7 +119,7 @@ export default function SignupPage() {
       setServerError(result.error);
       return;
     }
-    router.push(postAuthDestination());
+    router.push(resolveDestination(postAuthDestination()));
   };
 
   const handleGoogle = async () => {
@@ -111,7 +131,7 @@ export default function SignupPage() {
       setServerError(result.error);
       return;
     }
-    router.push(postAuthDestination());
+    router.push(resolveDestination(postAuthDestination()));
   };
 
   return (

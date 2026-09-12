@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::projects::{Project, ProjectMember};
+use crate::domain::projects::{Project, ProjectInvite, ProjectMember};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,6 +44,30 @@ impl From<ProjectMember> for ProjectMemberDto {
             role: member.role,
             has_2fa: member.has_2fa,
             last_active_at: member.last_active_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInviteDto {
+    pub id: String,
+    pub project_id: String,
+    pub project_name: String,
+    pub email: String,
+    pub role: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+impl From<ProjectInvite> for ProjectInviteDto {
+    fn from(invite: ProjectInvite) -> Self {
+        Self {
+            id: invite.id,
+            project_id: invite.project_id,
+            project_name: invite.project_name,
+            email: invite.email,
+            role: invite.role,
+            expires_at: invite.expires_at,
         }
     }
 }

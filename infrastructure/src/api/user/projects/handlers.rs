@@ -13,8 +13,8 @@ use axum::http::StatusCode;
 
 use super::super::auth::{CurrentUser, Problem};
 use super::dto::{
-    AddMemberRequest, CreateProjectRequest, ProjectDto, ProjectMemberDto, SetRequire2faRequest,
-    UpdateEnvironmentRequest,
+    AddMemberRequest, CreateProjectRequest, ProjectDto, ProjectInviteDto, ProjectMemberDto,
+    SetRequire2faRequest, UpdateEnvironmentRequest,
 };
 use crate::domain::auth::errors::AuthError;
 use crate::domain::projects::{ProjectMembersService, ProjectService};
@@ -101,13 +101,15 @@ pub async fn add_member(
     Json(body): Json<AddMemberRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let service = require_members_service(service)?;
-    let member = service
-        .add_member(user.id, &project_id, &body.email, &body.role)
+    let (invite, invite_token) = service
+        .invite_member(user.id, &project_id, &body.email, &body.role)
         .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(serde_json::json!({ "member": ProjectMemberDto::from(member) })),
-    ))
+    let mut payload = serde_json::json!({ "invite": ProjectInviteDto::from(invite) });
+    // Dev only: raw token so the invite link is clickable without email.
+    if let Some(token) = invite_token {
+        payload["inviteToken"] = serde_json::json!(token);
+    }
+    Ok((StatusCode::CREATED, Json(payload)))
 }
 
 /// `GET /app/projects/{id}/members` — team roster with 2FA standing.

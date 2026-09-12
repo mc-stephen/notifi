@@ -38,3 +38,14 @@ pub struct ProjectMember {
     pub has_2fa: bool,
     pub last_active_at: Option<DateTime<Utc>>,
 }
+
+/// A pending team invite (returned without the token, except in dev).
+#[derive(Debug, Clone)]
+pub struct ProjectInvite {
+    pub id: String,
+    pub project_id: String,
+    pub project_name: String,
+    pub email: String,
+    pub role: String,
+    pub expires_at: DateTime<Utc>,
+}

@@ -202,9 +202,21 @@ Called by the topbar environment segmented control; the UI shows a spinner while
 
 Owner or admin only. Request: `{ "enabled": true }`. Response `200 { "require2fa": true }`. Errors: `403` non-manager, `404` invisible project. Wired to the team page toggle; server failures surface inline.
 
-#### `POST /app/projects/:id/members` — add an existing account to the team
+#### `POST /app/projects/:id/members` — invite an existing account (GitHub-style)
 
-Owner or admin only (granting `owner` additionally requires being the creator). Request: `{ "email": "string", "role": "owner|admin|developer|viewer|billing" }`. Response `201 { "member": { "userId", "name", "email", "role" } }`. When the project requires 2FA and the invited account lacks it → `403` "…must enable two-factor authentication…". Errors: `400` bad role/email, `404` unknown account or project, `409` already a member, `403` suspended target or insufficient caller role. Wired to the team page invite dialog; member *list* stays mock (follow-up).
+Owner or admin only (granting `owner` additionally requires being the creator). Request: `{ "email": "string", "role": "owner|admin|developer|viewer|billing" }`. Creates a **pending invite** (7-day expiry, supersedes prior pending ones for the pair) and emails an accept link — no membership yet. Response `201 { "invite": { "id", "projectId", "projectName", "email", "role", "expiresAt" }[, "inviteToken": "dev mode"] }`. Errors: `400` bad role/email, `404` unknown account or project, `409` already on the team, `403` suspended target or insufficient caller role. The 2FA gate is deliberately NOT checked here (invitees may enable 2FA before accepting). Wired to the team page invite dialog.
+
+#### `GET /app/invites/:token` — preview a pending invite
+
+Requires session; email-matched (others get `404`). Response `200 { "invite": {...} }`. Wired to the `/invite/[token]` accept page.
+
+#### `POST /app/invites/:token/accept` — join the project
+
+Requires session as the invited address. Enforces the project 2FA gate (`403` without TOTP), expiry (`410`), and single-use (re-accept resolves idempotently to the membership). Response `200 { "member": {...} }` with live `has2fa`. Unknown/declined tokens → `404`.
+
+#### `POST /app/invites/:token/decline` — decline quietly
+
+Always `200 {status:"ok"}` on unknown tokens (no enumeration).
 
 ### 6. Forgot password — `POST /app/auth/password/forgot`
 

@@ -4,6 +4,7 @@
 //! crates (the `api` binary's HTTP tests) build fully functional auth
 //! and project services without a database.
 
+use std::collections::HashMap;
 use std::sync::RwLock;
 
 use chrono::{DateTime, Utc};
@@ -40,6 +41,8 @@ pub struct FakeAuthStore {
     projects: RwLock<Vec<(String, ProjectSummary)>>,
     /// Project memberships: (project_id, user_id, role).
     members: RwLock<Vec<(String, String, String)>>,
+    /// Team invites: InviteRecord by id.
+    invites: RwLock<Vec<crate::ports::projects_store::InviteRecord>>,
 }
 
 impl FakeAuthStore {
@@ -84,6 +87,32 @@ impl FakeAuthStore {
             user_id.to_string(),
             role.to_string(),
         ));
+    }
+
+    /// Seeds a pending invite directly (expiry control for tests).
+    pub fn seed_invite(
+        &self,
+        project_id: &str,
+        email: &str,
+        role: &str,
+        token_hash: &str,
+        expires_at: chrono::DateTime<chrono::Utc>,
+    ) -> String {
+        use crate::ports::projects_store::InviteRecord;
+        let id = notifi_core::Ulid::new().to_string();
+        self.invites.write().unwrap().push(InviteRecord {
+            id: id.clone(),
+            project_id: project_id.to_string(),
+            project_name: project_id.to_string(),
+            email: email.to_string(),
+            role: role.to_string(),
+            token_hash: token_hash.to_string(),
+            status: "pending".to_string(),
+            expires_at,
+            created_by: None,
+            created_at: chrono::Utc::now(),
+        });
+        id
     }
 }
 
@@ -595,6 +624,21 @@ impl ProjectsStore for FakeAuthStore {
         })
     }
 
+    fn project_require_2fa(
+        &self,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Option<bool>, StoreError>> {
+        let project_id = project_id.to_string();
+        let found = self
+            .projects
+            .read()
+            .unwrap()
+            .iter()
+            .find(|(_, p)| p.id == project_id)
+            .map(|(_, p)| p.require_2fa);
+        Box::pin(async move { Ok(found) })
+    }
+
     fn insert_member(
         &self,
         project_id: &str,
@@ -615,6 +659,109 @@ impl ProjectsStore for FakeAuthStore {
             }
             members.push((project_id, member_id, role));
             Ok(true)
+        })
+    }
+
+    fn create_invite(
+        &self,
+        project_id: &str,
+        email: &str,
+        role: &str,
+        token_hash: &str,
+        expires_at: chrono::DateTime<chrono::Utc>,
+        created_by: UserId,
+    ) -> BoxFut<'_, Result<String, StoreError>> {
+        use crate::ports::projects_store::InviteRecord;
+        let project_id = project_id.to_string();
+        let email = email.to_string();
+        let role = role.to_string();
+        let token_hash = token_hash.to_string();
+        let created_by = created_by.to_string();
+        let invites = &self.invites;
+        let projects = self.projects.read().unwrap().clone();
+        Box::pin(async move {
+            let mut invites = invites.write().map_err(lock_err)?;
+            // Fresh invite supersedes prior pending ones for the pair.
+            for invite in invites
+                .iter_mut()
+                .filter(|i| i.project_id == project_id && i.email == email && i.status == "pending")
+            {
+                invite.status = "declined".to_string();
+            }
+            let project_name = projects
+                .iter()
+                .find(|(_, p)| p.id == project_id)
+                .map(|(_, p)| p.name.clone())
+                .unwrap_or_else(|| project_id.clone());
+            let now = chrono::Utc::now();
+            let id = notifi_core::Ulid::new().to_string();
+            invites.push(InviteRecord {
+                id: id.clone(),
+                project_id,
+                project_name,
+                email,
+                role,
+                token_hash,
+                status: "pending".to_string(),
+                expires_at,
+                created_by: Some(created_by),
+                created_at: now,
+            });
+            Ok(id)
+        })
+    }
+
+    fn find_pending_invite(
+        &self,
+        token_hash: &str,
+    ) -> BoxFut<'_, Result<Option<crate::ports::projects_store::InviteRecord>, StoreError>> {
+        let token_hash = token_hash.to_string();
+        let found = self
+            .invites
+            .read()
+            .unwrap()
+            .iter()
+            .find(|i| i.token_hash == token_hash && i.status == "pending")
+            .cloned();
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn find_invite_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> BoxFut<'_, Result<Option<crate::ports::projects_store::InviteRecord>, StoreError>> {
+        let token_hash = token_hash.to_string();
+        let found = self
+            .invites
+            .read()
+            .unwrap()
+            .iter()
+            .find(|i| i.token_hash == token_hash)
+            .cloned();
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn decide_invite(
+        &self,
+        invite_id: &str,
+        accepted: bool,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let invite_id = invite_id.to_string();
+        let invites = &self.invites;
+        Box::pin(async move {
+            let mut invites = invites.write().map_err(lock_err)?;
+            Ok(invites
+                .iter_mut()
+                .find(|i| i.id == invite_id && i.status == "pending")
+                .map(|i| {
+                    i.status = if accepted {
+                        "accepted".to_string()
+                    } else {
+                        "declined".to_string()
+                    };
+                    true
+                })
+                .unwrap_or(false))
         })
     }
 
@@ -3019,5 +3166,104 @@ impl BillingStore for FakeBillingStore {
             }
             Ok(out)
         })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FakeMailer + FakeTemplates — in-memory system mail for tests.
+// ---------------------------------------------------------------------------
+
+use crate::ports::mailer::{
+    BoxFut as MailBoxFut, MailError, RenderedTemplate, SmtpMailer, SystemSender, SystemTemplates,
+};
+
+/// A queued system email, for assertions.
+#[derive(Debug, Clone)]
+pub struct SentMail {
+    pub from: SystemSender,
+    pub to: String,
+    pub subject: String,
+    pub text: String,
+    pub html: Option<String>,
+}
+
+/// In-memory [`SmtpMailer`] that records sends instead of delivering.
+#[derive(Default)]
+pub struct FakeMailer {
+    sent: RwLock<Vec<SentMail>>,
+}
+
+impl FakeMailer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Everything queued so far, oldest first.
+    pub fn sent(&self) -> Vec<SentMail> {
+        self.sent.read().unwrap().clone()
+    }
+}
+
+impl SmtpMailer for FakeMailer {
+    fn send(
+        &self,
+        from: SystemSender,
+        to: &str,
+        subject: &str,
+        text: &str,
+        html: Option<&str>,
+    ) -> MailBoxFut<'_, Result<String, MailError>> {
+        let to = to.to_string();
+        let subject = subject.to_string();
+        let text = text.to_string();
+        let html = html.map(str::to_string);
+        let sent = &self.sent;
+        Box::pin(async move {
+            sent.write()
+                .map_err(|_| MailError::Transport("lock poisoned".to_string()))?
+                .push(SentMail {
+                    from,
+                    to,
+                    subject,
+                    text,
+                    html,
+                });
+            Ok("fake-message-id".to_string())
+        })
+    }
+}
+
+/// In-memory [`SystemTemplates`] with canned renders per name.
+#[derive(Default)]
+pub struct FakeTemplates {
+    renders: RwLock<HashMap<String, RenderedTemplate>>,
+}
+
+impl FakeTemplates {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Seeds the render returned for `name`.
+    pub fn seed(&self, name: &str, subject: &str, html: &str, text: &str) {
+        self.renders.write().unwrap().insert(
+            name.to_string(),
+            RenderedTemplate {
+                subject: subject.to_string(),
+                html: html.to_string(),
+                text: text.to_string(),
+            },
+        );
+    }
+}
+
+impl SystemTemplates for FakeTemplates {
+    fn render(&self, name: &str, _vars: &[(&str, &str)]) -> Result<RenderedTemplate, MailError> {
+        self.renders
+            .read()
+            .unwrap()
+            .get(name)
+            .cloned()
+            .ok_or_else(|| MailError::Template(format!("unknown template: {name}")))
     }
 }

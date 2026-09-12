@@ -7,7 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DataTable } from "@/components/custom/data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 import {
   Dialog,
   DialogContent,
@@ -40,16 +41,108 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useProjectStore } from "@/store/project-store";
 import { useTeamMembers } from "@/hooks/use-team";
+import type { TeamMemberRecord } from "@/hooks/use-team";
 import { api } from "@/lib/api";
 import type { Role } from "@/lib/types";
 
-const ROLE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+const ROLE_ICONS: Record<
+  string,
+  React.ComponentType<{ className?: string }>
+> = {
   owner: Crown,
   admin: Shield,
   developer: Code2,
   viewer: Eye,
   billing: CreditCard,
 };
+
+function MemberRowActions({ member }: { member: TeamMemberRecord }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
+        <MoreHorizontal className="size-3.5" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          onClick={() => {
+            window.location.href = `mailto:${member.email}`;
+          }}
+        >
+          <Mail className="size-3.5" /> Send email
+        </DropdownMenuItem>
+        <DropdownMenuItem>
+          <UserCog className="size-3.5" /> Change role
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-destructive">
+          <Trash2 className="size-3.5" /> Remove
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const MEMBER_COLUMNS: ColumnDef<TeamMemberRecord, unknown>[] = [
+  {
+    accessorKey: "name",
+    header: "Member",
+    cell: ({ row }) => {
+      const member = row.original;
+      return (
+        <div className="flex items-center gap-3">
+          <div className="flex size-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
+            {member.name
+              .split(" ")
+              .map((n) => n[0])
+              .join("")}
+          </div>
+          <div>
+            <div className="text-sm font-medium">{member.name}</div>
+            <div className="text-xs text-muted-foreground">{member.email}</div>
+          </div>
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "role",
+    header: "Role",
+    cell: ({ row }) => (
+      <RoleBadge
+        role={
+          (row.original.role in ROLE_ICONS
+            ? row.original.role
+            : "viewer") as Role
+        }
+      />
+    ),
+  },
+  {
+    accessorKey: "has2fa",
+    header: "2FA",
+    cell: ({ row }) =>
+      row.original.has2fa ? (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
+          <ShieldCheck className="size-3.5" /> 2FA
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <ShieldOff className="size-3.5" /> —
+        </span>
+      ),
+  },
+  {
+    accessorKey: "lastActiveAt",
+    header: "Last Active",
+    cell: ({ row }) => (
+      <span className="text-xs text-muted-foreground">
+        {row.original.lastActiveAt
+          ? format(new Date(row.original.lastActiveAt), "MMM d, HH:mm")
+          : "—"}
+      </span>
+    ),
+  },
+];
 
 export default function TeamPage() {
   const { members, loading, error, refresh } = useTeamMembers();
@@ -71,14 +164,21 @@ export default function TeamPage() {
     setFlagError(null);
     setToggling2fa(true);
     try {
-      const res = await api<{ require2fa: boolean }>(`/app/projects/${project.id}/require-2fa`, {
-        method: "PATCH",
-        body: JSON.stringify({ enabled: next }),
-      });
+      const res = await api<{ require2fa: boolean }>(
+        `/app/projects/${project.id}/require-2fa`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: next }),
+        },
+      );
       setRequire2fa(res.require2fa);
       updateProject({ ...project, require2fa: res.require2fa });
     } catch (e) {
-      setFlagError(e instanceof Error ? e.message : "Could not update the 2FA requirement.");
+      setFlagError(
+        e instanceof Error
+          ? e.message
+          : "Could not update the 2FA requirement.",
+      );
     } finally {
       setToggling2fa(false);
     }
@@ -98,7 +198,9 @@ export default function TeamPage() {
       setInviteRole("developer");
       refresh();
     } catch (e) {
-      setInviteError(e instanceof Error ? e.message : "Could not invite this member.");
+      setInviteError(
+        e instanceof Error ? e.message : "Could not invite this member.",
+      );
     } finally {
       setInviting(false);
     }
@@ -111,7 +213,11 @@ export default function TeamPage() {
         description={`${members.length} team members`}
         breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Team" }]}
         actions={
-          <Button size="sm" className="gap-1.5" onClick={() => setInviteDialog(true)}>
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setInviteDialog(true)}
+          >
             <Plus className="size-3.5" /> Invite member
           </Button>
         }
@@ -142,12 +248,18 @@ export default function TeamPage() {
           <div className="flex items-center gap-3">
             <ShieldCheck className="size-4 text-muted-foreground" />
             <div>
-              <div className="text-sm font-medium">Require two-factor authentication</div>
-              <div className="text-xs text-muted-foreground">
-                New members must have 2FA enabled on their account before joining
-                {project ? ` ${project.name}` : " this project"}. Owners and admins only.
+              <div className="text-sm font-medium">
+                Require two-factor authentication
               </div>
-              {flagError && <div className="text-xs text-destructive mt-1">{flagError}</div>}
+              <div className="text-xs text-muted-foreground">
+                New members must have 2FA enabled on their account before
+                joining
+                {project ? ` ${project.name}` : " this project"}. Owners and
+                admins only.
+              </div>
+              {flagError && (
+                <div className="text-xs text-destructive mt-1">{flagError}</div>
+              )}
             </div>
           </div>
           <Switch
@@ -159,9 +271,9 @@ export default function TeamPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-0">
-          {loading ? (
+      {loading ? (
+        <Card>
+          <CardContent>
             <div className="space-y-3 p-4" aria-label="Loading team">
               {[0, 1, 2].map((i) => (
                 <div key={i} className="flex items-center gap-3 animate-pulse">
@@ -173,7 +285,11 @@ export default function TeamPage() {
                 </div>
               ))}
             </div>
-          ) : error ? (
+          </CardContent>
+        </Card>
+      ) : error ? (
+        <Card>
+          <CardContent>
             <div className="space-y-3 p-6 text-center">
               <p className="text-sm font-medium">Couldn&apos;t load the team</p>
               <p className="text-sm text-muted-foreground">{error}</p>
@@ -181,89 +297,20 @@ export default function TeamPage() {
                 Try again
               </Button>
             </div>
-          ) : members.length === 0 ? (
-            <div className="p-6 text-center">
-              <p className="text-sm font-medium">No members yet</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Invite your first team member to get started.
-              </p>
-            </div>
-          ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Member</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>2FA</TableHead>
-                <TableHead>Last Active</TableHead>
-                <TableHead className="w-[60px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {members.map((member) => {
-                return (
-                  <TableRow key={member.userId}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex size-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                          {member.name.split(" ").map((n) => n[0]).join("")}
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium">{member.name}</div>
-                          <div className="text-xs text-muted-foreground">{member.email}</div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <RoleBadge role={(member.role in ROLE_ICONS ? member.role : "viewer") as Role} />
-                    </TableCell>
-                    <TableCell>
-                      {member.has2fa ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
-                          <ShieldCheck className="size-3.5" /> 2FA
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          <ShieldOff className="size-3.5" /> —
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-xs text-muted-foreground">
-                        {member.lastActiveAt
-                          ? format(new Date(member.lastActiveAt), "MMM d, HH:mm")
-                          : "—"}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {/* Row actions (email / role change / remove) are still
-                          mock — follow-up slice. */}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
-                          <MoreHorizontal className="size-3.5" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <Mail className="size-3.5" /> Send email
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <UserCog className="size-3.5" /> Change role
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive">
-                            <Trash2 className="size-3.5" /> Remove
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : (
+        <DataTable
+          columns={MEMBER_COLUMNS}
+          data={members}
+          tableClassName="bg-card"
+          searchKey="name"
+          searchPlaceholder="Search members..."
+          pageSize={10}
+          emptyMessage="No members yet — invite your first team member to get started."
+          rowActions={(member) => <MemberRowActions member={member} />}
+        />
+      )}
 
       <Dialog
         open={inviteDialog}
@@ -279,7 +326,9 @@ export default function TeamPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Invite team member</DialogTitle>
-            <DialogDescription>Send an invitation to join your organization.</DialogDescription>
+            <DialogDescription>
+              They&apos;ll get an email to accept within 7 days — nothing joins until they do.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -306,13 +355,18 @@ export default function TeamPage() {
             </div>
             {require2faOn && (
               <p className="text-xs text-muted-foreground">
-                This project requires 2FA — the invited account must have it enabled first.
+                This project requires 2FA — the invited account must have it
+                enabled first.
               </p>
             )}
-            {inviteError && <p className="text-xs text-destructive">{inviteError}</p>}
+            {inviteError && (
+              <p className="text-xs text-destructive">{inviteError}</p>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setInviteDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setInviteDialog(false)}>
+              Cancel
+            </Button>
             <Button
               onClick={handleInvite}
               disabled={inviting || !inviteEmail.trim() || !project}

@@ -6,6 +6,7 @@ pub mod admin;
 pub mod auth;
 pub mod billing;
 pub mod channel_configs;
+pub mod invites;
 pub mod logs;
 pub mod notifications;
 pub mod projects;
@@ -113,6 +114,14 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
         billing_routes = billing_routes.layer(axum::Extension(service));
     }
 
+    let mut invite_routes = invites::routes::router();
+    if let Some(auth_service) = state.auth.clone() {
+        invite_routes = invite_routes.layer(axum::Extension(auth_service));
+    }
+    if let Some(service) = state.project_members.clone() {
+        invite_routes = invite_routes.layer(axum::Extension(service));
+    }
+
     Router::new()
         .nest("/auth", auth_routes)
         .nest("/providers", provider_routes)
@@ -126,6 +135,7 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
         .nest("/support", support_routes)
         .nest("/notifications", notification_routes)
         .nest("/billing", billing_routes)
+        .nest("/invites", invite_routes)
         .nest("/logs", log_routes)
 }
 

@@ -3063,6 +3063,7 @@ dependencies = [
  "axum-extra",
  "chrono",
  "dotenvy",
+ "email_channel",
  "hex",
  "http-body-util",
  "notifi_core",

@@ -30,6 +30,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 import type { InAppNotification, InAppNotificationType } from "@/lib/types";
 
 const TYPE_ICONS: Record<InAppNotificationType, LucideIcon> = {
@@ -88,9 +89,12 @@ export function NotificationMenu() {
     const controller = new AbortController();
     async function load() {
       try {
-        const res = await fetch("/app/notifications?limit=10", { signal: controller.signal });
-        if (!res.ok) return;
-        const data = await res.json();
+        // api() targets the Rust backend (env.apiBase) — a raw fetch
+        // would hit this Next.js server instead and 404.
+        const data = await api<{ notifications: InAppNotification[] }>(
+          "/app/notifications?limit=10",
+          { signal: controller.signal }
+        );
         setNotifications(data.notifications ?? []);
       } catch {
         // silent
@@ -98,9 +102,9 @@ export function NotificationMenu() {
     }
     async function loadCount() {
       try {
-        const res = await fetch("/app/notifications/count", { signal: controller.signal });
-        if (!res.ok) return;
-        const data = await res.json();
+        const data = await api<{ count: number }>("/app/notifications/count", {
+          signal: controller.signal,
+        });
         setUnread(data.count ?? 0);
       } catch {
         // silent
@@ -115,7 +119,7 @@ export function NotificationMenu() {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true, readAt: new Date().toISOString() })));
     setUnread(0);
     try {
-      await fetch("/app/notifications/read-all", { method: "PATCH" });
+      await api("/app/notifications/read-all", { method: "PATCH" });
     } catch {
       // silent
     }

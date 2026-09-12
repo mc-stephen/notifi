@@ -16,9 +16,11 @@ import {
 import { OnboardingNav } from "@/components/custom/onboarding/onboarding-nav";
 import { useOnboardingStore } from "@/store/onboarding-store";
 
+// Must stay within the backend's assignable roles (owner is excluded:
+// only the project creator holds it). Backend rejects anything else.
 const ROLES = [
   { value: "admin", label: "Admin" },
-  { value: "editor", label: "Editor" },
+  { value: "developer", label: "Developer" },
   { value: "viewer", label: "Viewer" },
 ];
 
@@ -47,7 +49,13 @@ export default function InviteTeamPage() {
   };
 
   const handleContinue = () => {
-    updateData({ teamEmails: invites.map((i) => i.email) });
+    // Persisted for the success step: invites are sent after the project
+    // exists (the backend invites existing accounts only — unknown
+    // addresses fail per-invite there, never here).
+    updateData({
+      teamEmails: invites.map((i) => i.email),
+      teamInvites: invites,
+    });
     useOnboardingStore.getState().nextStep();
     router.push(
       useOnboardingStore
@@ -67,7 +75,8 @@ export default function InviteTeamPage() {
             Invite your team
           </h1>
           <p className="text-sm text-muted-foreground">
-            Collaborate with your team members. You can also do this later.
+            Collaborate with your team members. Invites go to existing
+            Notifi accounts — you can also do this later.
           </p>
         </div>
       </div>

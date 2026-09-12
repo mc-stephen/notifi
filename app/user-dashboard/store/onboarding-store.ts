@@ -9,6 +9,10 @@ const STEP_ROUTES = [
   "/onboarding/success",
 ] as const;
 
+type TeamInvite = { email: string; role: string };
+
+export type { TeamInvite };
+
 type OnboardingData = {
   currentStep: number;
   isCompleted: boolean;
@@ -17,6 +21,8 @@ type OnboardingData = {
   projectDescription: string;
   selectedChannels: string[];
   teamEmails: string[];
+  /** Pending team invites (with roles) to send once the project exists. */
+  teamInvites: TeamInvite[];
 };
 
 type OnboardingStore = OnboardingData & {
@@ -37,6 +43,7 @@ const initialState: OnboardingData = {
   projectDescription: "",
   selectedChannels: [],
   teamEmails: [],
+  teamInvites: [],
 };
 
 export const useOnboardingStore = create<OnboardingStore>((set, get) => ({

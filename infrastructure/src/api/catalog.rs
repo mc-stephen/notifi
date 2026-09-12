@@ -195,7 +195,7 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         path: "/app/projects/{id}/members",
         surface: Surface::App,
         feature: "projects",
-        description: "add an existing account to the team (owner/admin)",
+        description: "invite an existing account to the team (owner/admin)",
     },
     RouteInfo {
         method: "GET",
@@ -203,6 +203,27 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         surface: Surface::App,
         feature: "projects",
         description: "team roster with 2FA standing",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/app/invites/{token}",
+        surface: Surface::App,
+        feature: "projects",
+        description: "preview a pending team invite (email-matched)",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/invites/{token}/accept",
+        surface: Surface::App,
+        feature: "projects",
+        description: "accept a team invite (2FA gate enforced)",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/invites/{token}/decline",
+        surface: Surface::App,
+        feature: "projects",
+        description: "decline a team invite",
     },
     // -- logs feature -------------------------------------------------------
     RouteInfo {

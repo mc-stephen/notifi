@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { api } from "@/lib/api";
 import type { InAppNotification } from "@/lib/types";
 
 type FetchState = {
@@ -26,9 +27,11 @@ export function useInAppNotifications() {
       const params = new URLSearchParams();
       if (unreadOnly) params.set("unreadOnly", "true");
       params.set("limit", "50");
-      const res = await fetch(`/app/notifications?${params}`);
-      if (!res.ok) throw new Error(`${res.status}`);
-      const data = await res.json();
+      // api() targets the Rust backend (env.apiBase) — a raw fetch
+      // would hit this Next.js server instead and 404.
+      const data = await api<{ notifications: InAppNotification[]; hasMore: boolean }>(
+        `/app/notifications?${params}`
+      );
       setState({
         notifications: data.notifications ?? [],
         hasMore: data.hasMore ?? false,
@@ -47,9 +50,7 @@ export function useInAppNotifications() {
 
   const fetchUnreadCount = useCallback(async () => {
     try {
-      const res = await fetch("/app/notifications/count");
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await api<{ count: number }>("/app/notifications/count");
       setState((s) => ({ ...s, unreadCount: data.count ?? 0 }));
     } catch {
       // silent — badge just stays stale
@@ -73,9 +74,8 @@ export function useInAppNotifications() {
           : s.unreadCount + 1,
       }));
       try {
-        await fetch(`/app/notifications/${id}/read`, {
+        await api(`/app/notifications/${id}/read`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ read }),
         });
       } catch {
@@ -101,7 +101,7 @@ export function useInAppNotifications() {
       unreadCount: 0,
     }));
     try {
-      await fetch("/app/notifications/read-all", { method: "PATCH" });
+      await api("/app/notifications/read-all", { method: "PATCH" });
     } catch {
       // silent — optimistic update already applied
     }
@@ -115,7 +115,7 @@ export function useInAppNotifications() {
         notifications: s.notifications.filter((n) => n.id !== id),
       }));
       try {
-        await fetch(`/app/notifications/${id}`, { method: "DELETE" });
+        await api(`/app/notifications/${id}`, { method: "DELETE" });
       } catch {
         setState((s) => ({ ...s, notifications: prev }));
       }

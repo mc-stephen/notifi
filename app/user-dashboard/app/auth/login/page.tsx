@@ -61,6 +61,16 @@ function LoginForm() {
 
   // Set by the OAuth callback when popup/redirect sign-in fails.
   const oauthFailed = searchParams.get("error") === "oauth_failed";
+
+  // Deep link back (e.g. /invite/:token): after any successful sign-in,
+  // return here instead of the default post-auth destination. Resolved
+  // lazily so postAuthDestination() reads the fresh session state.
+  const resolveDestination = () => {
+    const next = searchParams.get("next");
+    return next && next.startsWith("/") && !next.startsWith("//")
+      ? next
+      : postAuthDestination();
+  };
   const bannerMessage = serverError ??
     (oauthFailed ? "Sign-in with that provider failed. Please try again." : null);
 
@@ -100,7 +110,7 @@ function LoginForm() {
       setTotpCode("");
       setTotpError(null);
     } else {
-      router.push(postAuthDestination());
+      router.push(resolveDestination());
     }
   };
 
@@ -114,7 +124,7 @@ function LoginForm() {
     if (result?.error) {
       setTotpError(result.error);
     } else {
-      router.push(postAuthDestination());
+      router.push(resolveDestination());
     }
   };
 
@@ -137,7 +147,7 @@ function LoginForm() {
       setTotpError(null);
       return;
     }
-    router.push(postAuthDestination());
+    router.push(resolveDestination());
   };
 
   return (

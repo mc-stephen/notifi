@@ -6,7 +6,7 @@ Contract for the onboarding flow (`/onboarding/*`, 6 steps). Sources: `app/onboa
 
 The flow is client-side (Zustand, `store/onboarding-store.ts`) **except for completion**: the success page `POST`s the collected project to the API (`/app/auth/onboarding/complete`), which persists it and flips the server-derived `onboardingCompleted` flag returned by login/signup/`me`. The dashboard layout gates on that flag — accounts that own/belong to no project are redirected back into onboarding on every visit. Skip buttons have been removed; all steps are required.
 
-Data collected per step below; only the project (+ its default `development` environment) persists today — channel selection and team invites still need backend endpoints. The environment gate is now **persisted on the server**: the topbar segmented control calls `PATCH /app/projects/{id}/environment` to switch between development and production (see the auth contract §5b for the full endpoint shapes). **API keys are not part of onboarding** — they are managed in the dashboard (`/api-keys`, Developers page); server-side key generation (shown exactly once) remains pending backend work.
+Data collected per step below; the project (+ its default `development` environment) persists via the complete endpoint, and **team invites send from the success step** once the project exists (per-invite `POST /app/projects/{id}/members`). Channel selection still needs a backend endpoint. The environment gate is now **persisted on the server**: the topbar segmented control calls `PATCH /app/projects/{id}/environment` to switch between development and production (see the auth contract §5b for the full endpoint shapes). **API keys are not part of onboarding** — they are managed in the dashboard (`/api-keys`, Developers page); server-side key generation (shown exactly once) remains pending backend work.
 
 ## Flow
 
@@ -36,12 +36,12 @@ Subset selection; `email` and `in_app` are marked pre-configured.
 
 ### `/onboarding/invite-team`
 ```json
-{ "invites": [{ "email": "string", "role": "admin | editor | viewer" }] }
+{ "invites": [{ "email": "string", "role": "admin | developer | viewer" }] }
 ```
-**Known gap:** UI collects roles but the store only persists emails (`teamEmails`) — roles are dropped. Invites will attach to the just-created project (per-project membership model, see the auth contract §5b).
+Roles match the backend's assignable set (`owner` excluded — only the creator holds it). The store keeps the full `{email, role}` pairs (`teamInvites`; `teamEmails` mirrors the addresses for compat). Nothing sends here — the project does not exist yet.
 
 ### `/onboarding/success`
-Reads back the collected project data, calls the complete endpoint below, then marks onboarding complete locally and redirects to `/`.
+Reads back the collected project data, calls the complete endpoint below, then sends each pending invite (`POST /app/projects/{id}/members` against the just-created project, resolved via `GET /app/projects` name match), then marks onboarding complete locally and redirects to `/`. Per-invite failures (unknown account → `404`, already on team → `409`) are reported inline with a "resend from the Team page" hint and never block entering the dashboard.
 
 ## Endpoints
 
@@ -61,7 +61,6 @@ Single atomic call from the success page: `{ project: { name, description? } }` 
 |---|---|
 | API keys | Server-generated keys (`prefix` + hash per `platform_projects`/`auth_api_keys` schema), shown once, managed at `/api-keys` |
 | channel selection persistence | Enable selected channels for the project |
-| team invites | Send per-project invites from the onboarding invite step |
 | groups CRUD | Folder create/rename/assign endpoints for the projects page |
 
 The welcome/use-case data is not persisted.

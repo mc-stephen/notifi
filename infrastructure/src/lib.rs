@@ -75,6 +75,22 @@ fn run_inner() -> Result<(), String> {
             ))
         });
 
+        // System mail (transactional emails). Built only when SMTP is
+        // configured; flows keep their dev behavior otherwise.
+        let templates: Option<std::sync::Arc<dyn ports::SystemTemplates>> =
+            Some(std::sync::Arc::new(infra::FileSystemTemplates::from_config(
+                &config.mail,
+            )));
+        let mailer: Option<std::sync::Arc<dyn ports::SmtpMailer>> =
+            config.mail.enabled().then(|| {
+                let live = infra::LiveSmtpMailer::from_config(&config.mail)
+                    .expect("mailer enabled without SMTP host");
+                std::sync::Arc::new(live) as std::sync::Arc<dyn ports::SmtpMailer>
+            });
+        if mailer.is_some() {
+            tracing::info!("system mail enabled");
+        }
+
         // Auth is wired only when a database exists; its routes answer 503
         // otherwise (composition root wires the sqlx store into the service).
         let auth = db.as_ref().map(|pool| {
@@ -89,16 +105,28 @@ fn run_inner() -> Result<(), String> {
             } else {
                 svc
             };
+            // Wire system mail the same way (fire-and-forget per email).
+            let svc = match (mailer.clone(), templates.clone()) {
+                (Some(m), Some(t)) => {
+                    svc.with_system_mail(m, t, config.oauth.dashboard_url.clone())
+                }
+                _ => svc,
+            };
             std::sync::Arc::new(svc)
         });
 
         // Admin service: separate from auth — platform managers only.
         let admin = db.as_ref().map(|pool| {
-            std::sync::Arc::new(domain::admin::AdminService::new(
+            let svc = domain::admin::AdminService::new(
                 Box::new(infra::PgAdminStore::new(pool.clone())),
                 config.auth.expose_dev_tokens,
                 audit.clone().expect("audit service built with db"),
-            ))
+            );
+            let svc = match (mailer.clone(), templates.clone()) {
+                (Some(m), Some(t)) => svc.with_system_mail(m, t, config.mail.admin_url.clone()),
+                _ => svc,
+            };
+            std::sync::Arc::new(svc)
         });
 
         // Projects slice: same store backing, separate service instance.
@@ -113,11 +141,21 @@ fn run_inner() -> Result<(), String> {
         // user lookup (TOTP status), so it holds both stores.
         let project_members = db.as_ref().map(|pool| {
             let store = std::sync::Arc::new(infra::PgAuthStore::new(pool.clone()));
-            std::sync::Arc::new(domain::projects::ProjectMembersService::new(
+            let svc = domain::projects::ProjectMembersService::new(
                 store.clone(),
                 store,
                 audit.clone().expect("audit service built with db"),
-            ))
+            );
+            let svc = match (mailer.clone(), templates.clone()) {
+                (Some(m), Some(t)) => svc.with_system_mail(
+                    m,
+                    t,
+                    config.oauth.dashboard_url.clone(),
+                    config.auth.expose_dev_tokens,
+                ),
+                _ => svc,
+            };
+            std::sync::Arc::new(svc)
         });
 
         // Recipients slice: brand end-users, scoped to a project the caller

@@ -17,7 +17,7 @@ use crate::domain::auth::entities::{
 use crate::domain::auth::value_objects::Email;
 use crate::ports::auth_store::{AuthStore, BoxFut, OnboardingInput, StoreError};
 use crate::ports::projects_store::{
-    ProjectAccess, ProjectSummary, ProjectsStore, TeamMemberRecord,
+    InviteRecord, ProjectAccess, ProjectSummary, ProjectsStore, TeamMemberRecord,
 };
 /// PostgreSQL-backed auth store.
 pub struct PgAuthStore {
@@ -956,6 +956,25 @@ impl ProjectsStore for PgAuthStore {
         })
     }
 
+    fn project_require_2fa(
+        &self,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Option<bool>, StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        Box::pin(async move {
+            let row: Option<(bool,)> = sqlx::query_as(
+                "SELECT require_2fa FROM platform_projects
+                 WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(project_id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(row.map(|row| row.0))
+        })
+    }
+
     fn insert_member(
         &self,
         project_id: &str,
@@ -1033,7 +1052,7 @@ impl ProjectsStore for PgAuthStore {
             // Callers outside the project see nothing.
             let creator: Option<MemberRow> = sqlx::query_as(
                 "SELECT u.id AS user_id, u.name, u.email, 'owner' AS role,
-                        u.totp_enabled AS has_2fa, u.last_login_at
+                        u.totp_enabled AS has_2fa, u.last_login_at AS last_active_at
                  FROM platform_projects p
                  JOIN auth_users u ON u.id = p.created_by AND u.deleted_at IS NULL
                  WHERE p.id = $1 AND p.deleted_at IS NULL
@@ -1049,7 +1068,7 @@ impl ProjectsStore for PgAuthStore {
             .map_err(map_err)?;
             let mut rows: Vec<MemberRow> = sqlx::query_as(
                 "SELECT u.id AS user_id, u.name, u.email, pm.role,
-                        u.totp_enabled AS has_2fa, u.last_login_at
+                        u.totp_enabled AS has_2fa, u.last_login_at AS last_active_at
                  FROM platform_project_members pm
                  JOIN auth_users u ON u.id = pm.user_id AND u.deleted_at IS NULL
                  WHERE pm.project_id = $1 AND pm.deleted_at IS NULL
@@ -1082,6 +1101,167 @@ impl ProjectsStore for PgAuthStore {
                     last_active_at: r.last_active_at,
                 })
                 .collect())
+        })
+    }
+
+    fn create_invite(
+        &self,
+        project_id: &str,
+        email: &str,
+        role: &str,
+        token_hash: &str,
+        expires_at: DateTime<Utc>,
+        created_by: UserId,
+    ) -> BoxFut<'_, Result<String, StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        let email = email.to_string();
+        let role = role.to_string();
+        let token_hash = token_hash.to_string();
+        let created_by = created_by.to_string();
+        Box::pin(async move {
+            let mut tx = pool.begin().await.map_err(map_err)?;
+            // A fresh invite supersedes prior pending ones for the pair.
+            sqlx::query(
+                "UPDATE project_invites SET status = 'declined', decided_at = now()
+                 WHERE project_id = $1 AND email = $2 AND status = 'pending'",
+            )
+            .bind(&project_id)
+            .bind(&email)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_err)?;
+            let id = Ulid::new().to_string();
+            sqlx::query(
+                "INSERT INTO project_invites
+                     (id, project_id, email, role, token_hash, status, expires_at, created_by)
+                 VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)",
+            )
+            .bind(&id)
+            .bind(&project_id)
+            .bind(&email)
+            .bind(&role)
+            .bind(&token_hash)
+            .bind(expires_at)
+            .bind(&created_by)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_err)?;
+            tx.commit().await.map_err(map_err)?;
+            Ok(id)
+        })
+    }
+
+    fn find_pending_invite(
+        &self,
+        token_hash: &str,
+    ) -> BoxFut<'_, Result<Option<InviteRecord>, StoreError>> {
+        let pool = self.pool.clone();
+        let token_hash = token_hash.to_string();
+        Box::pin(async move {
+            #[derive(sqlx::FromRow)]
+            struct Row {
+                id: String,
+                project_id: String,
+                project_name: String,
+                email: String,
+                role: String,
+                token_hash: String,
+                status: String,
+                expires_at: DateTime<Utc>,
+                created_by: Option<String>,
+                created_at: DateTime<Utc>,
+            }
+            let row: Option<Row> = sqlx::query_as(
+                "SELECT i.id, i.project_id, p.name AS project_name, i.email, i.role,
+                        i.token_hash, i.status, i.expires_at, i.created_by, i.created_at
+                 FROM project_invites i
+                 JOIN platform_projects p ON p.id = i.project_id AND p.deleted_at IS NULL
+                 WHERE i.token_hash = $1 AND i.status = 'pending'",
+            )
+            .bind(token_hash)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(row.map(|row| InviteRecord {
+                id: row.id,
+                project_id: row.project_id,
+                project_name: row.project_name,
+                email: row.email,
+                role: row.role,
+                token_hash: row.token_hash,
+                status: row.status,
+                expires_at: row.expires_at,
+                created_by: row.created_by,
+                created_at: row.created_at,
+            }))
+        })
+    }
+
+    fn find_invite_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> BoxFut<'_, Result<Option<InviteRecord>, StoreError>> {
+        let pool = self.pool.clone();
+        let token_hash = token_hash.to_string();
+        Box::pin(async move {
+            #[derive(sqlx::FromRow)]
+            struct Row {
+                id: String,
+                project_id: String,
+                project_name: String,
+                email: String,
+                role: String,
+                token_hash: String,
+                status: String,
+                expires_at: DateTime<Utc>,
+                created_by: Option<String>,
+                created_at: DateTime<Utc>,
+            }
+            let row: Option<Row> = sqlx::query_as(
+                "SELECT i.id, i.project_id, p.name AS project_name, i.email, i.role,
+                        i.token_hash, i.status, i.expires_at, i.created_by, i.created_at
+                 FROM project_invites i
+                 JOIN platform_projects p ON p.id = i.project_id AND p.deleted_at IS NULL
+                 WHERE i.token_hash = $1",
+            )
+            .bind(token_hash)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(row.map(|row| InviteRecord {
+                id: row.id,
+                project_id: row.project_id,
+                project_name: row.project_name,
+                email: row.email,
+                role: row.role,
+                token_hash: row.token_hash,
+                status: row.status,
+                expires_at: row.expires_at,
+                created_by: row.created_by,
+                created_at: row.created_at,
+            }))
+        })
+    }
+
+    fn decide_invite(
+        &self,
+        invite_id: &str,
+        accepted: bool,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let pool = self.pool.clone();
+        let invite_id = invite_id.to_string();
+        Box::pin(async move {
+            let result = sqlx::query(
+                "UPDATE project_invites SET status = $2, decided_at = now()
+                 WHERE id = $1 AND status = 'pending'",
+            )
+            .bind(invite_id)
+            .bind(if accepted { "accepted" } else { "declined" })
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(result.rows_affected() > 0)
         })
     }
 

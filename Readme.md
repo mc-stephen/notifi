@@ -13,6 +13,12 @@
 
 ---
 
+# AI NOTE FOR EVERY PROMPT
+
+1. If you run any proccesses internally either for testing or whatever, kindly also kill that your running process after you are done, DON'T FORGET THIS!.
+
+---
+
 # TODO:
 
 1. Billing should be par project and not par account

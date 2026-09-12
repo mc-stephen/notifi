@@ -51,6 +51,9 @@ pub struct AuthService {
     audit: Arc<AuditService>,
     expose_dev_tokens: bool,
     notifications: Option<Arc<NotificationService>>,
+    mailer: Option<Arc<dyn crate::ports::mailer::SmtpMailer>>,
+    templates: Option<Arc<dyn crate::ports::mailer::SystemTemplates>>,
+    dashboard_url: String,
 }
 
 impl AuthService {
@@ -64,6 +67,9 @@ impl AuthService {
             audit,
             expose_dev_tokens,
             notifications: None,
+            mailer: None,
+            templates: None,
+            dashboard_url: String::new(),
         }
     }
 
@@ -72,6 +78,74 @@ impl AuthService {
     pub fn with_notifications(mut self, svc: Arc<NotificationService>) -> Self {
         self.notifications = Some(svc);
         self
+    }
+
+    /// Wires system mail (transactional emails). All three pieces travel
+    /// together: without any one of them, flows keep dev behavior.
+    pub fn with_system_mail(
+        mut self,
+        mailer: Arc<dyn crate::ports::mailer::SmtpMailer>,
+        templates: Arc<dyn crate::ports::mailer::SystemTemplates>,
+        dashboard_url: String,
+    ) -> Self {
+        self.mailer = Some(mailer);
+        self.templates = Some(templates);
+        self.dashboard_url = dashboard_url;
+        self
+    }
+    /// Sends a templated system email when mail is configured. Delivery
+    /// failures are logged, never fatal to the flow that triggered them.
+    /// All auth-service mail is automated, so it always sends as NoReply —
+    /// human mail (e.g. from the admin dashboard) passes Support/Custom
+    /// at its own call site instead.
+    async fn send_system_mail(&self, to: &str, template: &str, vars: &[(&str, &str)]) {
+        let (Some(mailer), Some(templates)) = (self.mailer.as_ref(), self.templates.as_ref())
+        else {
+            return;
+        };
+        let rendered = match templates.render(template, vars) {
+            Ok(rendered) => rendered,
+            Err(e) => {
+                tracing::warn!(template, error = %e, "system template render failed");
+                return;
+            }
+        };
+        match mailer
+            .send(
+                crate::ports::mailer::SystemSender::NoReply,
+                to,
+                &rendered.subject,
+                &rendered.text,
+                Some(&rendered.html),
+            )
+            .await
+        {
+            Ok(message_id) => {
+                tracing::info!(template, to, message_id = %message_id, "system email sent");
+            }
+            Err(e) => {
+                tracing::warn!(template, to, error = %e, "system email delivery failed");
+            }
+        }
+    }
+
+    /// Emails a sign-in notice. Called from password + OAuth logins only —
+    /// the TOTP second step is the same login, so it stays quiet.
+    async fn send_login_notice(&self, user: &User) {
+        let when = chrono::Utc::now()
+            .format("%B %-d, %Y at %-I:%M %p UTC")
+            .to_string();
+        let link = format!("{}/profile", self.dashboard_url.trim_end_matches('/'));
+        self.send_system_mail(
+            user.email.as_str(),
+            "login-notice",
+            &[
+                ("name", user.name.as_str()),
+                ("when", &when),
+                ("link", &link),
+            ],
+        )
+        .await;
     }
 
     /// Whether raw one-time tokens may appear in API responses.
@@ -130,6 +204,22 @@ impl AuthService {
         let verification_token = self
             .issue_token(user.id, TokenPurpose::EmailVerification)
             .await?;
+
+        self.send_system_mail(
+            user.email.as_str(),
+            "verify-email",
+            &[
+                ("name", user.name.as_str()),
+                (
+                    "link",
+                    &format!(
+                        "{}/auth/verify-email?token={verification_token}",
+                        self.dashboard_url.trim_end_matches('/')
+                    ),
+                ),
+            ],
+        )
+        .await;
 
         let (session, raw_token) = self.issue_session(user.id, SESSION_TTL_SHORT).await?;
 
@@ -226,6 +316,8 @@ impl AuthService {
                 )
                 .await;
         }
+
+        self.send_login_notice(&user).await;
 
         Ok(IssuedSession {
             user,
@@ -509,6 +601,21 @@ impl AuthService {
         let token = self
             .issue_token(user.id, TokenPurpose::EmailVerification)
             .await?;
+        self.send_system_mail(
+            user.email.as_str(),
+            "verify-email",
+            &[
+                ("name", user.name.as_str()),
+                (
+                    "link",
+                    &format!(
+                        "{}/auth/verify-email?token={token}",
+                        self.dashboard_url.trim_end_matches('/')
+                    ),
+                ),
+            ],
+        )
+        .await;
         Ok(Some(token))
     }
 
@@ -531,6 +638,21 @@ impl AuthService {
         let token = self
             .issue_token(user.id, TokenPurpose::PasswordReset)
             .await?;
+        self.send_system_mail(
+            user.email.as_str(),
+            "password-reset",
+            &[
+                ("name", user.name.as_str()),
+                (
+                    "link",
+                    &format!(
+                        "{}/auth/password/reset?token={token}",
+                        self.dashboard_url.trim_end_matches('/')
+                    ),
+                ),
+            ],
+        )
+        .await;
         Ok(Some(token))
     }
 
@@ -572,6 +694,24 @@ impl AuthService {
                 ),
             )
             .await;
+
+        // Compromise signal: the reset flow never changes the email, so
+        // this reliably reaches the account owner even when someone else
+        // performed the reset. Best-effort — never fails the reset itself.
+        if let Ok(Some(user)) = self.store.find_user_by_id(token.user_id).await {
+            self.send_system_mail(
+                user.email.as_str(),
+                "password-changed",
+                &[
+                    ("name", user.name.as_str()),
+                    (
+                        "link",
+                        &format!("{}/auth/login", self.dashboard_url.trim_end_matches('/')),
+                    ),
+                ],
+            )
+            .await;
+        }
         Ok(())
     }
 
@@ -684,6 +824,8 @@ impl AuthService {
                 )
                 .await;
         }
+
+        self.send_login_notice(&user).await;
 
         Ok(IssuedSession {
             user,

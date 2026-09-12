@@ -10,3 +10,6 @@ Single-file dev-stage squash, applied automatically at server boot (`src/infra/d
   members, recipients, templates, provider configs), `billing_plans` +
   `project_subscriptions` (pricing catalog + per-project subscriptions),
   `audit_logs` (append-only audit trail), `event_outbox` (transactional outbox).
+- `0009_project_invites.sql` — `project_invites` for GitHub-style team
+  invites (pending row + emailed token; acceptance creates the membership).
+  Numbers 0002–0008 are skipped (consumed by the pre-production squash).

@@ -116,12 +116,17 @@ impl ProjectService {
 /// Assignable team roles (mirrors the dashboard role union).
 pub const MEMBER_ROLES: [&str; 5] = ["owner", "admin", "developer", "viewer", "billing"];
 
-/// Team membership use cases: the 2FA gate flag and member invites.
-/// Needs user lookup (TOTP status), so it holds both stores.
+/// Team membership use cases: the 2FA gate flag and GitHub-style
+/// invites (invite → email → accept/decline). Needs user lookup plus
+/// mail, so it holds both stores and the system-mail collaborators.
 pub struct ProjectMembersService {
     projects: Arc<dyn ProjectsStore>,
     auth: Arc<dyn crate::ports::auth_store::AuthStore>,
     audit: Arc<AuditService>,
+    mailer: Option<Arc<dyn crate::ports::mailer::SmtpMailer>>,
+    templates: Option<Arc<dyn crate::ports::mailer::SystemTemplates>>,
+    dashboard_url: String,
+    expose_dev_tokens: bool,
 }
 
 impl ProjectMembersService {
@@ -134,7 +139,26 @@ impl ProjectMembersService {
             projects,
             auth,
             audit,
+            mailer: None,
+            templates: None,
+            dashboard_url: String::new(),
+            expose_dev_tokens: false,
         }
+    }
+
+    /// Wires invite emails. All pieces travel together.
+    pub fn with_system_mail(
+        mut self,
+        mailer: Arc<dyn crate::ports::mailer::SmtpMailer>,
+        templates: Arc<dyn crate::ports::mailer::SystemTemplates>,
+        dashboard_url: String,
+        expose_dev_tokens: bool,
+    ) -> Self {
+        self.mailer = Some(mailer);
+        self.templates = Some(templates);
+        self.dashboard_url = dashboard_url;
+        self.expose_dev_tokens = expose_dev_tokens;
+        self
     }
 
     fn is_manager(created_by: Option<&str>, member_role: Option<&str>, actor: &UserId) -> bool {
@@ -196,17 +220,26 @@ impl ProjectMembersService {
         Ok(enabled)
     }
 
-    /// Adds an existing account to the project team. Owner or admin only;
-    /// granting `owner` additionally requires being the creator. When the
-    /// project requires 2FA, the invited account must have TOTP enabled.
-    pub async fn add_member(
+    /// Invites an existing account to the project team (GitHub-style:
+    /// this creates a pending invite + email, not a membership).
+    /// Owner or admin only; granting `owner` additionally requires being
+    /// the creator. The 2FA gate is enforced at accept time, not here,
+    /// so invitees can enable 2FA between invite and accept.
+    /// Returns the invite plus the raw token only in dev mode.
+    pub async fn invite_member(
         &self,
         actor: UserId,
         project_id: &str,
         email: &str,
         role: &str,
-    ) -> Result<crate::domain::projects::entities::ProjectMember, AuthError> {
-        use crate::domain::auth::value_objects::Email;
+    ) -> Result<
+        (
+            crate::domain::projects::entities::ProjectInvite,
+            Option<String>,
+        ),
+        AuthError,
+    > {
+        use crate::domain::auth::value_objects::{Email, new_token};
 
         let role = role.trim().to_lowercase();
         if !MEMBER_ROLES.contains(&role.as_str()) {
@@ -252,25 +285,219 @@ impl ProjectMembersService {
                 "that account is suspended".to_string(),
             ));
         }
-        if access.project.require_2fa && !target.totp_enabled {
-            return Err(AuthError::Forbidden(
-                "this project requires two-factor authentication: the invited account must enable 2FA first".to_string(),
-            ));
-        }
-
-        let inserted = self
-            .projects
-            .insert_member(project_id, target.id, &role)
-            .await
-            .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("already a member".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
-            })?;
-        if !inserted {
+        if Self::is_member(&self.projects, &target.id, project_id).await? {
             return Err(AuthError::Conflict(
                 "that account is already on this team".to_string(),
             ));
         }
+
+        let (raw_token, token_hash) = new_token();
+        let expires_at = chrono::Utc::now() + chrono::Duration::days(7);
+        let invite_id = self
+            .projects
+            .create_invite(
+                project_id,
+                parsed.as_str(),
+                &role,
+                &token_hash,
+                expires_at,
+                actor,
+            )
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting update".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?;
+
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::ProjectMemberInvited,
+                    Some(&actor.to_string()),
+                    None,
+                    Some(project_id),
+                    format!("{} invited as {role}", target.name),
+                    Some(serde_json::json!({ "user_id": target.id.to_string() })),
+                ),
+            )
+            .await;
+
+        if let (Some(mailer), Some(templates)) = (self.mailer.as_ref(), self.templates.as_ref()) {
+            let link = format!(
+                "{}/invite/{raw_token}",
+                self.dashboard_url.trim_end_matches('/')
+            );
+            // Best-effort render so a missing template never blocks invites.
+            if let Ok(rendered) = templates.render(
+                "member-invite",
+                &[
+                    ("name", target.name.as_str()),
+                    ("project", access.project.name.as_str()),
+                    ("role", role.as_str()),
+                    ("link", link.as_str()),
+                ],
+            ) {
+                if let Err(e) = mailer
+                    .send(
+                        crate::ports::mailer::SystemSender::NoReply,
+                        parsed.as_str(),
+                        &rendered.subject,
+                        &rendered.text,
+                        Some(&rendered.html),
+                    )
+                    .await
+                {
+                    tracing::warn!(error = %e, "invite email delivery failed");
+                }
+            } else {
+                tracing::warn!("invite template render failed");
+            }
+        }
+
+        Ok((
+            crate::domain::projects::entities::ProjectInvite {
+                id: invite_id,
+                project_id: project_id.to_string(),
+                project_name: access.project.name.clone(),
+                email: parsed.as_str().to_string(),
+                role,
+                expires_at,
+            },
+            self.dev_token(&raw_token),
+        ))
+    }
+
+    fn dev_token(&self, raw_token: &str) -> Option<String> {
+        self.expose_dev_tokens.then(|| raw_token.to_string())
+    }
+
+    fn is_on_team(
+        access: &crate::ports::projects_store::ProjectAccess,
+        user_id: &crate::domain::auth::entities::UserId,
+    ) -> bool {
+        access.created_by.as_deref() == Some(user_id.to_string().as_str())
+            || access.member_role.is_some()
+    }
+
+    /// Whether `user_id` owns or belongs to the project.
+    async fn is_member(
+        store: &Arc<dyn ProjectsStore>,
+        user_id: &crate::domain::auth::entities::UserId,
+        project_id: &str,
+    ) -> Result<bool, AuthError> {
+        let access = store
+            .get_project_access(*user_id, project_id)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?;
+        Ok(access
+            .map(|a| Self::is_on_team(&a, user_id))
+            .unwrap_or(false))
+    }
+
+    /// Accepts a pending invite. The invitee must be signed in as the
+    /// invited address. The project 2FA gate is enforced here — at the
+    /// moment of joining, not at invite time. Re-accepting an already
+    /// accepted invite returns the membership (double-submit safe).
+    pub async fn accept_invite(
+        &self,
+        actor: UserId,
+        raw_token: &str,
+    ) -> Result<crate::domain::projects::entities::ProjectMember, AuthError> {
+        use crate::domain::auth::value_objects::hash_token;
+
+        let token_hash = hash_token(raw_token);
+        let invite = self
+            .projects
+            .find_pending_invite(&token_hash)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?;
+        let invite = match invite {
+            Some(invite) => invite,
+            None => return self.accept_idempotent(actor, &token_hash).await,
+        };
+        if invite.expires_at <= chrono::Utc::now() {
+            let _ = self.projects.decide_invite(&invite.id, false).await;
+            return Err(AuthError::TokenExpired(
+                "this invitation has expired".to_string(),
+            ));
+        }
+
+        let me = self
+            .auth
+            .find_user_by_id(actor)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting lookup".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?
+            .ok_or(AuthError::Unauthorized)?;
+        if !me.email.as_str().eq_ignore_ascii_case(&invite.email) {
+            return Err(AuthError::Forbidden(
+                "this invitation belongs to a different account".to_string(),
+            ));
+        }
+        if me.status == crate::domain::auth::entities::UserStatus::Suspended {
+            return Err(AuthError::Forbidden(
+                "that account is suspended".to_string(),
+            ));
+        }
+
+        // The actor isn't on the team yet, so the flag must be read
+        // without actor scoping; a gone project refuses the accept.
+        let require_2fa = self
+            .projects
+            .project_require_2fa(&invite.project_id)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?
+            .ok_or_else(|| AuthError::NotFound("project not found".into()))?;
+        if require_2fa && !me.totp_enabled {
+            return Err(AuthError::Forbidden(
+                "this project requires two-factor authentication: enable 2FA on your profile first"
+                    .to_string(),
+            ));
+        }
+
+        let already_member = self
+            .projects
+            .get_project_access(actor, &invite.project_id)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?
+            .as_ref()
+            .map(|a| Self::is_on_team(a, &actor) || a.member_role.is_some())
+            .unwrap_or(false);
+        if !already_member {
+            let inserted = self
+                .projects
+                .insert_member(&invite.project_id, actor, &invite.role)
+                .await
+                .map_err(|e| match e {
+                    StoreError::Conflict => AuthError::Conflict("already a member".into()),
+                    StoreError::Storage(m) => AuthError::Storage(m),
+                })?;
+            if !inserted {
+                // Lost a race with another accept; fall through idempotently.
+            }
+        }
+        self.projects
+            .decide_invite(&invite.id, true)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting update".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?;
 
         self.audit
             .record(
@@ -279,21 +506,180 @@ impl ProjectMembersService {
                     AuditAction::ProjectMemberAdded,
                     Some(&actor.to_string()),
                     None,
-                    Some(project_id),
-                    format!("{} joined as {role}", target.name),
-                    Some(serde_json::json!({ "user_id": target.id.to_string() })),
+                    Some(invite.project_id.as_str()),
+                    format!("{} joined as {}", me.name, invite.role),
+                    Some(serde_json::json!({ "user_id": actor.to_string() })),
                 ),
             )
             .await;
 
         Ok(crate::domain::projects::entities::ProjectMember {
-            user_id: target.id.to_string(),
-            name: target.name.clone(),
-            email: target.email.as_str().to_string(),
-            role,
-            has_2fa: target.totp_enabled,
-            last_active_at: target.last_login_at,
+            user_id: actor.to_string(),
+            name: me.name.clone(),
+            email: me.email.as_str().to_string(),
+            role: invite.role.clone(),
+            has_2fa: me.totp_enabled,
+            last_active_at: me.last_login_at,
         })
+    }
+
+    /// Double-submit safety: a consumed invite resolves to the membership
+    /// when the caller already joined through it; anything else stays 404.
+    async fn accept_idempotent(
+        &self,
+        actor: UserId,
+        token_hash: &str,
+    ) -> Result<crate::domain::projects::entities::ProjectMember, AuthError> {
+        let invite = self
+            .projects
+            .find_invite_by_hash(token_hash)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?
+            .ok_or_else(|| AuthError::NotFound("invitation not found".into()))?;
+        if invite.status != "accepted" {
+            return Err(AuthError::NotFound("invitation not found".into()));
+        }
+        let me = self
+            .auth
+            .find_user_by_id(actor)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting lookup".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?
+            .ok_or(AuthError::Unauthorized)?;
+        if !me.email.as_str().eq_ignore_ascii_case(&invite.email) {
+            return Err(AuthError::NotFound("invitation not found".into()));
+        }
+        // Report the live membership role, not the stale invite copy.
+        let access = self
+            .projects
+            .get_project_access(actor, &invite.project_id)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?;
+        let role = match access.as_ref() {
+            Some(a) if Self::is_on_team(a, &actor) => {
+                if a.created_by.as_deref() == Some(actor.to_string().as_str()) {
+                    "owner".to_string()
+                } else {
+                    a.member_role.clone().unwrap_or_else(|| invite.role.clone())
+                }
+            }
+            _ => return Err(AuthError::NotFound("invitation not found".into())),
+        };
+        Ok(crate::domain::projects::entities::ProjectMember {
+            user_id: actor.to_string(),
+            name: me.name.clone(),
+            email: me.email.as_str().to_string(),
+            role,
+            has_2fa: me.totp_enabled,
+            last_active_at: me.last_login_at,
+        })
+    }
+
+    /// Preview of a pending invite for the accept page. Email-matched:
+    /// other accounts get NotFound (no enumeration of invites).
+    pub async fn get_invite(
+        &self,
+        actor: UserId,
+        raw_token: &str,
+    ) -> Result<crate::domain::projects::entities::ProjectInvite, AuthError> {
+        use crate::domain::auth::value_objects::hash_token;
+
+        let invite = self
+            .projects
+            .find_pending_invite(&hash_token(raw_token))
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?
+            .ok_or_else(|| AuthError::NotFound("invitation not found".into()))?;
+        if invite.expires_at <= chrono::Utc::now() {
+            return Err(AuthError::TokenExpired(
+                "this invitation has expired".to_string(),
+            ));
+        }
+        let me = self
+            .auth
+            .find_user_by_id(actor)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting lookup".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?
+            .ok_or(AuthError::Unauthorized)?;
+        if !me.email.as_str().eq_ignore_ascii_case(&invite.email) {
+            return Err(AuthError::NotFound("invitation not found".into()));
+        }
+        Ok(crate::domain::projects::entities::ProjectInvite {
+            id: invite.id,
+            project_id: invite.project_id,
+            project_name: invite.project_name,
+            email: invite.email,
+            role: invite.role,
+            expires_at: invite.expires_at,
+        })
+    }
+
+    /// Declines a pending invite. Idempotent and quiet on unknown tokens
+    /// (no enumeration of outstanding invites).
+    pub async fn decline_invite(&self, actor: UserId, raw_token: &str) -> Result<(), AuthError> {
+        use crate::domain::auth::value_objects::hash_token;
+
+        let Some(invite) = self
+            .projects
+            .find_pending_invite(&hash_token(raw_token))
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?
+        else {
+            return Ok(());
+        };
+        let me = self
+            .auth
+            .find_user_by_id(actor)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting lookup".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?
+            .ok_or(AuthError::Unauthorized)?;
+        if !me.email.as_str().eq_ignore_ascii_case(&invite.email) {
+            return Err(AuthError::Forbidden(
+                "this invitation belongs to a different account".to_string(),
+            ));
+        }
+        self.projects
+            .decide_invite(&invite.id, false)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AuthError::Conflict("conflicting update".into()),
+                StoreError::Storage(m) => AuthError::Storage(m),
+            })?;
+
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::ProjectInviteDeclined,
+                    Some(&actor.to_string()),
+                    None,
+                    Some(invite.project_id.as_str()),
+                    format!("{} declined the team invitation", me.name),
+                    None,
+                ),
+            )
+            .await;
+        Ok(())
     }
 
     /// Team roster for a project the caller belongs to, creator first.

@@ -7,6 +7,9 @@ pub mod audit_store;
 pub mod auth_store;
 pub mod billing_store;
 pub mod channel_provider_store;
+pub mod mailer;
+
+pub use mailer::{MailError, RenderedTemplate, SmtpMailer, SystemSender, SystemTemplates};
 pub mod notifications_store;
 pub mod oauth;
 pub mod projects_store;

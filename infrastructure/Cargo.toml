@@ -11,6 +11,7 @@ axum = { workspace = true }
 axum-extra = { workspace = true }
 chrono = { workspace = true }
 dotenvy = { workspace = true }
+email_channel = { path = "channels/email_channel" }
 hex = { workspace = true }
 notifi_core = { path = "crates/core" }
 rand = { workspace = true }

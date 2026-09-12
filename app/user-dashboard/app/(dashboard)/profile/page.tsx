@@ -53,6 +53,13 @@ export default function ProfilePage() {
   const [showDisable, setShowDisable] = useState(false);
   const [disablePassword, setDisablePassword] = useState("");
   const [disableCode, setDisableCode] = useState("");
+
+  // Sessions signed in to this account (mock).
+  const [sessions, setSessions] = useState([
+    { id: "ses_1", device: "MacBook Pro · Chrome", location: "Lagos, Nigeria", lastActive: "Active now", current: true },
+    { id: "ses_2", device: "iPhone 15 · Safari", location: "Lagos, Nigeria", lastActive: "2 hours ago", current: false },
+    { id: "ses_3", device: "Windows 11 · Edge", location: "London, UK", lastActive: "3 days ago", current: false },
+  ]);
   const qrRef = useRef<HTMLDivElement>(null);
 
   // Delete account
@@ -415,6 +422,48 @@ export default function ProfilePage() {
                 </div>
               </div>
             )}
+          </div>
+
+          <Separator />
+
+          {/* Active sessions */}
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium">Active sessions</h4>
+              <p className="text-sm text-muted-foreground">
+                Devices currently signed in to your account.
+              </p>
+            </div>
+            <div className="space-y-2">
+              {sessions.map((session) => (
+                <div
+                  key={session.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      {session.device}
+                      {session.current && (
+                        <Badge variant="secondary" className="text-[10px]">Current</Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {session.location} · {session.lastActive}
+                    </div>
+                  </div>
+                  {!session.current && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setSessions((prev) => prev.filter((s) => s.id !== session.id))}
+                    >
+                      Revoke
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
           <Separator />

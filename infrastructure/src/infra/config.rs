@@ -55,6 +55,58 @@ pub struct AuthConfig {
     pub expose_dev_tokens: bool,
 }
 
+/// Platform system mail (transactional emails: verification, resets).
+/// Empty host = unconfigured (flows keep their dev behavior).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+pub struct MailConfig {
+    #[serde(default)]
+    pub smtp_host: Option<String>,
+    #[serde(default)]
+    pub smtp_port: Option<u16>,
+    #[serde(default)]
+    pub smtp_username: Option<String>,
+    #[serde(default)]
+    pub smtp_password: Option<String>,
+    /// Sender domain for code-owned identities (`SystemSender` resolves
+    /// `no-reply@` / `support@` against it; e.g. `notifi.dev`).
+    #[serde(default = "default_mail_domain")]
+    pub mail_domain: String,
+    /// STARTTLS upgrade on connect. Defaults true; set false/0 only for
+    /// local plaintext relays.
+    #[serde(default = "default_smtp_tls")]
+    pub smtp_tls: bool,
+    /// Admin console origin for admin reset links.
+    #[serde(default = "default_admin_url")]
+    pub admin_url: String,
+    /// System template directory override (see infra::system_templates).
+    #[serde(default)]
+    pub templates_dir: Option<String>,
+}
+
+fn default_admin_url() -> String {
+    "http://localhost:4321".to_string()
+}
+
+fn default_mail_domain() -> String {
+    "notifi.dev".to_string()
+}
+
+fn default_smtp_tls() -> bool {
+    true
+}
+
+impl MailConfig {
+    pub fn enabled(&self) -> bool {
+        self.smtp_host
+            .as_deref()
+            .is_some_and(|h| !h.trim().is_empty())
+    }
+
+    pub fn port_or_default(&self) -> u16 {
+        self.smtp_port.unwrap_or(587)
+    }
+}
+
 /// OAuth sign-in providers (github / google).
 ///
 /// A provider is enabled only when both its client id and secret are set.
@@ -112,6 +164,8 @@ pub struct AppConfig {
     pub redis: RedisConfig,
     #[serde(default)]
     pub auth: AuthConfig,
+    #[serde(default)]
+    pub mail: MailConfig,
     #[serde(default)]
     pub oauth: OAuthConfig,
 }
@@ -219,6 +273,34 @@ impl AppConfig {
         if let Ok(v) = std::env::var("NOTIFI_API_BASE_URL") {
             config.oauth.api_base_url = v;
         }
+        if let Ok(v) = std::env::var("NOTIFI_SMTP_HOST") {
+            config.mail.smtp_host = Some(v);
+        }
+        if let Ok(v) = std::env::var("NOTIFI_SMTP_PORT") {
+            config.mail.smtp_port = Some(
+                v.parse()
+                    .map_err(|_| format!("invalid NOTIFI_SMTP_PORT: '{v}' (use e.g. 587)"))?,
+            );
+        }
+        if let Ok(v) = std::env::var("NOTIFI_SMTP_USERNAME") {
+            config.mail.smtp_username = Some(v);
+        }
+        if let Ok(v) = std::env::var("NOTIFI_SMTP_PASSWORD") {
+            config.mail.smtp_password = Some(v);
+        }
+        if let Ok(v) = std::env::var("NOTIFI_MAIL_DOMAIN") {
+            config.mail.mail_domain = v;
+        }
+        if let Ok(v) = std::env::var("NOTIFI_ADMIN_URL") {
+            config.mail.admin_url = v;
+        }
+        if let Ok(v) = std::env::var("NOTIFI_SMTP_TLS") {
+            let lower = v.to_lowercase();
+            config.mail.smtp_tls = !matches!(lower.as_str(), "0" | "false" | "no");
+        }
+        if let Ok(v) = std::env::var("NOTIFI_TEMPLATES_DIR") {
+            config.mail.templates_dir = Some(v);
+        }
 
         Ok(config)
     }
@@ -241,6 +323,9 @@ impl AppConfig {
         }
         if other.oauth != OAuthConfig::default() {
             self.oauth = other.oauth;
+        }
+        if other.mail != MailConfig::default() {
+            self.mail = other.mail;
         }
     }
 }

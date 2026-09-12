@@ -75,6 +75,12 @@ pub trait ProjectsStore: Send + Sync {
         enabled: bool,
     ) -> BoxFut<'_, Result<Option<bool>, StoreError>>;
 
+    /// The 2FA requirement flag for any project, regardless of actor.
+    /// Needed at invite-accept time, when the actor is not on the team
+    /// yet. `None` when the project doesn't exist.
+    fn project_require_2fa(&self, project_id: &str)
+    -> BoxFut<'_, Result<Option<bool>, StoreError>>;
+
     /// Adds a membership row. Returns false when the user is already a
     /// member (unique violation surfaces as `Conflict` instead).
     fn insert_member(
@@ -91,6 +97,40 @@ pub trait ProjectsStore: Send + Sync {
         actor: UserId,
         project_id: &str,
     ) -> BoxFut<'_, Result<Vec<TeamMemberRecord>, StoreError>>;
+
+    /// Creates a pending invite, superseding any prior pending invite for
+    /// the same project + email. Returns the row id.
+    fn create_invite(
+        &self,
+        project_id: &str,
+        email: &str,
+        role: &str,
+        token_hash: &str,
+        expires_at: chrono::DateTime<chrono::Utc>,
+        created_by: UserId,
+    ) -> BoxFut<'_, Result<String, StoreError>>;
+
+    /// Finds a pending invite by token hash (ignores decided/expired rows;
+    /// expiry is enforced by the service against `now`).
+    fn find_pending_invite(
+        &self,
+        token_hash: &str,
+    ) -> BoxFut<'_, Result<Option<InviteRecord>, StoreError>>;
+
+    /// Finds any invite by token hash, decided or not (idempotent
+    /// accept and preview-of-handled-link flows).
+    fn find_invite_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> BoxFut<'_, Result<Option<InviteRecord>, StoreError>>;
+
+    /// Marks an invite accepted or declined. Returns false when the row
+    /// is already decided or missing.
+    fn decide_invite(
+        &self,
+        invite_id: &str,
+        accepted: bool,
+    ) -> BoxFut<'_, Result<bool, StoreError>>;
 
     // === Admin-scoped reads (no actor visibility checks) =================
 
@@ -148,4 +188,19 @@ pub struct TeamMemberRecord {
     pub role: String,
     pub has_2fa: bool,
     pub last_active_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// A pending team invite (resolved by token hash).
+#[derive(Debug, Clone)]
+pub struct InviteRecord {
+    pub id: String,
+    pub project_id: String,
+    pub project_name: String,
+    pub email: String,
+    pub role: String,
+    pub token_hash: String,
+    pub status: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    pub created_by: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }

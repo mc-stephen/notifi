@@ -21,6 +21,9 @@ pub struct AdminService {
     store: Box<dyn AdminStore>,
     expose_dev_tokens: bool,
     audit: Arc<AuditService>,
+    mailer: Option<Arc<dyn crate::ports::mailer::SmtpMailer>>,
+    templates: Option<Arc<dyn crate::ports::mailer::SystemTemplates>>,
+    admin_url: String,
 }
 
 impl AdminService {
@@ -33,7 +36,24 @@ impl AdminService {
             store,
             expose_dev_tokens,
             audit,
+            mailer: None,
+            templates: None,
+            admin_url: String::new(),
         }
+    }
+
+    /// Wires system mail (password-reset delivery). All three pieces travel
+    /// together: without any one of them, the dev behavior is kept.
+    pub fn with_system_mail(
+        mut self,
+        mailer: Arc<dyn crate::ports::mailer::SmtpMailer>,
+        templates: Arc<dyn crate::ports::mailer::SystemTemplates>,
+        admin_url: String,
+    ) -> Self {
+        self.mailer = Some(mailer);
+        self.templates = Some(templates);
+        self.admin_url = admin_url;
+        self
     }
 
     /// Whether raw one-time tokens are surfaced in API responses (dev only).
@@ -294,6 +314,29 @@ impl AdminService {
                 created_at: now,
             })
             .await?;
+        if let (Some(mailer), Some(templates)) = (self.mailer.as_ref(), self.templates.as_ref()) {
+            let link = format!(
+                "{}/password/reset?token={raw}",
+                self.admin_url.trim_end_matches('/')
+            );
+            match templates.render("password-reset", &[("name", &admin.name), ("link", &link)]) {
+                Ok(rendered) => {
+                    if let Err(e) = mailer
+                        .send(
+                            crate::ports::mailer::SystemSender::NoReply,
+                            admin.email.as_str(),
+                            &rendered.subject,
+                            &rendered.text,
+                            Some(&rendered.html),
+                        )
+                        .await
+                    {
+                        tracing::warn!(error = %e, "admin reset email delivery failed");
+                    }
+                }
+                Err(e) => tracing::warn!(error = %e, "admin reset template render failed"),
+            }
+        }
         Ok(Some(raw))
     }
 
