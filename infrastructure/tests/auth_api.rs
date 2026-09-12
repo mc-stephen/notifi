@@ -794,6 +794,12 @@ async fn oauth_callback_links_matching_password_account() {
         .unwrap();
     assert_eq!(found.id.to_string(), original_id);
     assert_eq!(found.oauth_provider.as_deref(), Some("github"));
+    // the provider proved inbox control, so the link carries verification
+    // (a fresh password signup leaves this unset)
+    assert!(
+        found.email_verified_at.is_some(),
+        "auto-link should mark the email verified"
+    );
 }
 
 #[tokio::test]

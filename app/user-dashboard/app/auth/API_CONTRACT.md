@@ -89,7 +89,7 @@ Browser-redirect flow (popup-first on the dashboard):
    - Any failure → popup gets `oauth:error`; redirect mode lands on `/auth/login?error=oauth_failed`.
 3. Dashboard: opens the start URL in a popup from the click handler (falls back to full-page redirect when blocked), listens for one validated-origin message, then calls `/app/auth/me` to hydrate user + onboarding flag.
 
-**Account linking:** only provider-verified emails are accepted. Resolution order: existing `(provider, subject)` account → sign in; else an account with the same email → auto-link the OAuth identity onto it (a provider-verified address proves inbox control); else create a fresh verified account.
+**Account linking:** only provider-verified emails are accepted. Resolution order: existing `(provider, subject)` account → sign in; else an account with the same email → auto-link the OAuth identity onto it (a provider-verified address proves inbox control, so the link also marks the address verified and clears the verify-email banner); else create a fresh verified account.
 
 **Config (backend env):** `NOTIFI_OAUTH_GITHUB_CLIENT_ID/_SECRET`, `NOTIFI_OAUTH_GOOGLE_CLIENT_ID/_SECRET`, `NOTIFI_DASHBOARD_URL` (default `http://localhost:3000`), `NOTIFI_API_BASE_URL` (default `http://localhost:8080`). Callback URLs to register with providers: `{api_base_url}/app/auth/oauth/{provider}/callback`.
 

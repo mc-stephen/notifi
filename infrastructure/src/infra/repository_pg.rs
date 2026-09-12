@@ -228,14 +228,15 @@ impl AuthStore for PgAuthStore {
         Box::pin(async move {
             sqlx::query(
                 "INSERT INTO auth_users (id, name, email, password_hash, avatar_url,
-                                        oauth_provider, oauth_subject)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                                        email_verified_at, oauth_provider, oauth_subject)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
             )
             .bind(user.id.to_string())
             .bind(&user.name)
             .bind(user.email.as_str())
             .bind(&user.password_hash)
             .bind(&user.avatar_url)
+            .bind(user.email_verified_at)
             .bind(&user.oauth_provider)
             .bind(&user.oauth_subject)
             .execute(&pool)
@@ -1488,16 +1489,46 @@ mod pg_tests {
         assert_eq!(found.id, user.id);
         assert_eq!(found.email.as_str(), user.email.as_str());
 
+        // A verified-at timestamp must survive the INSERT round-trip
+        // (regression: create_user once dropped the column, leaving every
+        // OAuth row unverified in Postgres while the fake store stayed
+        // correct and the suite stayed green).
+        let verified_at = Utc::now();
+        let oauth_email = format!("roundtrip-oauth-{}@example.com", Ulid::new());
+        let oauth_user = User {
+            id: UserId::new(),
+            name: "Roundtrip OAuth".to_string(),
+            email: Email::parse(&oauth_email).unwrap(),
+            password_hash: String::new(),
+            avatar_url: None,
+            email_verified_at: Some(verified_at),
+            oauth_provider: Some("github".to_string()),
+            oauth_subject: Some(format!("sub-{}", Ulid::new())),
+            totp_secret: None,
+            totp_enabled: false,
+            status: crate::domain::auth::entities::UserStatus::Active,
+            created_at: Utc::now(),
+            last_login_at: None,
+        };
+        store.create_user(&oauth_user).await.unwrap();
+        let found_oauth = store.find_user_by_id(oauth_user.id).await.unwrap().unwrap();
+        assert!(
+            found_oauth.email_verified(),
+            "verified_at must persist through create_user"
+        );
+
         store.touch_last_login(user.id, Utc::now()).await.unwrap();
         store.set_email_verified(user.id, Utc::now()).await.unwrap();
         let verified = store.find_user_by_id(user.id).await.unwrap().unwrap();
         assert!(verified.email_verified());
 
         // cleanup so the suite stays rerunnable
-        sqlx::query("DELETE FROM auth_users WHERE id = $1")
-            .bind(user.id.to_string())
-            .execute(&store.pool)
-            .await
-            .unwrap();
+        for id in [user.id, oauth_user.id] {
+            sqlx::query("DELETE FROM auth_users WHERE id = $1")
+                .bind(id.to_string())
+                .execute(&store.pool)
+                .await
+                .unwrap();
+        }
     }
 }

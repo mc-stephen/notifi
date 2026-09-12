@@ -747,7 +747,7 @@ impl AuthService {
             ));
         }
 
-        let user = match self
+        let mut user = match self
             .store
             .find_user_by_oauth(provider, &profile.subject)
             .await?
@@ -790,6 +790,17 @@ impl AuthService {
                 }
             },
         };
+
+        // The provider re-asserts inbox control on every sign-in
+        // (provider-unverified addresses never reach here), so any row
+        // still unverified — a pre-fix OAuth row, a linked password
+        // account — heals itself here. Single choke point: no branch
+        // can forget it again.
+        if user.email_verified_at.is_none() {
+            let now = Utc::now();
+            self.store.set_email_verified(user.id, now).await?;
+            user.email_verified_at = Some(now);
+        }
 
         self.store.touch_last_login(user.id, Utc::now()).await?;
         ensure_active(&user)?;
