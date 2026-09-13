@@ -50,6 +50,7 @@ fn app_with_admin_support() -> (Router, Arc<FakeTicketsStore>) {
                 project_members: None,
                 audit: Some(audit),
                 recipients: None,
+                api_keys: None,
                 templates: None,
                 channel_providers: None,
                 tickets: Some(tickets),
@@ -340,6 +341,88 @@ async fn admin_sets_ticket_status() {
     )
     .await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn admin_sets_ticket_priority() {
+    let (app, tickets) = app_with_admin_support();
+    let (user_cookie, _) = signup_and_login(app.clone(), &tickets, "jane@x.dev").await;
+    let admin_cookie = bootstrap_admin(app.clone(), &tickets).await;
+    let ticket_id = create_ticket_as(app.clone(), &user_cookie).await;
+
+    // New tickets start at the triage default.
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        &format!("/admin/support/tickets/{ticket_id}"),
+        None,
+        "admin_session",
+        &admin_cookie,
+    )
+    .await;
+    assert_eq!(
+        body_json(res).await["ticket"]["priority"].as_str().unwrap(),
+        "medium"
+    );
+
+    // Round-trip every assignable priority (case-insensitive in).
+    for (sent, stored) in [
+        ("low", "low"),
+        ("HIGH", "high"),
+        ("Urgent", "urgent"),
+        ("medium", "medium"),
+    ] {
+        let res = request_with_cookie(
+            app.clone(),
+            "PATCH",
+            &format!("/admin/support/tickets/{ticket_id}"),
+            Some(json!({"priority": sent})),
+            "admin_session",
+            &admin_cookie,
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            body_json(res).await["ticket"]["priority"].as_str().unwrap(),
+            stored
+        );
+    }
+
+    // Unknown priorities are rejected.
+    let res = request_with_cookie(
+        app.clone(),
+        "PATCH",
+        &format!("/admin/support/tickets/{ticket_id}"),
+        Some(json!({"priority": "critical"})),
+        "admin_session",
+        &admin_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    // Empty update is rejected.
+    let res = request_with_cookie(
+        app.clone(),
+        "PATCH",
+        &format!("/admin/support/tickets/{ticket_id}"),
+        Some(json!({})),
+        "admin_session",
+        &admin_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    // Unknown ticket stays 404.
+    let res = request_with_cookie(
+        app.clone(),
+        "PATCH",
+        "/admin/support/tickets/nope",
+        Some(json!({"priority": "high"})),
+        "admin_session",
+        &admin_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

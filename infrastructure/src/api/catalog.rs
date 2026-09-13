@@ -269,6 +269,63 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         feature: "recipients",
         description: "soft-delete a recipient",
     },
+    // -- api-keys feature -----------------------------------------------------
+    RouteInfo {
+        method: "POST",
+        path: "/app/projects/{id}/api-keys",
+        surface: Surface::App,
+        feature: "api_keys",
+        description: "issue a project API key (secret shown once)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/app/projects/{id}/api-keys",
+        surface: Surface::App,
+        feature: "api_keys",
+        description: "list API keys in a project, newest first",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/app/projects/{id}/api-keys/{key_id}",
+        surface: Surface::App,
+        feature: "api_keys",
+        description: "fetch a single API key (no secret)",
+    },
+    RouteInfo {
+        method: "PATCH",
+        path: "/app/projects/{id}/api-keys/{key_id}",
+        surface: Surface::App,
+        feature: "api_keys",
+        description: "rename and/or enable/disable an API key",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/projects/{id}/api-keys/{key_id}/revoke",
+        surface: Surface::App,
+        feature: "api_keys",
+        description: "permanently revoke an API key",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/app/projects/{id}/api-keys/{key_id}/ips",
+        surface: Surface::App,
+        feature: "api_keys",
+        description: "list a key's IP allowlist (empty means unrestricted)",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/projects/{id}/api-keys/{key_id}/ips",
+        surface: Surface::App,
+        feature: "api_keys",
+        description: "allow an IP or CIDR range on a key",
+    },
+    RouteInfo {
+        method: "DELETE",
+        path: "/app/projects/{id}/api-keys/{key_id}/ips/{entry_id}",
+        surface: Surface::App,
+        feature: "api_keys",
+        description: "remove an IP allowlist entry",
+    },
     // -- templates feature ----------------------------------------------------
     RouteInfo {
         method: "POST",
@@ -640,7 +697,7 @@ pub const ADMIN_ROUTES: &[RouteInfo] = &[
         path: "/admin/support/tickets/{ticket_id}",
         surface: Surface::Admin,
         feature: "support",
-        description: "set a ticket's status",
+        description: "set a ticket's status and/or triage priority",
     },
     // -- admin notifications feature ----------------------------------------
     RouteInfo {

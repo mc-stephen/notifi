@@ -70,3 +70,12 @@ impl From<AdminTicketMessage> for AdminTicketMessageDto {
 pub struct SetStatusRequest {
     pub status: String,
 }
+
+/// `PATCH /admin/support/tickets/:id` — status and/or triage priority.
+/// At least one must be present; each is applied (and audited) independently.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateTicketRequest {
+    pub status: Option<String>,
+    pub priority: Option<String>,
+}

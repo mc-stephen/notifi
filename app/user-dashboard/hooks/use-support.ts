@@ -73,7 +73,6 @@ export type CreateTicketInput = {
   projectId?: string | null;
   subject: string;
   category: string;
-  priority: string;
   description: string;
 };
 
@@ -90,7 +89,6 @@ export function useSubmitTicket() {
             projectId: input.projectId ?? projectId ?? null,
             subject: input.subject,
             category: input.category,
-            priority: input.priority,
             description: input.description,
           }),
         },
@@ -108,6 +106,9 @@ type ThreadState = {
   loading: boolean;
   error: string | null;
 };
+
+// Poll cadence for incoming support replies (mirrors the admin thread).
+const THREAD_POLL_MS = 5000;
 
 export function useTicketThread(ticketId: string | null) {
   const [state, setState] = useState<ThreadState>({
@@ -156,6 +157,24 @@ export function useTicketThread(ticketId: string | null) {
         error: e instanceof Error ? e.message : "Failed to load messages",
       });
     }
+  }, [ticketId]);
+
+  // Live thread: pick up support replies without manual refresh.
+  // Skipped while hidden; transient failures retry on the next tick.
+  useEffect(() => {
+    if (!ticketId) return;
+    const timer = window.setInterval(async () => {
+      if (document.hidden) return;
+      try {
+        const res = await api<{ messages: TicketMessage[] }>(
+          `/app/support/tickets/${ticketId}/messages`,
+        );
+        setState({ messages: res.messages, loading: false, error: null });
+      } catch {
+        // Next tick retries; stays silent.
+      }
+    }, THREAD_POLL_MS);
+    return () => window.clearInterval(timer);
   }, [ticketId]);
 
   return {

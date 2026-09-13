@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 
 use super::super::auth::{CurrentUser, Problem};
 use super::dto::{CreateTicketRequest, SendReplyRequest, TicketDto, TicketMessageDto};
-use crate::domain::support::TicketService;
+use crate::domain::support::{DEFAULT_PRIORITY, TicketService};
 
 const DEFAULT_LIMIT: i64 = 100;
 const MAX_LIMIT: i64 = 200;
@@ -24,7 +24,7 @@ pub async fn create_ticket(
             body.project_id.as_deref(),
             &body.subject,
             &body.category,
-            &body.priority,
+            DEFAULT_PRIORITY,
             &body.description,
         )
         .await?;

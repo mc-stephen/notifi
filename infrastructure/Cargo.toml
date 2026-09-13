@@ -14,6 +14,7 @@ dotenvy = { workspace = true }
 email_channel = { path = "channels/email_channel" }
 hex = { workspace = true }
 notifi_core = { path = "crates/core" }
+ipnet = { workspace = true }
 rand = { workspace = true }
 redis = { workspace = true }
 reqwest = { workspace = true }
@@ -68,6 +69,7 @@ axum-extra = { version = "0.10", features = ["cookie"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 dotenvy = "0.15"
 hex = "0.4"
+ipnet = "2"
 rand = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 # TLS note: this deployment's TLS terminators (Coolify) reject rustls

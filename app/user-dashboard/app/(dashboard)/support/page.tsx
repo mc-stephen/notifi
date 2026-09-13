@@ -77,7 +77,6 @@ export default function SupportPage() {
   // Form state
   const [formSubject, setFormSubject] = useState("");
   const [formCategory, setFormCategory] = useState("Technical Issue");
-  const [formPriority, setFormPriority] = useState("Medium - Issue affecting workflow");
   const [formDescription, setFormDescription] = useState("");
   const [formScope, setFormScope] = useState<"project" | "personal">(
     currentProject ? "project" : "personal",
@@ -86,7 +85,6 @@ export default function SupportPage() {
   const resetForm = useCallback(() => {
     setFormSubject("");
     setFormCategory("Technical Issue");
-    setFormPriority("Medium - Issue affecting workflow");
     setFormDescription("");
     setFormScope(currentProject ? "project" : "personal");
   }, [currentProject]);
@@ -94,11 +92,11 @@ export default function SupportPage() {
   const handleSubmit = useCallback(async () => {
     setSubmitting(true);
     try {
+      // No priority: triage is support-owned (new tickets start medium).
       await submit({
         projectId: formScope === "project" ? currentProject?.id : null,
         subject: formSubject,
         category: formCategory,
-        priority: formPriority.split(" - ")[0],
         description: formDescription,
       });
       toast.success("Ticket submitted successfully");
@@ -110,7 +108,7 @@ export default function SupportPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [submit, formScope, formSubject, formCategory, formPriority, formDescription, currentProject, resetForm, refresh]);
+  }, [submit, formScope, formSubject, formCategory, formDescription, currentProject, resetForm, refresh]);
 
   // FAQs
   const faqs = [
@@ -202,7 +200,7 @@ export default function SupportPage() {
 
         {/* Tickets tab */}
         <TabsContent value="tickets" className="mt-4 flex min-h-0 flex-col">
-          <div className="flex min-h-0 flex-1 items-stretch gap-6">
+          <div className="relative flex min-h-0 flex-1 items-stretch gap-6">
             <div className="min-w-0 flex-1 overflow-y-auto">
               {ticketsLoading ? (
                 <div className="overflow-hidden rounded-lg border bg-card">
@@ -411,19 +409,6 @@ export default function SupportPage() {
               </select>
             </div>
             <div className="space-y-2">
-              <Label>Priority</Label>
-              <select
-                className="w-full rounded-md border bg-transparent px-3 py-2 text-sm"
-                value={formPriority}
-                onChange={(e) => setFormPriority(e.target.value)}
-              >
-                <option>Low - General question</option>
-                <option>Medium - Issue affecting workflow</option>
-                <option>High - Service disruption</option>
-                <option>Urgent - Production down</option>
-              </select>
-            </div>
-            <div className="space-y-2">
               <Label>Message</Label>
               <textarea
                 placeholder="Provide details about your issue, including steps to reproduce, expected vs actual behavior, and any error messages..."
@@ -467,6 +452,15 @@ function TicketDetailPanel({
   const editorRef = useRef<RichTextEditorHandle>(null);
   const isClosed = ticket.status === "closed";
 
+  // Escape dismisses the floating panel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -494,7 +488,7 @@ function TicketDetailPanel({
   }, [sending, ticket, sendReply, refresh, onTicketUpdate]);
 
   return (
-    <aside className="flex min-h-0 w-96 shrink-0 flex-col overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm animate-in slide-in-from-right-3 fade-in duration-200"
+    <aside className="absolute top-0 right-0 bottom-0 z-20 flex min-h-0 w-[min(28rem,92%)] flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-2xl animate-in slide-in-from-right-3 fade-in duration-200"
     >
       {/* Header */}
       <div className="border-b p-4">

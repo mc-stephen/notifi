@@ -1,8 +1,7 @@
 ---
 import AdminLayout from "../../layouts/AdminLayout.astro";
-import Pagination from "../../components/shared/pagination.astro";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../../components/ui/table";
-import { TICKET_STATUSES, TICKET_STATUS_COLORS, TICKET_STATUS_LABELS, PRIORITY_COLORS } from "../../lib/constants";
+import TicketsTable from "../../components/admin/TicketsTable.tsx";
+import TicketDrawerHost from "../../components/admin/TicketDrawerHost.tsx";
 import type { AdminTicket } from "../../lib/types";
 
 const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8080";
@@ -16,7 +15,6 @@ const LIMIT = 25;
 
 let tickets: AdminTicket[] = [];
 let total = 0;
-let totalPages = 0;
 let loadError: string | null = null;
 try {
   const params = new URLSearchParams();
@@ -37,23 +35,14 @@ try {
     const data = await res.json();
     tickets = data.tickets ?? [];
     total = data.total ?? 0;
-    totalPages = data.totalPages ?? 0;
   }
 } catch {
   loadError = loadError ?? "Could not load tickets. Check that the API is running and try again.";
 }
-
-function priorityColor(priority: string) {
-  return PRIORITY_COLORS[priority.toLowerCase()] ?? "bg-muted text-muted-foreground border-border";
-}
-
-const pageParams: Record<string, string> = {};
-if (statusFilter) pageParams.status = statusFilter;
-if (searchQuery.trim()) pageParams.q = searchQuery.trim();
 ---
 
 <AdminLayout title="Support Tickets">
-  <div class="space-y-6">
+  <div class="relative space-y-6">
     <div class="space-y-1">
       <nav class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
         <a href="/overview" class="hover:text-foreground transition-colors">Overview</a>
@@ -64,97 +53,23 @@ if (searchQuery.trim()) pageParams.q = searchQuery.trim();
       <p class="text-sm text-muted-foreground">Manage customer support requests and conversations.</p>
     </div>
 
-    <form method="get" class="flex flex-wrap items-center gap-3">
-      <div class="relative flex-1 min-w-[200px] max-w-sm">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" name="q" value={searchQuery} placeholder="Search tickets..." class="flex h-9 w-full rounded-lg border border-input bg-card pl-8 pr-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
+    {loadError ? (
+      <div class="rounded-xl border bg-card px-4 py-12 text-center">
+        <p class="text-sm text-destructive">{loadError}</p>
+        <a href="/login" class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted transition-colors mt-4">
+          Sign in again
+        </a>
       </div>
-      <select name="status" onchange="this.form.submit()" class="flex h-9 rounded-lg border border-input bg-card px-3 py-1.5 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-        <option value="">All Status</option>
-        {TICKET_STATUSES.map((s) => (
-          <option value={s} selected={statusFilter === s}>{TICKET_STATUS_LABELS[s]}</option>
-        ))}
-      </select>
-      <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors h-9">
-        Search
-      </button>
-    </form>
-
-    <div class="rounded-xl border bg-card overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Ticket</TableHead>
-            <TableHead>Customer</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Priority</TableHead>
-            <TableHead className="hidden lg:table-cell">Updated</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {tickets.map((ticket) => (
-            <TableRow data-href={`/support/${ticket.id}`} className="ticket-row cursor-pointer">
-              <TableCell>
-                <a href={`/support/${ticket.id}`} class="font-medium text-foreground hover:underline block row-link">
-                  {ticket.subject}
-                </a>
-                <p class="text-xs text-muted-foreground mt-0.5">{ticket.id}</p>
-              </TableCell>
-              <TableCell>
-                <p class="text-foreground">{ticket.customerName}</p>
-                <p class="text-xs text-muted-foreground">{ticket.customerEmail}</p>
-              </TableCell>
-              <TableCell>
-                <span class:list={[
-                  "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium",
-                  TICKET_STATUS_COLORS[ticket.status],
-                ]}>
-                  {TICKET_STATUS_LABELS[ticket.status]}
-                </span>
-              </TableCell>
-              <TableCell>
-                <span class:list={[
-                  "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
-                  priorityColor(ticket.priority),
-                ]}>
-                  {ticket.priority}
-                </span>
-              </TableCell>
-              <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
-                {new Date(ticket.updatedAt).toLocaleDateString()}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      {loadError && (
-        <div class="px-4 py-12 text-center">
-          <p class="text-sm text-destructive">{loadError}</p>
-          <a href="/login" class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted transition-colors mt-4">
-            Sign in again
-          </a>
-        </div>
-      )}
-      {!loadError && tickets.length === 0 && (
-        <div class="px-4 py-12 text-center">
-          <p class="text-sm font-medium text-foreground">No tickets found</p>
-          <p class="text-xs text-muted-foreground mt-1">Try adjusting your search or filters.</p>
-        </div>
-      )}
-      {!loadError && (
-        <Pagination page={page} totalPages={totalPages} total={total} basePath="/support" params={pageParams} />
-      )}
-    </div>
+    ) : (
+      <TicketsTable
+        client:load
+        initialTickets={tickets}
+        initialTotal={total}
+        initialPage={page}
+        initialStatus={statusFilter}
+        initialQuery={searchQuery}
+      />
+    )}
+    <TicketDrawerHost client:load />
   </div>
 </AdminLayout>
-
-<script>
-  document.querySelectorAll<HTMLTableRowElement>("tr.ticket-row").forEach((row) => {
-    row.addEventListener("click", (e) => {
-      // Let the inner subject link handle its own clicks (keyboard/middle-click safe).
-      if ((e.target as HTMLElement).closest("a")) return;
-      const href = row.dataset.href;
-      if (href) window.location.href = href;
-    });
-  });
-</script>

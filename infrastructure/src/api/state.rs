@@ -33,6 +33,8 @@ pub struct AppState {
     pub audit: Option<Arc<crate::domain::audit::AuditService>>,
     /// Recipient (brand end-user) management — wired alongside auth/db.
     pub recipients: Option<Arc<crate::domain::recipients::RecipientService>>,
+    /// Project API keys + per-key IP allowlists — wired alongside auth/db.
+    pub api_keys: Option<Arc<crate::domain::api_keys::ApiKeyService>>,
     /// Message templates (per-channel content + attachments) — wired alongside auth/db.
     pub templates: Option<Arc<crate::domain::templates::TemplateService>>,
     /// Per-project provider configurations (API keys, secrets) — wired alongside auth/db.

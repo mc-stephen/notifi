@@ -42,6 +42,7 @@ fn app_with_tickets() -> (Router, Arc<FakeTicketsStore>, Arc<FakeRecipientsStore
                 project_members: None,
                 audit: Some(audit),
                 recipients: None,
+                api_keys: None,
                 templates: None,
                 channel_providers: None,
                 tickets: Some(tickets),
@@ -325,6 +326,49 @@ async fn personal_ticket_invisible_to_others() {
     let res = get_with_cookie(app.clone(), "/app/support/tickets", &token_b).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res).await["tickets"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn create_ticket_defaults_priority_to_medium() {
+    let (app, _, _) = app_with_tickets();
+    let (token, _uid) = signup_and_login_on(app.clone(), "tkt-prio@example.com").await;
+
+    // No priority sent: triage is support-owned, new tickets start medium.
+    let res = post_with_cookie(
+        app.clone(),
+        "/app/support/tickets",
+        json!({
+            "subject": "No priority given",
+            "category": "Other",
+            "description": "Help me."
+        }),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+    assert_eq!(
+        body_json(res).await["ticket"]["priority"].as_str().unwrap(),
+        "medium"
+    );
+
+    // A client-supplied priority is ignored, not honored.
+    let res = post_with_cookie(
+        app.clone(),
+        "/app/support/tickets",
+        json!({
+            "subject": "Tried to set urgent",
+            "category": "Other",
+            "priority": "Urgent",
+            "description": "Help me."
+        }),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+    assert_eq!(
+        body_json(res).await["ticket"]["priority"].as_str().unwrap(),
+        "medium"
+    );
 }
 
 #[tokio::test]

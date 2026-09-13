@@ -339,3 +339,26 @@ export const NOTIFICATION_TYPE_ICONS: Record<InAppNotificationType, string> = {
 
 export const TABLE_PAGE_SIZES = [10, 20, 50, 100] as const;
 export const DEFAULT_PAGE_SIZE = 20;
+
+export type WebhookEventGroup = {
+  label: string;
+  events: { key: string; label: string }[];
+};
+
+export const WEBHOOK_EVENTS: WebhookEventGroup[] = [
+  {
+    label: "Notifications",
+    events: [
+      { key: "notification.sent", label: "Sent" },
+      { key: "notification.delivered", label: "Delivered" },
+      { key: "notification.failed", label: "Failed" },
+    ],
+  },
+  {
+    label: "Campaigns",
+    events: [
+      { key: "campaign.started", label: "Started" },
+      { key: "campaign.completed", label: "Completed" },
+    ],
+  },
+];

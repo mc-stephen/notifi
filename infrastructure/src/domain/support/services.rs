@@ -18,6 +18,22 @@ const MAX_PRIORITY: usize = 50;
 const MAX_DESCRIPTION: usize = 10_000;
 const MAX_MESSAGE: usize = 10_000;
 
+/// Priorities support may assign (stored lowercase). Users don't set this:
+/// new tickets start at [`DEFAULT_PRIORITY`] and triage owns it.
+pub const TICKET_PRIORITIES: [&str; 4] = ["low", "medium", "high", "urgent"];
+pub const DEFAULT_PRIORITY: &str = "medium";
+
+fn normalize_priority(raw: &str) -> Result<String, AuthError> {
+    let normalized = raw.trim().to_lowercase();
+    if normalized.len() > MAX_PRIORITY || !TICKET_PRIORITIES.contains(&normalized.as_str()) {
+        return Err(AuthError::Validation(format!(
+            "invalid priority (expected one of: {})",
+            TICKET_PRIORITIES.join(", ")
+        )));
+    }
+    Ok(normalized)
+}
+
 pub struct TicketService {
     store: Arc<dyn TicketsStore>,
     audit: Arc<AuditService>,
@@ -39,7 +55,6 @@ impl TicketService {
     ) -> Result<Ticket, AuthError> {
         let subject = subject.trim();
         let category = category.trim();
-        let priority = priority.trim();
         let description = description.trim();
 
         if subject.is_empty() || subject.len() > MAX_SUBJECT {
@@ -52,11 +67,7 @@ impl TicketService {
                 "category is required (100 characters max)".to_string(),
             ));
         }
-        if priority.is_empty() || priority.len() > MAX_PRIORITY {
-            return Err(AuthError::Validation(
-                "priority is required (50 characters max)".to_string(),
-            ));
-        }
+        let priority = normalize_priority(priority)?;
         if description.is_empty() || description.len() > MAX_DESCRIPTION {
             return Err(AuthError::Validation(
                 "description is required (10,000 characters max)".to_string(),
@@ -65,7 +76,7 @@ impl TicketService {
 
         let record = self
             .store
-            .create(actor, project_id, subject, category, priority, description)
+            .create(actor, project_id, subject, category, &priority, description)
             .await
             .map_err(map_store_error)?;
 
@@ -344,6 +355,64 @@ impl TicketService {
                 )
                 .await;
         }
+
+        self.get_any_ticket(ticket_id)
+            .await?
+            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))
+    }
+
+    /// Sets a ticket's triage priority (support only). No-op when unchanged.
+    pub async fn set_ticket_priority(
+        &self,
+        admin: &AdminUser,
+        ticket_id: &str,
+        priority: &str,
+    ) -> Result<AdminTicket, AuthError> {
+        let priority = normalize_priority(priority)?;
+
+        let ticket = self
+            .store
+            .get_any(ticket_id)
+            .await
+            .map_err(map_store_error)?
+            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
+
+        if ticket.ticket.priority == priority {
+            return self
+                .get_any_ticket(ticket_id)
+                .await?
+                .ok_or_else(|| AuthError::NotFound("ticket not found".into()));
+        }
+
+        let updated = self
+            .store
+            .set_priority(ticket_id, &priority)
+            .await
+            .map_err(map_store_error)?;
+        if !updated {
+            return Err(AuthError::NotFound("ticket not found".into()));
+        }
+
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new_admin(
+                    AuditAction::SupportTicketPriorityChanged,
+                    &admin.id.to_string(),
+                    Some(&admin.name),
+                    ticket.ticket.project_id.as_deref(),
+                    format!(
+                        "ticket '{}' priority changed from {} to {}",
+                        ticket.ticket.subject, ticket.ticket.priority, priority,
+                    ),
+                    Some(json!({
+                        "ticket_id": ticket.ticket.id,
+                        "from": ticket.ticket.priority,
+                        "to": priority,
+                    })),
+                ),
+            )
+            .await;
 
         self.get_any_ticket(ticket_id)
             .await?

@@ -257,11 +257,16 @@ pub async fn oauth_callback(
         )
             .into_response())
     } else {
-        Ok((
-            jar,
-            Redirect::to(runtime.dashboard_url.trim_end_matches('/')),
-        )
-            .into_response())
+        // Redirect mode lands on a full page load (no opener to message),
+        // so route directly: fresh accounts go straight into onboarding
+        // without ever painting the dashboard.
+        let mut target = runtime.dashboard_url.trim_end_matches('/').to_string();
+        let completed = service
+            .onboarding_completed(issued.user.id)
+            .await
+            .map_err(Problem::from)?;
+        target.push_str(if completed { "" } else { "/onboarding/welcome" });
+        Ok((jar, Redirect::to(&target)).into_response())
     }
 }
 

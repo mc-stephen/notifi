@@ -85,7 +85,7 @@ Browser-redirect flow (popup-first on the dashboard):
 1. **Start** `GET /app/auth/oauth/github?popup=1` → `302` to the provider's consent screen; parks short-lived httpOnly cookies (`oauth_state_*`, `oauth_verifier_*`, `oauth_mode_*`) scoped to the callback path. Unconfigured provider (no client credentials) → `503` problem document; unknown provider → `400`.
 2. **Callback** `GET /app/auth/oauth/{provider}/callback?code=…&state=…` → validates CSRF state, exchanges the code server-side, upserts the user, sets the standard 1-day `session_token` cookie, then:
    - `popup` mode → `200 text/html` page that postMessages `{ "type": "oauth:success" }` (or `{ "type": "oauth:error" }`) to the dashboard origin and closes the window;
-   - `redirect` mode → `302` to the dashboard root.
+   - `redirect` mode → `302` to the dashboard root for onboarded accounts, or to `/onboarding/welcome` for fresh ones (landing is onboarding-aware, so new users never paint the dashboard first);
    - Any failure → popup gets `oauth:error`; redirect mode lands on `/auth/login?error=oauth_failed`.
 3. Dashboard: opens the start URL in a popup from the click handler (falls back to full-page redirect when blocked), listens for one validated-origin message, then calls `/app/auth/me` to hydrate user + onboarding flag.
 

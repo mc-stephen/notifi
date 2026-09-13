@@ -2,6 +2,7 @@
 //! client, config loading, telemetry, and cache connections.
 
 pub mod admin_repository_pg;
+pub mod api_keys_repository_pg;
 pub mod audit_repository_pg;
 pub mod billing_repository_pg;
 pub mod channel_provider_repository_pg;
@@ -20,6 +21,7 @@ pub mod templates_repository_pg;
 pub mod tickets_repository_pg;
 
 pub use admin_repository_pg::PgAdminStore;
+pub use api_keys_repository_pg::PgApiKeysStore;
 pub use billing_repository_pg::PgBillingStore;
 pub use channel_provider_repository_pg::PgChannelProviderStore;
 pub use notifications_repository_pg::PgNotificationsStore;

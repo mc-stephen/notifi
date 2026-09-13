@@ -8,3 +8,4 @@ export { useNotificationSettings } from "./use-notification-settings";
 export { useProviderRegistry, type ProviderRegistry, type ChannelDefinition, type ProviderDefinition, type ConfigField } from "./use-provider-registry";
 export { useBilling } from "./use-billing";
 export { useTeamMembers, type TeamMemberRecord } from "./use-team";
+export { useApiKeys, useApiKeyActions, useIpAllowlist, type CreateApiKeyInput, type UpdateApiKeyInput } from "./use-api-keys";

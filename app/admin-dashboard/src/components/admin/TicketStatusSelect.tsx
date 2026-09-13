@@ -5,9 +5,13 @@ import { TICKET_STATUSES, TICKET_STATUS_LABELS, type TicketStatus } from "../../
 export default function TicketStatusSelect({
   ticketId,
   initialStatus,
+  onChanged,
 }: {
   ticketId: string;
   initialStatus: TicketStatus;
+  // When provided, the parent syncs state itself (drawer) instead of
+  // reloading the page.
+  onChanged?: (status: TicketStatus) => void;
 }) {
   const [status, setStatus] = useState<TicketStatus>(initialStatus);
   const [saving, setSaving] = useState(false);
@@ -20,6 +24,10 @@ export default function TicketStatusSelect({
     try {
       const res = await support.setStatus(ticketId, next);
       setStatus(res.ticket.status);
+      if (onChanged) {
+        onChanged(res.ticket.status);
+        return;
+      }
       // Status drives SSR markup (header badge, composer state) — reload.
       window.location.reload();
     } catch (e) {

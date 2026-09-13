@@ -324,11 +324,18 @@ export type ApiKey = {
   prefix: string;
   environment: Environment;
   permissions: string[];
-  scopes: string[];
-  expiresAt?: string;
-  lastUsedAt?: string;
-  rateLimit?: number;
+  expiresAt?: string | null;
+  lastUsedAt?: string | null;
   enabled: boolean;
+  revokedAt?: string | null;
+  createdAt: string;
+};
+
+export type IpAllowEntry = {
+  id: string;
+  keyId: string;
+  cidr: string;
+  label: string;
   createdAt: string;
 };
 

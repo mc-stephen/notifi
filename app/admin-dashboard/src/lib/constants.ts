@@ -126,7 +126,19 @@ export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
 
 export const PRIORITY_COLORS: Record<string, string> = {
   low: "bg-muted text-muted-foreground border-border",
+  medium: "bg-info/10 text-info border-info/20",
   normal: "bg-info/10 text-info border-info/20",
   high: "bg-warning/10 text-warning border-warning/20",
   urgent: "bg-destructive/10 text-destructive border-destructive/20",
+};
+
+export const TICKET_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+
+export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
+
+export const TICKET_PRIORITY_LABELS: Record<TicketPriority, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  urgent: "Urgent",
 };

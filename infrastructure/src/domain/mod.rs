@@ -1,6 +1,7 @@
 //! Domain layer — framework-free business rules (no axum/sqlx types).
 
 pub mod admin;
+pub mod api_keys;
 pub mod audit;
 pub mod auth;
 pub mod billing;

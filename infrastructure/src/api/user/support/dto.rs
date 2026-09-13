@@ -10,7 +10,8 @@ pub struct CreateTicketRequest {
     pub project_id: Option<String>,
     pub subject: String,
     pub category: String,
-    pub priority: String,
+    // No priority: triage is support-owned. New tickets start at the
+    // domain default; unknown fields from older clients are ignored.
     pub description: String,
 }
 

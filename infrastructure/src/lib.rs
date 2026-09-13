@@ -175,6 +175,15 @@ fn run_inner() -> Result<(), String> {
             ))
         });
 
+        // Project API keys + per-key IP allowlists. Record-only until the
+        // external API lands; verification is exposed as a domain seam.
+        let api_keys = db.as_ref().map(|pool| {
+            std::sync::Arc::new(domain::api_keys::ApiKeyService::new(
+                std::sync::Arc::new(infra::PgApiKeysStore::new(pool.clone())),
+                audit.clone().expect("audit service built with db"),
+            ))
+        });
+
         // Channel providers: per-project provider configurations (API keys, secrets).
         let channel_providers: Option<std::sync::Arc<dyn ports::ChannelProviderStore + Send + Sync>> = db.as_ref().map(|pool| {
             std::sync::Arc::new(infra::PgChannelProviderStore::new(pool.clone())) as std::sync::Arc<dyn ports::ChannelProviderStore + Send + Sync>
@@ -348,6 +357,7 @@ fn run_inner() -> Result<(), String> {
                 project_members,
                 audit,
                 recipients,
+                api_keys,
                 templates,
                 channel_providers,
                 tickets,

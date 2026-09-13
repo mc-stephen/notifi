@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { Bell } from "lucide-react";
 import { Stepper } from "@/components/custom/onboarding/stepper";
 import { useOnboardingStore, STEP_ROUTES } from "@/store/onboarding-store";
+import { useAuthStore } from "@/store/auth-store";
 
 const STEP_LABELS = [
   "Welcome",
@@ -23,6 +24,17 @@ export default function OnboardingLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { currentStep, isCompleted } = useOnboardingStore();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const authHydrated = useAuthStore((s) => s.authHydrated);
+
+  // The flow is only entered with a session behind it: without one
+  // (logged out, dead session, API unreachable at middleware time),
+  // bounce to login instead of rendering steps for a ghost.
+  useEffect(() => {
+    if (authHydrated && !isAuthenticated) {
+      router.replace(`/auth/login?next=${encodeURIComponent(pathname)}`);
+    }
+  }, [authHydrated, isAuthenticated, pathname, router]);
 
   // Redirect to dashboard if onboarding is completed
   useEffect(() => {
@@ -40,6 +52,18 @@ export default function OnboardingLayout({
       useOnboardingStore.getState().setStep(stepIndex);
     }
   }, [pathname]);
+
+  // Hold the steps until the session question settles (and while the
+  // logged-out bounce is in flight) — no step paint for ghosts.
+  if (!authHydrated || !isAuthenticated) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background">
+        <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Bell className="size-5" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">

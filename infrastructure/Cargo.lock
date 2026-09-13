@@ -3066,6 +3066,7 @@ dependencies = [
  "email_channel",
  "hex",
  "http-body-util",
+ "ipnet",
  "notifi_core",
  "rand 0.9.5",
  "redis",

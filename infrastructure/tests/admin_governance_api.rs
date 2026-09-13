@@ -48,6 +48,7 @@ fn app_with_admin() -> Router {
             project_members: None,
             audit: Some(audit),
             recipients: None,
+            api_keys: None,
             templates: None,
             channel_providers: None,
             tickets: Some(tickets),

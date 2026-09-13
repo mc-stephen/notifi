@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 
 use super::super::super::auth::Problem;
 use super::super::handlers::CurrentAdmin;
-use super::dto::{AdminTicketDto, AdminTicketMessageDto, SetStatusRequest};
+use super::dto::{AdminTicketDto, AdminTicketMessageDto, UpdateTicketRequest};
 use crate::api::user::support::dto::{SendReplyRequest, TicketMessageDto};
 use crate::domain::auth::errors::AuthError;
 use crate::domain::support::TicketService;
@@ -111,17 +111,35 @@ pub async fn send_reply(
     ))
 }
 
-/// `PATCH /admin/support/tickets/:id` — set ticket status.
+/// `PATCH /admin/support/tickets/:id` — set status and/or triage priority.
+/// At least one field is required; omitted fields are left untouched.
 pub async fn set_status(
     CurrentAdmin(admin): CurrentAdmin,
     service: MaybeTicketService,
     Path(ticket_id): Path<String>,
-    Json(body): Json<SetStatusRequest>,
+    Json(body): Json<UpdateTicketRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
+    if body.status.is_none() && body.priority.is_none() {
+        return Err(AuthError::Validation(
+            "nothing to update (expected status and/or priority)".into(),
+        )
+        .into());
+    }
     let service = require_tickets_service(service)?;
+    if let Some(status) = body.status.as_deref() {
+        service
+            .set_ticket_status(&admin, &ticket_id, status)
+            .await?;
+    }
+    if let Some(priority) = body.priority.as_deref() {
+        service
+            .set_ticket_priority(&admin, &ticket_id, priority)
+            .await?;
+    }
     let ticket = service
-        .set_ticket_status(&admin, &ticket_id, &body.status)
-        .await?;
+        .get_any_ticket(&ticket_id)
+        .await?
+        .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "ticket": AdminTicketDto::from(ticket) })),

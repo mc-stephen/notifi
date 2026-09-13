@@ -3,6 +3,7 @@
 //! new admin features mount inside [`admin_router`].
 
 pub mod admin;
+pub mod api_keys;
 pub mod auth;
 pub mod billing;
 pub mod channel_configs;
@@ -122,12 +123,21 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
         invite_routes = invite_routes.layer(axum::Extension(service));
     }
 
+    let mut api_key_routes = api_keys::routes::router();
+    if let Some(auth_service) = state.auth.clone() {
+        api_key_routes = api_key_routes.layer(axum::Extension(auth_service));
+    }
+    if let Some(service) = state.api_keys.clone() {
+        api_key_routes = api_key_routes.layer(axum::Extension(service));
+    }
+
     Router::new()
         .nest("/auth", auth_routes)
         .nest("/providers", provider_routes)
         .nest("/projects", project_routes)
         .nest("/projects/{project_id}/recipients", recipient_routes)
         .nest("/projects/{project_id}/templates", template_routes)
+        .nest("/projects/{project_id}/api-keys", api_key_routes)
         .nest(
             "/projects/{project_id}/channel-configs",
             channel_config_routes,

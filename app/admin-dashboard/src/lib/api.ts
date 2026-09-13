@@ -155,9 +155,10 @@ export type TicketListResponse = {
 } & PageInfo;
 
 export const support = {
-  listTickets: (params?: { status?: string; limit?: number; page?: number }) => {
+  listTickets: (params?: { status?: string; q?: string; limit?: number; page?: number }) => {
     const search = new URLSearchParams();
     if (params?.status) search.set("status", params.status);
+    if (params?.q?.trim()) search.set("search", params.q.trim());
     if (params?.limit) search.set("limit", String(params.limit));
     if (params?.page) search.set("page", String(params.page));
     const query = search.toString();
@@ -186,6 +187,12 @@ export const support = {
     request<{ ticket: AdminTicket }>(
       `/admin/support/tickets/${encodeURIComponent(id)}`,
       { method: "PATCH", body: JSON.stringify({ status }) },
+    ),
+
+  setPriority: (id: string, priority: string) =>
+    request<{ ticket: AdminTicket }>(
+      `/admin/support/tickets/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify({ priority }) },
     ),
 };
 

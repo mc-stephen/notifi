@@ -137,6 +137,11 @@ pub trait TicketsStore: Send + Sync {
         status: TicketStatus,
     ) -> BoxFut<'_, Result<bool, StoreError>>;
 
+    /// Sets a ticket's triage priority (support-assigned). Returns `None`
+    /// when the ticket does not exist (or is soft-deleted).
+    fn set_priority(&self, ticket_id: &str, priority: &str)
+    -> BoxFut<'_, Result<bool, StoreError>>;
+
     /// Counts non-deleted tickets created by a user (admin stats).
     fn count_tickets_for_user(&self, user_id: &str)
     -> BoxFut<'_, Result<TicketCounts, StoreError>>;

@@ -49,6 +49,7 @@ fn app() -> (Router, Arc<FakeAuthStore>) {
                 project_members: None,
                 audit: Some(audit),
                 recipients: None,
+                api_keys: None,
                 templates: None,
                 channel_providers: None,
                 tickets: None,
@@ -79,6 +80,7 @@ fn app_without_auth() -> Router {
             project_members: None,
             audit: None,
             recipients: None,
+            api_keys: None,
             templates: None,
             channel_providers: None,
             tickets: None,
@@ -117,6 +119,7 @@ fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
                 project_members: None,
                 audit: Some(audit),
                 recipients: None,
+                api_keys: None,
                 templates: None,
                 channel_providers: None,
                 tickets: None,
@@ -784,7 +787,9 @@ async fn oauth_callback_links_matching_password_account() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
     let location = res.headers().get("location").and_then(|v| v.to_str().ok());
-    assert_eq!(location, Some("http://localhost:3000"));
+    // fresh account, no project yet: redirect mode lands straight in
+    // onboarding without ever painting the dashboard
+    assert_eq!(location, Some("http://localhost:3000/onboarding/welcome"));
 
     // no duplicate account was created — the same user id comes back
     let found = store
@@ -800,6 +805,61 @@ async fn oauth_callback_links_matching_password_account() {
         found.email_verified_at.is_some(),
         "auto-link should mark the email verified"
     );
+}
+
+#[tokio::test]
+async fn oauth_redirect_mode_lands_onboarded_users_on_dashboard() {
+    let (app, _store) = app_with_oauth();
+    // same address the stub provider returns, so the callback auto-links
+    // onto this account instead of minting a fresh one
+    let (token, _uid) = signup_and_login_on(app.clone(), "oauth.user@example.com").await;
+
+    // finish onboarding so the flag flips
+    let res = post_json_with_cookie(
+        app.clone(),
+        "/app/auth/onboarding/complete",
+        json!({"project": {"name": "Done App"}}),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // redirect-mode callback for the onboarded (linked) account goes to
+    // the dashboard root — no onboarding detour
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/app/auth/oauth/github")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let cookies = set_cookies(&res);
+    let state = cookie_value(&cookies, "oauth_state_github").unwrap();
+    let verifier = cookie_value(&cookies, "oauth_verifier_github").unwrap();
+
+    let res = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/app/auth/oauth/github/callback?code=c&state={state}"
+                ))
+                .header(
+                    "cookie",
+                    format!("oauth_state_github={state}; oauth_verifier_github={verifier}"),
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let location = res.headers().get("location").and_then(|v| v.to_str().ok());
+    assert_eq!(location, Some("http://localhost:3000"));
 }
 
 #[tokio::test]
@@ -859,6 +919,7 @@ fn app_with_projects() -> (Router, Arc<FakeAuthStore>) {
                 project_members: None,
                 audit: Some(audit),
                 recipients: None,
+                api_keys: None,
                 templates: None,
                 channel_providers: None,
                 tickets: None,

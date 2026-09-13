@@ -660,6 +660,31 @@ impl TicketsStore for PgTicketsStore {
         })
     }
 
+    fn set_priority(
+        &self,
+        ticket_id: &str,
+        priority: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let pool = self.pool.clone();
+        let ticket_id_owned = ticket_id.to_string();
+        let priority_owned = priority.to_string();
+
+        Box::pin(async move {
+            let result = sqlx::query(
+                "UPDATE platform_support_tickets
+                 SET priority = $2, updated_at = now()
+                 WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(&ticket_id_owned)
+            .bind(&priority_owned)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+
+            Ok(result.rows_affected() > 0)
+        })
+    }
+
     fn count_tickets_for_user(
         &self,
         user_id: &str,

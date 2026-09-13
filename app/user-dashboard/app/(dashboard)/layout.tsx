@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Toaster } from "@/components/ui/sonner";
 
 import { Sidebar } from "@/components/layout/sidebar";
@@ -17,9 +17,19 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const onboardingCompleted = useAuthStore((s) => s.onboardingCompleted);
   const authHydrated = useAuthStore((s) => s.authHydrated);
+
+  // Dead or missing sessions (nuked DB, expiry, revocation elsewhere)
+  // land here with a stale cookie: fetchMe settles unauthenticated and
+  // the dashboard bounces to login instead of rendering userless.
+  useEffect(() => {
+    if (authHydrated && !isAuthenticated) {
+      router.replace(`/auth/login?next=${encodeURIComponent(pathname)}`);
+    }
+  }, [authHydrated, isAuthenticated, pathname, router]);
 
   // Onboarding is mandatory: accounts without an org + project (the
   // server-derived flag) are sent back into the flow on every visit.
@@ -31,7 +41,9 @@ export default function DashboardLayout({
 
   // Until fetchMe settles we don't know whether the session is valid — hold
   // the content so neither the dashboard nor the onboarding redirect flash.
-  if (!authHydrated) {
+  // Same hold while the logged-out bounce is in flight: no "?" avatar state
+  // is ever reachable.
+  if (!authHydrated || !isAuthenticated) {
     return (
       <div className="flex h-screen overflow-hidden">
         <div className="hidden lg:block h-full">

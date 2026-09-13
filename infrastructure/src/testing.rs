@@ -1988,6 +1988,28 @@ impl TicketsStore for FakeTicketsStore {
         })
     }
 
+    fn set_priority(
+        &self,
+        ticket_id: &str,
+        priority: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let ticket_id = ticket_id.to_string();
+        let priority = priority.to_string();
+
+        Box::pin(async move {
+            let mut tickets = self.tickets.write().unwrap();
+            if let Some(t) = tickets
+                .iter_mut()
+                .find(|t| t.id == ticket_id && t.deleted_at.is_none())
+            {
+                t.priority = priority;
+                t.updated_at = Utc::now();
+                return Ok(true);
+            }
+            Ok(false)
+        })
+    }
+
     fn count_tickets_for_user(
         &self,
         user_id: &str,
@@ -2012,6 +2034,368 @@ impl TicketsStore for FakeTicketsStore {
                 })
                 .count() as i64;
             Ok(crate::ports::tickets_store::TicketCounts { total, open })
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FakeApiKeysStore — in-memory [`ApiKeysStore`] for tests.
+// ---------------------------------------------------------------------------
+
+#[derive(Default)]
+pub struct FakeApiKeysStore {
+    keys: RwLock<Vec<crate::ports::api_keys_store::ApiKeyRecord>>,
+    ips: RwLock<Vec<crate::ports::api_keys_store::IpAllowEntry>>,
+    /// (user_id, project_id) pairs the actor may access (project visibility).
+    visible: RwLock<Vec<(String, String)>>,
+}
+
+impl FakeApiKeysStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Grants `user_id` access to `project_id`.
+    pub fn seed_visible(&self, user_id: &str, project_id: &str) {
+        self.visible
+            .write()
+            .unwrap()
+            .push((user_id.to_string(), project_id.to_string()));
+    }
+
+    fn can_see(&self, actor: &str, project_id: &str) -> bool {
+        self.visible
+            .read()
+            .unwrap()
+            .iter()
+            .any(|(u, p)| u == actor && p == project_id)
+    }
+
+    fn visible_key(
+        &self,
+        actor: &str,
+        project_id: &str,
+        key_id: &str,
+    ) -> Option<crate::ports::api_keys_store::ApiKeyRecord> {
+        if !self.can_see(actor, project_id) {
+            return None;
+        }
+        self.keys
+            .read()
+            .unwrap()
+            .iter()
+            .find(|k| k.id == key_id && k.project_id == project_id)
+            .cloned()
+    }
+}
+
+impl crate::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
+    #[allow(clippy::too_many_arguments)]
+    fn create_key(
+        &self,
+        actor: UserId,
+        project_id: &str,
+        name: &str,
+        environment: &str,
+        permissions: &[String],
+        expires_at: Option<DateTime<Utc>>,
+        prefix: &str,
+        key_hash: &str,
+    ) -> BoxFut<'_, Result<crate::ports::api_keys_store::ApiKeyRecord, StoreError>> {
+        use crate::ports::api_keys_store::ApiKeyRecord;
+        let actor_str = actor.to_string();
+        let project_id = project_id.to_string();
+        let name = name.to_string();
+        let environment = environment.to_string();
+        let permissions = permissions.to_vec();
+        let prefix = prefix.to_string();
+        let key_hash = key_hash.to_string();
+        Box::pin(async move {
+            if !self.can_see(&actor_str, &project_id) {
+                return Err(StoreError::Storage(
+                    "project not found or not visible".to_string(),
+                ));
+            }
+            let mut keys = self.keys.write().map_err(lock_err)?;
+            if keys.iter().any(|k| {
+                k.project_id == project_id && k.environment == environment && k.name == name
+            }) {
+                return Err(StoreError::Conflict);
+            }
+            if keys.iter().any(|k| k.key_hash == key_hash) {
+                return Err(StoreError::Conflict);
+            }
+            let record = ApiKeyRecord {
+                id: Ulid::new().to_string(),
+                project_id,
+                name,
+                prefix,
+                key_hash,
+                environment,
+                permissions,
+                expires_at,
+                last_used_at: None,
+                enabled: true,
+                revoked_at: None,
+                created_at: Utc::now(),
+            };
+            keys.push(record.clone());
+            Ok(record)
+        })
+    }
+
+    fn list_keys(
+        &self,
+        actor: UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Vec<crate::ports::api_keys_store::ApiKeyRecord>, StoreError>> {
+        let actor_str = actor.to_string();
+        let project_id = project_id.to_string();
+        Box::pin(async move {
+            if !self.can_see(&actor_str, &project_id) {
+                return Ok(vec![]);
+            }
+            let mut keys: Vec<_> = self
+                .keys
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .filter(|k| k.project_id == project_id)
+                .cloned()
+                .collect();
+            keys.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            Ok(keys)
+        })
+    }
+
+    fn get_key(
+        &self,
+        actor: UserId,
+        project_id: &str,
+        key_id: &str,
+    ) -> BoxFut<'_, Result<Option<crate::ports::api_keys_store::ApiKeyRecord>, StoreError>> {
+        let actor_str = actor.to_string();
+        let project_id = project_id.to_string();
+        let key_id = key_id.to_string();
+        Box::pin(async move { Ok(self.visible_key(&actor_str, &project_id, &key_id)) })
+    }
+
+    fn rename_key(
+        &self,
+        actor: UserId,
+        project_id: &str,
+        key_id: &str,
+        name: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let actor_str = actor.to_string();
+        let project_id = project_id.to_string();
+        let key_id = key_id.to_string();
+        let name = name.to_string();
+        Box::pin(async move {
+            let mut keys = self.keys.write().map_err(lock_err)?;
+            if keys.iter().any(|k| {
+                k.id != key_id
+                    && k.project_id == project_id
+                    && k.name == name
+                    && k.environment
+                        == keys
+                            .iter()
+                            .find(|k| k.id == key_id)
+                            .map(|k| k.environment.clone())
+                            .unwrap_or_default()
+            }) {
+                return Err(StoreError::Conflict);
+            }
+            match keys
+                .iter_mut()
+                .find(|k| k.id == key_id && k.project_id == project_id)
+            {
+                Some(k) if self.can_see(&actor_str, &project_id) => {
+                    k.name = name;
+                    Ok(true)
+                }
+                _ => Ok(false),
+            }
+        })
+    }
+
+    fn set_key_enabled(
+        &self,
+        actor: UserId,
+        project_id: &str,
+        key_id: &str,
+        enabled: bool,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let actor_str = actor.to_string();
+        let project_id = project_id.to_string();
+        let key_id = key_id.to_string();
+        Box::pin(async move {
+            let mut keys = self.keys.write().map_err(lock_err)?;
+            match keys
+                .iter_mut()
+                .find(|k| k.id == key_id && k.project_id == project_id)
+            {
+                Some(k) if self.can_see(&actor_str, &project_id) => {
+                    k.enabled = enabled;
+                    Ok(true)
+                }
+                _ => Ok(false),
+            }
+        })
+    }
+
+    fn revoke_key(
+        &self,
+        actor: UserId,
+        project_id: &str,
+        key_id: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let actor_str = actor.to_string();
+        let project_id = project_id.to_string();
+        let key_id = key_id.to_string();
+        Box::pin(async move {
+            let mut keys = self.keys.write().map_err(lock_err)?;
+            match keys
+                .iter_mut()
+                .find(|k| k.id == key_id && k.project_id == project_id && k.revoked_at.is_none())
+            {
+                Some(k) if self.can_see(&actor_str, &project_id) => {
+                    k.revoked_at = Some(Utc::now());
+                    Ok(true)
+                }
+                _ => Ok(false),
+            }
+        })
+    }
+
+    fn find_key_by_hash(
+        &self,
+        key_hash: &str,
+    ) -> BoxFut<'_, Result<Option<crate::ports::api_keys_store::ApiKeyRecord>, StoreError>> {
+        let key_hash = key_hash.to_string();
+        Box::pin(async move {
+            Ok(self
+                .keys
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .find(|k| k.key_hash == key_hash)
+                .cloned())
+        })
+    }
+
+    fn touch_key_last_used(&self, key_id: &str) -> BoxFut<'_, Result<(), StoreError>> {
+        let key_id = key_id.to_string();
+        Box::pin(async move {
+            if let Some(k) = self
+                .keys
+                .write()
+                .map_err(lock_err)?
+                .iter_mut()
+                .find(|k| k.id == key_id)
+            {
+                k.last_used_at = Some(Utc::now());
+            }
+            Ok(())
+        })
+    }
+
+    fn list_ips(
+        &self,
+        actor: UserId,
+        project_id: &str,
+        key_id: &str,
+    ) -> BoxFut<'_, Result<Vec<crate::ports::api_keys_store::IpAllowEntry>, StoreError>> {
+        let actor_str = actor.to_string();
+        let project_id = project_id.to_string();
+        let key_id = key_id.to_string();
+        Box::pin(async move {
+            if self.visible_key(&actor_str, &project_id, &key_id).is_none() {
+                return Ok(vec![]);
+            }
+            let mut entries: Vec<_> = self
+                .ips
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .filter(|e| e.key_id == key_id)
+                .cloned()
+                .collect();
+            entries.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+            Ok(entries)
+        })
+    }
+
+    fn list_ips_for_key(
+        &self,
+        key_id: &str,
+    ) -> BoxFut<'_, Result<Vec<crate::ports::api_keys_store::IpAllowEntry>, StoreError>> {
+        let key_id = key_id.to_string();
+        Box::pin(async move {
+            Ok(self
+                .ips
+                .read()
+                .map_err(lock_err)?
+                .iter()
+                .filter(|e| e.key_id == key_id)
+                .cloned()
+                .collect())
+        })
+    }
+
+    fn add_ip(
+        &self,
+        actor: UserId,
+        project_id: &str,
+        key_id: &str,
+        cidr: &str,
+        label: &str,
+    ) -> BoxFut<'_, Result<crate::ports::api_keys_store::IpAllowEntry, StoreError>> {
+        use crate::ports::api_keys_store::IpAllowEntry;
+        let actor_str = actor.to_string();
+        let project_id = project_id.to_string();
+        let key_id = key_id.to_string();
+        let cidr = cidr.to_string();
+        let label = label.to_string();
+        Box::pin(async move {
+            if self.visible_key(&actor_str, &project_id, &key_id).is_none() {
+                return Err(StoreError::Storage("API key not found".to_string()));
+            }
+            let mut ips = self.ips.write().map_err(lock_err)?;
+            if ips.iter().any(|e| e.key_id == key_id && e.cidr == cidr) {
+                return Err(StoreError::Conflict);
+            }
+            let entry = IpAllowEntry {
+                id: Ulid::new().to_string(),
+                key_id,
+                cidr,
+                label,
+                created_at: Utc::now(),
+            };
+            ips.push(entry.clone());
+            Ok(entry)
+        })
+    }
+
+    fn remove_ip(
+        &self,
+        actor: UserId,
+        project_id: &str,
+        key_id: &str,
+        entry_id: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let actor_str = actor.to_string();
+        let project_id = project_id.to_string();
+        let key_id = key_id.to_string();
+        let entry_id = entry_id.to_string();
+        Box::pin(async move {
+            if self.visible_key(&actor_str, &project_id, &key_id).is_none() {
+                return Ok(false);
+            }
+            let mut ips = self.ips.write().map_err(lock_err)?;
+            let before = ips.len();
+            ips.retain(|e| !(e.id == entry_id && e.key_id == key_id));
+            Ok(ips.len() < before)
         })
     }
 }
