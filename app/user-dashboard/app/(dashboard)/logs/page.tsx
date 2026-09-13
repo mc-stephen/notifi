@@ -69,7 +69,6 @@ function toLog(entry: AuditLog): {
     },
   };
 }
-
 export default function LogsPage() {
   const { logs, loading, error, refresh } = useLogs();
   const [search, setSearch] = useState("");
@@ -108,7 +107,6 @@ export default function LogsPage() {
       <PageHeader
         title="Logs"
         description={`${logs.length} recorded actions`}
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Logs" }]}
         actions={
           <Button size="sm" variant="outline" className="gap-1.5" onClick={refresh}>
             <ScrollText className="size-3.5" /> Refresh

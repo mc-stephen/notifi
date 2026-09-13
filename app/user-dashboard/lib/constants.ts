@@ -345,8 +345,7 @@ export type WebhookEventGroup = {
   events: { key: string; label: string }[];
 };
 
-export const WEBHOOK_EVENTS: WebhookEventGroup[] = [
-  {
+export const WEBHOOK_EVENTS: WebhookEventGroup[] = [  {
     label: "Notifications",
     events: [
       { key: "notification.sent", label: "Sent" },
@@ -362,3 +361,59 @@ export const WEBHOOK_EVENTS: WebhookEventGroup[] = [
     ],
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Providers page: curated "Recommended" picks + one-line blurbs.
+// The backend registry carries no descriptions or recommended markers,
+// so both live here, keyed by `${channel_id}:${provider_id}`.
+// ---------------------------------------------------------------------------
+
+export type RecommendedProvider = {
+  channel_id: string;
+  provider_id: string;
+};
+
+export const RECOMMENDED_PROVIDERS: RecommendedProvider[] = [
+  { channel_id: "email", provider_id: "sendgrid" },
+  { channel_id: "sms", provider_id: "twilio" },
+  { channel_id: "push", provider_id: "fcm" },
+  { channel_id: "chat", provider_id: "whatsapp_business" },
+];
+
+export const PROVIDER_BLURBS: Record<string, string> = {
+  "email:smtp": "Send email through any SMTP server.",
+  "email:sendgrid": "Send transactional email at scale.",
+  "email:resend": "Simple email API for developers.",
+  "email:aws_ses": "Cost-effective bulk email sending.",
+  "email:postmark": "Fast, reliable transactional email.",
+  "email:mailgun": "Email delivery for developers.",
+  "email:brevo": "Email campaigns and transactional sends.",
+  "sms:twilio": "Send SMS to users worldwide.",
+  "sms:termii": "SMS and messaging for Africa.",
+  "sms:africas_talking": "SMS and voice across Africa.",
+  "sms:smslive247": "Bulk SMS delivery in Nigeria.",
+  "sms:ebulksms": "Bulk SMS gateway services.",
+  "sms:infobip": "Global omnichannel messaging.",
+  "sms:vonage": "SMS and voice communications.",
+  "sms:bird": "Global messaging platform.",
+  "push:fcm": "Push notifications for Android and web.",
+  "push:apns": "Push notifications for Apple devices.",
+  "push:onesignal": "Multi-channel engagement platform.",
+  "push:pushy": "Reliable push delivery at scale.",
+  "push:braze_airship": "Customer engagement messaging.",
+  "chat:slack": "Send alerts to Slack channels.",
+  "chat:telegram": "Message users via Telegram bot.",
+  "chat:whatsapp_business": "Reach users on WhatsApp.",
+  "chat:discord": "Post updates to Discord servers.",
+  "chat:ms_teams": "Notify Microsoft Teams channels.",
+};
+
+export function providerBlurb(
+  channelId: string,
+  providerId: string,
+  channelName: string,
+): string {
+  return (
+    PROVIDER_BLURBS[`${channelId}:${providerId}`] ?? `${channelName} provider.`
+  );
+}

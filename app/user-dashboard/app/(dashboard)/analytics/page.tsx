@@ -38,7 +38,6 @@ export default function AnalyticsPage() {
       <PageHeader
         title="Analytics"
         description="Delivery performance and insights"
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Analytics" }]}
         actions={
           <div className="flex items-center gap-2">
             <Select value={timeRange} onValueChange={(v) => { if (v) setTimeRange(v); }}>

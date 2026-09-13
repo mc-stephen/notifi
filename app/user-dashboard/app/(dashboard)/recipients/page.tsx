@@ -39,7 +39,6 @@ function contactString(recipient: Recipient, key: string): string | undefined {
   const value = recipient.contacts?.[key];
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
-
 export default function RecipientsPage() {
   const { recipients, loading, error, refresh } = useRecipients();
   const { create, remove, update } = useRecipientActions();
@@ -232,7 +231,6 @@ export default function RecipientsPage() {
       <PageHeader
         title="Recipients"
         description={`${recipients.length} recipients`}
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Recipients" }]}
         actions={
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             <User className="size-3.5 mr-1" /> Add recipient

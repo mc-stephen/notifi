@@ -81,7 +81,6 @@ function MemberRowActions({ member }: { member: TeamMemberRecord }) {
     </DropdownMenu>
   );
 }
-
 const MEMBER_COLUMNS: ColumnDef<TeamMemberRecord, unknown>[] = [
   {
     accessorKey: "name",
@@ -183,7 +182,6 @@ export default function TeamPage() {
       setToggling2fa(false);
     }
   }
-
   async function handleInvite() {
     if (!project || !inviteEmail.trim()) return;
     setInviteError(null);
@@ -205,13 +203,11 @@ export default function TeamPage() {
       setInviting(false);
     }
   }
-
   return (
     <div className="space-y-6">
       <PageHeader
         title="Team"
         description={`${members.length} team members`}
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Team" }]}
         actions={
           <Button
             size="sm"
@@ -311,7 +307,6 @@ export default function TeamPage() {
           rowActions={(member) => <MemberRowActions member={member} />}
         />
       )}
-
       <Dialog
         open={inviteDialog}
         onOpenChange={(open) => {

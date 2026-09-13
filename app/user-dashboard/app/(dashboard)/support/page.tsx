@@ -184,7 +184,6 @@ export default function SupportPage() {
       <PageHeader
         title="Support & Help"
         description="Get help with Notifi"
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Support" }]}
         actions={
           <Button size="sm" className="gap-1.5" onClick={() => setTicketDialog(true)}>
             <Mail className="size-3.5" /> Submit ticket
@@ -434,7 +433,6 @@ export default function SupportPage() {
     </div>
   );
 }
-
 function TicketDetailPanel({
   ticket,
   onClose,

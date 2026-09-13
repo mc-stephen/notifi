@@ -82,7 +82,6 @@ function FilterDropdown<T extends string>({
     </DropdownMenu>
   );
 }
-
 export default function NotificationsPage() {
   const router = useRouter();
   const [filters, setFilters] = useState<NotificationFilters>({});
@@ -224,7 +223,6 @@ export default function NotificationsPage() {
       <PageHeader
         title="Deliveries"
         description={`${total.toLocaleString()} total deliveries`}
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Deliveries" }]}
         actions={
           <Button size="sm">
             Send notification

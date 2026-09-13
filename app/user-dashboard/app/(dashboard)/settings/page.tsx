@@ -72,7 +72,6 @@ export default function SettingsPage() {
       <PageHeader
         title="Settings"
         description="Organization and project settings"
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Settings" }]}
         actions={
           tab === "general" ? (
             <Button size="sm" className="gap-1.5" onClick={handleSave}>
@@ -205,9 +204,7 @@ export default function SettingsPage() {
             </Card>
           </div>
         )}
-
         {tab === "notifications" && <NotificationSettings />}
-
         {tab === "appearance" && (
           <div className="space-y-6">
             <Card>

@@ -49,7 +49,6 @@ export default function ChannelsPage() {
       <PageHeader
         title="Channels"
         description={`${enabledCount} of ${channels.length} channels enabled`}
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Channels" }]}
         actions={
           <Button size="sm" className="gap-1.5">
             <Radio className="size-3.5" /> Configure channel

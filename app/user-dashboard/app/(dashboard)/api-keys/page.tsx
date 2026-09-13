@@ -39,6 +39,7 @@ import {
   X,
 } from "lucide-react";
 import { useApiKeys, useApiKeyActions, useIpAllowlist } from "@/hooks/use-api-keys";
+import { ApiKeySecurityNotice } from "@/components/custom/api-keys/security-notice";
 import { ApiError } from "@/lib/api";
 import type { ApiKey } from "@/lib/types";
 
@@ -51,17 +52,14 @@ function getStatus(key: ApiKey) {
   if (key.revokedAt) return "Revoked";
   return key.enabled ? "Active" : "Disabled";
 }
-
 function getStatusClass(key: ApiKey) {
   if (key.revokedAt) return "";
   return key.enabled ? "bg-success/15 text-success border-success/20" : "";
 }
-
 function getStatusVariant(key: ApiKey): "default" | "secondary" {
   if (key.revokedAt || !key.enabled) return "secondary";
   return "default";
 }
-
 // ---------------------------------------------------------------------------
 // Right-side detail panel
 // ---------------------------------------------------------------------------
@@ -74,7 +72,6 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
     </div>
   );
 }
-
 function ApiKeyDetailPanel({
   apiKey,
   onChanged,
@@ -209,7 +206,6 @@ function ApiKeyDetailPanel({
         {actionError && (
           <p className="mx-5 mt-3 text-xs text-destructive">{actionError}</p>
         )}
-
         {/* Overview — definition-list style */}
         <div className="px-5 pt-4 pb-3">
           <h4 className="mb-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -316,7 +312,6 @@ function ApiKeyDetailPanel({
 
           {error && <p className="mb-2 text-xs text-destructive">{error}</p>}
           {ipError && <p className="mb-2 text-xs text-destructive">{ipError}</p>}
-
           <div className="space-y-1.5">
             <Input
               placeholder="IP or CIDR (e.g. 203.0.113.0/24)"
@@ -418,7 +413,6 @@ function ApiKeyDetailPanel({
     </aside>
   );
 }
-
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -558,13 +552,14 @@ export default function ApiKeysPage() {
       <PageHeader
         title="API Keys"
         description={`${keys.length} API keys`}
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "API Keys" }]}
         actions={
           <Button size="sm" className="gap-1.5" onClick={() => { setSubmitError(null); setCreateOpen(true); }}>
             <Plus className="size-3.5" /> Generate key
           </Button>
         }
       />
+
+      <ApiKeySecurityNotice />
 
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
         <Card>
@@ -600,7 +595,6 @@ export default function ApiKeysPage() {
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
-
       <div className="flex min-h-0 flex-1 items-stretch gap-6">
         <div className="min-w-0 flex-1 overflow-y-auto">
           <DataTable

@@ -261,7 +261,6 @@ function CopyButton({ text }: { text: string }) {
     </Button>
   );
 }
-
 export default function SdkPage() {
   const [selectedSdk, setSelectedSdk] = useState("node");
 
@@ -270,7 +269,6 @@ export default function SdkPage() {
       <PageHeader
         title="SDKs & Libraries"
         description="Client libraries for every platform"
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "SDKs" }]}
         actions={
           <Button size="sm" variant="outline" className="gap-1.5" render={<a href={links.docs} target="_blank" rel="noopener noreferrer" />}>
             <BookOpen className="size-3.5" /> API docs <ExternalLink className="size-3 ml-1" />

@@ -23,12 +23,10 @@ function dollars(cents: number) {
   const value = cents / 100;
   return `$${value.toLocaleString(undefined, { maximumFractionDigits: value % 1 === 0 ? 0 : 2 })}`;
 }
-
 function limitLabel(value: number | null, unit: string) {
   if (value === null) return `Unlimited ${unit}`;
   return `${value.toLocaleString()} ${unit}`;
 }
-
 function capabilityRows(plan: BillingPlan) {
   const c = plan.capabilities;
   return [
@@ -41,7 +39,6 @@ function capabilityRows(plan: BillingPlan) {
     c.apiCalls === null ? "Unlimited API calls" : `${c.apiCalls.toLocaleString()} API calls/mo`,
   ];
 }
-
 function planPrice(plan: BillingPlan, cycle: BillingCycle) {
   if (plan.priceCents === null) return { main: "Custom", sub: "tailored", savings: null as string | null };
   if (cycle === "monthly" || plan.yearlyPriceCents === null) {
@@ -55,7 +52,6 @@ function planPrice(plan: BillingPlan, cycle: BillingCycle) {
         : null;
   return { main: dollars(plan.yearlyPriceCents), sub: "/yr", savings };
 }
-
 export default function BillingPage() {
   const project = useProjectStore((s) => s.currentProject);
   const { plans, subscription, loading, error, refresh, subscribe, cancel } = useBilling();
@@ -84,7 +80,6 @@ export default function BillingPage() {
       setActing(null);
     }
   }
-
   async function handleCancel() {
     setActing("cancel");
     setActionError(null);
@@ -97,7 +92,6 @@ export default function BillingPage() {
       setActing(null);
     }
   }
-
   async function handleKeep() {
     if (!currentPlan) return;
     setActing("keep");
@@ -110,13 +104,11 @@ export default function BillingPage() {
       setActing(null);
     }
   }
-
   return (
     <div className="space-y-6">
       <PageHeader
         title="Billing"
         description={project ? `Subscription and payment for ${project.name}` : "Subscription and payment"}
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Billing" }]}
         actions={
           <Button size="sm" variant="outline" className="gap-1.5" disabled title="Online payments land with the billing provider">
             <CreditCard className="size-3.5" /> Update payment
@@ -132,7 +124,6 @@ export default function BillingPage() {
           </CardContent>
         </Card>
       )}
-
       {loading ? (
         <div className="space-y-4" aria-label="Loading billing">
           {/* Current plan skeleton */}

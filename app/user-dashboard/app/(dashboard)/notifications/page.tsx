@@ -165,7 +165,6 @@ export default function InAppNotificationsPage() {
       <PageHeader
         title="Notifications"
         description={`${unreadCount} unread · ${notifications.length} total`}
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Notifications" }]}
         actions={
           <div className="flex items-center gap-2">
             {tableInstance && (
@@ -246,7 +245,6 @@ export default function InAppNotificationsPage() {
     </div>
   );
 }
-
 // ---------------------------------------------------------------------------
 // Detail side panel
 // ---------------------------------------------------------------------------

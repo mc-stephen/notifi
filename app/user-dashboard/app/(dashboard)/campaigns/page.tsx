@@ -89,7 +89,6 @@ export default function CampaignsPage() {
       <PageHeader
         title="Campaigns"
         description={`${MOCK_CAMPAIGNS.length} campaigns total`}
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Campaigns" }]}
         actions={
           <Button size="sm" className="gap-1.5" onClick={() => setCreateDialog(true)}>
             <Plus className="size-3.5" /> New campaign

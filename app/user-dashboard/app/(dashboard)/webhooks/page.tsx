@@ -71,13 +71,11 @@ function generateSecret() {
   crypto.getRandomValues(bytes);
   return `whsec_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
-
 function successColor(rate: number) {
   if (rate >= 95) return "text-success";
   if (rate >= 80) return "text-warning";
   return "text-destructive";
 }
-
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3">
@@ -86,7 +84,6 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
     </div>
   );
 }
-
 // ---------------------------------------------------------------------------
 // Right-side detail panel
 // ---------------------------------------------------------------------------
@@ -237,7 +234,6 @@ function WebhookDetailPanel({
     </aside>
   );
 }
-
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -383,7 +379,6 @@ export default function WebhooksPage() {
       <PageHeader
         title="Webhooks"
         description={`${webhooks.length} endpoint${webhooks.length === 1 ? "" : "s"}`}
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Webhooks" }]}
         actions={
           <Button size="sm" className="gap-1.5" onClick={() => setCreateOpen(true)}>
             <Plus className="size-3.5" /> Add endpoint

@@ -58,7 +58,6 @@ function ChannelBadgesCell({ content }: { content: Record<string, unknown> }) {
     </div>
   );
 }
-
 export default function TemplatesPage() {
   const router = useRouter();
   const { templates, loading, error, refresh } = useTemplates();
@@ -271,7 +270,6 @@ export default function TemplatesPage() {
       <PageHeader
         title="Templates"
         description={`${templates.length} templates`}
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Templates" }]}
         actions={
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             <Plus className="size-3.5 mr-1" /> New template
@@ -337,7 +335,6 @@ export default function TemplatesPage() {
           )}
         />
       )}
-
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>

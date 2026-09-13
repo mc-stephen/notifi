@@ -66,7 +66,6 @@ export default function SchedulesPage() {
       <PageHeader
         title="Schedules"
         description={`${activeCount} active schedules`}
-        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Schedules" }]}
         actions={
           <Button size="sm" className="gap-1.5" onClick={() => setCreateDialog(true)}>
             <Plus className="size-3.5" /> New schedule
