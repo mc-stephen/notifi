@@ -196,13 +196,13 @@ export function DataTable<TData, TValue>({
                 </TableCell>
               </TableRow>
             ) : (
-              table.getRowModel().rows.map((row) => (
+              table.getRowModel().rows.map((row, i) => (
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
                   className={cn(
                     onRowClick && "cursor-pointer",
-                    stripeRows && (row.index % 2 === 0 ? "bg-card" : "bg-muted/40"),
+                    stripeRows && (i % 2 === 0 ? "bg-popover" : "bg-card dark:bg-muted/40"),
                   )}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                 >

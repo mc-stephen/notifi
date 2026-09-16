@@ -41,7 +41,7 @@ export function ProviderCard({
     <div
       className={cn(
         "flex flex-col rounded-xl border bg-card text-card-foreground transition-colors",
-        compact ? "p-3" : "p-4 shadow-sm",
+        compact ? "p-3" : "p-4",
         selected && "border-primary",
       )}
     >

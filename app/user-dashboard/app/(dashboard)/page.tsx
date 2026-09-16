@@ -207,6 +207,7 @@ function RecentNotificationsTable() {
           searchKey="subject"
           searchPlaceholder="Search by subject..."
           pageSize={10}
+          stripeRows
         />
       </CardContent>
     </Card>

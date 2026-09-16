@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/custom/data-table";
+import { DetailPanel } from "@/components/custom/detail-panel";
 import { PageHeader } from "@/components/custom/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,9 +27,9 @@ import {
   Copy,
   Check,
   RotateCcw,
-  X,
 } from "lucide-react";
 import { WEBHOOK_EVENTS } from "@/lib/constants";
+import { AvailableWebhookEvents } from "@/components/custom/webhooks/available-events";
 import type { Webhook } from "@/lib/types";
 
 const MOCK_WEBHOOKS: Webhook[] = [
@@ -103,14 +104,6 @@ function WebhookDetailPanel({
 }) {
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(webhook.signingSecret);
@@ -121,10 +114,10 @@ function WebhookDetailPanel({
   };
 
   return (
-    <aside className="flex min-h-0 w-96 shrink-0 flex-col overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm animate-in slide-in-from-right-3 fade-in duration-200">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2 border-b px-5 py-4">
-        <div className="min-w-0 space-y-1.5">
+    <DetailPanel
+      onClose={onClose}
+      header={
+        <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <span
               className={`size-2 shrink-0 rounded-full ${webhook.enabled ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
@@ -137,15 +130,8 @@ function WebhookDetailPanel({
             {webhook.id}
           </code>
         </div>
-        <button
-          type="button"
-          aria-label="Close details"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          onClick={onClose}
-        >
-          <X className="size-4" />
-        </button>
-      </div>
+      }
+    >
 
       {/* Scrollable body */}
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -231,7 +217,7 @@ function WebhookDetailPanel({
           <Trash2 className="size-3.5" /> Delete
         </Button>
       </div>
-    </aside>
+    </DetailPanel>
   );
 }
 // ---------------------------------------------------------------------------
@@ -419,7 +405,7 @@ export default function WebhooksPage() {
         </Card>
       </div>
 
-      <div className="flex min-h-0 flex-1 items-stretch gap-6">
+      <div className="relative flex min-h-0 flex-1 items-stretch gap-6">
         <div className="min-w-0 flex-1">
           <DataTable
             columns={columns}
@@ -458,6 +444,8 @@ export default function WebhooksPage() {
         )}
       </div>
 
+      <AvailableWebhookEvents />
+
       {/* Create dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
@@ -480,7 +468,7 @@ export default function WebhooksPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Events</Label>
-              <div className="space-y-3 rounded-md border p-3">
+              <div className="space-y-3 rounded-md border p-3 max-h-64 overflow-y-auto">
                 {WEBHOOK_EVENTS.map((group) => (
                   <div key={group.label}>
                     <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">

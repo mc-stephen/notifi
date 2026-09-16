@@ -308,9 +308,9 @@ export default function SdkPage() {
 
       <Tabs value={selectedSdk} onValueChange={(v) => { if (v) setSelectedSdk(v); }}>
         <div className="overflow-x-auto">
-          <TabsList className="w-full justify-start flex-wrap h-auto gap-1 p-1 bg-muted">
+          <TabsList className="w-full justify-start flex-nowrap h-auto gap-1 overflow-x-auto p-1 scrollbar-thin">
             {SDKS.map((sdk) => (
-              <TabsTrigger key={sdk.id} value={sdk.id} className="text-xs gap-1.5">
+              <TabsTrigger key={sdk.id} value={sdk.id} className="shrink-0 gap-1.5 px-3 py-1.5 text-xs">
                 {sdk.name}
                 <Badge variant="secondary" className={`text-[9px] px-1 h-3.5 ${STATUS_COLORS[sdk.status]}`}>
                   {sdk.status}
@@ -343,10 +343,7 @@ export default function SdkPage() {
                         <CopyButton text={sdk.install} />
                       </div>
                       <div className="relative">
-                        <Terminal className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-                        <code className="block w-full bg-muted rounded-md px-8 py-2 text-sm font-mono">
-                          $ {sdk.install}
-                        </code>
+                        <CodeBlock code={`$ ${sdk.install}`} language="bash" showCopy={false} />
                       </div>
                     </div>
                     <div className="space-y-2">

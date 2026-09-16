@@ -1,21 +1,14 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { type ColumnDef } from "@tanstack/react-table";
 import { PageHeader } from "@/components/custom/page-header";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { DataTable } from "@/components/custom/data-table";
+import { DetailPanel } from "@/components/custom/detail-panel";
 import { format } from "date-fns";
 import {
-  Search,
   ScrollText,
   AlertTriangle,
   Info,
@@ -69,30 +62,60 @@ function toLog(entry: AuditLog): {
     },
   };
 }
+type LogRow = ReturnType<typeof toLog>;
+
+const logColumns: ColumnDef<LogRow>[] = [
+  {
+    accessorKey: "level",
+    header: "Level",
+    cell: ({ row }) => {
+      const Icon = LEVEL_ICONS[row.original.level];
+      return (
+        <Badge variant="secondary" className={`text-[10px] font-medium ${LEVEL_COLORS[row.original.level]}`}>
+          <Icon className="size-2.5 mr-1" />
+          {row.original.level.toUpperCase()}
+        </Badge>
+      );
+    },
+  },
+  {
+    accessorKey: "message",
+    header: "Message",
+    cell: ({ row }) => (
+      <span className="block max-w-[400px] truncate text-sm text-foreground">
+        {row.original.message}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "source",
+    header: "Source",
+    cell: ({ row }) => (
+      <span className="font-mono text-xs text-muted-foreground">{row.original.source}</span>
+    ),
+  },
+  {
+    accessorKey: "timestamp",
+    header: () => <span className="block text-right">Timestamp</span>,
+    cell: ({ row }) => (
+      <span className="block whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground">
+        {format(new Date(row.original.timestamp), "MMM d, HH:mm:ss")}
+      </span>
+    ),
+  },
+];
+
 export default function LogsPage() {
   const { logs, loading, error, refresh } = useLogs();
-  const [search, setSearch] = useState("");
   const [selectedLevel, setSelectedLevel] = useState<Level | null>(null);
-  const [selectedLog, setSelectedLog] = useState<ReturnType<typeof toLog> | null>(null);
+  const [selectedLog, setSelectedLog] = useState<LogRow | null>(null);
 
   const renderedLogs = useMemo(() => logs.map(toLog), [logs]);
 
   const filteredLogs = useMemo(() => {
-    let filtered = [...renderedLogs];
-    if (search) {
-      const q = search.toLowerCase();
-      filtered = filtered.filter(
-        (l) =>
-          l.id.toLowerCase().includes(q) ||
-          l.message.toLowerCase().includes(q) ||
-          l.source.toLowerCase().includes(q),
-      );
-    }
-    if (selectedLevel) {
-      filtered = filtered.filter((l) => l.level === selectedLevel);
-    }
-    return filtered;
-  }, [renderedLogs, search, selectedLevel]);
+    if (!selectedLevel) return renderedLogs;
+    return renderedLogs.filter((l) => l.level === selectedLevel);
+  }, [renderedLogs, selectedLevel]);
 
   const levelCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -136,102 +159,49 @@ export default function LogsPage() {
         )}
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-        <Input
-          placeholder="Search actions..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-8 h-8 text-sm"
-        />
-      </div>
-
       {/* Logs table */}
-      <Card className="pb-0">
-        <CardContent className="p-0">
-          {loading ? (
+      <div className="relative">
+        {loading ? (
+          <div className="overflow-hidden rounded-lg border bg-card">
             <div className="flex items-center justify-center py-16 text-muted-foreground">
               <Loader2 className="size-5 animate-spin mr-2" /> Loading logs…
             </div>
-          ) : error ? (
+          </div>
+        ) : error ? (
+          <div className="overflow-hidden rounded-lg border bg-card">
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
               <AlertTriangle className="size-8 text-warning" />
               <p className="text-sm text-muted-foreground">{error}</p>
               <Button size="sm" variant="outline" onClick={refresh}>Retry</Button>
             </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[110px] pl-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Level
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Message
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Source
-                  </TableHead>
-                  <TableHead className="pr-4 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Timestamp
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredLogs.slice(0, 100).map((log) => {
-                  const Icon = LEVEL_ICONS[log.level];
-                  return (
-                    <TableRow
-                      key={log.id}
-                      className="cursor-pointer odd:bg-card even:bg-muted/40 hover:bg-muted/70"
-                      onClick={() => setSelectedLog(log)}
-                    >
-                      <TableCell className="pl-4">
-                        <Badge variant="secondary" className={`text-[10px] font-medium ${LEVEL_COLORS[log.level]}`}>
-                          <Icon className="size-2.5 mr-1" />
-                          {log.level.toUpperCase()}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm max-w-[400px] truncate text-foreground">{log.message}</TableCell>
-                      <TableCell>
-                        <span className="font-mono text-xs text-muted-foreground">{log.source}</span>
-                      </TableCell>
-                      <TableCell className="pr-4">
-                        <span className="whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground">
-                          {format(new Date(log.timestamp), "MMM d, HH:mm:ss")}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {filteredLogs.length === 0 && (
-                  <TableRow className="odd:bg-card even:bg-muted/40 hover:bg-transparent">
-                    <TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
-                      No log entries match.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        ) : (
+          <DataTable
+            columns={logColumns}
+            data={filteredLogs}
+            searchPlaceholder="Search actions..."
+            emptyMessage="No log entries match."
+            tableClassName="bg-card"
+            stripeRows
+            onRowClick={setSelectedLog}
+          />
+        )}
 
-      {/* Log detail dialog */}
-      <Dialog open={!!selectedLog} onOpenChange={() => setSelectedLog(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              Log Entry
-              {selectedLog && (
-                <Badge variant="secondary" className={`text-xs ${LEVEL_COLORS[selectedLog.level]}`}>
-                  {selectedLog.level.toUpperCase()}
-                </Badge>
-              )}
-            </DialogTitle>
-          </DialogHeader>
-          {selectedLog && (
+      {/* Log detail slide-over */}
+      {selectedLog && (
+        <DetailPanel
+          key={selectedLog.id}
+          onClose={() => setSelectedLog(null)}
+          header={
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-foreground">Log Entry</span>
+              <Badge variant="secondary" className={`text-xs ${LEVEL_COLORS[selectedLog.level]}`}>
+                {selectedLog.level.toUpperCase()}
+              </Badge>
+            </div>
+          }
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto p-5">
             <div className="space-y-3 text-sm">
               <div>
                 <span className="text-muted-foreground">Message</span>
@@ -254,9 +224,10 @@ export default function LogsPage() {
                 </pre>
               </div>
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </div>
+        </DetailPanel>
+      )}
+      </div>
     </div>
   );
 }

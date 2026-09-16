@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/custom/data-table";
+import { DetailPanel } from "@/components/custom/detail-panel";
 import { PageHeader } from "@/components/custom/page-header";
 import {
   RecipientContactsEditor,
@@ -32,7 +33,6 @@ import {
   User,
   AlertTriangle,
   Loader2,
-  X,
 } from "lucide-react";
 
 function contactString(recipient: Recipient, key: string): string | undefined {
@@ -238,7 +238,7 @@ export default function RecipientsPage() {
         }
       />
 
-      <div className="flex items-start gap-6">
+      <div className="relative flex items-start gap-6">
         <div className="min-w-0 flex-1">
           {loading ? (
             <div className="overflow-hidden rounded-lg border bg-card">
@@ -280,28 +280,22 @@ export default function RecipientsPage() {
         </div>
 
         {details && (
-          <aside className="w-96 shrink-0 overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm animate-in slide-in-from-right-3 fade-in duration-200">
-            <div className="border-b p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h3 className="truncate font-medium text-base text-foreground">
-                    {details.name}
-                  </h3>
-                  <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                    {contactString(details, "email") ??
-                      `User ID: ${details.userId}`}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  aria-label="Close details"
-                  className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  onClick={() => setDetails(null)}
-                >
-                  <X className="size-4" />
-                </button>
+          <DetailPanel
+            key={details.id}
+            onClose={() => setDetails(null)}
+            headerClassName="p-4"
+            header={
+              <div>
+                <h3 className="truncate font-medium text-base text-foreground">
+                  {details.name}
+                </h3>
+                <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                  {contactString(details, "email") ??
+                    `User ID: ${details.userId}`}
+                </p>
               </div>
-            </div>
+            }
+          >
 
             <div className="max-h-[60vh] overflow-y-auto p-4">
               <dl className="grid grid-cols-2 gap-x-4 gap-y-4 text-sm">
@@ -374,7 +368,7 @@ export default function RecipientsPage() {
                 <Trash2 className="size-3.5 mr-1" /> Delete
               </Button>
             </div>
-          </aside>
+          </DetailPanel>
         )}
       </div>
 

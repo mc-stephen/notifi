@@ -37,15 +37,22 @@ function SidebarItem({
       className={cn(
         "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
         isActive
-          ? "bg-primary/10 text-primary"
-          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground",
         collapsed && "justify-center px-2",
       )}
     >
       <item.icon className="size-4 shrink-0" />
       {!collapsed && <span className="truncate">{item.label}</span>}
       {!collapsed && item.badge && (
-        <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+        <span
+          className={cn(
+            "ml-auto flex size-5 items-center justify-center rounded-full text-[10px] font-semibold",
+            isActive
+              ? "bg-sidebar-primary-foreground/15 text-sidebar-primary-foreground"
+              : "bg-white/20 text-white",
+          )}
+        >
           {item.badge}
         </span>
       )}
@@ -85,7 +92,7 @@ function SidebarGroup({
     <Collapsible defaultOpen>
       <CollapsibleTrigger
         render={
-          <button className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent/40 hover:text-sidebar-foreground/70" />
+          <button className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent/10 hover:text-sidebar-foreground/70" />
         }
       >
         <span>{group.label}</span>
@@ -135,14 +142,14 @@ export function Sidebar({
             className="flex items-center gap-2 font-semibold text-base"
             onClick={onNavigate}
           >
-            <div className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">
+            <div className="flex size-7 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground text-sm font-bold">
               N
             </div>
             <span className="truncate">Notifi</span>
           </Link>
         ) : (
           <Link href="/" onClick={onNavigate}>
-            <div className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">
+            <div className="flex size-7 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground text-sm font-bold">
               N
             </div>
           </Link>
@@ -164,7 +171,7 @@ export function Sidebar({
 
       {/* Pinned footer — project switcher + plan banner */}
       <div className="shrink-0 border-t border-sidebar-border">
-        <div className="space-y-2 rounded-sm bg-muted/60 p-2">
+        <div className="space-y-2 rounded-sm bg-white/10 p-2">
           <ProjectSwitcher collapsed={collapsed} />
           <PlanBanner collapsed={collapsed} />
         </div>
@@ -177,7 +184,7 @@ export function Sidebar({
             render={
               <button
                 onClick={toggleSidebar}
-                className="absolute right-0 top-[12px] z-50 flex size-7 translate-x-1/2 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                className="absolute right-0 top-[12px] z-50 flex size-7 translate-x-1/2 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent/10 hover:text-sidebar-foreground"
               />
             }
           >
@@ -192,6 +199,12 @@ export function Sidebar({
           </TooltipContent>
         </Tooltip>
       )}
+
+      {/* Film grain over the brand chrome */}
+      <div
+        aria-hidden="true"
+        className="bg-noise pointer-events-none absolute inset-0 opacity-[0.08]"
+      />
     </aside>
   );
 }

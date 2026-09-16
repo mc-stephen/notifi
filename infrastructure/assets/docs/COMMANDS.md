@@ -82,6 +82,22 @@ docker compose down             # stop (keeps data in volumes)
 docker compose down -v          # stop AND wipe data (fresh start)
 ```
 
+### Local Redis without Docker (manual build, 2026-09-16)
+
+`brew install redis` stalled on an unreachable GNU mirror, so Redis 8.10.1
+was compiled from source into `~/tools/redis` (localhost-only, no password,
+no persistence — the API only PINGs Redis for `/readyz`). Manage it with:
+
+```shell
+scripts/redis-local.sh start    # start (also re-run after a reboot)
+scripts/redis-local.sh status   # check
+scripts/redis-local.sh stop     # stop
+```
+
+With it running, set `NOTIFI_REDIS_URL=redis://localhost:6379` in `.env`
+(Contabo line stays commented until that server is back). Redis Insight (GUI)
+connects to `127.0.0.1:6379` with no password.
+
 ## 7. Try the API (curl)
 
 ```shell

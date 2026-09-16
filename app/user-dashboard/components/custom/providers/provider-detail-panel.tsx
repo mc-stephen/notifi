@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { DetailPanel } from "@/components/custom/detail-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,7 +28,6 @@ import {
   ExternalLink,
   Loader2,
   Trash2,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ProviderIcon } from "./provider-icon";
@@ -77,14 +77,6 @@ export function ProviderDetailPanel({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
 
   const setValue = (key: string, value: unknown) => {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -195,19 +187,14 @@ export function ProviderDetailPanel({
   };
 
   return (
-    <aside className="flex min-h-0 w-96 shrink-0 flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm animate-in slide-in-from-right-3 fade-in duration-200">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 border-b px-5 py-4">
+    <DetailPanel
+      onClose={onClose}
+      closeLabel="Close settings"
+      headerClassName="items-center"
+      header={
         <h3 className="font-semibold text-foreground">Integration Settings</h3>
-        <button
-          type="button"
-          aria-label="Close settings"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          onClick={onClose}
-        >
-          <X className="size-4" />
-        </button>
-      </div>
+      }
+    >
 
       {/* Scrollable body */}
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -375,6 +362,6 @@ export function ProviderDetailPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </aside>
+    </DetailPanel>
   );
 }

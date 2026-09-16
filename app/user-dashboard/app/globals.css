@@ -59,7 +59,7 @@
 :root {
   --background: oklch(0.972 0 0);
   --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
+  --card: oklch(0.962 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
@@ -72,7 +72,7 @@
   --accent: oklch(0.955 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.885 0 0);
+  --border: oklch(0.925 0 0);
   --input: oklch(0.900 0 0);
   --ring: oklch(0.384 0.062 202.8);
   --success: oklch(0.648 0.150 160);
@@ -87,14 +87,17 @@
   --chart-4: oklch(0.795 0.120 75);
   --chart-5: oklch(0.577 0.245 27.325);
   --radius: 0.625rem;
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.384 0.062 202.8);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.955 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.885 0 0);
-  --sidebar-ring: oklch(0.384 0.062 202.8);
+  /* Brand chrome experiment: sidebar + topbar wear deep teal (light
+     --primary) with white content in both modes. The dark-mode primary is
+     too light for white text, so the deep tone is pinned for contrast. */
+  --sidebar: oklch(0.32 0.05 202.8);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.985 0 0);
+  --sidebar-primary-foreground: oklch(0.32 0.05 202.8);
+  --sidebar-accent: oklch(1 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 0.15);
+  --sidebar-ring: oklch(1 0 0 / 0.4);
 }
 
 /* Dark mode */
@@ -114,7 +117,7 @@
   --accent: oklch(0.205 0.005 202.8);
   --accent-foreground: oklch(0.955 0 0);
   --destructive: oklch(0.650 0.220 25);
-  --border: oklch(0.220 0.005 202.8);
+  --border: oklch(0.250 0.005 202.8);
   --input: oklch(0.220 0.005 202.8);
   --ring: oklch(0.623 0.09 202.8);
   --success: oklch(0.700 0.150 160);
@@ -128,14 +131,14 @@
   --chart-3: oklch(0.680 0.155 250);
   --chart-4: oklch(0.850 0.120 75);
   --chart-5: oklch(0.650 0.220 25);
-  --sidebar: oklch(0.120 0.005 202.8);
-  --sidebar-foreground: oklch(0.955 0 0);
-  --sidebar-primary: oklch(0.623 0.09 202.8);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.205 0.005 202.8);
-  --sidebar-accent-foreground: oklch(0.955 0 0);
-  --sidebar-border: oklch(0.220 0.005 202.8);
-  --sidebar-ring: oklch(0.623 0.09 202.8);
+  --sidebar: oklch(0.32 0.05 202.8);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.985 0 0);
+  --sidebar-primary-foreground: oklch(0.32 0.05 202.8);
+  --sidebar-accent: oklch(1 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 0.15);
+  --sidebar-ring: oklch(1 0 0 / 0.4);
 }
 
 @layer base {
@@ -161,6 +164,13 @@
 }
 
 @layer utilities {
+  /* Film-grain overlay for brand chrome (sidebar/header). Inline SVG
+     turbulence, tiled — theme-agnostic, dial visibility with opacity. */
+  .bg-noise {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 160px 160px;
+  }
+
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;

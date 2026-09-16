@@ -304,6 +304,7 @@ export default function TeamPage() {
           searchPlaceholder="Search members..."
           pageSize={10}
           emptyMessage="No members yet — invite your first team member to get started."
+          stripeRows
           rowActions={(member) => <MemberRowActions member={member} />}
         />
       )}

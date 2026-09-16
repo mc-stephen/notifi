@@ -108,7 +108,7 @@ const RichTextEditor = forwardRef<
   if (!editor) return null;
 
   return (
-    <div className="rounded-lg border border-input bg-transparent overflow-hidden">
+    <div className="border-0 bg-transparent overflow-hidden">
       <div className="flex flex-wrap items-center gap-0.5 border-b border-border bg-muted/30 px-1.5 py-1">
         <ToolbarBtn
           active={editor.isActive("bold")}

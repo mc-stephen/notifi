@@ -127,7 +127,7 @@ export function NavigationProgress({ className }: { className?: string }) {
           transition={{ duration: 0.3 }}
         >
           <motion.div
-            className="h-full bg-primary rounded-full"
+            className="h-full bg-white rounded-full"
             initial={{ width: "0%", opacity: 1 }}
             animate={{ width: `${progress}%`, opacity: 1 }}
             transition={{
@@ -135,7 +135,7 @@ export function NavigationProgress({ className }: { className?: string }) {
             }}
           />
           <motion.div
-            className="absolute top-0 right-0 h-full w-16 bg-gradient-to-r from-transparent via-primary/50 to-primary blur-sm"
+            className="absolute top-0 right-0 h-full w-16 bg-gradient-to-r from-transparent via-white/50 to-white blur-sm"
             animate={{ left: `${progress - 15}%` }}
             transition={{ duration: 0.4, ease: "easeOut" }}
           />

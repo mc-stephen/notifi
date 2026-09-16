@@ -41,7 +41,7 @@ function EnvironmentSwitcher() {
   const envs: Environment[] = ["development", "production"];
 
   return (
-    <div className="flex items-center gap-1 rounded-full bg-muted p-1" role="radiogroup" aria-busy={pending || undefined}>
+    <div className="flex items-center gap-1 rounded-full bg-black/15 p-1" role="radiogroup" aria-busy={pending || undefined}>
       {envs.map((env) => {
         const active = env === currentEnvironment;
         return (
@@ -57,8 +57,8 @@ function EnvironmentSwitcher() {
             className={cn(
               "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:opacity-60",
               active
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
+                ? "bg-white text-sidebar-primary-foreground shadow-sm"
+                : "text-white/65 hover:text-white",
             )}
           >
             {pending && active ? (
@@ -81,12 +81,12 @@ function SearchButton() {
     <Button
       variant="outline"
       size="sm"
-      className="gap-2 text-muted-foreground h-8 w-48 justify-start"
+      className="h-8 w-48 justify-start gap-2 border-white/25 bg-white/10 text-white/80 hover:bg-white/15 hover:text-white"
       onClick={() => setCommandOpen(true)}
     >
       <Search className="size-3.5" />
       <span className="text-sm">Search...</span>
-      <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-0.5 rounded border bg-muted px-1.5 text-[10px] font-medium text-muted-foreground">
+      <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-0.5 rounded border border-white/20 bg-white/10 px-1.5 text-[10px] font-medium text-white/60">
         <span className="text-xs">⌘</span>K
       </kbd>
     </Button>
@@ -122,18 +122,18 @@ function UserMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="ghost" size="icon-sm" className="rounded-full" />
+          <Button variant="ghost" size="icon-sm" className="rounded-full text-white/80 hover:bg-white/10 hover:text-white aria-expanded:bg-white/10 aria-expanded:text-white" />
         }
       >
         <Avatar className="size-7">
-          <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">{initials}</AvatarFallback>
+          <AvatarFallback className="bg-white/20 text-white text-xs font-medium">{initials}</AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
+      <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>
-          <div className="flex flex-col">
-            <span className="text-sm">{user?.name ?? "Unknown"}</span>
-            <span className="text-xs text-muted-foreground font-normal">{user?.email ?? ""}</span>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate text-sm">{user?.name ?? "Unknown"}</span>
+            <span className="truncate text-xs text-muted-foreground font-normal">{user?.email ?? ""}</span>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -173,7 +173,7 @@ function ThemeToggle() {
       size="icon-sm"
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
       aria-label="Toggle theme"
-      className="text-muted-foreground hover:text-foreground"
+      className="text-white/70 hover:bg-white/10 hover:text-white"
     >
       {mounted
         ? (theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />)
@@ -187,12 +187,12 @@ export function Topbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-sidebar px-4 lg:px-6 relative">
+      <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b border-sidebar-border bg-sidebar px-4 lg:px-6 relative">
         {/* Mobile menu */}
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger
             render={
-              <Button variant="ghost" size="icon-sm" className="lg:hidden" />
+              <Button variant="ghost" size="icon-sm" className="text-white/80 hover:bg-white/10 hover:text-white lg:hidden" />
             }
           >
             <Menu className="size-5" />
@@ -225,6 +225,12 @@ export function Topbar() {
         <Suspense fallback={null}>
           <NavigationProgress className="absolute bottom-0 left-0 right-0 z-50" />
         </Suspense>
+
+        {/* Film grain over the brand chrome */}
+        <div
+          aria-hidden="true"
+          className="bg-noise pointer-events-none absolute inset-0 opacity-[0.08]"
+        />
       </header>
     </>
   );

@@ -132,20 +132,20 @@ export function NotificationMenu() {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="relative text-muted-foreground hover:text-foreground"
+            className="relative text-white/70 hover:bg-white/10 hover:text-white aria-expanded:bg-white/10 aria-expanded:text-white"
           />
         }
       >
         <Bell className="size-4" />
         {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-primary" />
+          <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-white ring-2 ring-sidebar" />
         )}
         <span className="sr-only">Notifications</span>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-96 p-0">
+      <DropdownMenuContent align="end" className="w-80 p-0">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center justify-between px-3 py-2">
           <div className="flex items-center gap-2">
             <BellRing className="size-4 text-muted-foreground" />
             <span className="text-sm font-semibold">Notifications</span>
@@ -159,7 +159,7 @@ export function NotificationMenu() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+              className="h-6 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
               onClick={markAllRead}
             >
               <Check className="size-3.5" />
@@ -171,9 +171,9 @@ export function NotificationMenu() {
         <DropdownMenuSeparator className="my-0" />
 
         {/* Items */}
-        <div className="max-h-80 overflow-y-auto p-1.5">
+        <div className="max-h-72 overflow-y-auto p-1.5">
           {notifications.length === 0 && (
-            <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+            <div className="px-4 py-6 text-center text-sm text-muted-foreground">
               No notifications yet.
             </div>
           )}
@@ -183,18 +183,18 @@ export function NotificationMenu() {
               <DropdownMenuItem
                 key={n.id}
                 className={cn(
-                  "items-start gap-3 rounded-lg px-2.5 py-2.5",
+                  "items-start gap-2.5 rounded-lg px-2 py-2",
                   !n.read && "bg-primary/[0.04]",
                 )}
                 onClick={() => router.push("/notifications")}
               >
                 <div
                   className={cn(
-                    "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
+                    "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg",
                     TYPE_TILES[n.type],
                   )}
                 >
-                  <Icon className="size-4" />
+                  <Icon className="size-3.5" />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex items-center justify-between gap-2">
@@ -222,7 +222,7 @@ export function NotificationMenu() {
         {/* Footer */}
         <div className="p-1.5">
           <DropdownMenuItem
-            className="justify-center rounded-lg py-2 text-sm font-medium text-primary"
+            className="justify-center rounded-lg py-1.5 text-sm font-medium text-primary"
             onClick={() => router.push("/notifications")}
           >
             View all notifications

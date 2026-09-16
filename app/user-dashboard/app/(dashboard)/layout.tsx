@@ -51,7 +51,7 @@ export default function DashboardLayout({
         </div>
         <div className="flex flex-1 flex-col overflow-hidden">
           <Topbar />
-          <main className="flex-1 overflow-y-auto bg-muted/40" />
+          <main className="flex-1 overflow-y-auto bg-popover" />
         </div>
       </div>
     );
@@ -69,8 +69,11 @@ export default function DashboardLayout({
         <Topbar />
         <EnvironmentBanner />
         <VerifyEmailBanner />
-        <main className="flex-1 min-h-0 overflow-y-auto bg-muted/40">
-          <div className="mx-auto flex min-h-full max-w-[1400px] flex-col p-6 lg:p-8">
+        <main className="flex-1 min-h-0 overflow-y-auto bg-popover">
+          <div
+            id="dashboard-panel-host"
+            className="relative mx-auto flex min-h-full max-w-[1400px] flex-col p-6 lg:p-8"
+          >
             {children}
           </div>
         </main>

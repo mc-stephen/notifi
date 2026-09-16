@@ -268,6 +268,7 @@ export default function NotificationsPage() {
         searchKey="id"
         searchPlaceholder="Search by ID..."
         pageSize={pageSize}
+        stripeRows
         bulkActions={
           <Button variant="outline" size="sm" className="gap-1.5 text-destructive">
             <Trash2 className="size-3" />

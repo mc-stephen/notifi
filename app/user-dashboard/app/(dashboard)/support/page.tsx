@@ -5,6 +5,7 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/custom/page-header";
 import { DataTable } from "@/components/custom/data-table";
+import { DetailPanel } from "@/components/custom/detail-panel";
 import RichTextEditor, { type RichTextEditorHandle } from "@/components/custom/rich-text-editor";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,7 +42,6 @@ import {
   Clock,
   CheckCircle2,
   Loader2,
-  X,
   Send,
   User,
   Headphones,
@@ -222,6 +222,7 @@ export default function SupportPage() {
                   emptyMessage="No tickets yet. Submit one to get started."
                   pageSize={10}
                   tableClassName="bg-card"
+                  stripeRows
                   onRowClick={(row) => setDetails(row)}
                 />
               )}
@@ -450,15 +451,7 @@ function TicketDetailPanel({
   const editorRef = useRef<RichTextEditorHandle>(null);
   const isClosed = ticket.status === "closed";
 
-  // Escape dismisses the floating panel.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
+  // Scroll is local; Escape dismiss is owned by DetailPanel.
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -486,34 +479,26 @@ function TicketDetailPanel({
   }, [sending, ticket, sendReply, refresh, onTicketUpdate]);
 
   return (
-    <aside className="absolute top-0 right-0 bottom-0 z-20 flex min-h-0 w-[min(28rem,92%)] flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-2xl animate-in slide-in-from-right-3 fade-in duration-200"
-    >
-      {/* Header */}
-      <div className="border-b p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="truncate font-medium text-base text-foreground">
-              {ticket.subject}
-            </h3>
-            <div className="flex items-center gap-2 mt-1">
-              <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${STATUS_STYLES[ticket.status]}`}>
-                {STATUS_LABELS[ticket.status]}
-              </span>
-              <span className="text-[10px] text-muted-foreground">
-                {format(new Date(ticket.createdAt), "MMM d, yyyy 'at' HH:mm")}
-              </span>
-            </div>
+    <DetailPanel
+      onClose={onClose}
+      headerClassName="p-4"
+      className="w-[min(28rem,92%)]"
+      header={
+        <div>
+          <h3 className="truncate font-medium text-base text-foreground">
+            {ticket.subject}
+          </h3>
+          <div className="flex items-center gap-2 mt-1">
+            <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${STATUS_STYLES[ticket.status]}`}>
+              {STATUS_LABELS[ticket.status]}
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              {format(new Date(ticket.createdAt), "MMM d, yyyy 'at' HH:mm")}
+            </span>
           </div>
-          <button
-            type="button"
-            aria-label="Close details"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            onClick={onClose}
-          >
-            <X className="size-4" />
-          </button>
         </div>
-      </div>
+      }
+    >
 
       {/* Metadata */}
       <div className="border-b p-4">
@@ -596,9 +581,9 @@ function TicketDetailPanel({
       </div>
 
       {/* Reply input */}
-      <div className="border-t p-4">
+      <div className="border-t">
         {isClosed ? (
-          <div className="text-xs text-muted-foreground text-center py-2">
+          <div className="text-xs text-muted-foreground text-center p-4">
             This ticket is closed.{" "}
             <button onClick={onClose} className="text-primary hover:underline">
               Open a new ticket
@@ -612,7 +597,7 @@ function TicketDetailPanel({
               placeholder="Type your reply…"
               onUpdate={(_html, empty) => setCanSend(!empty)}
             />
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-2 border-t border-border px-4 pb-4 pt-3">
               <Button
                 variant="outline"
                 size="icon"
@@ -622,8 +607,7 @@ function TicketDetailPanel({
                 <Paperclip className="size-4" />
               </Button>
               <Button
-                size="sm"
-                className="shrink-0"
+                className="flex-1"
                 onClick={handleSendReply}
                 disabled={sending || !canSend}
               >
@@ -638,6 +622,6 @@ function TicketDetailPanel({
           </div>
         )}
       </div>
-    </aside>
+    </DetailPanel>
   );
 }

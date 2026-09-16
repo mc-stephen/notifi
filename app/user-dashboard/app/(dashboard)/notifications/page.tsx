@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { type ColumnDef, type Table as ReactTable } from "@tanstack/react-table";
 import { DataTable } from "@/components/custom/data-table";
+import { DetailPanel } from "@/components/custom/detail-panel";
 import { PageHeader } from "@/components/custom/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,6 @@ import {
   Megaphone,
   Sparkles,
   Rocket,
-  X,
   Search,
   Columns3,
   type LucideIcon,
@@ -210,7 +210,7 @@ export default function InAppNotificationsPage() {
         }
       />
 
-      <div className="flex min-h-0 flex-1 items-stretch gap-6">
+      <div className="relative flex min-h-0 flex-1 items-stretch gap-6">
         <div className="min-w-0 flex-1 overflow-y-auto">
           <DataTable
             columns={columns}
@@ -264,33 +264,25 @@ function NotificationDetailPanel({
   const Icon = meta.icon;
 
   return (
-    <aside className="flex min-h-0 w-96 shrink-0 flex-col overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm animate-in slide-in-from-right-3 fade-in duration-200">
-      {/* Header */}
-      <div className="border-b p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-3 min-w-0">
-            <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg", meta.tile)}>
-              <Icon className="size-5" />
-            </span>
-            <div className="min-w-0">
-              <h3 className="truncate font-medium text-base text-foreground">
-                {notification.title}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {notification.origin === "system" ? "System" : "Admin"} · {format(new Date(notification.createdAt), "MMM d, HH:mm")}
-              </p>
-            </div>
+    <DetailPanel
+      onClose={onClose}
+      headerClassName="p-4"
+      header={
+        <div className="flex items-center gap-3">
+          <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg", meta.tile)}>
+            <Icon className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="truncate font-medium text-base text-foreground">
+              {notification.title}
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {notification.origin === "system" ? "System" : "Admin"} · {format(new Date(notification.createdAt), "MMM d, HH:mm")}
+            </p>
           </div>
-          <button
-            type="button"
-            aria-label="Close details"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            onClick={onClose}
-          >
-            <X className="size-4" />
-          </button>
         </div>
-      </div>
+      }
+    >
 
       {/* Body */}
       <div className="flex-1 min-h-0 overflow-y-auto p-4">
@@ -321,6 +313,6 @@ function NotificationDetailPanel({
           <Trash2 className="size-3.5" /> Delete
         </Button>
       </div>
-    </aside>
+    </DetailPanel>
   );
 }

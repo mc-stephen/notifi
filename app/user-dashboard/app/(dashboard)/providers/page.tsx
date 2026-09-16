@@ -34,7 +34,7 @@ import {
   type RecommendedItem,
 } from "@/components/custom/providers/recommended-integrations";
 import { cn } from "@/lib/utils";
-import { Globe, Loader2, Plug, Search } from "lucide-react";
+import { ExternalLink, Globe, Loader2, Plug, Search } from "lucide-react";
 
 type Tab = "all" | "active" | "inactive";
 
@@ -346,7 +346,7 @@ export default function ProvidersPage() {
           </Button>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 items-stretch gap-6">
+        <div className="relative flex min-h-0 flex-1 items-stretch gap-6">
           <div className="min-w-0 flex-1">
             {visible.length === 0 ? (
               <div className="rounded-xl border bg-card p-8 text-center text-sm text-muted-foreground">
@@ -454,6 +454,18 @@ export default function ProvidersPage() {
                               )}
                             </p>
                           </div>
+                          {provider.docs_url && (
+                            <a
+                              href={provider.docs_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={`${provider.name} documentation`}
+                              className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink className="size-4" />
+                            </a>
+                          )}
                           {isConnected ? (
                             <Badge variant="secondary" className="text-[10px]">
                               Connected

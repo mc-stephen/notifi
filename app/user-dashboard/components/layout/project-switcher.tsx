@@ -79,17 +79,17 @@ export function ProjectSwitcher({ collapsed = false }: { collapsed?: boolean }) 
         collapsed ? (
           <Button
             variant="ghost"
-            className="h-8 w-full rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+            className="h-8 w-full rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground aria-expanded:bg-white/10 aria-expanded:text-sidebar-foreground"
           />
         ) : (
           <Button
             variant="ghost"
-            className="h-auto w-full gap-2 rounded-lg px-2.5 py-1.5 hover:bg-sidebar-accent/60 text-sidebar-foreground/80"
+            className="h-auto w-full gap-2 rounded-lg px-2.5 py-1.5 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground text-sidebar-foreground/80 aria-expanded:bg-white/10 aria-expanded:text-sidebar-foreground"
           />
         )
       }
     >
-      <div className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary text-xs font-bold">
+      <div className="flex size-6 shrink-0 items-center justify-center rounded-md bg-white/15 text-white text-xs font-bold">
         {currentProject?.name?.charAt(0) ?? "P"}
       </div>
       {!collapsed && (
@@ -98,7 +98,7 @@ export function ProjectSwitcher({ collapsed = false }: { collapsed?: boolean }) 
         </span>
       )}
       {!collapsed && (
-        <ChevronsUpDown className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
+        <ChevronsUpDown className="ml-auto size-3.5 shrink-0 text-white/60" />
       )}
     </DropdownMenuTrigger>
   );

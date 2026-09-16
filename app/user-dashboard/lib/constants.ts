@@ -344,20 +344,66 @@ export type WebhookEventGroup = {
   label: string;
   events: { key: string; label: string }[];
 };
-
-export const WEBHOOK_EVENTS: WebhookEventGroup[] = [  {
+export const WEBHOOK_EVENTS: WebhookEventGroup[] = [
+  {
     label: "Notifications",
     events: [
       { key: "notification.sent", label: "Sent" },
       { key: "notification.delivered", label: "Delivered" },
+      { key: "notification.opened", label: "Opened" },
+      { key: "notification.clicked", label: "Clicked" },
       { key: "notification.failed", label: "Failed" },
+      { key: "notification.retried", label: "Retried" },
     ],
   },
   {
     label: "Campaigns",
     events: [
       { key: "campaign.started", label: "Started" },
+      { key: "campaign.paused", label: "Paused" },
       { key: "campaign.completed", label: "Completed" },
+      { key: "campaign.cancelled", label: "Cancelled" },
+    ],
+  },
+  {
+    label: "Providers",
+    events: [
+      { key: "provider.connected", label: "Connected" },
+      { key: "provider.disconnected", label: "Disconnected" },
+    ],
+  },
+  {
+    label: "API Keys",
+    events: [
+      { key: "api_key.created", label: "Created" },
+      { key: "api_key.revoked", label: "Revoked" },
+      { key: "api_key.ip_allowed", label: "IP allowed" },
+      { key: "api_key.ip_removed", label: "IP removed" },
+    ],
+  },
+  {
+    label: "Teams",
+    events: [
+      { key: "team.member_added", label: "Member added" },
+      { key: "team.member_invited", label: "Member invited" },
+      { key: "team.member_removed", label: "Member removed" },
+      { key: "team.role_changed", label: "Role changed" },
+    ],
+  },
+  {
+    label: "Recipients",
+    events: [
+      { key: "recipient.created", label: "Created" },
+      { key: "recipient.updated", label: "Updated" },
+      { key: "recipient.deleted", label: "Deleted" },
+    ],
+  },
+  {
+    label: "Templates",
+    events: [
+      { key: "template.created", label: "Created" },
+      { key: "template.updated", label: "Updated" },
+      { key: "template.deleted", label: "Deleted" },
     ],
   },
 ];

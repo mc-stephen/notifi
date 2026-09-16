@@ -29,7 +29,7 @@ export function PlanBanner({ collapsed = false }: { collapsed?: boolean }) {
         aria-label="Loading subscription"
       >
         <div className="min-w-0 flex-1 animate-pulse space-y-1.5">
-          <div className="h-3 w-2/3 rounded bg-sidebar-accent" />
+          <div className="h-3 w-2/3 rounded bg-white/20" />
         </div>
       </div>
     );
@@ -46,7 +46,7 @@ export function PlanBanner({ collapsed = false }: { collapsed?: boolean }) {
           render={
             <Link
               href="/billing"
-              className="flex h-8 w-full items-center justify-center rounded-lg text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+              className="flex h-8 w-full items-center justify-center rounded-lg text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent/10 hover:text-sidebar-foreground"
             />
           }
         >
@@ -62,7 +62,7 @@ export function PlanBanner({ collapsed = false }: { collapsed?: boolean }) {
       href="/billing"
       className={cn(
         "bg-sidebar group flex items-center justify-between rounded-lg border border-sidebar-border px-2 py-2 transition-colors",
-        "hover:border-primary/30 hover:bg-sidebar-accent/40",
+        "hover:border-white/30 hover:bg-sidebar-accent/10",
       )}
     >
       <div className="min-w-0 flex-1">
@@ -74,7 +74,7 @@ export function PlanBanner({ collapsed = false }: { collapsed?: boolean }) {
         </span>
       </div>
       {canUpgrade && (
-        <span className="ml-2 shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary transition-colors group-hover:bg-primary/20">
+        <span className="ml-2 shrink-0 rounded-md bg-white/15 px-1.5 py-0.5 text-[10px] font-semibold text-white transition-colors group-hover:bg-white/25">
           Upgrade
         </span>
       )}
