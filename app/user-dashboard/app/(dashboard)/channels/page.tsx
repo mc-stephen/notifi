@@ -7,6 +7,7 @@ import { CHANNEL_ICON_MAP } from "@/components/custom/channel-badge";
 import { HealthIndicator } from "@/components/custom/health-indicator";
 import { CHANNEL_LABELS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCard } from "@/components/custom/stat-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -49,67 +50,14 @@ export default function ChannelsPage() {
       <PageHeader
         title="Channels"
         description={`${enabledCount} of ${channels.length} channels enabled`}
-        actions={
-          <Button size="sm" className="gap-1.5">
-            <Radio className="size-3.5" /> Configure channel
-          </Button>
-        }
       />
 
       {/* Summary cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">
-                Active Channels
-              </span>
-              <Radio className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">{enabledCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              of {channels.length} configured
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">
-                Healthy Providers
-              </span>
-              <Zap className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">
-              {healthyProviders}/{connectedProviders.length}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              all systems operational
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Avg Latency</span>
-              <TrendingUp className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">{avgLatency}ms</div>
-            <p className="text-xs text-success mt-1">within target</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">
-                Success Rate
-              </span>
-              <AlertTriangle className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">{avgSuccessRate}%</div>
-            <p className="text-xs text-success mt-1">above 95% threshold</p>
-          </CardContent>
-        </Card>
+        <StatCard label="Active Channels" value={enabledCount} sub={`of ${channels.length} configured`} icon={Radio} />
+        <StatCard label="Healthy Providers" value={`${healthyProviders}/${connectedProviders.length}`} sub="all systems operational" icon={Zap} />
+        <StatCard label="Avg Latency" value={`${avgLatency}ms`} sub="within target" icon={TrendingUp} />
+        <StatCard label="Success Rate" value={`${avgSuccessRate}%`} sub="above 95% threshold" icon={AlertTriangle} />
       </div>
 
       {/* Channel cards */}
@@ -161,7 +109,11 @@ export default function ChannelsPage() {
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    onClick={(e) => e.stopPropagation()}
+                    aria-label="Channel settings"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/channels/${channel.id}`);
+                    }}
                   >
                     <Settings className="size-3.5" />
                   </Button>
@@ -198,7 +150,17 @@ export default function ChannelsPage() {
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     No providers assigned.{" "}
-                    <span className="text-primary">Add one →</span>
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/channels/${channel.id}`);
+                      }}
+                    >
+                      Add one →
+                    </Button>
                   </p>
                 )}
               </CardContent>

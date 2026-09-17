@@ -12,6 +12,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { env, links } from "@/lib/env";
 import { useProjectStore } from "@/store/project-store";
@@ -199,7 +206,7 @@ export default function SupportPage() {
 
         {/* Tickets tab */}
         <TabsContent value="tickets" className="mt-4 flex min-h-0 flex-col">
-          <div className="relative flex min-h-0 flex-1 items-stretch gap-6">
+          <div className="flex min-h-0 flex-1 items-stretch">
             <div className="min-w-0 flex-1 overflow-y-auto">
               {ticketsLoading ? (
                 <div className="overflow-hidden rounded-lg border bg-card">
@@ -222,7 +229,6 @@ export default function SupportPage() {
                   emptyMessage="No tickets yet. Submit one to get started."
                   pageSize={10}
                   tableClassName="bg-card"
-                  stripeRows
                   onRowClick={(row) => setDetails(row)}
                 />
               )}
@@ -281,7 +287,7 @@ export default function SupportPage() {
 
           <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold">Frequently Asked Questions</h2>
+              <h2 className="text-base font-semibold">Frequently Asked Questions</h2>
               <div className="relative max-w-sm">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                 <Input
@@ -310,7 +316,7 @@ export default function SupportPage() {
             </div>
 
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold">Resources</h2>
+              <h2 className="text-base font-semibold">Resources</h2>
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm">Quick Links</CardTitle>
@@ -395,18 +401,19 @@ export default function SupportPage() {
             </div>
             <div className="space-y-2">
               <Label>Category</Label>
-              <select
-                className="w-full rounded-md border bg-transparent px-3 py-2 text-sm"
-                value={formCategory}
-                onChange={(e) => setFormCategory(e.target.value)}
-              >
-                <option>Technical Issue</option>
-                <option>Billing</option>
-                <option>Account Access</option>
-                <option>Feature Request</option>
-                <option>Integration Help</option>
-                <option>Other</option>
-              </select>
+              <Select value={formCategory} onValueChange={(v) => { if (v) setFormCategory(v); }}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Technical Issue">Technical Issue</SelectItem>
+                  <SelectItem value="Billing">Billing</SelectItem>
+                  <SelectItem value="Account Access">Account Access</SelectItem>
+                  <SelectItem value="Feature Request">Feature Request</SelectItem>
+                  <SelectItem value="Integration Help">Integration Help</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Message</Label>
@@ -581,7 +588,7 @@ function TicketDetailPanel({
       </div>
 
       {/* Reply input */}
-      <div className="border-t">
+      <div className="border-t border-border bg-muted/30">
         {isClosed ? (
           <div className="text-xs text-muted-foreground text-center p-4">
             This ticket is closed.{" "}

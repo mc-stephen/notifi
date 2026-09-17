@@ -3,11 +3,8 @@
 import { useState } from "react";
 import { DetailPanel } from "@/components/custom/detail-panel";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -24,19 +21,13 @@ import type {
 } from "@/hooks/use-provider-configs";
 import {
   Check,
-  Copy,
   ExternalLink,
   Loader2,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ProviderIcon } from "./provider-icon";
-
-function toText(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  return String(value);
-}
+import { ProviderConfigFields } from "./provider-config-fields";
 
 type ProviderDetailPanelProps = {
   config: ProviderConfig;
@@ -76,7 +67,6 @@ export function ProviderDetailPanel({
   const [deleting, setDeleting] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const setValue = (key: string, value: unknown) => {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -176,16 +166,6 @@ export function ProviderDetailPanel({
     }
   };
 
-  const handleCopy = async (key: string, value: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopiedKey(key);
-      setTimeout(() => setCopiedKey(null), 2000);
-    } catch {
-      toast.error("Failed to copy to clipboard");
-    }
-  };
-
   return (
     <DetailPanel
       onClose={onClose}
@@ -199,7 +179,7 @@ export function ProviderDetailPanel({
       {/* Scrollable body */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {/* Provider identity */}
-        <div className="flex items-center gap-3 border-b px-5 py-4">
+        <div className="flex items-center gap-3 px-5 py-4">
           <ProviderIcon name={definition.name} iconUrl={definition.icon_url} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{definition.name}</p>
@@ -228,70 +208,11 @@ export function ProviderDetailPanel({
 
           {formError && <p className="text-xs text-destructive">{formError}</p>}
 
-          {definition.config_fields.map((field) => {
-            const value = values[field.key];
-            if (field.type === "boolean") {
-              const checked = value === true || value === "true";
-              return (
-                <div key={field.key} className="flex items-center gap-2">
-                  <Checkbox
-                    checked={checked}
-                    onCheckedChange={(v) => setValue(field.key, v === true)}
-                  />
-                  <Label className="text-sm font-medium">
-                    {field.label}
-                    {field.required && (
-                      <span className="ml-1 text-destructive">*</span>
-                    )}
-                  </Label>
-                </div>
-              );
-            }
-
-            const text = toText(value);
-            return (
-              <div key={field.key} className="space-y-1.5">
-                <Label className="text-sm font-medium">
-                  {field.label}
-                  {field.required && (
-                    <span className="ml-1 text-destructive">*</span>
-                  )}
-                </Label>
-                <div className="flex items-center gap-1.5">
-                  <Input
-                    type={
-                      field.type === "password"
-                        ? "password"
-                        : field.type === "email"
-                          ? "email"
-                          : field.type === "number"
-                            ? "number"
-                            : "text"
-                    }
-                    value={text}
-                    placeholder={`Enter ${field.label.toLowerCase()}`}
-                    onChange={(e) => setValue(field.key, e.target.value)}
-                    className="h-9 font-mono text-xs"
-                  />
-                  {field.type !== "password" && text && (
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="shrink-0"
-                      onClick={() => handleCopy(field.key, text)}
-                      aria-label={`Copy ${field.label}`}
-                    >
-                      {copiedKey === field.key ? (
-                        <Check className="size-3 text-success" />
-                      ) : (
-                        <Copy className="size-3" />
-                      )}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          <ProviderConfigFields
+            definition={definition}
+            values={values}
+            onChange={setValue}
+          />
 
           {definition.smtp_fallback && (
             <p className="text-xs text-muted-foreground">

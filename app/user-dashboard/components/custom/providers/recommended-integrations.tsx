@@ -45,6 +45,7 @@ export function RecommendedIntegrations({
             enabled={item.enabled}
             selected={item.selected}
             compact
+            className="bg-popover"
             onToggle={(enabled) => onToggle(item, enabled)}
             onAction={() => onAction(item)}
           />

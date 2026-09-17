@@ -75,8 +75,8 @@ export function CodeBlock({ code, language, className, showCopy = true }: CodeBl
       className={cn(
         "relative group overflow-hidden rounded-lg border",
         dark
-          ? "codeblock-dark border-[#30363d] bg-[#0d1117]"
-          : "codeblock-light border-border bg-white dark:bg-white",
+          ? "codeblock-dark border-border bg-[#0d1117]"
+          : "codeblock-light border-border bg-popover",
         className,
       )}
     >

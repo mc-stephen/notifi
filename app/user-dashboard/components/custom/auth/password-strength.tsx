@@ -35,8 +35,7 @@ export function PasswordStrength({ password }: PasswordStrengthProps) {
             className={cn(
               "font-medium",
               score <= 1 && "text-destructive",
-              score === 2 && "text-orange-500",
-              score === 3 && "text-yellow-500",
+              (score === 2 || score === 3) && "text-warning",
               score >= 4 && "text-success"
             )}
           >

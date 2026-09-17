@@ -38,7 +38,6 @@ type DataTableProps<TData, TValue> = {
   emptyMessage?: string;
   onRowClick?: (row: TData) => void;
   rowActions?: (row: TData) => React.ReactNode;
-  stripeRows?: boolean;
   tableClassName?: string;
   hideToolbar?: boolean;
   renderToolbar?: (table: ReactTable<TData>) => React.ReactNode;
@@ -60,7 +59,6 @@ export function DataTable<TData, TValue>({
   emptyMessage = "No results found.",
   onRowClick,
   rowActions,
-  stripeRows = false,
   tableClassName,
   hideToolbar = false,
   renderToolbar,
@@ -105,7 +103,7 @@ export function DataTable<TData, TValue>({
       {/* Toolbar */}
       {renderToolbar && renderToolbar(table)}
       {!hideToolbar && !renderToolbar && (
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-1">
             {searchKey && (
               <div className="relative max-w-sm flex-1">
@@ -196,14 +194,11 @@ export function DataTable<TData, TValue>({
                 </TableCell>
               </TableRow>
             ) : (
-              table.getRowModel().rows.map((row, i) => (
+              table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  className={cn(
-                    onRowClick && "cursor-pointer",
-                    stripeRows && (i % 2 === 0 ? "bg-popover" : "bg-card dark:bg-muted/40"),
-                  )}
+                  className={cn(onRowClick && "cursor-pointer")}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
@@ -224,14 +219,14 @@ export function DataTable<TData, TValue>({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
         <div className="flex items-center gap-2">
           <span>{table.getFilteredRowModel().rows.length} total</span>
           <span>·</span>
           <select
             value={pageSize}
             onChange={(e) => setPageSize(Number(e.target.value))}
-            className="border bg-transparent rounded px-1.5 py-0.5 text-xs"
+            className="h-7 rounded-md border border-border bg-card px-1.5 text-xs"
           >
             {TABLE_PAGE_SIZES.map((size) => (
               <option key={size} value={size}>{size} / page</option>

@@ -12,6 +12,13 @@ import { CodeBlock } from "@/components/custom/code-block";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
@@ -67,33 +74,35 @@ function NewNotificationForm() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Channel</label>
-                <select
-                  value={channel}
-                  onChange={(e) => setChannel(e.target.value)}
-                  className="w-full rounded-md border bg-transparent px-3 py-2 text-sm"
-                >
-                  <option value="email">Email</option>
-                  <option value="sms">SMS</option>
-                  <option value="push-android">Android Push</option>
-                  <option value="push-ios">Apple Push</option>
-                  <option value="web-push">Web Push</option>
-                  <option value="slack">Slack</option>
-                  <option value="discord">Discord</option>
-                  <option value="webhook">Webhook</option>
-                </select>
+                <Select value={channel} onValueChange={(v) => { if (v) setChannel(v); }}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="sms">SMS</SelectItem>
+                    <SelectItem value="push-android">Android Push</SelectItem>
+                    <SelectItem value="push-ios">Apple Push</SelectItem>
+                    <SelectItem value="web-push">Web Push</SelectItem>
+                    <SelectItem value="slack">Slack</SelectItem>
+                    <SelectItem value="discord">Discord</SelectItem>
+                    <SelectItem value="webhook">Webhook</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Priority</label>
-                <select
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value)}
-                  className="w-full rounded-md border bg-transparent px-3 py-2 text-sm"
-                >
-                  <option value="low">Low</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
+                <Select value={priority} onValueChange={(v) => { if (v) setPriority(v); }}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="space-y-2">
@@ -346,7 +355,7 @@ function NotificationDetail({ id }: { id: string }) {
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Subject</span>
-                  <span className="text-sm truncate max-w-[150px]">{notification.subject ?? "—"}</span>
+                  <span className="text-sm truncate max-w-[240px]" title={notification.subject ?? undefined}>{notification.subject ?? "—"}</span>
                 </div>
                 <Separator />
                 <div>
@@ -384,7 +393,7 @@ function NotificationDetail({ id }: { id: string }) {
               <CardTitle>Payload</CardTitle>
             </CardHeader>
             <CardContent>
-              <CodeBlock code={JSON.stringify({ subject: notification.subject, body: notification.body, channel: notification.channel, priority: notification.priority }, null, 2)} language="JSON" />
+              <CodeBlock code={JSON.stringify({ subject: notification.subject, body: notification.body, channel: notification.channel, priority: notification.priority }, null, 2)} language="json" />
             </CardContent>
           </Card>
         </TabsContent>

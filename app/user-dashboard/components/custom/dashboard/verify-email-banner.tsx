@@ -37,11 +37,11 @@ export function VerifyEmailBanner() {
   };
 
   return (
-    <div className="flex flex-col gap-3 border-b border-amber-500/20 bg-amber-500/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+    <div className="flex flex-col gap-3 border-b border-warning/30 bg-warning/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-6">
       <div className="flex items-start gap-3">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
         <div className="space-y-0.5">
-          <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+          <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
             Verify your email address
           </p>
           <p className="text-sm text-muted-foreground">
@@ -69,7 +69,7 @@ export function VerifyEmailBanner() {
         variant="outline"
         onClick={handleResend}
         disabled={sending}
-        className="shrink-0 self-start sm:self-center"
+        className="shrink-0 self-start bg-popover shadow-sm sm:self-center"
       >
         {sending ? (
           <>

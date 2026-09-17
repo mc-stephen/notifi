@@ -7,7 +7,13 @@ import { NotificationSettings } from "@/components/custom/settings/notification-
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Globe,
   Bell,
@@ -53,7 +59,6 @@ export default function SettingsPage() {
   const [defaultEnv, setDefaultEnv] = useState<"development" | "production">("development");
   const [retention, setRetention] = useState("90");
   const [saved, setSaved] = useState(false);
-  const [compactMode, setCompactMode] = useState(false);
 
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(
@@ -130,15 +135,16 @@ export default function SettingsPage() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Timezone</label>
-                    <select
-                      className="flex h-9 w-full rounded-lg border border-input bg-card px-3 text-sm focus-visible:border-ring focus-visible:outline-none"
-                      value={timezone}
-                      onChange={(e) => setTimezone(e.target.value)}
-                    >
-                      {TIMEZONES.map((tz) => (
-                        <option key={tz} value={tz}>{tz}</option>
-                      ))}
-                    </select>
+                    <Select value={timezone} onValueChange={(v) => { if (v) setTimezone(v); }}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TIMEZONES.map((tz) => (
+                          <SelectItem key={tz} value={tz}>{tz}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </CardContent>
@@ -173,15 +179,16 @@ export default function SettingsPage() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Data retention (days)</label>
-                    <select
-                      className="flex h-9 w-full rounded-lg border border-input bg-card px-3 text-sm focus-visible:border-ring focus-visible:outline-none"
-                      value={retention}
-                      onChange={(e) => setRetention(e.target.value)}
-                    >
-                      {["30", "90", "180", "365"].map((days) => (
-                        <option key={days} value={days}>{days} days</option>
-                      ))}
-                    </select>
+                    <Select value={retention} onValueChange={(v) => { if (v) setRetention(v); }}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {["30", "90", "180", "365"].map((days) => (
+                          <SelectItem key={days} value={days}>{days} days</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </CardContent>
@@ -230,20 +237,6 @@ export default function SettingsPage() {
                       <span className="text-xs font-medium">{item.label}</span>
                     </button>
                   ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-medium">Compact tables</div>
-                    <div className="text-xs text-muted-foreground">
-                      Reduce row padding across data tables
-                    </div>
-                  </div>
-                  <Switch checked={compactMode} onCheckedChange={setCompactMode} />
                 </div>
               </CardContent>
             </Card>

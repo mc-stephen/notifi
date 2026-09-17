@@ -6,7 +6,7 @@
 
 .codeblock-light .hljs {
   color: #24292e;
-  background: #ffffff;
+  background: var(--popover);
 }
 .codeblock-light .hljs-doctag,
 .codeblock-light .hljs-keyword,

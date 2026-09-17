@@ -60,26 +60,21 @@ export default function AnalyticsPage() {
 
       {/* KPI Grid */}
       <div className="grid gap-4 md:grid-cols-4">
-        {metrics.slice(0, 4).map((metric) => (
-          <MetricCard key={metric.title} {...metric} />
-        ))}
-      </div>
-
-      {/* Secondary Metrics */}
-      <div className="grid gap-4 md:grid-cols-4">
-        {metrics.slice(4).map((metric) => (
+        {metrics.map((metric) => (
           <MetricCard key={metric.title} {...metric} />
         ))}
       </div>
 
       {/* Charts */}
       <Tabs defaultValue="delivery">
-        <TabsList>
-          <TabsTrigger value="delivery">Delivery Trends</TabsTrigger>
-          <TabsTrigger value="channels">Channels</TabsTrigger>
-          <TabsTrigger value="geography">Geography</TabsTrigger>
-          <TabsTrigger value="platforms">Platforms</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto">
+          <TabsList>
+            <TabsTrigger value="delivery">Delivery Trends</TabsTrigger>
+            <TabsTrigger value="channels">Channels</TabsTrigger>
+            <TabsTrigger value="geography">Geography</TabsTrigger>
+            <TabsTrigger value="platforms">Platforms</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="delivery" className="mt-4">
           <Card>

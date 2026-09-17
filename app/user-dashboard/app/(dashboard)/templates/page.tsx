@@ -301,10 +301,9 @@ export default function TemplatesPage() {
           searchPlaceholder="Search templates..."
           pageSize={10}
           tableClassName="bg-card"
-          stripeRows
           onRowClick={(t) => router.push(`/templates/${t.id}`)}
           rowActions={(t) => (
-            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
               <Button
                 variant="ghost"
                 size="icon-xs"

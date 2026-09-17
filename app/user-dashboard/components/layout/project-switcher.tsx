@@ -98,7 +98,7 @@ export function ProjectSwitcher({ collapsed = false }: { collapsed?: boolean }) 
         </span>
       )}
       {!collapsed && (
-        <ChevronsUpDown className="ml-auto size-3.5 shrink-0 text-white/60" />
+        <ChevronsUpDown className="ml-auto size-3.5 shrink-0 text-white/70" />
       )}
     </DropdownMenuTrigger>
   );

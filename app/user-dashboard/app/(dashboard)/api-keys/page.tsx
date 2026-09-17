@@ -5,7 +5,7 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/custom/data-table";
 import { DetailPanel } from "@/components/custom/detail-panel";
 import { PageHeader } from "@/components/custom/page-header";
-import { Card, CardContent } from "@/components/ui/card";
+import { StatCard } from "@/components/custom/stat-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -166,7 +166,7 @@ function ApiKeyDetailPanel({
   const statusDot = revoked
     ? "bg-destructive"
     : apiKey.enabled
-      ? "bg-emerald-500"
+      ? "bg-success"
       : "bg-muted-foreground/40";
 
   return (
@@ -360,7 +360,7 @@ function ApiKeyDetailPanel({
       </div>
 
       {/* Sticky footer — actions */}
-      <div className="flex items-center justify-between gap-3 border-t px-5 py-3">
+      <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/30 px-5 py-3">
         <div className="flex items-center gap-2">
           <Switch
             checked={apiKey.enabled}
@@ -548,40 +548,15 @@ export default function ApiKeysPage() {
       <ApiKeySecurityNotice />
 
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
-        <Card>
-          <CardContent className="pt-5">
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground mt-1">Total keys</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="text-2xl font-bold">{stats.active}</div>
-            <p className="text-xs text-muted-foreground mt-1">Active keys</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="text-2xl font-bold">{stats.prod}</div>
-            <p className="text-xs text-muted-foreground mt-1">Prod keys</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="text-2xl font-bold">{stats.dev}</div>
-            <p className="text-xs text-muted-foreground mt-1">Dev keys</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="text-2xl font-bold">{stats.inactive}</div>
-            <p className="text-xs text-muted-foreground mt-1">Inactive keys</p>
-          </CardContent>
-        </Card>
+        <StatCard label="Total keys" value={stats.total} />
+        <StatCard label="Active keys" value={stats.active} />
+        <StatCard label="Prod keys" value={stats.prod} />
+        <StatCard label="Dev keys" value={stats.dev} />
+        <StatCard label="Inactive keys" value={stats.inactive} />
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
-      <div className="relative flex min-h-0 flex-1 items-stretch gap-6">
+      <div className="flex min-h-0 flex-1 items-stretch">
         <div className="min-w-0 flex-1 overflow-y-auto">
           <DataTable
             columns={columns}
@@ -591,7 +566,6 @@ export default function ApiKeysPage() {
             pageSize={10}
             emptyMessage="No API keys yet. Generate one to get started."
             tableClassName="bg-card"
-            stripeRows
             onRowClick={(row) => {
               setSelectedId((prev) => (prev === row.id ? null : row.id));
             }}

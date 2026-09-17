@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  CreditCard,
   CheckCircle2,
   Zap,
   Bell,
@@ -110,9 +109,7 @@ export default function BillingPage() {
         title="Billing"
         description={project ? `Subscription and payment for ${project.name}` : "Subscription and payment"}
         actions={
-          <Button size="sm" variant="outline" className="gap-1.5" disabled title="Online payments land with the billing provider">
-            <CreditCard className="size-3.5" /> Update payment
-          </Button>
+          <span className="text-xs text-muted-foreground">Online payments land with the billing provider</span>
         }
       />
 

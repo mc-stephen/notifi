@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { DataTable } from "@/components/custom/data-table";
 import { MetricCard } from "@/components/custom/metric-card";
+import { PageHeader } from "@/components/custom/page-header";
 import { DateRangeFilter } from "@/components/custom/date-range-filter";
 import { StatusBadge } from "@/components/custom/status-badge";
 import { ChannelBadge } from "@/components/custom/channel-badge";
@@ -34,7 +35,7 @@ function MetricCards({ range }: { range: DateRange }) {
   const metrics = useMetrics(range);
 
   return (
-    <div className="grid gap-4 grid-cols-2 md:grid-cols-6">
+    <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
       {metrics.map((m) => (
         <MetricCard key={m.title} {...m} />
       ))}
@@ -53,7 +54,7 @@ function NotificationTimeline() {
       <CardHeader>
         <CardTitle>Notification Timeline</CardTitle>
         <CardAction>
-          <Button variant="ghost" size="sm" render={<Link href="/analytics" />}>
+          <Button variant="outline" size="sm" render={<Link href="/analytics" />}>
             View analytics <ArrowRight className="size-3.5 ml-1" />
           </Button>
         </CardAction>
@@ -153,7 +154,7 @@ function RecentNotificationsTable() {
       accessorKey: "subject",
       header: "Subject",
       cell: ({ row }) => (
-        <span className="truncate max-w-[240px] text-sm">
+        <span className="truncate max-w-[240px] text-sm" title={row.original.subject ?? row.original.body}>
           {row.original.subject ?? row.original.body}
         </span>
       ),
@@ -192,7 +193,7 @@ function RecentNotificationsTable() {
         <CardTitle>Recent Notifications</CardTitle>
         <CardAction>
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             render={<Link href="/deliveries" />}
           >
@@ -207,7 +208,6 @@ function RecentNotificationsTable() {
           searchKey="subject"
           searchPlaceholder="Search by subject..."
           pageSize={10}
-          stripeRows
         />
       </CardContent>
     </Card>
@@ -222,15 +222,11 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            Overview of your notification system.
-          </p>
-        </div>
-        <DateRangeFilter value={dateRange} onChange={setDateRange} />
-      </div>
+      <PageHeader
+        title="Dashboard"
+        description="Overview of your notification system."
+        actions={<DateRangeFilter value={dateRange} onChange={setDateRange} />}
+      />
 
       <MetricCards range={dateRange} />
 

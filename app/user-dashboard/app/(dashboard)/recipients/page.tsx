@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/custom/data-table";
 import { DetailPanel } from "@/components/custom/detail-panel";
+import { initials } from "@/lib/utils";
 import { PageHeader } from "@/components/custom/page-header";
 import {
   RecipientContactsEditor,
@@ -177,7 +178,7 @@ export default function RecipientsPage() {
         return (
           <div className="flex items-center gap-2">
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-              {r.name.split(" ").map((n) => n[0]).join("")}
+              {initials(r.name)}
             </div>
             <div className="min-w-0">
               <div className="text-sm font-medium truncate">{r.name}</div>
@@ -238,7 +239,7 @@ export default function RecipientsPage() {
         }
       />
 
-      <div className="relative flex items-start gap-6">
+      <div className="flex items-start">
         <div className="min-w-0 flex-1">
           {loading ? (
             <div className="overflow-hidden rounded-lg border bg-card">
@@ -264,7 +265,6 @@ export default function RecipientsPage() {
               searchPlaceholder="Search by name or user ID..."
               pageSize={10}
               tableClassName="bg-card"
-              stripeRows
               onRowClick={(r) => setDetails(r)}
               bulkActions={(selected) => (
                 <Button
@@ -297,7 +297,7 @@ export default function RecipientsPage() {
             }
           >
 
-            <div className="max-h-[60vh] overflow-y-auto p-4">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4">
               <dl className="grid grid-cols-2 gap-x-4 gap-y-4 text-sm">
                 <div className="col-span-2">
                   <dt className="text-muted-foreground">Name</dt>
@@ -360,7 +360,7 @@ export default function RecipientsPage() {
               </div>
             </div>
 
-            <div className="flex gap-2 border-t p-4">
+            <div className="flex gap-2 border-t border-border bg-muted/30 p-4">
               <Button variant="outline" onClick={() => openEdit(details)}>
                 <Pencil className="size-3.5 mr-1" /> Edit
               </Button>

@@ -14,27 +14,16 @@ import { ApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/custom/page-header";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { ProviderCard } from "@/components/custom/providers/provider-card";
-import { ProviderIcon } from "@/components/custom/providers/provider-icon";
+import { ProviderBrowsePanel } from "@/components/custom/providers/provider-browse-panel";
 import { ProviderDetailPanel } from "@/components/custom/providers/provider-detail-panel";
+import { ProviderConnectPanel } from "@/components/custom/providers/provider-connect-panel";
 import {
   RecommendedIntegrations,
   type RecommendedItem,
 } from "@/components/custom/providers/recommended-integrations";
 import { cn } from "@/lib/utils";
-import { ExternalLink, Globe, Loader2, Plug, Search } from "lucide-react";
+import { Globe, Loader2 } from "lucide-react";
 
 type Tab = "all" | "active" | "inactive";
 
@@ -57,11 +46,6 @@ function coerceValue(type: string, raw: unknown): unknown {
   }
   return raw === null || raw === undefined ? "" : String(raw);
 }
-function toText(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  return String(value);
-}
 export default function ProvidersPage() {
   const { registry, loading: registryLoading, error: registryError } =
     useProviderRegistry();
@@ -78,6 +62,8 @@ export default function ProvidersPage() {
     channel: string;
     provider: string;
   } | null>(null);
+  /** Whether the open connect form came from browse (dismiss returns there). */
+  const [connectFromBrowse, setConnectFromBrowse] = useState(false);
   const [configForm, setConfigForm] = useState<Record<string, unknown>>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -178,7 +164,15 @@ export default function ProvidersPage() {
     if (existing) {
       setSelectedId((prev) => (prev === existing.id ? null : existing.id));
     } else {
+      const found = findDefinition(item.channelId, item.definition.provider_id);
+      if (!found) {
+        toast.error("Couldn't load provider details. Please try again.");
+        return;
+      }
       setConfigForm({});
+      setSelectedId(null);
+      setBrowseOpen(false);
+      setConnectFromBrowse(false);
       setConnectDialog({
         channel: item.channelId,
         provider: item.definition.provider_id,
@@ -247,6 +241,7 @@ export default function ProvidersPage() {
       setConnectDialog(null);
       setConfigForm({});
       setBrowseOpen(false);
+      setConnectFromBrowse(false);
       setSelectedId(created.id);
       refresh();
     } catch (err) {
@@ -260,6 +255,8 @@ export default function ProvidersPage() {
   function handleDialogClose() {
     setConnectDialog(null);
     setConfigForm({});
+    if (connectFromBrowse) setBrowseOpen(true);
+    setConnectFromBrowse(false);
   }
   if (registryLoading || configsLoading) {
     return (
@@ -275,7 +272,6 @@ export default function ProvidersPage() {
       </div>
     );
   }
-  const searchLower = browseSearch.toLowerCase();
   const connectTarget = connectDialog
     ? findDefinition(connectDialog.channel, connectDialog.provider)
     : null;
@@ -346,7 +342,7 @@ export default function ProvidersPage() {
           </Button>
         </div>
       ) : (
-        <div className="relative flex min-h-0 flex-1 items-stretch gap-6">
+        <div className="flex min-h-0 flex-1 items-stretch">
           <div className="min-w-0 flex-1">
             {visible.length === 0 ? (
               <div className="rounded-xl border bg-card p-8 text-center text-sm text-muted-foreground">
@@ -375,209 +371,76 @@ export default function ProvidersPage() {
               </div>
             )}
           </div>
-
-          {selected && (
-            <ProviderDetailPanel
-              key={selected.id}
-              config={selected}
-              definition={selected.definition}
-              channelName={selected.channelName}
-              blurb={selected.blurb}
-              test={test}
-              update={update}
-              remove={remove}
-              onChanged={refresh}
-              onDeleted={() => {
-                setSelectedId(null);
-                refresh();
-              }}
-              onClose={() => setSelectedId(null)}
-            />
-          )}
         </div>
       )}
-      {/* Browse catalog */}
-      <Dialog open={browseOpen} onOpenChange={setBrowseOpen}>
-        <DialogContent className="flex max-h-[80vh] flex-col overflow-hidden sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Browse integrations</DialogTitle>
-            <DialogDescription>
-              Connect a provider to this project. Only connected providers
-              appear in your integration list.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={browseSearch}
-              placeholder="Search providers..."
-              onChange={(e) => setBrowseSearch(e.target.value)}
-              className="h-9 pl-8 text-sm"
-            />
-          </div>
-          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
-            {registry.channels.map((channel) => {
-              const providers = channel.providers.filter((p) =>
-                p.name.toLowerCase().includes(searchLower),
-              );
-              if (providers.length === 0) return null;
-              return (
-                <div key={channel.channel_id} className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {channel.channel_name}
-                  </p>
-                  <div className="space-y-2">
-                    {providers.map((provider) => {
-                      const isConnected = connected.some(
-                        (c) =>
-                          c.channel_id === channel.channel_id &&
-                          c.provider_id === provider.provider_id,
-                      );
-                      return (
-                        <div
-                          key={provider.provider_id}
-                          className="flex items-center gap-3 rounded-lg border p-3"
-                        >
-                          <ProviderIcon
-                            name={provider.name}
-                            iconUrl={provider.icon_url}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">
-                              {provider.name}
-                            </p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {providerBlurb(
-                                channel.channel_id,
-                                provider.provider_id,
-                                channel.channel_name,
-                              )}
-                            </p>
-                          </div>
-                          {provider.docs_url && (
-                            <a
-                              href={provider.docs_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              aria-label={`${provider.name} documentation`}
-                              className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <ExternalLink className="size-4" />
-                            </a>
-                          )}
-                          {isConnected ? (
-                            <Badge variant="secondary" className="text-[10px]">
-                              Connected
-                            </Badge>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1.5"
-                              onClick={() => {
-                                setConfigForm({});
-                                setConnectDialog({
-                                  channel: channel.channel_id,
-                                  provider: provider.provider_id,
-                                });
-                              }}
-                            >
-                              <Plug className="size-3" /> Connect
-                            </Button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {connectDialog && connectTarget ? (
+        <ProviderConnectPanel
+          key={`${connectDialog.channel}:${connectDialog.provider}`}
+          definition={connectTarget.definition}
+          channelName={connectTarget.channelName}
+          blurb={providerBlurb(
+            connectDialog.channel,
+            connectDialog.provider,
+            connectTarget.channelName,
+          )}
+          values={configForm}
+          onChange={(key, value) =>
+            setConfigForm((prev) => ({ ...prev, [key]: value }))
+          }
+          submitting={submitting}
+          canSubmit={!!projectId}
+          onSubmit={handleConnect}
+          onClose={handleDialogClose}
+        />
+      ) : (
+        selected && (
+          <ProviderDetailPanel
+            key={selected.id}
+            config={selected}
+            definition={selected.definition}
+            channelName={selected.channelName}
+            blurb={selected.blurb}
+            test={test}
+            update={update}
+            remove={remove}
+            onChanged={refresh}
+            onDeleted={() => {
+              setSelectedId(null);
+              refresh();
+            }}
+            onClose={() => setSelectedId(null)}
+          />
+        )
+      )}
+      {browseOpen && registry && (
+        <ProviderBrowsePanel
+          channels={registry.channels}
+          isConnected={(channelId, providerId) =>
+            connected.some(
+              (c) =>
+                c.channel_id === channelId &&
+                c.provider_id === providerId,
+            )
+          }
+          search={browseSearch}
+          onSearchChange={setBrowseSearch}
+          blurbFor={providerBlurb}
+          onConnect={(channelId, providerId) => {
+            const found = findDefinition(channelId, providerId);
+            if (!found) {
+              toast.error("Couldn't load provider details. Please try again.");
+              return;
+            }
+            setConfigForm({});
+            setSelectedId(null);
+            setBrowseOpen(false);
+            setConnectFromBrowse(true);
+            setConnectDialog({ channel: channelId, provider: providerId });
+          }}
+          onClose={() => setBrowseOpen(false)}
+        />
+      )}
 
-      {/* Connect dialog */}
-      <Dialog open={!!connectDialog} onOpenChange={handleDialogClose}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Connect provider</DialogTitle>
-            <DialogDescription>
-              Configure your API credentials to connect this provider. Only
-              connected providers appear in your integration list.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            {connectTarget?.definition.config_fields.map((field) => {
-              if (field.type === "boolean") {
-                return (
-                  <div key={field.key} className="flex items-center gap-2">
-                    <Checkbox
-                      checked={configForm[field.key] === true}
-                      onCheckedChange={(v) =>
-                        setConfigForm({ ...configForm, [field.key]: v === true })
-                      }
-                    />
-                    <Label className="text-sm font-medium">
-                      {field.label}
-                      {field.required && (
-                        <span className="ml-1 text-destructive">*</span>
-                      )}
-                    </Label>
-                  </div>
-                );
-              }
-              return (
-                <div key={field.key} className="space-y-2">
-                  <Label className="text-sm font-medium">
-                    {field.label}
-                    {field.required && (
-                      <span className="ml-1 text-destructive">*</span>
-                    )}
-                  </Label>
-                  <Input
-                    placeholder={`Enter ${field.label.toLowerCase()}`}
-                    type={
-                      field.type === "password"
-                        ? "password"
-                        : field.type === "email"
-                          ? "email"
-                          : field.type === "number"
-                            ? "number"
-                            : "text"
-                    }
-                    value={toText(configForm[field.key])}
-                    onChange={(e) =>
-                      setConfigForm({
-                        ...configForm,
-                        [field.key]: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={handleDialogClose}
-              disabled={submitting}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleConnect} disabled={submitting || !projectId}>
-              {submitting ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" /> Connecting...
-                </>
-              ) : (
-                "Connect"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -77,7 +77,7 @@ export function DetailPanel({
         role="dialog"
         aria-label={closeLabel}
         className={cn(
-          "absolute inset-y-0 right-0 flex min-h-0 w-[min(24rem,92%)] flex-col overflow-hidden border bg-card text-card-foreground animate-in slide-in-from-right-3 fade-in duration-200",
+          "absolute inset-y-0 right-0 flex min-h-0 w-[min(24rem,92%)] flex-col overflow-hidden border bg-popover text-card-foreground animate-in slide-in-from-right-3 fade-in duration-200",
           className,
         )}
       >

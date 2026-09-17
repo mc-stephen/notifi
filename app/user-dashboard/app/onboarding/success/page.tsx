@@ -113,7 +113,7 @@ export default function SuccessPage() {
 
   return (
     <div className="flex flex-col items-center text-center">
-      <div className="mb-6 flex size-16 items-center justify-center rounded-2xl bg-green-500/10 text-green-600 dark:text-green-400">
+      <div className="mb-6 flex size-16 items-center justify-center rounded-2xl bg-success/10 text-success">
         <PartyPopper className="size-8" />
       </div>
 

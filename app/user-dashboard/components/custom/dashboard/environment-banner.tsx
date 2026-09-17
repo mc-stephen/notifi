@@ -10,9 +10,9 @@ export function EnvironmentBanner() {
   if (!hydrated || currentEnvironment !== "development") return null;
 
   return (
-    <div className="flex items-center gap-3 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2.5 lg:px-6">
-      <FlaskConical className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-      <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+    <div className="flex items-center gap-3 border-b border-warning/30 bg-warning/10 px-4 py-2.5 lg:px-6">
+      <FlaskConical className="size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+      <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
         You&apos;re in Development — notifications are simulated, no real deliveries.
       </p>
     </div>

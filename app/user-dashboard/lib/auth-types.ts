@@ -60,8 +60,8 @@ export function getPasswordStrength(requirements: PasswordRequirements): {
   const score = Object.values(requirements).filter(Boolean).length;
 
   if (score <= 1) return { score, label: "Weak", color: "bg-destructive" };
-  if (score === 2) return { score, label: "Fair", color: "bg-orange-500" };
-  if (score === 3) return { score, label: "Good", color: "bg-yellow-500" };
+  if (score === 2) return { score, label: "Fair", color: "bg-warning" };
+  if (score === 3) return { score, label: "Good", color: "bg-warning" };
   if (score === 4) return { score, label: "Strong", color: "bg-success" };
-  return { score, label: "Very Strong", color: "bg-emerald-400" };
+  return { score, label: "Very Strong", color: "bg-success" };
 }

@@ -85,7 +85,6 @@ function FilterDropdown<T extends string>({
 export default function NotificationsPage() {
   const router = useRouter();
   const [filters, setFilters] = useState<NotificationFilters>({});
-  const [selectedIds] = useState<string[]>([]);
   const [actionDialog, setActionDialog] = useState<{ type: string; notification: Notification } | null>(null);
 
   const toggleFilter = useCallback(
@@ -138,7 +137,7 @@ export default function NotificationsPage() {
       accessorKey: "subject",
       header: "Subject",
       cell: ({ row }) => (
-        <span className="truncate max-w-[200px] text-sm">
+        <span className="truncate max-w-[240px] text-sm" title={row.original.subject ?? row.original.body}>
           {row.original.subject ?? row.original.body}
         </span>
       ),
@@ -268,13 +267,6 @@ export default function NotificationsPage() {
         searchKey="id"
         searchPlaceholder="Search by ID..."
         pageSize={pageSize}
-        stripeRows
-        bulkActions={
-          <Button variant="outline" size="sm" className="gap-1.5 text-destructive">
-            <Trash2 className="size-3" />
-            Delete ({selectedIds.length})
-          </Button>
-        }
       />
 
       {/* Action Dialog */}

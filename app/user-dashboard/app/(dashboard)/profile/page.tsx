@@ -257,7 +257,7 @@ export default function ProfilePage() {
               {savingProfile ? "Saving..." : "Save changes"}
             </Button>
             {profileSuccess && (
-              <span className="text-sm text-green-600 dark:text-green-400">
+              <span className="text-sm text-success">
                 Profile updated successfully.
               </span>
             )}
@@ -515,9 +515,9 @@ export default function ProfilePage() {
                 {savingPassword ? "Updating..." : "Update password"}
               </Button>
               {passwordSuccess && (
-                <span className="text-sm text-green-600 dark:text-green-400">
-                  Password updated successfully.
-                </span>
+              <span className="text-sm text-success">
+                Password updated successfully.
+              </span>
               )}
             </div>
           </div>

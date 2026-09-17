@@ -161,7 +161,7 @@ export default function InAppNotificationsPage() {
   ];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6">
+    <div className="space-y-6">
       <PageHeader
         title="Notifications"
         description={`${unreadCount} unread · ${notifications.length} total`}
@@ -210,38 +210,35 @@ export default function InAppNotificationsPage() {
         }
       />
 
-      <div className="relative flex min-h-0 flex-1 items-stretch gap-6">
-        <div className="min-w-0 flex-1 overflow-y-auto">
-          <DataTable
-            columns={columns}
-            data={notifications}
-            searchKey="notification"
-            pageSize={20}
-            emptyMessage="No notifications yet."
-            tableClassName="bg-card"
-            stripeRows
-            onRowClick={handleRowClick}
-            hideToolbar
-            renderToolbar={(t) => {
-              if (!tableInstance) setTableInstance(t);
-              return null;
-            }}
-          />
-        </div>
-
-        {selected && (
-          <NotificationDetailPanel
-            key={selected.id}
-            notification={selected}
-            onClose={() => setSelected(null)}
-            onToggleRead={() => markRead(selected.id, !selected.read)}
-            onDelete={() => {
-              deleteNotification(selected.id);
-              setSelected(null);
-            }}
-          />
-        )}
+      <div className="min-w-0">
+        <DataTable
+          columns={columns}
+          data={notifications}
+          searchKey="notification"
+          pageSize={20}
+          emptyMessage="No notifications yet."
+          tableClassName="bg-card"
+          onRowClick={handleRowClick}
+          hideToolbar
+          renderToolbar={(t) => {
+            if (!tableInstance) setTableInstance(t);
+            return null;
+          }}
+        />
       </div>
+
+      {selected && (
+        <NotificationDetailPanel
+          key={selected.id}
+          notification={selected}
+          onClose={() => setSelected(null)}
+          onToggleRead={() => markRead(selected.id, !selected.read)}
+          onDelete={() => {
+            deleteNotification(selected.id);
+            setSelected(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -294,7 +291,7 @@ function NotificationDetailPanel({
       </div>
 
       {/* Actions */}
-      <div className="border-t p-4 flex items-center gap-2">
+      <div className="border-t border-border bg-muted/30 p-4 flex items-center gap-2">
         <Button
           variant="outline"
           size="sm"

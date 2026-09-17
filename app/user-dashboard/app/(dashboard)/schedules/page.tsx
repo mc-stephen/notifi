@@ -1,12 +1,20 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
+import { type ColumnDef } from "@tanstack/react-table";
 import { PageHeader } from "@/components/custom/page-header";
-import { Card, CardContent } from "@/components/ui/card";
+import { StatCard } from "@/components/custom/stat-card";
+import { DataTable } from "@/components/custom/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -50,16 +58,77 @@ const MOCK_SCHEDULES: ScheduleEntry[] = [
 ];
 
 export default function SchedulesPage() {
-  const [search, setSearch] = useState("");
   const [createDialog, setCreateDialog] = useState(false);
 
-  const filtered = useMemo(() => {
-    if (!search) return MOCK_SCHEDULES;
-    const q = search.toLowerCase();
-    return MOCK_SCHEDULES.filter((s) => s.name.toLowerCase().includes(q) || s.cronHuman.toLowerCase().includes(q));
-  }, [search]);
-
   const activeCount = MOCK_SCHEDULES.filter((s) => s.active).length;
+
+  const columns: ColumnDef<ScheduleEntry>[] = [
+    {
+      accessorKey: "name",
+      header: "Schedule",
+      cell: ({ row }) => (
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{row.original.name}</div>
+          <div className="text-xs text-muted-foreground">{row.original.timezone}</div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "cron",
+      header: "Cron",
+      cell: ({ row }) => (
+        <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">{row.original.cron}</code>
+      ),
+    },
+    {
+      accessorKey: "cronHuman",
+      header: "Frequency",
+      cell: ({ row }) => <span className="text-xs">{row.original.cronHuman}</span>,
+    },
+    {
+      accessorKey: "channel",
+      header: "Channel",
+      cell: ({ row }) => (
+        <Badge variant="secondary" className="text-xs capitalize">
+          {row.original.channel.replace(/-/g, " ")}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: "recipientCount",
+      header: "Recipients",
+      cell: ({ row }) => (
+        <span className="text-sm">{row.original.recipientCount.toLocaleString()}</span>
+      ),
+    },
+    {
+      accessorKey: "nextRunAt",
+      header: "Next Run",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">
+          {row.original.nextRunAt ? format(new Date(row.original.nextRunAt), "MMM d, HH:mm") : "—"}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "lastRunAt",
+      header: "Last Run",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">
+          {row.original.lastRunAt ? format(new Date(row.original.lastRunAt), "MMM d, HH:mm") : "—"}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "active",
+      header: "Status",
+      cell: ({ row }) => (
+        <Badge variant={row.original.active ? "default" : "secondary"} className={row.original.active ? "bg-success/15 text-success border-success/20" : ""}>
+          {row.original.active ? "Active" : "Paused"}
+        </Badge>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -74,119 +143,47 @@ export default function SchedulesPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Active Schedules</span>
-              <Clock className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">{activeCount}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Next Run</span>
-              <Calendar className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">
-              {MOCK_SCHEDULES.filter((s) => s.active && s.nextRunAt).length > 0
-                ? format(
-                    new Date(
-                      Math.min(
-                        ...MOCK_SCHEDULES.filter((s) => s.active && s.nextRunAt).map((s) => new Date(s.nextRunAt!).getTime())
-                      )
-                    ),
-                    "MMM d"
-                  )
-                : "—"}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Total Recipients</span>
-              <Timer className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">
-              {MOCK_SCHEDULES.reduce((acc, s) => acc + s.recipientCount, 0).toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="relative max-w-sm">
-        <Input
-          placeholder="Search schedules..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="h-8 text-sm"
+        <StatCard label="Active Schedules" value={activeCount} icon={Clock} />
+        <StatCard
+          label="Next Run"
+          icon={Calendar}
+          value={
+            MOCK_SCHEDULES.filter((s) => s.active && s.nextRunAt).length > 0
+              ? format(
+                  new Date(
+                    Math.min(
+                      ...MOCK_SCHEDULES.filter((s) => s.active && s.nextRunAt).map((s) => new Date(s.nextRunAt!).getTime())
+                    )
+                  ),
+                  "MMM d"
+                )
+              : "—"
+          }
+        />
+        <StatCard
+          label="Total Recipients"
+          icon={Timer}
+          value={MOCK_SCHEDULES.reduce((acc, s) => acc + s.recipientCount, 0).toLocaleString()}
         />
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Schedule</TableHead>
-                <TableHead>Cron</TableHead>
-                <TableHead>Frequency</TableHead>
-                <TableHead>Channel</TableHead>
-                <TableHead>Recipients</TableHead>
-                <TableHead>Next Run</TableHead>
-                <TableHead>Last Run</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-[100px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((schedule) => (
-                <TableRow key={schedule.id}>
-                  <TableCell>
-                    <div className="text-sm font-medium">{schedule.name}</div>
-                    <div className="text-xs text-muted-foreground">{schedule.timezone}</div>
-                  </TableCell>
-                  <TableCell>
-                    <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">{schedule.cron}</code>
-                  </TableCell>
-                  <TableCell className="text-xs">{schedule.cronHuman}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="text-xs capitalize">{schedule.channel.replace(/-/g, " ")}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sm">{schedule.recipientCount.toLocaleString()}</TableCell>
-                  <TableCell>
-                    <span className="text-xs text-muted-foreground">
-                      {schedule.nextRunAt ? format(new Date(schedule.nextRunAt), "MMM d, HH:mm") : "—"}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs text-muted-foreground">
-                      {schedule.lastRunAt ? format(new Date(schedule.lastRunAt), "MMM d, HH:mm") : "—"}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={schedule.active ? "default" : "secondary"} className={schedule.active ? "bg-success/15 text-success border-success/20" : ""}>
-                      {schedule.active ? "Active" : "Paused"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon-xs" title={schedule.active ? "Pause" : "Resume"}>
-                        {schedule.active ? <Pause className="size-3" /> : <Play className="size-3" />}
-                      </Button>
-                      <Button variant="ghost" size="icon-xs" title="Run now">
-                        <RotateCcw className="size-3" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <DataTable
+        columns={columns}
+        data={MOCK_SCHEDULES}
+        searchPlaceholder="Search schedules..."
+        emptyMessage="No schedules found."
+        tableClassName="bg-card"
+        rowActions={(schedule) => (
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon-xs" title={schedule.active ? "Pause" : "Resume"}>
+              {schedule.active ? <Pause className="size-3" /> : <Play className="size-3" />}
+            </Button>
+            <Button variant="ghost" size="icon-xs" title="Run now">
+              <RotateCcw className="size-3" />
+            </Button>
+          </div>
+        )}
+      />
 
       <Dialog open={createDialog} onOpenChange={setCreateDialog}>
         <DialogContent>
@@ -206,19 +203,29 @@ export default function SchedulesPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Timezone</label>
-              <select className="w-full rounded-md border bg-transparent px-3 py-2 text-sm">
-                <option value="UTC">UTC</option>
-                <option value="America/New_York">America/New_York</option>
-                <option value="Europe/London">Europe/London</option>
-                <option value="Asia/Tokyo">Asia/Tokyo</option>
-              </select>
+              <Select defaultValue="UTC">
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="UTC">UTC</SelectItem>
+                  <SelectItem value="America/New_York">America/New_York</SelectItem>
+                  <SelectItem value="Europe/London">Europe/London</SelectItem>
+                  <SelectItem value="Asia/Tokyo">Asia/Tokyo</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Notification template</label>
-              <select className="w-full rounded-md border bg-transparent px-3 py-2 text-sm">
-                <option value="tpl_1">Welcome Email</option>
-                <option value="tpl_6">Weekly Digest</option>
-              </select>
+              <Select defaultValue="tpl_1">
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tpl_1">Welcome Email</SelectItem>
+                  <SelectItem value="tpl_6">Weekly Digest</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

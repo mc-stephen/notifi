@@ -35,8 +35,6 @@ const LEVEL_COLORS: Record<Level, string> = {
   error: "bg-destructive/15 text-destructive",
 };
 
-const LEVELS: Level[] = ["error", "warn", "info", "debug"];
-
 // Audit-log entries are recorded system actions — surfaced here as `info`
 // log lines. The event type is treated as the log source for the existing
 // UI (filter/search by it).
@@ -107,23 +105,9 @@ const logColumns: ColumnDef<LogRow>[] = [
 
 export default function LogsPage() {
   const { logs, loading, error, refresh } = useLogs();
-  const [selectedLevel, setSelectedLevel] = useState<Level | null>(null);
   const [selectedLog, setSelectedLog] = useState<LogRow | null>(null);
 
   const renderedLogs = useMemo(() => logs.map(toLog), [logs]);
-
-  const filteredLogs = useMemo(() => {
-    if (!selectedLevel) return renderedLogs;
-    return renderedLogs.filter((l) => l.level === selectedLevel);
-  }, [renderedLogs, selectedLevel]);
-
-  const levelCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    renderedLogs.forEach((l) => {
-      counts[l.level] = (counts[l.level] || 0) + 1;
-    });
-    return counts;
-  }, [renderedLogs]);
 
   return (
     <div className="space-y-6">
@@ -137,30 +121,8 @@ export default function LogsPage() {
         }
       />
 
-      {/* Level filter buttons */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {LEVELS.map((level) => (
-          <button
-            key={level}
-            onClick={() => setSelectedLevel(selectedLevel === level ? null : level)}
-            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors ${
-              selectedLevel === level ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-            }`}
-          >
-            <div className={`size-2 rounded-full ${LEVEL_COLORS[level].split(" ")[0]}`} />
-            <span className="capitalize">{level}</span>
-            <Badge variant="secondary" className="text-[10px] px-1 h-3.5">{levelCounts[level] ?? 0}</Badge>
-          </button>
-        ))}
-        {selectedLevel && (
-          <Button variant="ghost" size="sm" onClick={() => setSelectedLevel(null)} className="text-xs">
-            Clear
-          </Button>
-        )}
-      </div>
-
       {/* Logs table */}
-      <div className="relative">
+      <div>
         {loading ? (
           <div className="overflow-hidden rounded-lg border bg-card">
             <div className="flex items-center justify-center py-16 text-muted-foreground">
@@ -178,11 +140,10 @@ export default function LogsPage() {
         ) : (
           <DataTable
             columns={logColumns}
-            data={filteredLogs}
+            data={renderedLogs}
             searchPlaceholder="Search actions..."
             emptyMessage="No log entries match."
             tableClassName="bg-card"
-            stripeRows
             onRowClick={setSelectedLog}
           />
         )}

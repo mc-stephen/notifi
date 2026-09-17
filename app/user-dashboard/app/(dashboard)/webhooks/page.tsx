@@ -5,7 +5,7 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/custom/data-table";
 import { DetailPanel } from "@/components/custom/detail-panel";
 import { PageHeader } from "@/components/custom/page-header";
-import { Card, CardContent } from "@/components/ui/card";
+import { StatCard } from "@/components/custom/stat-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -120,7 +120,7 @@ function WebhookDetailPanel({
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <span
-              className={`size-2 shrink-0 rounded-full ${webhook.enabled ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
+              className={`size-2 shrink-0 rounded-full ${webhook.enabled ? "bg-success" : "bg-muted-foreground/40"}`}
             />
             <h3 className="truncate font-semibold text-foreground">
               {webhook.url}
@@ -208,7 +208,7 @@ function WebhookDetailPanel({
       </div>
 
       {/* Sticky footer */}
-      <div className="flex items-center justify-between gap-3 border-t px-5 py-3">
+      <div className="flex items-center justify-between gap-3 border-t bg-muted/30 px-5 py-3">
         <div className="flex items-center gap-2">
           <Switch checked={webhook.enabled} onCheckedChange={onToggle} />
           <span className="text-xs text-muted-foreground">Enabled</span>
@@ -303,7 +303,7 @@ export default function WebhooksPage() {
       header: "Endpoint",
       cell: ({ row }) => (
         <div className="min-w-0">
-          <p className="max-w-[280px] truncate font-mono text-xs">{row.original.url}</p>
+          <p className="max-w-[240px] truncate font-mono text-xs" title={row.original.url}>{row.original.url}</p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             Created {format(new Date(row.original.createdAt), "MMM d, yyyy")}
           </p>
@@ -373,39 +373,23 @@ export default function WebhooksPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-5">
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground mt-1">Total endpoints</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="text-2xl font-bold">{stats.active}</div>
-            <p className="text-xs text-muted-foreground mt-1">Active</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="text-2xl font-bold">
-              {stats.avgSuccess !== null ? `${stats.avgSuccess}%` : "—"}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Avg success rate</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="text-2xl font-bold">
-              {stats.lastTriggered
-                ? format(new Date(stats.lastTriggered), "MMM d, HH:mm")
-                : "—"}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Last triggered</p>
-          </CardContent>
-        </Card>
+        <StatCard label="Total endpoints" value={stats.total} />
+        <StatCard label="Active" value={stats.active} />
+        <StatCard
+          label="Avg success rate"
+          value={stats.avgSuccess !== null ? `${stats.avgSuccess}%` : "—"}
+        />
+        <StatCard
+          label="Last triggered"
+          value={
+            stats.lastTriggered
+              ? format(new Date(stats.lastTriggered), "MMM d, HH:mm")
+              : "—"
+          }
+        />
       </div>
 
-      <div className="relative flex min-h-0 flex-1 items-stretch gap-6">
+      <div className="flex min-h-0 flex-1 items-stretch">
         <div className="min-w-0 flex-1">
           <DataTable
             columns={columns}
@@ -414,7 +398,6 @@ export default function WebhooksPage() {
             searchPlaceholder="Search by URL..."
             pageSize={10}
             tableClassName="bg-card"
-            stripeRows
             emptyMessage="No endpoints yet. Add one to start receiving event deliveries."
             onRowClick={(row) =>
               setSelectedId((prev) => (prev === row.id ? null : row.id))

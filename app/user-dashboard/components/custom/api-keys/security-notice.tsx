@@ -2,10 +2,10 @@ import { ShieldCheck } from "lucide-react";
 
 export function ApiKeySecurityNotice() {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
-      <ShieldCheck className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+    <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3">
+      <ShieldCheck className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
       <div className="space-y-1">
-        <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+        <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
           Keep your API keys safe
         </p>
         <ul className="list-disc space-y-0.5 pl-5 text-sm text-muted-foreground">

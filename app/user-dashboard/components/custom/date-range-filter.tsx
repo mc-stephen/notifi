@@ -27,7 +27,7 @@ export function DateRangeFilter({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1 rounded-lg border bg-muted p-0.5",
+        "inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-lg border bg-muted p-0.5 scrollbar-thin",
         className,
       )}
     >
@@ -36,7 +36,7 @@ export function DateRangeFilter({
           key={range.value}
           onClick={() => onChange(range.value)}
           className={cn(
-            "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
+            "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-all",
             "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             value === range.value
               ? "bg-background text-foreground shadow-sm"

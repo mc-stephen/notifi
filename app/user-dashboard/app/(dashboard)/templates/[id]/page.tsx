@@ -295,7 +295,7 @@ function TemplateEditor({ id }: { id: string }) {
 
   if (loading) {
     return (
-      <div className="overflow-hidden rounded-lg border bg-white">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <div className="flex items-center justify-center py-20 text-muted-foreground">
           <Loader2 className="size-5 animate-spin mr-2" /> Loading template…
         </div>
@@ -413,7 +413,7 @@ function TemplateEditor({ id }: { id: string }) {
       </div>
 
       {!activeModel ? (
-        <div className="overflow-hidden rounded-lg border bg-white">
+        <div className="overflow-hidden rounded-lg border bg-card">
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-muted-foreground">
             <Settings2 className="size-8" />
             <p className="text-sm">
@@ -518,31 +518,33 @@ function TemplateEditor({ id }: { id: string }) {
               <CardHeader>
                 <CardTitle className="text-sm">Details</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div>
-                  <dt className="text-muted-foreground">ID</dt>
-                  <dd className="mt-0.5 font-mono text-xs break-all">
-                    {template.id}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Project</dt>
-                  <dd className="mt-0.5 font-mono text-xs break-all">
-                    {template.projectId}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Created</dt>
-                  <dd className="mt-0.5">
-                    {format(new Date(template.createdAt), "MMM d, yyyy HH:mm")}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Updated</dt>
-                  <dd className="mt-0.5">
-                    {format(new Date(template.updatedAt), "MMM d, yyyy HH:mm")}
-                  </dd>
-                </div>
+              <CardContent>
+                <dl className="space-y-3 text-sm">
+                  <div>
+                    <dt className="text-muted-foreground">ID</dt>
+                    <dd className="mt-0.5 font-mono text-xs break-all">
+                      {template.id}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Project</dt>
+                    <dd className="mt-0.5 font-mono text-xs break-all">
+                      {template.projectId}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Created</dt>
+                    <dd className="mt-0.5">
+                      {format(new Date(template.createdAt), "MMM d, yyyy HH:mm")}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Updated</dt>
+                    <dd className="mt-0.5">
+                      {format(new Date(template.updatedAt), "MMM d, yyyy HH:mm")}
+                    </dd>
+                  </div>
+                </dl>
               </CardContent>
             </Card>
           </div>

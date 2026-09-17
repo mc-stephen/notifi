@@ -46,7 +46,7 @@ export function AuthHeader() {
           <h1 className="text-3xl font-bold tracking-tight text-primary-foreground lg:text-4xl">
             Revolutionize how you reach your users
           </h1>
-          <p className="text-lg text-primary-foreground/70">
+          <p className="text-lg text-primary-foreground/70 dark:text-primary-foreground/85">
             Send notifications across every channel with one API.
             Enterprise-ready. Developer-first.
           </p>
@@ -62,7 +62,7 @@ export function AuthHeader() {
                 <p className="text-sm font-semibold text-primary-foreground">
                   {feature.title}
                 </p>
-                <p className="text-sm text-primary-foreground/60">
+                <p className="text-sm text-primary-foreground/60 dark:text-primary-foreground/80">
                   {feature.description}
                 </p>
               </div>
@@ -70,7 +70,7 @@ export function AuthHeader() {
           ))}
         </div>
 
-        <div className="flex items-center gap-3 text-xs font-medium tracking-wide text-primary-foreground/50">
+        <div className="flex items-center gap-3 text-xs font-medium tracking-wide text-primary-foreground/50 dark:text-primary-foreground/70">
           <span>99.99% uptime</span>
           <span className="size-1 rounded-full bg-primary-foreground/30" />
           <span>10M+ messages/day</span>
@@ -82,7 +82,7 @@ export function AuthHeader() {
       <div className="relative">
         <div className="flex items-center gap-4">
           <div className="h-px flex-1 bg-primary-foreground/20" />
-          <span className="text-xs font-semibold tracking-widest text-primary-foreground/60">
+          <span className="text-xs font-semibold tracking-widest text-primary-foreground/60 dark:text-primary-foreground/80">
             JOIN 10,000+ TEAMS
           </span>
           <div className="h-px flex-1 bg-primary-foreground/20" />
@@ -91,7 +91,7 @@ export function AuthHeader() {
           {CLIENT_LOGOS.map((logo) => (
             <span
               key={logo}
-              className="text-center text-sm font-semibold tracking-wide text-primary-foreground/40"
+              className="text-center text-sm font-semibold tracking-wide text-primary-foreground/40 dark:text-primary-foreground/70"
             >
               {logo}
             </span>

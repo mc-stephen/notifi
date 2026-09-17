@@ -132,7 +132,7 @@ export function NotificationMenu() {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="relative text-white/70 hover:bg-white/10 hover:text-white aria-expanded:bg-white/10 aria-expanded:text-white"
+            className="relative text-white/80 hover:bg-white/10 hover:text-white aria-expanded:bg-white/10 aria-expanded:text-white"
           />
         }
       >
@@ -168,7 +168,7 @@ export function NotificationMenu() {
           )}
         </div>
 
-        <DropdownMenuSeparator className="my-0" />
+        <DropdownMenuSeparator className="my-0 bg-foreground/10" />
 
         {/* Items */}
         <div className="max-h-72 overflow-y-auto p-1.5">
@@ -184,7 +184,7 @@ export function NotificationMenu() {
                 key={n.id}
                 className={cn(
                   "items-start gap-2.5 rounded-lg px-2 py-2",
-                  !n.read && "bg-primary/[0.04]",
+                  !n.read && "bg-primary/[0.08] dark:bg-primary/[0.14] ring-1 ring-primary/10",
                 )}
                 onClick={() => router.push("/notifications")}
               >
@@ -201,7 +201,7 @@ export function NotificationMenu() {
                     <span className={cn("truncate text-sm font-medium", !n.read && "font-semibold")}>
                       {n.title}
                     </span>
-                    <span className="shrink-0 text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                    <span className="shrink-0 text-[10px] uppercase tracking-wider text-muted-foreground">
                       {timeAgo(n.createdAt)}
                     </span>
                   </div>
@@ -217,7 +217,7 @@ export function NotificationMenu() {
           })}
         </div>
 
-        <DropdownMenuSeparator className="my-0" />
+        <DropdownMenuSeparator className="my-0 bg-foreground/10" />
 
         {/* Footer */}
         <div className="p-1.5">

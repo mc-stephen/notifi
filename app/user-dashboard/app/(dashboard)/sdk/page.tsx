@@ -4,6 +4,7 @@ import { useState } from "react";
 import { PageHeader } from "@/components/custom/page-header";
 import { CodeBlock } from "@/components/custom/code-block";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCard } from "@/components/custom/stat-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -277,33 +278,9 @@ export default function SdkPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Total SDKs</span>
-              <Package className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">{SDKS.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Stable</span>
-              <Check className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">{SDKS.filter((s) => s.status === "stable").length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Latest Version</span>
-              <Terminal className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">v2.4.1</div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total SDKs" value={SDKS.length} icon={Package} />
+        <StatCard label="Stable" value={SDKS.filter((s) => s.status === "stable").length} icon={Check} />
+        <StatCard label="Latest Version" value="v2.4.1" icon={Terminal} />
       </div>
 
       <Tabs value={selectedSdk} onValueChange={(v) => { if (v) setSelectedSdk(v); }}>

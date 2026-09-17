@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Toaster } from "@/components/ui/sonner";
 
 import { Sidebar } from "@/components/layout/sidebar";
-import { Topbar } from "@/components/layout/topbar";
+import { MobileStrip } from "@/components/layout/sidebar-widgets";
 import { CommandPalette } from "@/components/layout/command-palette";
+import { NavigationProgress } from "@/components/custom/navigation-progress";
 import { VerifyEmailBanner } from "@/components/custom/dashboard/verify-email-banner";
 import { EnvironmentBanner } from "@/components/custom/dashboard/environment-banner";
 import { useAuthStore } from "@/store/auth-store";
@@ -50,7 +51,6 @@ export default function DashboardLayout({
           <Sidebar />
         </div>
         <div className="flex flex-1 flex-col overflow-hidden">
-          <Topbar />
           <main className="flex-1 overflow-y-auto bg-popover" />
         </div>
       </div>
@@ -65,8 +65,11 @@ export default function DashboardLayout({
       </div>
 
       {/* Main area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar />
+      <div className="relative flex flex-1 flex-col overflow-hidden">
+        <MobileStrip />
+        <Suspense fallback={null}>
+          <NavigationProgress className="absolute top-0 right-0 left-0 z-50" />
+        </Suspense>
         <EnvironmentBanner />
         <VerifyEmailBanner />
         <main className="flex-1 min-h-0 overflow-y-auto bg-popover">

@@ -2,10 +2,18 @@
 
 import { useState } from "react";
 import { PageHeader } from "@/components/custom/page-header";
+import { initials } from "@/lib/utils";
 import { RoleBadge } from "@/components/custom/role-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { DataTable } from "@/components/custom/data-table";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -90,10 +98,7 @@ const MEMBER_COLUMNS: ColumnDef<TeamMemberRecord, unknown>[] = [
       return (
         <div className="flex items-center gap-3">
           <div className="flex size-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
-            {member.name
-              .split(" ")
-              .map((n) => n[0])
-              .join("")}
+            {initials(member.name)}
           </div>
           <div>
             <div className="text-sm font-medium">{member.name}</div>
@@ -219,8 +224,8 @@ export default function TeamPage() {
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-4">
-        {(["owner", "admin", "developer", "viewer"] as const).map((role) => {
+      <div className="grid gap-4 md:grid-cols-5">
+        {(["owner", "admin", "developer", "viewer", "billing"] as const).map((role) => {
           const count = members.filter((m) => m.role === role).length;
           const Icon = ROLE_ICONS[role];
           return (
@@ -304,7 +309,6 @@ export default function TeamPage() {
           searchPlaceholder="Search members..."
           pageSize={10}
           emptyMessage="No members yet — invite your first team member to get started."
-          stripeRows
           rowActions={(member) => <MemberRowActions member={member} />}
         />
       )}
@@ -338,16 +342,17 @@ export default function TeamPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Role</label>
-              <select
-                className="w-full rounded-md border bg-transparent px-3 py-2 text-sm"
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value)}
-              >
-                <option value="developer">Developer</option>
-                <option value="viewer">Viewer</option>
-                <option value="admin">Admin</option>
-                <option value="billing">Billing</option>
-              </select>
+              <Select value={inviteRole} onValueChange={(v) => { if (v) setInviteRole(v); }}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="developer">Developer</SelectItem>
+                  <SelectItem value="viewer">Viewer</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="billing">Billing</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             {require2faOn && (
               <p className="text-xs text-muted-foreground">

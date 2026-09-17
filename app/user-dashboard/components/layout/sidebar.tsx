@@ -16,6 +16,7 @@ import {
 import { NAV_GROUPS } from "@/lib/constants";
 import { useUIStore } from "@/store/ui-store";
 import { ProjectSwitcher } from "./project-switcher";
+import { SidebarSearch, SidebarUtilityRow } from "./sidebar-widgets";
 import { PlanBanner } from "@/components/custom/plan-banner";
 import { PanelLeftClose, PanelLeftOpen, ChevronRight } from "lucide-react";
 
@@ -38,7 +39,7 @@ function SidebarItem({
         "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
         isActive
           ? "bg-sidebar-primary text-sidebar-primary-foreground"
-          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground",
+          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground",
         collapsed && "justify-center px-2",
       )}
     >
@@ -92,7 +93,7 @@ function SidebarGroup({
     <Collapsible defaultOpen>
       <CollapsibleTrigger
         render={
-          <button className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent/10 hover:text-sidebar-foreground/70" />
+          <button className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/65 transition-colors hover:bg-sidebar-accent/10 hover:text-sidebar-foreground/80" />
         }
       >
         <span>{group.label}</span>
@@ -156,6 +157,11 @@ export function Sidebar({
         )}
       </div>
 
+      {/* Search */}
+      <div className="shrink-0 px-2 pt-2">
+        <SidebarSearch collapsed={collapsed} />
+      </div>
+
       {/* Navigation — only this section scrolls */}
       <div className="flex-1 min-h-0 overflow-y-auto px-2 py-3">
         <nav className="space-y-4">
@@ -169,8 +175,9 @@ export function Sidebar({
         </nav>
       </div>
 
-      {/* Pinned footer — project switcher + plan banner */}
-      <div className="shrink-0 border-t border-sidebar-border">
+      {/* Pinned footer — utility row + project switcher + plan banner */}
+      <div className="shrink-0 space-y-2 border-t border-sidebar-border p-2">
+        <SidebarUtilityRow collapsed={collapsed} />
         <div className="space-y-2 rounded-sm bg-white/10 p-2">
           <ProjectSwitcher collapsed={collapsed} />
           <PlanBanner collapsed={collapsed} />
@@ -184,7 +191,7 @@ export function Sidebar({
             render={
               <button
                 onClick={toggleSidebar}
-                className="absolute right-0 top-[12px] z-50 flex size-7 translate-x-1/2 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent/10 hover:text-sidebar-foreground"
+                className="absolute right-0 top-[12px] z-50 flex size-7 translate-x-1/2 items-center justify-center rounded-full border border-white/40 bg-white text-sidebar-primary-foreground shadow-sm transition-colors hover:bg-white/90"
               />
             }
           >

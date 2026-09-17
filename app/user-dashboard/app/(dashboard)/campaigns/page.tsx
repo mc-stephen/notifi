@@ -4,8 +4,16 @@ import { useState, useMemo } from "react";
 import { PageHeader } from "@/components/custom/page-header";
 import { ChannelBadge } from "@/components/custom/channel-badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { StatCard } from "@/components/custom/stat-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -50,6 +58,15 @@ const STATUS_COLORS: Record<string, string> = {
   paused: "bg-warning/15 text-warning",
   completed: "bg-success/15 text-success",
   cancelled: "bg-muted text-muted-foreground",
+};
+
+const STATUS_DOTS: Record<string, string> = {
+  draft: "bg-muted-foreground",
+  scheduled: "bg-info",
+  running: "bg-success",
+  paused: "bg-warning",
+  completed: "bg-success",
+  cancelled: "bg-muted-foreground",
 };
 
 const MOCK_CAMPAIGNS: CampaignEntry[] = [
@@ -97,42 +114,10 @@ export default function CampaignsPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Total Campaigns</span>
-              <Megaphone className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">{MOCK_CAMPAIGNS.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Recipients Reached</span>
-              <Users className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">{totalRecipients.toLocaleString()}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Notifications Sent</span>
-              <CheckCircle2 className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">{totalSent.toLocaleString()}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Delivery Rate</span>
-              <TrendingUp className="size-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold mt-1">{deliveryRate}%</div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total Campaigns" value={MOCK_CAMPAIGNS.length} icon={Megaphone} />
+        <StatCard label="Recipients Reached" value={totalRecipients.toLocaleString()} icon={Users} />
+        <StatCard label="Notifications Sent" value={totalSent.toLocaleString()} icon={CheckCircle2} />
+        <StatCard label="Delivery Rate" value={`${deliveryRate}%`} icon={TrendingUp} />
       </div>
 
       <div className="flex items-center gap-3">
@@ -154,7 +139,7 @@ export default function CampaignsPage() {
                 statusFilter === s ? "border-primary bg-primary/5" : "hover:bg-muted/50"
               }`}
             >
-              <div className={`size-1.5 rounded-full ${STATUS_COLORS[s].split(" ")[0]}`} />
+              <div className={`size-1.5 rounded-full ${STATUS_DOTS[s] ?? "bg-muted-foreground"}`} />
               {s}
             </button>
           ))}
@@ -240,21 +225,31 @@ export default function CampaignsPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Channel</label>
-              <select className="w-full rounded-md border bg-transparent px-3 py-2 text-sm">
-                <option value="email">Email</option>
-                <option value="sms">SMS</option>
-                <option value="push-android">Android Push</option>
-                <option value="push-ios">Apple Push</option>
-                <option value="web-push">Web Push</option>
-              </select>
+              <Select defaultValue="email">
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="sms">SMS</SelectItem>
+                  <SelectItem value="push-android">Android Push</SelectItem>
+                  <SelectItem value="push-ios">Apple Push</SelectItem>
+                  <SelectItem value="web-push">Web Push</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Template</label>
-              <select className="w-full rounded-md border bg-transparent px-3 py-2 text-sm">
-                <option value="tpl_1">Welcome Email</option>
-                <option value="tpl_3">Order Confirmation</option>
-                <option value="tpl_6">Weekly Digest</option>
-              </select>
+              <Select defaultValue="tpl_1">
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tpl_1">Welcome Email</SelectItem>
+                  <SelectItem value="tpl_3">Order Confirmation</SelectItem>
+                  <SelectItem value="tpl_6">Weekly Digest</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

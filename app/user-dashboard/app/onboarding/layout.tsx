@@ -92,7 +92,7 @@ export default function OnboardingLayout({
       </div>
 
       {/* Content */}
-      <main className="relative flex flex-1 flex-col overflow-y-auto px-6 pt-8 pb-24">
+      <main className="relative flex flex-1 flex-col overflow-y-auto px-6 pt-8 pb-8">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle,var(--border)_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_at_center,transparent_10%,black_70%)] opacity-60"

@@ -19,6 +19,8 @@ type ProviderCardProps = {
   actionLabel?: string;
   /** Slimmer density + no shadow for the Recommended strip. */
   compact?: boolean;
+  /** Extra classes for the card root (e.g. surface override per usage). */
+  className?: string;
   onToggle?: (enabled: boolean) => void;
   onAction?: () => void;
 };
@@ -34,6 +36,7 @@ export function ProviderCard({
   toggleDisabled,
   actionLabel,
   compact,
+  className,
   onToggle,
   onAction,
 }: ProviderCardProps) {
@@ -43,6 +46,7 @@ export function ProviderCard({
         "flex flex-col rounded-xl border bg-card text-card-foreground transition-colors",
         compact ? "p-3" : "p-4",
         selected && "border-primary",
+        className,
       )}
     >
       <div className="flex items-start justify-between gap-2">

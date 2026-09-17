@@ -20,8 +20,8 @@ function formatJson(data: unknown): string {
 function JsonValue({ value, expanded }: { value: unknown; expanded: boolean }) {
   if (value === null) return <span className="text-muted-foreground italic">null</span>;
   if (value === undefined) return <span className="text-muted-foreground italic">undefined</span>;
-  if (typeof value === "boolean") return <span className="text-chart-4">{String(value)}</span>;
-  if (typeof value === "number") return <span className="text-chart-2">{value}</span>;
+  if (typeof value === "boolean") return <span className="text-info">{String(value)}</span>;
+  if (typeof value === "number") return <span className="text-primary">{value}</span>;
   if (typeof value === "string") return <span className="text-success">&quot;{value}&quot;</span>;
   if (Array.isArray(value)) {
     if (!expanded) return <span className="text-muted-foreground">[{value.length} items]</span>;

@@ -310,7 +310,7 @@ function ChannelDetail({ id }: { id: string }) {
                     null,
                     2,
                   )}
-                  language="JSON"
+                  language="json"
                 />
               </div>
               <Separator />
@@ -328,7 +328,7 @@ function ChannelDetail({ id }: { id: string }) {
                     null,
                     2,
                   )}
-                  language="JSON"
+                  language="json"
                 />
               </div>
             </CardContent>

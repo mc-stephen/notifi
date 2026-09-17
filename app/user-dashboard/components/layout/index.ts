@@ -1,3 +1,10 @@
 export { Sidebar } from "./sidebar";
-export { Topbar } from "./topbar";
 export { CommandPalette } from "./command-palette";
+export {
+  SidebarSearch,
+  CompactEnvironmentSwitcher,
+  ThemeToggle,
+  UserMenu,
+  SidebarUtilityRow,
+  MobileStrip,
+} from "./sidebar-widgets";
