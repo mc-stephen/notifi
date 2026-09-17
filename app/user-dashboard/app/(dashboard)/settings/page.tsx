@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
-import { useTheme } from "next-themes";
+import { useState } from "react";
 import { PageHeader } from "@/components/custom/page-header";
 import { NotificationSettings } from "@/components/custom/settings/notification-settings";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,23 +16,18 @@ import {
 import {
   Globe,
   Bell,
-  Palette,
   Save,
   Trash2,
   Monitor,
-  Moon,
-  Sun,
-  Laptop,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TabId = "general" | "notifications" | "appearance";
+type TabId = "general" | "notifications";
 
 const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
   { id: "general", label: "General", icon: Globe },
   { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "appearance", label: "Appearance", icon: Palette },
 ];
 
 const TIMEZONES = [
@@ -44,12 +38,6 @@ const TIMEZONES = [
   "Asia/Singapore",
 ];
 
-const THEMES = [
-  { id: "light", label: "Light", icon: Sun },
-  { id: "dark", label: "Dark", icon: Moon },
-  { id: "system", label: "System", icon: Laptop },
-] as const;
-
 export default function SettingsPage() {
   const [tab, setTab] = useState<TabId>("general");
   const [orgName, setOrgName] = useState("Acme Corp");
@@ -59,13 +47,6 @@ export default function SettingsPage() {
   const [defaultEnv, setDefaultEnv] = useState<"development" | "production">("development");
   const [retention, setRetention] = useState("90");
   const [saved, setSaved] = useState(false);
-
-  const { theme, setTheme } = useTheme();
-  const mounted = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  );
 
   const handleSave = () => {
     setSaved(true);
@@ -212,36 +193,6 @@ export default function SettingsPage() {
           </div>
         )}
         {tab === "notifications" && <NotificationSettings />}
-        {tab === "appearance" && (
-          <div className="space-y-6">
-            <Card>
-              <CardContent className="pt-4 space-y-4">
-                <div className="flex items-center gap-2 font-medium">
-                  <Palette className="size-4 text-muted-foreground" /> Theme
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  {THEMES.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setTheme(item.id)}
-                      aria-pressed={mounted && theme === item.id}
-                      className={cn(
-                        "flex flex-col items-center gap-2 rounded-lg border p-4 transition-colors",
-                        mounted && theme === item.id
-                          ? "border-primary bg-primary/5"
-                          : "hover:border-muted-foreground/30",
-                      )}
-                    >
-                      <item.icon className="size-5 text-muted-foreground" />
-                      <span className="text-xs font-medium">{item.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
       </div>
     </div>
   );
