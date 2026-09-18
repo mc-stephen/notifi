@@ -125,7 +125,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "relative flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-all duration-200",
+        "relative flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-150 ease-out",
         collapsed ? "w-16" : "w-60",
         className,
       )}
@@ -191,7 +191,7 @@ export function Sidebar({
             render={
               <button
                 onClick={toggleSidebar}
-                className="absolute right-0 top-[12px] z-50 flex size-7 translate-x-1/2 items-center justify-center rounded-full border border-white/40 bg-white text-sidebar-primary-foreground shadow-sm transition-colors hover:bg-white/90"
+                className="absolute right-0 top-[12px] z-50 flex size-7 translate-x-1/2 items-center justify-center rounded-full border border-white/40 bg-white text-sidebar-primary-foreground shadow-sm transition-all duration-200 hover:bg-white/90"
               />
             }
           >

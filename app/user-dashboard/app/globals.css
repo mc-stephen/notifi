@@ -164,6 +164,13 @@
 }
 
 @layer utilities {
+  /* Skip layout+paint for heavy below-fold sections until scrolled near.
+     The intrinsic placeholder keeps scrollbars stable while skipped. */
+  .cv-auto {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 320px;
+  }
+
   /* Film-grain overlay for brand chrome (sidebar/header). Inline SVG
      turbulence, tiled — theme-agnostic, dial visibility with opacity. */
   .bg-noise {

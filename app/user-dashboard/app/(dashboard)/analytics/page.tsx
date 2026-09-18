@@ -77,7 +77,7 @@ export default function AnalyticsPage() {
         </div>
 
         <TabsContent value="delivery" className="mt-4">
-          <Card>
+          <Card className="cv-auto">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp className="size-4" /> Delivery Volume (24h)
@@ -94,7 +94,7 @@ export default function AnalyticsPage() {
 
         <TabsContent value="channels" className="mt-4">
           <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
+            <Card className="cv-auto">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <BarChart3 className="size-4" /> Channel Distribution
@@ -135,7 +135,7 @@ export default function AnalyticsPage() {
 
         <TabsContent value="geography" className="mt-4">
           <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
+            <Card className="cv-auto">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Globe className="size-4" /> Top Countries
@@ -180,7 +180,7 @@ export default function AnalyticsPage() {
 
         <TabsContent value="platforms" className="mt-4">
           <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
+            <Card className="cv-auto">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Users className="size-4" /> Platform Distribution

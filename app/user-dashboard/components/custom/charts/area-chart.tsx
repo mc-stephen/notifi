@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { cn } from "@/lib/utils";
 import type { ChartDataPoint } from "@/lib/types";
+import { useDebouncedSize } from "@/hooks/use-debounced-size";
 
 type AreaChartProps = {
   data: ChartDataPoint[];
@@ -21,9 +22,16 @@ type AreaChartProps = {
 };
 
 export function AreaChart({ data, className, height = 300, color = "var(--chart-1)", showGrid = true }: AreaChartProps) {
+  // Explicit pixel dimensions disable ResponsiveContainer's internal
+  // per-tick observer (see useDebouncedSize).
+  const { ref, width, height: measuredHeight } = useDebouncedSize<HTMLDivElement>();
+  const resolvedHeight = height === "fill" ? measuredHeight : height;
+  const ready = width > 0 && resolvedHeight > 0;
+
   return (
-    <div className={cn("w-full", height === "fill" && "h-full", className)}>
-      <ResponsiveContainer width="100%" height={height === "fill" ? "100%" : height}>
+    <div ref={ref} className={cn("w-full", height === "fill" && "h-full", className)}>
+      {ready ? (
+      <ResponsiveContainer width={width} height={resolvedHeight}>
         <RechartsAreaChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
           {showGrid && (
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
@@ -61,6 +69,13 @@ export function AreaChart({ data, className, height = 300, color = "var(--chart-
           />
         </RechartsAreaChart>
       </ResponsiveContainer>
+      ) : (
+        <div
+          style={height === "fill" ? undefined : { height }}
+          className={height === "fill" ? "h-full min-h-[200px]" : undefined}
+          aria-hidden="true"
+        />
+      )}
     </div>
   );
 }

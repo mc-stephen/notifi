@@ -33,7 +33,7 @@ import {
   Moon,
   Sun,
   LogOut,
-  Settings,
+  ShieldCheck,
   User,
   Loader2,
 } from "lucide-react";
@@ -213,9 +213,9 @@ export function UserMenu() {
           <User className="size-4" />
           Profile
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => router.push("/settings")}>
-          <Settings className="size-4" />
-          Settings
+        <DropdownMenuItem onClick={() => router.push("/security")}>
+          <ShieldCheck className="size-4" />
+          Security
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

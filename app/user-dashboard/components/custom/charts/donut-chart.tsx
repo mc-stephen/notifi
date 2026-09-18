@@ -9,6 +9,7 @@ import {
   Legend,
 } from "recharts";
 import { cn } from "@/lib/utils";
+import { useDebouncedSize } from "@/hooks/use-debounced-size";
 
 type DonutChartProps = {
   data: { name: string; value: number; fill?: string }[];
@@ -21,9 +22,14 @@ type DonutChartProps = {
 export function DonutChart({ data, className, height = 300, innerRadius = 60, showLegend = true }: DonutChartProps) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
 
+  // Explicit pixel width disables ResponsiveContainer's internal per-tick
+  // observer (see useDebouncedSize).
+  const { ref, width } = useDebouncedSize<HTMLDivElement>();
+
   return (
-    <div className={cn("w-full", className)}>
-      <ResponsiveContainer width="100%" height={height}>
+    <div ref={ref} className={cn("w-full", className)}>
+      {width > 0 ? (
+      <ResponsiveContainer width={width} height={height}>
         <PieChart>
           <Pie
             data={data}
@@ -60,6 +66,9 @@ export function DonutChart({ data, className, height = 300, innerRadius = 60, sh
           )}
         </PieChart>
       </ResponsiveContainer>
+      ) : (
+        <div style={{ height }} aria-hidden="true" />
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   Cell,
 } from "recharts";
 import { cn } from "@/lib/utils";
+import { useDebouncedSize } from "@/hooks/use-debounced-size";
 
 type BarChartProps = {
   data: { name: string; value: number; fill?: string }[];
@@ -20,9 +21,14 @@ type BarChartProps = {
 };
 
 export function BarChart({ data, className, height = 300, showGrid = true }: BarChartProps) {
+  // Explicit pixel width disables ResponsiveContainer's internal per-tick
+  // observer (see useDebouncedSize).
+  const { ref, width } = useDebouncedSize<HTMLDivElement>();
+
   return (
-    <div className={cn("w-full", className)}>
-      <ResponsiveContainer width="100%" height={height}>
+    <div ref={ref} className={cn("w-full", className)}>
+      {width > 0 ? (
+      <ResponsiveContainer width={width} height={height}>
         <RechartsBarChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
           {showGrid && (
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
@@ -55,6 +61,9 @@ export function BarChart({ data, className, height = 300, showGrid = true }: Bar
           </Bar>
         </RechartsBarChart>
       </ResponsiveContainer>
+      ) : (
+        <div style={{ height }} aria-hidden="true" />
+      )}
     </div>
   );
 }
