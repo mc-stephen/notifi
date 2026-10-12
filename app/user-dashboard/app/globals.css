@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@xyflow/react/dist/style.css";
 @import "shadcn/tailwind.css";
 @plugin "@tailwindcss/typography";
 
@@ -213,8 +214,22 @@
 }
 
 /* Sonner toast integration — sonner hardcodes grays for description and
-   close-button and uses flat vars for card chrome; map them onto app tokens
-   and give error toasts a destructive-tinted look in both themes. */
+   close-button and uses flat vars for card chrome; map them onto app tokens.
+   Cards stay flat and quiet; only the icon carries the type color, with
+   errors getting a light destructive tint in both themes. */
+[data-sonner-toast] {
+  padding: 12px 14px;
+  gap: 10px;
+  border-radius: 12px;
+  box-shadow:
+    0 12px 32px rgb(0 0 0 / 0.14),
+    0 2px 6px rgb(0 0 0 / 0.08);
+}
+
+[data-sonner-toast] [data-icon] {
+  margin-top: 1px;
+}
+
 [data-sonner-toast] [data-description] {
   color: var(--muted-foreground);
 }
@@ -222,6 +237,19 @@
 [data-sonner-toast] [data-close-button] {
   color: var(--muted-foreground);
   border-color: var(--border);
+  background: var(--popover);
+}
+
+[data-sonner-toast][data-type="success"] [data-icon] {
+  color: var(--success);
+}
+
+[data-sonner-toast][data-type="info"] [data-icon] {
+  color: var(--muted-foreground);
+}
+
+[data-sonner-toast][data-type="warning"] [data-icon] {
+  color: var(--warning);
 }
 
 [data-sonner-toast][data-type="error"] {

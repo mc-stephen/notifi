@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/custom/data-table";
 import { DetailPanel } from "@/components/custom/detail-panel";
+import { StatCard } from "@/components/custom/stat-card";
 import { initials } from "@/lib/utils";
 import { PageHeader } from "@/components/custom/page-header";
 import {
@@ -32,6 +33,10 @@ import {
   Pencil,
   Trash2,
   User,
+  Users,
+  Mail,
+  Phone,
+  UserX,
   AlertTriangle,
   Loader2,
 } from "lucide-react";
@@ -69,6 +74,20 @@ export default function RecipientsPage() {
     setContacts({});
     setSubmitError(null);
   }, []);
+
+  const stats = useMemo(() => {
+    let withEmail = 0;
+    let withPhone = 0;
+    let unreachable = 0;
+    for (const r of recipients) {
+      const hasEmail = !!contactString(r, "email");
+      const hasPhone = !!contactString(r, "phone");
+      if (hasEmail) withEmail += 1;
+      if (hasPhone) withPhone += 1;
+      if (!hasEmail && !hasPhone) unreachable += 1;
+    }
+    return { total: recipients.length, withEmail, withPhone, unreachable };
+  }, [recipients]);
 
   const handleCreate = useCallback(async () => {
     setSubmitting(true);
@@ -241,6 +260,31 @@ export default function RecipientsPage() {
 
       <div className="flex items-start">
         <div className="min-w-0 flex-1">
+          {!error && (recipients.length > 0 || loading) && (
+            <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard
+                label="Total recipients"
+                value={loading ? "–" : stats.total}
+                icon={Users}
+              />
+              <StatCard
+                label="With email"
+                value={loading ? "–" : stats.withEmail}
+                icon={Mail}
+              />
+              <StatCard
+                label="With phone"
+                value={loading ? "–" : stats.withPhone}
+                icon={Phone}
+              />
+              <StatCard
+                label="Unreachable"
+                value={loading ? "–" : stats.unreachable}
+                sub="No email or phone set"
+                icon={UserX}
+              />
+            </div>
+          )}
           {loading ? (
             <div className="overflow-hidden rounded-lg border bg-card">
               <div className="flex items-center justify-center py-16 text-muted-foreground">
@@ -264,7 +308,6 @@ export default function RecipientsPage() {
               searchKey="name"
               searchPlaceholder="Search by name or user ID..."
               pageSize={10}
-              tableClassName="bg-card"
               onRowClick={(r) => setDetails(r)}
               bulkActions={(selected) => (
                 <Button

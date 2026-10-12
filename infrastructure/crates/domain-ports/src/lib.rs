@@ -18,6 +18,9 @@ pub mod event_bus;
 pub mod queue;
 
 pub use channel::ChannelConfigLoader;
-pub use delivery::{DeliveryError, DeliveryMessage, DeliveryProvider, DeliveryReceipt};
+pub use delivery::{
+    AdapterFactory, BoxSendFuture, DeliveryError, DeliveryMessage, DeliveryProvider,
+    DeliveryReceipt,
+};
 pub use event_bus::{EventBus, EventBusError};
 pub use queue::{QueueError, QueuePublisher};

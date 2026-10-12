@@ -422,6 +422,137 @@ impl BillingService {
         ))
     }
 
+    /// Receipt rows for the user-facing billing history, newest first.
+    /// Membership-checked like every other project endpoint (invisible
+    /// projects behave as missing). Derived from the project's billing
+    /// audit trail — no ledger table: amounts compute from current plan
+    /// prices and renewal-quiet periods appear via timeline continuity.
+    /// Single page (500 audit entries per event type, 120 receipts max).
+    pub async fn receipt_history(
+        &self,
+        actor: UserId,
+        project_id: &str,
+    ) -> Result<Vec<crate::domain::billing::Receipt>, AuthError> {
+        use crate::domain::billing::{
+            HistoryEvent, HistoryEventKind, HistoryProject, build_receipts,
+        };
+        use crate::ports::audit_store::AuditFilters;
+        use std::collections::HashMap;
+
+        if !self
+            .store
+            .project_visible(actor, project_id)
+            .await
+            .map_err(Self::map_store_error)?
+        {
+            return Err(AuthError::NotFound("project not found".into()));
+        }
+        let record = match self
+            .store
+            .get_subscription(project_id)
+            .await
+            .map_err(Self::map_store_error)?
+        {
+            Some(record) => record,
+            None => self
+                .store
+                .ensure_free_subscription(project_id)
+                .await
+                .map_err(Self::map_store_error)?,
+        };
+
+        let mut events = Vec::new();
+        for event_type in [
+            "billing.subscription_changed",
+            "billing.subscription_cancelled",
+        ] {
+            let page = self
+                .audit
+                .list(
+                    &actor.to_string(),
+                    AuditFilters {
+                        project_id: Some(project_id),
+                        event_type: Some(event_type),
+                    },
+                    500,
+                    None,
+                )
+                .await?;
+            events.extend(page.into_iter().filter_map(|entry| {
+                if entry.project_id.as_deref() != Some(project_id) {
+                    return None;
+                }
+                let meta = entry.metadata?;
+                let plan_id = meta.get("plan_id")?.as_str()?.to_string();
+                let kind = match entry.event_type.as_str() {
+                    "billing.subscription_changed" => HistoryEventKind::Changed,
+                    "billing.subscription_cancelled" => HistoryEventKind::Cancelled,
+                    _ => return None,
+                };
+                let billing_cycle = meta
+                    .get("billing_cycle")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| {
+                        use std::str::FromStr;
+                        crate::domain::billing::BillingCycle::from_str(s).ok()
+                    })
+                    .unwrap_or(crate::domain::billing::BillingCycle::Monthly);
+                Some(HistoryEvent {
+                    occurred_at: entry.occurred_at,
+                    project_id: project_id.to_string(),
+                    kind,
+                    plan_id,
+                    billing_cycle,
+                })
+            }));
+        }
+
+        // Current catalog prices; retired-but-referenced plans fall back to
+        // a direct lookup so renamed/deleted plans still resolve.
+        let mut plans: HashMap<String, crate::domain::billing::Plan> = HashMap::new();
+        for record in self
+            .store
+            .list_active_plans()
+            .await
+            .map_err(Self::map_store_error)?
+        {
+            let plan = crate::domain::billing::Plan::from(record);
+            plans.insert(plan.id.clone(), plan);
+        }
+        let mut needed: Vec<String> = events.iter().map(|e| e.plan_id.clone()).collect();
+        needed.sort();
+        needed.dedup();
+        for plan_id in needed {
+            if plans.contains_key(&plan_id) {
+                continue;
+            }
+            if let Some(record) = self
+                .store
+                .get_plan(&plan_id)
+                .await
+                .map_err(Self::map_store_error)?
+            {
+                let plan = crate::domain::billing::Plan::from(record);
+                plans.insert(plan.id.clone(), plan);
+            }
+        }
+
+        let current_failed = record.status == crate::domain::billing::SubscriptionStatus::PastDue;
+        let project = HistoryProject {
+            id: project_id.to_string(),
+            created_at: record.created_at,
+        };
+        let mut receipts = build_receipts(
+            &project,
+            &events,
+            &plans,
+            current_failed,
+            chrono::Utc::now(),
+        );
+        receipts.reverse();
+        Ok(receipts)
+    }
+
     pub async fn create_plan(&self, admin: &AdminUser, input: NewPlan) -> Result<Plan, AuthError> {
         let input = input.validated()?;
         let id = self.unique_id(&input.name, None).await?;

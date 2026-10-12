@@ -122,7 +122,7 @@ export default function SupportPage() {
     { question: "How do I get my API key?", answer: "Navigate to API Keys in your dashboard and click 'Generate key'. Choose the appropriate environment (Production, Staging, or Development).", category: "Getting Started" },
     { question: "How do I send my first notification?", answer: "Install the SDK for your language, initialize the client with your API key, and call sendNotification() with a recipient ID and message body.", category: "Getting Started" },
     { question: "What are the rate limits?", answer: "Rate limits depend on your plan. Free: 100 req/min, Starter: 500 req/min, Pro: 1000 req/min, Enterprise: Custom.", category: "Limits" },
-    { question: "How do I add a new notification channel?", answer: "Go to Channels page, select the channel type you want to configure, and follow the setup wizard with your provider credentials.", category: "Channels" },
+    { question: "How do I add a new notification channel?", answer: "Go to the Flows page, drop in a provider node, and configure your credentials.", category: "Flows" },
     { question: "How do webhooks work?", answer: "Webhooks deliver real-time event notifications to your endpoint. Configure the URL, select events, and we'll POST signed payloads to your server.", category: "Webhooks" },
     { question: "Can I test notifications before going live?", answer: "Yes, use the Staging or Development environment keys to send test notifications without affecting production metrics.", category: "Getting Started" },
   ];
@@ -228,7 +228,6 @@ export default function SupportPage() {
                   searchPlaceholder="Search tickets..."
                   emptyMessage="No tickets yet. Submit one to get started."
                   pageSize={10}
-                  tableClassName="bg-card"
                   onRowClick={(row) => setDetails(row)}
                 />
               )}

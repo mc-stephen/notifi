@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -28,7 +29,7 @@ import {
 import { Search, ChevronDown, ChevronUp, ChevronsUpDown, Columns3 } from "lucide-react";
 import { TABLE_PAGE_SIZES } from "@/lib/constants";
 
-type DataTableProps<TData, TValue> = {
+export type DataTableProps<TData, TValue> = {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   searchPlaceholder?: string;
@@ -41,6 +42,10 @@ type DataTableProps<TData, TValue> = {
   tableClassName?: string;
   hideToolbar?: boolean;
   renderToolbar?: (table: ReactTable<TData>) => React.ReactNode;
+  /** When true, header/toolbar/pagination render but rows are skeletons. */
+  isLoading?: boolean;
+  /** Skeleton row count in loading mode. Defaults to 5. */
+  loadingRowCount?: number;
 };
 
 function SortIcon({ sorted }: { sorted: false | "asc" | "desc" }) {
@@ -62,6 +67,8 @@ export function DataTable<TData, TValue>({
   tableClassName,
   hideToolbar = false,
   renderToolbar,
+  isLoading = false,
+  loadingRowCount = 5,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -112,6 +119,7 @@ export function DataTable<TData, TValue>({
                   placeholder={searchPlaceholder}
                   value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
                   onChange={(e) => table.getColumn(searchKey)?.setFilterValue(e.target.value)}
+                  disabled={isLoading}
                   className="pl-8 h-8 text-sm"
                 />
               </div>
@@ -123,6 +131,7 @@ export function DataTable<TData, TValue>({
                   placeholder={searchPlaceholder}
                   value={globalFilter}
                   onChange={(e) => setGlobalFilter(e.target.value)}
+                  disabled={isLoading}
                   className="pl-8 h-8 text-sm"
                 />
               </div>
@@ -162,18 +171,19 @@ export function DataTable<TData, TValue>({
       )}
 
       {/* Table */}
-      <div className={cn("overflow-hidden rounded-lg border", tableClassName)}>
-        <Table>
+      <div className={cn("overflow-hidden rounded-md border", tableClassName)}>
+        <Table className="text-[13px] tabular-nums">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
+              <TableRow key={headerGroup.id} className="bg-muted/50 hover:bg-muted/50">
                 {headerGroup.headers.map((header) => (
                   <TableHead
                     key={header.id}
                     className={cn(
-                      header.column.getCanSort() && "cursor-pointer select-none",
+                      "h-8 px-3 py-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase",
+                      !isLoading && header.column.getCanSort() && "cursor-pointer select-none",
                     )}
-                    onClick={header.column.getToggleSortingHandler()}
+                    onClick={isLoading ? undefined : header.column.getToggleSortingHandler()}
                   >
                     {header.isPlaceholder ? null : (
                       <div className="flex items-center gap-1">
@@ -183,13 +193,34 @@ export function DataTable<TData, TValue>({
                     )}
                   </TableHead>
                 ))}
+                {rowActions && <th className="w-[72px]" aria-label="Actions" />}
               </TableRow>
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows.length === 0 ? (
+            {isLoading ? (
+              Array.from({ length: loadingRowCount }).map((_, rowIndex) => (
+                <TableRow key={`loading-${rowIndex}`}>
+                  {columns.map((column, colIndex) => (
+                    <TableCell key={String(column.id ?? colIndex)} className="px-3 py-2">
+                      <Skeleton
+                        className={cn(
+                          "h-3.5",
+                          colIndex === 0 ? "w-48 max-w-full" : "w-20",
+                        )}
+                      />
+                    </TableCell>
+                  ))}
+                  {rowActions && (
+                    <TableCell className="w-[72px] px-3 py-2 text-right">
+                      <Skeleton className="ml-auto h-3.5 w-8" />
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))
+            ) : table.getRowModel().rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={columns.length + (rowActions ? 1 : 0)} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={columns.length + (rowActions ? 1 : 0)} className="px-3 py-8 text-center text-muted-foreground">
                   {emptyMessage}
                 </TableCell>
               </TableRow>
@@ -198,16 +229,16 @@ export function DataTable<TData, TValue>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  className={cn(onRowClick && "cursor-pointer")}
+                  className={cn(onRowClick && "cursor-pointer", "hover:bg-muted/40")}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className="px-3 py-1.5">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
                   {rowActions && (
-                    <TableCell className="w-[72px] text-right">
+                    <TableCell className="w-[72px] px-3 py-1.5 text-right">
                       {rowActions(row.original)}
                     </TableCell>
                   )}
@@ -238,7 +269,7 @@ export function DataTable<TData, TValue>({
             variant="outline"
             size="sm"
             onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
+            disabled={isLoading || !table.getCanPreviousPage()}
           >
             Previous
           </Button>
@@ -249,7 +280,7 @@ export function DataTable<TData, TValue>({
             variant="outline"
             size="sm"
             onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
+            disabled={isLoading || !table.getCanNextPage()}
           >
             Next
           </Button>

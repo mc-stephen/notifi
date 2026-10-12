@@ -143,7 +143,6 @@ export default function LogsPage() {
             data={renderedLogs}
             searchPlaceholder="Search actions..."
             emptyMessage="No log entries match."
-            tableClassName="bg-card"
             onRowClick={setSelectedLog}
           />
         )}

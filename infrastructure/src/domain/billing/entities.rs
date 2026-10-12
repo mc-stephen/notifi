@@ -215,6 +215,142 @@ pub fn cycle_price_cents(plan: &Plan, cycle: BillingCycle) -> Option<i64> {
     }
 }
 
+/// One billed period for the user-facing receipt history (`GET
+/// /app/billing/history`). Derived, not stored: there is no ledger table.
+///
+/// Free ($0) periods emit rows too — Cloudflare-style, every project gets
+/// an invoice from birth, even on free. Source of truth limits (v1):
+/// amounts compute from *current* plan prices (a later price edit
+/// backfills older rows), and renewals that wrote no audit event appear
+/// via timeline continuity. Exactness arrives with the payment provider.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Receipt {
+    pub id: String,
+    pub period_start: chrono::DateTime<chrono::Utc>,
+    pub plan_id: String,
+    pub plan_name: String,
+    pub billing_cycle: BillingCycle,
+    pub amount_cents: Option<i64>,
+    pub currency: String,
+    pub status: ReceiptStatus,
+}
+
+/// Receipt outcome. `$0` rows (free periods, nothing owed) read as paid.
+/// The latest row flips to failed while the live subscription is past due.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReceiptStatus {
+    Paid,
+    Failed,
+}
+
+impl ReceiptStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Paid => "paid",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+/// Maximum receipts emitted per project (newest kept implicitly by the
+/// caller reversing chronological output).
+const MAX_RECEIPTS: usize = 120;
+
+/// Rebuilds one project's billed periods by replaying plan events. Pure
+/// (no I/O) so it unit-tests directly. `plans` maps plan id to its
+/// *current* catalog entry; plans missing from the map (deleted since)
+/// emit with unknown price. `current_failed` marks the latest row failed
+/// when the live subscription is past due.
+pub fn build_receipts(
+    project: &HistoryProject,
+    events: &[HistoryEvent],
+    plans: &std::collections::HashMap<String, Plan>,
+    current_failed: bool,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Vec<Receipt> {
+    // Timeline of (at, plan_id, cycle), starting free at project creation.
+    // Cancelled holds the plan through its billing period, then free —
+    // mirroring `build_history`.
+    let mut timeline: Vec<(chrono::DateTime<chrono::Utc>, String, BillingCycle)> = vec![(
+        project.created_at,
+        FREE_PLAN_ID.to_string(),
+        BillingCycle::Monthly,
+    )];
+    let mut ordered: Vec<&HistoryEvent> = events
+        .iter()
+        .filter(|e| e.project_id == project.id)
+        .collect();
+    ordered.sort_by(|a, b| a.occurred_at.cmp(&b.occurred_at));
+    for event in ordered {
+        match event.kind {
+            HistoryEventKind::Changed => {
+                timeline.push((
+                    event.occurred_at,
+                    event.plan_id.clone(),
+                    event.billing_cycle,
+                ));
+            }
+            HistoryEventKind::Cancelled => {
+                let hold_until =
+                    event.occurred_at + chrono::Duration::days(event.billing_cycle.period_days());
+                timeline.push((hold_until, FREE_PLAN_ID.to_string(), BillingCycle::Monthly));
+            }
+        }
+    }
+    timeline.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut receipts = Vec::new();
+    for (i, (seg_start, plan_id, cycle)) in timeline.iter().enumerate() {
+        if receipts.len() >= MAX_RECEIPTS {
+            break;
+        }
+        let seg_end = timeline
+            .get(i + 1)
+            .map(|(at, _, _)| *at)
+            .unwrap_or(now)
+            .min(now);
+        if *seg_start >= seg_end {
+            continue;
+        }
+        let (plan_name, amount_cents, currency) = match plans.get(plan_id) {
+            Some(plan) => (
+                plan.name.clone(),
+                cycle_price_cents(plan, *cycle),
+                plan.currency.clone(),
+            ),
+            // Deleted since: keep the row, mark the price unknown.
+            None => (plan_id.clone(), None, "USD".to_string()),
+        };
+        // Deleted plans keep their row with unknown price; free segments
+        // emit $0 rows like any other period.
+        if plan_id != FREE_PLAN_ID && amount_cents == Some(0) {
+            continue;
+        }
+        let period_days = cycle.period_days();
+        let mut period_start = *seg_start;
+        let mut seq = receipts.len();
+        while period_start < seg_end && receipts.len() < MAX_RECEIPTS {
+            seq += 1;
+            receipts.push(Receipt {
+                id: format!("rcpt_{}_{:04}", project.id, seq),
+                period_start,
+                plan_id: plan_id.clone(),
+                plan_name: plan_name.clone(),
+                billing_cycle: *cycle,
+                amount_cents,
+                currency: currency.clone(),
+                status: ReceiptStatus::Paid,
+            });
+            period_start += chrono::Duration::days(period_days);
+        }
+    }
+
+    if current_failed && let Some(last) = receipts.last_mut() {
+        last.status = ReceiptStatus::Failed;
+    }
+    receipts
+}
+
 /// One month's active-subscriber snapshot for the admin history chart.
 /// `date` is the month's first day (ISO `YYYY-MM-DD`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -425,5 +561,182 @@ mod history_tests {
         }];
         let points = build_history(&[], &events, 2, utc(2025, 2, 10));
         assert!(points.iter().all(|p| p.total == 0));
+    }
+
+    fn pro_plans() -> std::collections::HashMap<String, Plan> {
+        let at = utc(2025, 1, 1);
+        let free = Plan {
+            id: FREE_PLAN_ID.into(),
+            name: "Free".into(),
+            price_cents: Some(0),
+            currency: "USD".into(),
+            interval: "month".into(),
+            capabilities: PlanCapability::default(),
+            yearly_discount: None,
+            is_active: true,
+            created_at: at,
+            updated_at: at,
+        };
+        let pro = Plan {
+            id: "pro".into(),
+            name: "Pro".into(),
+            price_cents: Some(9900),
+            currency: "USD".into(),
+            interval: "month".into(),
+            capabilities: PlanCapability::default(),
+            yearly_discount: Some(YearlyDiscount::Percent(20.0)),
+            is_active: true,
+            created_at: at,
+            updated_at: at,
+        };
+        let mut plans = std::collections::HashMap::new();
+        plans.insert(FREE_PLAN_ID.to_string(), free);
+        plans.insert("pro".to_string(), pro);
+        plans
+    }
+
+    fn changed(at: chrono::DateTime<chrono::Utc>, plan: &str) -> HistoryEvent {
+        HistoryEvent {
+            occurred_at: at,
+            project_id: "a".into(),
+            kind: HistoryEventKind::Changed,
+            plan_id: plan.into(),
+            billing_cycle: BillingCycle::Monthly,
+        }
+    }
+
+    #[test]
+    fn free_only_project_emits_zero_dollar_rows() {
+        let receipts = build_receipts(
+            &project("a", utc(2025, 1, 5)),
+            &[],
+            &pro_plans(),
+            false,
+            utc(2025, 5, 10),
+        );
+        // Jan 5, Feb 4, Mar 6, Apr 5, May 5 (30-day slices); Jun 4 is past `now`.
+        assert_eq!(receipts.len(), 5);
+        assert!(receipts.iter().all(|r| r.plan_id == "free"));
+        assert!(receipts.iter().all(|r| r.amount_cents == Some(0)));
+        assert!(receipts.iter().all(|r| r.status == ReceiptStatus::Paid));
+    }
+
+    #[test]
+    fn monthly_pro_coexists_with_free_rows() {
+        let receipts = build_receipts(
+            &project("a", utc(2025, 1, 5)),
+            &[changed(utc(2025, 2, 10), "pro")],
+            &pro_plans(),
+            false,
+            utc(2025, 5, 10),
+        );
+        // Free Jan 5, Feb 4; pro Feb 10, Mar 12, Apr 11.
+        assert_eq!(receipts.len(), 5);
+        assert_eq!(receipts[0].plan_id, "free");
+        assert_eq!(receipts[0].amount_cents, Some(0));
+        assert_eq!(receipts[2].plan_id, "pro");
+        assert_eq!(receipts[2].amount_cents, Some(9900));
+        assert_eq!(receipts[2].period_start, utc(2025, 2, 10));
+        let mut ids: Vec<_> = receipts.iter().map(|r| r.id.clone()).collect();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), 5);
+    }
+
+    #[test]
+    fn cancelled_hold_then_free_rows() {
+        let events = vec![
+            changed(utc(2025, 1, 10), "pro"),
+            HistoryEvent {
+                occurred_at: utc(2025, 3, 10),
+                project_id: "a".into(),
+                kind: HistoryEventKind::Cancelled,
+                plan_id: "pro".into(),
+                billing_cycle: BillingCycle::Monthly,
+            },
+        ];
+        let receipts = build_receipts(
+            &project("a", utc(2025, 1, 5)),
+            &events,
+            &pro_plans(),
+            false,
+            utc(2025, 6, 10),
+        );
+        // Free Jan 5; pro Jan 10, Feb 9, Mar 11 (hold ends Apr 9);
+        // free Apr 9, May 9, Jun 8.
+        assert_eq!(receipts.len(), 7);
+        assert_eq!(receipts[0].plan_id, "free");
+        assert!(receipts[1..4].iter().all(|r| r.plan_id == "pro"));
+        assert!(receipts[4..].iter().all(|r| r.plan_id == "free"));
+    }
+
+    #[test]
+    fn yearly_plan_emits_annual_rows() {
+        let events = vec![HistoryEvent {
+            occurred_at: utc(2025, 6, 1),
+            project_id: "a".into(),
+            kind: HistoryEventKind::Changed,
+            plan_id: "pro".into(),
+            billing_cycle: BillingCycle::Yearly,
+        }];
+        let receipts = build_receipts(
+            &project("a", utc(2025, 1, 5)),
+            &events,
+            &pro_plans(),
+            false,
+            utc(2026, 9, 1),
+        );
+        // Free Jan–May 2025, then annual pro rows Jun 2025 + Jun 2026.
+        assert_eq!(receipts.len(), 7);
+        assert_eq!(receipts[5].billing_cycle, BillingCycle::Yearly);
+        // 9900 * 12 * 0.8 = 95040.
+        assert_eq!(receipts[5].amount_cents, Some(95040));
+    }
+
+    #[test]
+    fn current_past_due_marks_latest_row_failed() {
+        let receipts = build_receipts(
+            &project("a", utc(2025, 1, 5)),
+            &[changed(utc(2025, 2, 10), "pro")],
+            &pro_plans(),
+            true,
+            utc(2025, 5, 10),
+        );
+        assert_eq!(receipts.len(), 5);
+        assert!(
+            receipts[..4]
+                .iter()
+                .all(|r| r.status == ReceiptStatus::Paid)
+        );
+        assert_eq!(receipts[4].status, ReceiptStatus::Failed);
+    }
+
+    #[test]
+    fn free_then_pro_then_free_marks_the_boundary() {
+        let events = vec![
+            changed(utc(2025, 2, 10), "pro"),
+            HistoryEvent {
+                occurred_at: utc(2025, 3, 15),
+                project_id: "a".into(),
+                kind: HistoryEventKind::Changed,
+                plan_id: "free".into(),
+                billing_cycle: BillingCycle::Monthly,
+            },
+        ];
+        let receipts = build_receipts(
+            &project("a", utc(2025, 1, 5)),
+            &events,
+            &pro_plans(),
+            false,
+            utc(2025, 6, 10),
+        );
+        // Free Jan 5, Feb 4; pro Feb 10, Mar 12; free Mar 15, Apr 14, May 14.
+        let plans: Vec<_> = receipts.iter().map(|r| r.plan_id.as_str()).collect();
+        assert_eq!(
+            plans,
+            ["free", "free", "pro", "pro", "free", "free", "free"]
+        );
+        assert_eq!(receipts[2].amount_cents, Some(9900));
+        assert_eq!(receipts[4].amount_cents, Some(0));
     }
 }

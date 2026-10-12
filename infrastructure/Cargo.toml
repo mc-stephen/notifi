@@ -10,11 +10,14 @@ async-trait = { workspace = true }
 axum = { workspace = true }
 axum-extra = { workspace = true }
 chrono = { workspace = true }
+chrono-tz = { workspace = true }
 dotenvy = { workspace = true }
 email_channel = { path = "channels/email_channel" }
 hex = { workspace = true }
 notifi_core = { path = "crates/core" }
+notifi_domain_ports = { path = "crates/domain-ports" }
 ipnet = { workspace = true }
+lapin = { workspace = true }
 rand = { workspace = true }
 redis = { workspace = true }
 reqwest = { workspace = true }
@@ -25,6 +28,8 @@ sqlx = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true }
+tokio-executor-trait = { workspace = true }
+tokio-reactor-trait = { workspace = true }
 totp-rs = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
@@ -35,6 +40,7 @@ urlencoding = { workspace = true }
 
 [dev-dependencies]
 http-body-util = "0.1"
+notifi_domain_ports = { path = "crates/domain-ports" }
 
 [workspace]
 resolver = "2"
@@ -54,6 +60,7 @@ members = [
   "channels/webhook_channel",
   "channels/whatsapp_channel",
   "channels/window_channel",
+  "worker",
 ]
 
 [workspace.package]
@@ -67,9 +74,11 @@ async-trait = "0.1"
 axum = "0.8"
 axum-extra = { version = "0.10", features = ["cookie"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+chrono-tz = "0.10"
 dotenvy = "0.15"
 hex = "0.4"
 ipnet = "2"
+lapin = "2"
 rand = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 # TLS note: this deployment's TLS terminators (Coolify) reject rustls
@@ -82,7 +91,9 @@ sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "macros", "migrate", "chrono", "tls-rustls-ring"] }
 thiserror = "2"
 time = "0.3"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "time"] }
+tokio-executor-trait = "2"
+tokio-reactor-trait = "1"
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors", "request-id", "trace"] }
 totp-rs = { version = "5", features = ["otpauth"] }

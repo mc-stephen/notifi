@@ -57,7 +57,7 @@ Other root files: `Cargo.toml` (package + workspace index), `rust-toolchain.toml
 | **admin** | `/api/admin` | admin session + 2FA | Platform administration |
 
 Route declarations live in `src/api/catalog.rs`; each surface's router is in
-its own module (`src/api/project/mod.rs`, `src/api/user/mod.rs`).
+its own module (`src/api/project/mod.rs`, `src/api/app/mod.rs`, `src/api/admin/mod.rs`).
 
 ## Commands
 

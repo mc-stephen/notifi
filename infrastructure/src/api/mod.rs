@@ -3,8 +3,11 @@
 //! API layout (`Readme.md`):
 //! * `/*` — ops routes (`/`, `/healthz`, `/readyz`, `/routes`).
 //! * `/v1/*` — external product API ([`project`]); empty until M2.
-//! * `/app/*` — user dashboard backend ([`user::app_router`]).
-//! * `/admin/*` — platform administration ([`user::admin_router`]).
+//! * `/app/*` — user dashboard backend ([`app::app_router`]).
+//! * `/admin/*` — platform administration ([`admin::admin_router`]).
+
+pub mod admin;
+pub mod app;
 
 pub mod catalog;
 pub mod error;
@@ -13,7 +16,6 @@ pub mod middleware;
 pub mod project;
 pub mod state;
 pub use state::AppState;
-pub mod user;
 
 use axum::Router;
 
@@ -27,9 +29,9 @@ pub fn build_router(state: AppState, config: &AppConfig) -> Router {
         .route("/healthz", axum::routing::get(handlers::healthz))
         .route("/readyz", axum::routing::get(handlers::readyz))
         .route("/routes", axum::routing::get(handlers::catalog))
-        .nest("/v1", project::router())
-        .nest("/app", user::app_router(&state))
-        .nest("/admin", user::admin_router(&state))
+        .nest("/v1", project::router(&state))
+        .nest("/app", app::app_router(&state))
+        .nest("/admin", admin::admin_router(&state))
         .fallback(handlers::not_found)
         .with_state(state);
     middleware::apply(router, &config.server.cors_origins)
@@ -63,8 +65,12 @@ mod tests {
                 tickets: None,
                 notifications: None,
                 billing: None,
+                inbound: None,
                 provider_tester: std::sync::Arc::new(crate::infra::ConfigProviderTester::new())
                     as std::sync::Arc<dyn crate::ports::ProviderTester + Send + Sync>,
+                flows: None,
+                sends: None,
+                schedules: None,
             },
             &AppConfig::default(),
         )

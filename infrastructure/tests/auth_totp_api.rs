@@ -42,8 +42,12 @@ fn app() -> Router {
             tickets: None,
             notifications: None,
             billing: None,
+            schedules: None,
+            inbound: None,
             provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
                 as std::sync::Arc<dyn ProviderTester + Send + Sync>,
+            flows: None,
+            sends: None,
         },
         &AppConfig::default(),
     )

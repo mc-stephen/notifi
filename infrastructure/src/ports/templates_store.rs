@@ -71,6 +71,14 @@ pub trait TemplatesStore: Send + Sync {
         template_id: &str,
     ) -> BoxFut<'_, Result<Option<TemplateRecord>, StoreError>>;
 
+    /// A single template by id regardless of actor (the caller authorizes
+    /// separately — used by the inbound webhook path, where the trigger
+    /// token is the credential). `None` when not found.
+    fn get_by_id(
+        &self,
+        template_id: &str,
+    ) -> BoxFut<'_, Result<Option<TemplateRecord>, StoreError>>;
+
     /// Updates a visible template (name/description/channel/content and its
     /// attachments, replaced wholesale). Returns `None` when not found.
     #[allow(clippy::too_many_arguments)]

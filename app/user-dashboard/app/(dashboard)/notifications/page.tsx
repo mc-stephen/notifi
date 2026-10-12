@@ -217,7 +217,6 @@ export default function InAppNotificationsPage() {
           searchKey="notification"
           pageSize={20}
           emptyMessage="No notifications yet."
-          tableClassName="bg-card"
           onRowClick={handleRowClick}
           hideToolbar
           renderToolbar={(t) => {

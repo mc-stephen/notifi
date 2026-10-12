@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/custom/data-table";
 import { PageHeader } from "@/components/custom/page-header";
+import { StatCard } from "@/components/custom/stat-card";
 import {
   useTemplates,
   useTemplateActions,
@@ -37,6 +38,9 @@ import {
   Loader2,
   Plus,
   FileText,
+  Layers,
+  Paperclip,
+  Radio,
 } from "lucide-react";
 
 function ChannelBadgesCell({ content }: { content: Record<string, unknown> }) {
@@ -89,6 +93,24 @@ export default function TemplatesPage() {
     setChannels(["email"]);
     setSubmitError(null);
   }, []);
+
+  const stats = useMemo(() => {
+    let multiChannel = 0;
+    let withAttachments = 0;
+    const channelsCovered = new Set<string>();
+    for (const t of templates) {
+      const covered = coveredChannels(t.content);
+      if (covered.length > 1) multiChannel += 1;
+      if (t.attachments.length > 0) withAttachments += 1;
+      for (const c of covered) channelsCovered.add(c);
+    }
+    return {
+      total: templates.length,
+      multiChannel,
+      withAttachments,
+      channelsCovered: channelsCovered.size,
+    };
+  }, [templates]);
 
   const handleCreate = useCallback(async () => {
     setSubmitting(true);
@@ -277,14 +299,39 @@ export default function TemplatesPage() {
         }
       />
 
+      {!error && (templates.length > 0 || loading) && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard
+            label="Total templates"
+            value={loading ? "–" : stats.total}
+            icon={FileText}
+          />
+          <StatCard
+            label="Multi-channel"
+            value={loading ? "–" : stats.multiChannel}
+            sub="Covering 2+ channels"
+            icon={Layers}
+          />
+          <StatCard
+            label="With attachments"
+            value={loading ? "–" : stats.withAttachments}
+            icon={Paperclip}
+          />
+          <StatCard
+            label="Channels covered"
+            value={loading ? "–" : stats.channelsCovered}
+            icon={Radio}
+          />
+        </div>
+      )}
+
       {loading ? (
         <div className="overflow-hidden rounded-lg border bg-card">
           <div className="flex items-center justify-center py-16 text-muted-foreground">
             <Loader2 className="size-5 animate-spin mr-2" /> Loading templates…
           </div>
         </div>
-      ) : error ? (
-        <div className="overflow-hidden rounded-lg border bg-card">
+      ) : error ? (        <div className="overflow-hidden rounded-lg border bg-card">
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
             <AlertTriangle className="size-8 text-warning" />
             <p className="text-sm text-muted-foreground">{error}</p>
@@ -300,7 +347,6 @@ export default function TemplatesPage() {
           searchKey="name"
           searchPlaceholder="Search templates..."
           pageSize={10}
-          tableClassName="bg-card"
           onRowClick={(t) => router.push(`/templates/${t.id}`)}
           rowActions={(t) => (
             <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>

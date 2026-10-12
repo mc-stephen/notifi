@@ -29,11 +29,24 @@ pub struct LogConfig {
 
 /// Postgres connection settings. Optional: when unset, the API boots without
 /// a database (readiness reports 503) and migrations are not run.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct DatabaseConfig {
     /// e.g. `postgres://user:pass@localhost:5432/notifi`.
     #[serde(default)]
     pub url: Option<String>,
+    /// Pool size. Defaults to 20; raise only with Postgres `max_connections`
+    /// headroom (`NOTIFI_DB_MAX_CONNECTIONS`).
+    #[serde(default = "default_db_max_connections")]
+    pub max_connections: u32,
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            url: None,
+            max_connections: default_db_max_connections(),
+        }
+    }
 }
 
 /// Redis connection settings. Optional: when unset, the API boots without
@@ -41,6 +54,16 @@ pub struct DatabaseConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
 pub struct RedisConfig {
     /// e.g. `redis://:password@localhost:6379`.
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
+/// RabbitMQ connection settings. Optional: when unset, sweep work stays
+/// embedded in the API process (30s loops); when set, the API publishes
+/// sweep ticks and a `worker` binary shares the load.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+pub struct RabbitMQConfig {
+    /// e.g. `amqp://notifi:password@localhost:5672/%2f`.
     #[serde(default)]
     pub url: Option<String>,
 }
@@ -163,6 +186,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub redis: RedisConfig,
     #[serde(default)]
+    pub rabbitmq: RabbitMQConfig,
+    #[serde(default)]
     pub auth: AuthConfig,
     #[serde(default)]
     pub mail: MailConfig,
@@ -172,6 +197,10 @@ pub struct AppConfig {
 
 fn default_host() -> String {
     "127.0.0.1".to_string()
+}
+
+fn default_db_max_connections() -> u32 {
+    20
 }
 
 fn default_port() -> u16 {
@@ -246,8 +275,16 @@ impl AppConfig {
         if let Ok(url) = std::env::var("NOTIFI_DATABASE_URL") {
             config.database.url = Some(url);
         }
+        if let Ok(max) = std::env::var("NOTIFI_DB_MAX_CONNECTIONS") {
+            config.database.max_connections = max
+                .parse()
+                .map_err(|e| format!("invalid NOTIFI_DB_MAX_CONNECTIONS: {e}"))?;
+        }
         if let Ok(url) = std::env::var("NOTIFI_REDIS_URL") {
             config.redis.url = Some(url);
+        }
+        if let Ok(url) = std::env::var("NOTIFI_RABBITMQ_URL") {
+            config.rabbitmq.url = Some(url);
         }
         if let Ok(flag) = std::env::var("NOTIFI_EXPOSE_DEV_TOKENS") {
             config.auth.expose_dev_tokens = flag.parse().map_err(|_| {
@@ -318,6 +355,9 @@ impl AppConfig {
         if other.redis != RedisConfig::default() {
             self.redis = other.redis;
         }
+        if other.rabbitmq != RabbitMQConfig::default() {
+            self.rabbitmq = other.rabbitmq;
+        }
         if other.auth != AuthConfig::default() {
             self.auth = other.auth;
         }
@@ -385,8 +425,35 @@ mod tests {
     fn db_and_redis_are_optional_by_default() {
         let config = AppConfig::default();
         assert_eq!(config.database.url, None);
+        assert_eq!(config.database.max_connections, 20);
         assert_eq!(config.redis.url, None);
+        assert_eq!(config.rabbitmq.url, None);
         assert!(!config.auth.expose_dev_tokens);
+    }
+
+    #[test]
+    fn rabbitmq_url_parses() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        set_env("NOTIFI_RABBITMQ_URL", "amqp://notifi:pw@h:5672/%2f");
+        let config = AppConfig::from_env().unwrap();
+        assert_eq!(
+            config.rabbitmq.url.as_deref(),
+            Some("amqp://notifi:pw@h:5672/%2f")
+        );
+        clear_env("NOTIFI_RABBITMQ_URL");
+    }
+
+    #[test]
+    fn db_pool_size_parses() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        set_env("NOTIFI_DB_MAX_CONNECTIONS", "5");
+        let config = AppConfig::from_env().unwrap();
+        assert_eq!(config.database.max_connections, 5);
+
+        set_env("NOTIFI_DB_MAX_CONNECTIONS", "bogus");
+        assert!(AppConfig::from_env().is_err());
+
+        clear_env("NOTIFI_DB_MAX_CONNECTIONS");
     }
 
     #[test]

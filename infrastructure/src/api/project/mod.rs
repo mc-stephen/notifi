@@ -1,19 +1,13 @@
 //! Project API surface — the product API customers integrate with.
 //!
-//! Served at the root (`/notifications`, `/templates`, … once built) and
-//! authenticated by API keys (M6). Deliberately separate from the user
-//! surface ([`crate::api::user`]) so product logic and dashboard logic
+//! Served under `/v1`. v0 authenticates with the dashboard session
+//! (external API keys land in M6) and serves instant notification sends
+//! through each project's default flow. Deliberately separate from the
+//! user surface ([`crate::api::app`]) so product and dashboard logic
 //! never share routes or middleware.
 
-// TODO(M2): mount the first product endpoints here (e.g. POST
-// /notifications via the notifications domain). Until then the surface is
-// intentionally empty — merging an empty router is harmless and keeps the
-// composition shape visible in `build_router`.
+pub mod dto;
+pub mod handlers;
+mod routes;
 
-use axum::Router;
-
-use crate::api::state::AppState;
-
-pub fn router() -> Router<AppState> {
-    Router::new()
-}
+pub use routes::router;

@@ -57,8 +57,12 @@ fn app_with_billing() -> (Router, Arc<FakeBillingStore>) {
                 tickets: None,
                 notifications: None,
                 billing: Some(billing),
+                schedules: None,
+                inbound: None,
                 provider_tester: Arc::new(ConfigProviderTester::new())
                     as Arc<dyn ProviderTester + Send + Sync>,
+                flows: None,
+                sends: None,
             },
             &AppConfig::default(),
         ),
@@ -724,4 +728,83 @@ async fn admin_subscriber_history_reflects_subscriptions() {
     )
     .await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn receipt_history_lists_paid_periods_newest_first() {
+    let (app, billing) = app_with_billing();
+    let (token, user_id) = signup(app.clone(), "receipts@x.dev").await;
+    let project = create_project(app.clone(), &token, "Shop").await;
+    billing.seed_visible(&user_id, &project);
+
+    // Free project: $0 receipts from birth (Cloudflare-style).
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        &format!("/app/billing/history?project_id={project}"),
+        None,
+        "session_token",
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let receipts = body_json(res).await["receipts"].clone();
+    let receipts = receipts.as_array().unwrap();
+    assert!(!receipts.is_empty());
+    assert!(receipts.iter().all(|r| r["planId"] == "free"));
+    assert!(receipts.iter().all(|r| r["amountCents"] == 0));
+    assert!(receipts.iter().all(|r| r["status"] == "paid"));
+
+    // Subscribe to pro monthly: one receipt for the started period.
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        "/app/billing/subscriptions",
+        Some(json!({"projectId": project, "planId": "pro"})),
+        "session_token",
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        &format!("/app/billing/history?project_id={project}"),
+        None,
+        "session_token",
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let receipts = body_json(res).await["receipts"].clone();
+    let receipts = receipts.as_array().unwrap();
+    assert!(!receipts.is_empty());
+    // Newest first: the just-started pro period, then free history.
+    assert_eq!(receipts[0]["planId"], "pro");
+    assert_eq!(receipts[0]["planName"], "Pro");
+    assert_eq!(receipts[0]["billingCycle"], "monthly");
+    assert_eq!(receipts[0]["amountCents"], 9900);
+    assert_eq!(receipts[0]["currency"], "USD");
+    assert_eq!(receipts[0]["status"], "paid");
+}
+
+#[tokio::test]
+async fn receipt_history_is_project_isolated() {
+    let (app, billing) = app_with_billing();
+    let (token, user_id) = signup(app.clone(), "owner@x.dev").await;
+    let project = create_project(app.clone(), &token, "Store").await;
+    billing.seed_visible(&user_id, &project);
+    let (bob_token, _) = signup(app.clone(), "bob@x.dev").await;
+
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        &format!("/app/billing/history?project_id={project}"),
+        None,
+        "session_token",
+        &bob_token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }

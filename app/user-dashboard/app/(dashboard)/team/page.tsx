@@ -304,7 +304,6 @@ export default function TeamPage() {
         <DataTable
           columns={MEMBER_COLUMNS}
           data={members}
-          tableClassName="bg-card"
           searchKey="name"
           searchPlaceholder="Search members..."
           pageSize={10}

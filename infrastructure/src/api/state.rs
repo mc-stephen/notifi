@@ -43,6 +43,14 @@ pub struct AppState {
     pub tickets: Option<Arc<crate::domain::support::TicketService>>,
     /// Billing plans + per-project subscriptions — wired alongside auth/db.
     pub billing: Option<Arc<crate::domain::billing::BillingService>>,
+    /// System notification flows (default per project) — wired alongside auth/db.
+    pub flows: Option<Arc<crate::domain::flows::FlowService>>,
+    /// Record-first product sends executed through default flows.
+    pub sends: Option<Arc<crate::domain::sends::SendService>>,
+    /// Inbound webhook fires (token-authenticated, no session).
+    pub inbound: Option<Arc<crate::domain::inbound::InboundService>>,
+    /// Flow schedules (timed runs of assigned flows) — wired alongside auth/db.
+    pub schedules: Option<Arc<crate::domain::schedules::ScheduleService>>,
     /// In-app notifications (personal, per-user) — wired alongside auth/db.
     pub notifications: Option<Arc<crate::domain::notifications::NotificationService>>,
     /// Provider connection tester — always available.

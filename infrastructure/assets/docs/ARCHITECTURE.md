@@ -63,6 +63,7 @@ notifi/                         # repo root
 | Crate | Path | Purpose |
 |-------|------|---------|
 | `server` | `infrastructure/` | Main binary + lib — API, domain, infra |
+| `worker` | `infrastructure/worker/` | Background binary — sweep ticks from RabbitMQ, local interval fallback |
 | `notifi_core` | `crates/core/` | Shared kernel: errors, ULID, events, outbox |
 | `domain-ports` | `crates/domain-ports/` | Trait-only contracts |
 | `email_channel` | `channels/email_channel/` | Email providers |
@@ -94,7 +95,7 @@ Four API surfaces (see root `note.md`):
 | **App API** | `/app/*` | Session cookie (`CurrentUser`) | User dashboard backend |
 | **Admin API** | `/admin/*` | Admin session + 2FA (`CurrentAdmin`) | Platform administration |
 
-App API routes live in `src/api/user/`:
+App API routes live in `src/api/app/`:
 - `/app/auth/*` — signup, login, logout, verify-email, password reset, OAuth
 - `/app/providers` — provider registry (GET)
 - `/app/projects/{id}/channel-configs` — channel configs CRUD
@@ -102,7 +103,7 @@ App API routes live in `src/api/user/`:
 - `/app/projects/{id}/templates` — templates CRUD
 - `/app/support/*`, `/app/notifications/*`, `/app/logs` — tickets, in-app notifications, audit log
 
-Admin API routes live in `src/api/user/admin/`:
+Admin API routes live in `src/api/admin/`:
 - `/admin/*` — status, bootstrap, login, logout, me, password reset, TOTP
 - `/admin/users/*` — platform user list/detail/suspend
 - `/admin/support/*` — all tickets, replies, status changes
@@ -149,11 +150,14 @@ src/api/
 ├── mod.rs              # Shared middleware, error mapping
 ├── state.rs            # AppState (db, redis, auth, channel_providers)
 ├── catalog.rs          # GET /routes — route registry
-├── user/               # App API (/app/*) + Admin API (/admin/*)
-│   ├── mod.rs          # app_router() + admin_router()
+├── app/                # App API (/app/*)
+│   ├── mod.rs          # app_router()
 │   ├── auth/           # /app/auth/*
 │   ├── providers/      # /app/providers
 │   └── channel_configs/ # /app/projects/{id}/channel-configs
+├── admin/              # Admin API (/admin/*)
+│   ├── mod.rs          # admin_router()
+│   └── users/          # /admin/users/*
 └── project/            # Project API (root, M2+)
 ```
 
@@ -172,7 +176,7 @@ All errors map to RFC 9457 Problem Details. See `src/api/mod.rs`.
 
 ## 11. Auth model
 
-Session-cookie based. See `src/api/user/auth/` and `src/ports/auth_store.rs`.
+Session-cookie based. See `src/api/app/auth/` and `src/ports/auth_store.rs`.
 
 ## 12. Testing strategy
 
@@ -190,6 +194,15 @@ Session-cookie based. See `src/api/user/auth/` and `src/ports/auth_store.rs`.
 ## 14. Event-driven patterns
 
 Outbox pattern for reliable event publishing. See `domain/` and `infra/`.
+
+Sweeps (due flow schedules + due admin broadcasts) run embedded in the API
+on a 30s interval until `NOTIFI_RABBITMQ_URL` is set — then the API publishes
+a tick per interval to the durable `notifi.sweep` queue and the `worker`
+binary (`infrastructure/worker/`) consumes them (`src/infra/rabbit.rs`).
+Ticks are disposable triggers; atomic `claim_due` in Postgres stays the
+source of truth, so a lost tick or a second sweeper can never double-send.
+A failed tick publish degrades to a local sweep, and the worker falls back
+to a local interval when RabbitMQ is unreachable.
 
 ## 15. Shared kernel crates
 
@@ -272,7 +285,7 @@ pub enum EmailProvider {
 }
 ```
 
-3. **Add builder entry** in `src/api/user/providers/handlers.rs`:
+3. **Add builder entry** in `src/api/app/providers/handlers.rs`:
 
 ```rust
 fn build_new_provider() -> ProviderDefinition {
@@ -357,4 +370,11 @@ fn build_email_channel() -> ChannelDefinition {
 | M5 | Recipients & Devices | `recipients` domain; delivery honors preferences | Preferenced delivery path tested |
 | M6 | Platform | `projects` (API keys); `auth` (rate limits); `billing` (usage metering) | Authenticated sends; rate limit enforced; usage rows accrue |
 | M7 | Growth | `webhooks` (outgoing); `schedules` (cron); analytics read models | Scheduled + webhook delivery end-to-end |
+| M-flow | Flow execution engine | Flow definition store + versioning; full edge-traversal evaluation (conditions, AI transforms); scheduled-send claim worker; retries/backoff/DLQ + attempt records; idempotency keys; custom-flow server sync | Priority/fallback/conditional/AI sends end-to-end with traces |
 | M8 | Hardening | JWT sessions, observability dashboards, load/perf tests, docs, READMEs | Production readiness review pass |
+
+> **Phase A shipped (flows v0):** `POST /v1/notifications` (instant, record-first) executes the project's default flow inline — priority walk with fallback, completion marking, 409 without a default. System flows persist server-side (`flows` table); custom flows stay client-side. Conditions/AI nodes pass through unevaluated; scheduled `send_at`, retries, and per-attempt history are M-flow work.
+
+> **Schedules shipped (flow scheduler v1):** `schedules` table + `ScheduleService` (once/recurring-interval timing, no cron) with a 30s claim-and-run worker mirroring the broadcast worker. A schedule assigns one flow plus its own execution payload; assigned flows hide from `GET /app/flows` (managed via Schedules, builder still reachable by id); runs record send rows so deliveries show them. API at `/app/schedules` (CRUD, run-now); dashboard page rebuilt on it.
+
+> **Triggers v1 + HTTP steps + inbound webhooks:** trigger nodes carry a type (`event` webhook-inbound chooser in the builder); `HTTP Request` action nodes fire once per run (log-only failures, `http.status` condition field for If-branching); `POST /v1/hooks/{token}` fires a flow with caller-wins/fallback resolution, backed by the `flow_trigger_tokens` lookup synced on flow saves.

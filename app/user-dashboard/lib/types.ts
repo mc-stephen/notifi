@@ -55,6 +55,33 @@ export type ProjectSubscription = {
   updatedAt: string;
 };
 
+export type ReceiptStatus = "paid" | "failed";
+
+export type Receipt = {
+  id: string;
+  date: string;
+  planId: string;
+  planName: string;
+  billingCycle: BillingCycle;
+  amountCents: number | null;
+  currency: string;
+  status: ReceiptStatus;
+};
+
+export type SendStatus = "pending" | "sending" | "completed" | "failed";
+
+export type DeliverySend = {
+  id: string;
+  projectId: string;
+  channel: string;
+  recipients: string[];
+  title: string;
+  status: SendStatus;
+  provider: string | null;
+  lastError: string | null;
+  createdAt: string;
+};
+
 export type Project = {
   id: string;
   name: string;

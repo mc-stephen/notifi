@@ -1408,6 +1408,15 @@ impl TemplatesStore for FakeTemplatesStore {
         })
     }
 
+    fn get_by_id(
+        &self,
+        template_id: &str,
+    ) -> BoxFut<'_, Result<Option<TemplateRecord>, StoreError>> {
+        let template_id = template_id.to_string();
+        let templates = self.templates.read().unwrap().clone();
+        Box::pin(async move { Ok(templates.into_iter().find(|t| t.id == template_id)) })
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn update(
         &self,
@@ -3649,5 +3658,735 @@ impl SystemTemplates for FakeTemplates {
             .get(name)
             .cloned()
             .ok_or_else(|| MailError::Template(format!("unknown template: {name}")))
+    }
+}
+
+/// Thread-safe in-memory flow store.
+#[derive(Default)]
+pub struct FakeFlowStore {
+    flows: RwLock<Vec<crate::ports::flow_store::FlowRecord>>,
+    visible: RwLock<Vec<(String, String)>>,
+}
+
+impl FakeFlowStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Grants `user_id` access to `project_id`.
+    pub fn seed_visible(&self, user_id: &str, project_id: &str) {
+        self.visible
+            .write()
+            .unwrap()
+            .push((user_id.to_string(), project_id.to_string()));
+    }
+
+    fn is_visible(&self, user_id: &str, project_id: &str) -> bool {
+        self.visible
+            .read()
+            .unwrap()
+            .iter()
+            .any(|(u, p)| u == user_id && p == project_id)
+    }
+}
+
+impl crate::ports::flow_store::FlowStore for FakeFlowStore {
+    fn project_visible(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let visible = self.is_visible(&actor.to_string(), project_id);
+        Box::pin(async move { Ok(visible) })
+    }
+
+    fn list_by_project(
+        &self,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Vec<crate::ports::flow_store::FlowRecord>, StoreError>> {
+        let mut rows: Vec<_> = self
+            .flows
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|f| f.project_id == project_id)
+            .cloned()
+            .collect();
+        rows.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
+        Box::pin(async move { Ok(rows) })
+    }
+
+    fn get(
+        &self,
+        id: &str,
+    ) -> BoxFut<'_, Result<Option<crate::ports::flow_store::FlowRecord>, StoreError>> {
+        let found = self
+            .flows
+            .read()
+            .unwrap()
+            .iter()
+            .find(|f| f.id == id)
+            .cloned();
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn create(
+        &self,
+        project_id: &str,
+        name: &str,
+        definition: &serde_json::Value,
+    ) -> BoxFut<'_, Result<crate::ports::flow_store::FlowRecord, StoreError>> {
+        use crate::ports::flow_store::FlowRecord;
+        let now = chrono::Utc::now();
+        let record = FlowRecord {
+            id: Ulid::new().to_string(),
+            project_id: project_id.to_string(),
+            name: name.to_string(),
+            definition: definition.clone(),
+            version: 1,
+            created_at: now,
+            updated_at: now,
+        };
+        self.flows.write().unwrap().push(record.clone());
+        Box::pin(async move { Ok(record) })
+    }
+
+    fn update(
+        &self,
+        id: &str,
+        name: &str,
+        definition: &serde_json::Value,
+    ) -> BoxFut<'_, Result<Option<crate::ports::flow_store::FlowRecord>, StoreError>> {
+        let mut flows = self.flows.write().unwrap();
+        let updated = flows.iter_mut().find(|f| f.id == id).map(|f| {
+            f.name = name.to_string();
+            f.definition = definition.clone();
+            f.version += 1;
+            f.updated_at = chrono::Utc::now();
+            f.clone()
+        });
+        Box::pin(async move { Ok(updated) })
+    }
+
+    fn delete(&self, id: &str) -> BoxFut<'_, Result<bool, StoreError>> {
+        let deleted = {
+            let mut flows = self.flows.write().unwrap();
+            let before = flows.len();
+            flows.retain(|f| f.id != id);
+            flows.len() != before
+        };
+        Box::pin(async move { Ok(deleted) })
+    }
+}
+
+/// Thread-safe in-memory send store.
+#[derive(Default)]
+pub struct FakeSendStore {
+    sends: RwLock<Vec<crate::ports::send_store::SendRecord>>,
+    visible: RwLock<Vec<(String, String)>>,
+}
+
+impl FakeSendStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Grants `user_id` access to `project_id`.
+    pub fn seed_visible(&self, user_id: &str, project_id: &str) {
+        self.visible
+            .write()
+            .unwrap()
+            .push((user_id.to_string(), project_id.to_string()));
+    }
+
+    fn is_visible(&self, user_id: &str, project_id: &str) -> bool {
+        self.visible
+            .read()
+            .unwrap()
+            .iter()
+            .any(|(u, p)| u == user_id && p == project_id)
+    }
+}
+
+impl crate::ports::send_store::SendStore for FakeSendStore {
+    fn project_visible(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let visible = self.is_visible(&actor.to_string(), project_id);
+        Box::pin(async move { Ok(visible) })
+    }
+
+    fn create(
+        &self,
+        project_id: &str,
+        channel: &str,
+        recipients: &serde_json::Value,
+        title: &str,
+        body: &str,
+        send_at: DateTime<Utc>,
+    ) -> BoxFut<'_, Result<crate::ports::send_store::SendRecord, StoreError>> {
+        use crate::ports::send_store::SendRecord;
+        let now = chrono::Utc::now();
+        let record = SendRecord {
+            id: Ulid::new().to_string(),
+            project_id: project_id.to_string(),
+            channel: channel.to_string(),
+            recipients: recipients.clone(),
+            title: title.to_string(),
+            body: body.to_string(),
+            send_at,
+            status: "sending".to_string(),
+            attempts: 0,
+            provider: None,
+            external_id: None,
+            last_error: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.sends.write().unwrap().push(record.clone());
+        Box::pin(async move { Ok(record) })
+    }
+
+    fn mark_completed(
+        &self,
+        id: &str,
+        provider: &str,
+        external_id: Option<&str>,
+    ) -> BoxFut<'_, Result<Option<crate::ports::send_store::SendRecord>, StoreError>> {
+        let mut sends = self.sends.write().unwrap();
+        let updated = sends.iter_mut().find(|s| s.id == id).map(|s| {
+            s.status = "completed".to_string();
+            s.provider = Some(provider.to_string());
+            s.external_id = external_id.map(str::to_string);
+            s.updated_at = chrono::Utc::now();
+            s.clone()
+        });
+        Box::pin(async move { Ok(updated) })
+    }
+
+    fn mark_failed(
+        &self,
+        id: &str,
+        last_error: &str,
+    ) -> BoxFut<'_, Result<Option<crate::ports::send_store::SendRecord>, StoreError>> {
+        let mut sends = self.sends.write().unwrap();
+        let updated = sends.iter_mut().find(|s| s.id == id).map(|s| {
+            s.status = "failed".to_string();
+            s.attempts += 1;
+            s.last_error = Some(last_error.to_string());
+            s.updated_at = chrono::Utc::now();
+            s.clone()
+        });
+        Box::pin(async move { Ok(updated) })
+    }
+
+    fn list_by_project(
+        &self,
+        project_id: &str,
+        limit: i64,
+    ) -> BoxFut<'_, Result<Vec<crate::ports::send_store::SendRecord>, StoreError>> {
+        let mut rows: Vec<_> = self
+            .sends
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|s| s.project_id == project_id)
+            .cloned()
+            .collect();
+        rows.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        rows.truncate(limit.max(0) as usize);
+        Box::pin(async move { Ok(rows) })
+    }
+}
+
+/// Thread-safe in-memory channel provider config store.
+#[derive(Default)]
+pub struct FakeChannelProviderStore {
+    configs: RwLock<Vec<crate::domain::channels::ProjectProviderConfig>>,
+    visible: RwLock<Vec<(String, String)>>,
+}
+
+impl FakeChannelProviderStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Grants `user_id` access to `project_id` (visibility is checked
+    /// separately by services; the fake mirrors the rule loosely).
+    pub fn seed_visible(&self, user_id: &str, project_id: &str) {
+        self.visible
+            .write()
+            .unwrap()
+            .push((user_id.to_string(), project_id.to_string()));
+    }
+
+    /// Seeds an enabled provider config for a project channel.
+    pub fn seed_config(&self, project_id: &str, channel_id: &str, provider_id: &str) {
+        use crate::domain::channels::ProjectProviderConfig;
+        let now = chrono::Utc::now();
+        self.configs.write().unwrap().push(ProjectProviderConfig {
+            id: Ulid::new().to_string(),
+            project_id: project_id.to_string(),
+            channel_id: channel_id.to_string(),
+            provider_id: provider_id.to_string(),
+            config: serde_json::json!({}),
+            smtp_fallback: None,
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        });
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::ports::channel_provider_store::ChannelProviderStore for FakeChannelProviderStore {
+    async fn list_by_project(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<crate::domain::channels::ProjectProviderConfig>, String> {
+        Ok(self
+            .configs
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|c| c.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn get(
+        &self,
+        id: &str,
+    ) -> Result<Option<crate::domain::channels::ProjectProviderConfig>, String> {
+        Ok(self
+            .configs
+            .read()
+            .unwrap()
+            .iter()
+            .find(|c| c.id == id)
+            .cloned())
+    }
+
+    async fn get_by_project_channel_provider(
+        &self,
+        project_id: &str,
+        channel_id: &str,
+        provider_id: &str,
+    ) -> Result<Option<crate::domain::channels::ProjectProviderConfig>, String> {
+        Ok(self
+            .configs
+            .read()
+            .unwrap()
+            .iter()
+            .find(|c| {
+                c.project_id == project_id
+                    && c.channel_id == channel_id
+                    && c.provider_id == provider_id
+            })
+            .cloned())
+    }
+
+    async fn create(
+        &self,
+        input: crate::domain::channels::ProjectProviderConfigInput,
+        project_id: &str,
+    ) -> Result<crate::domain::channels::ProjectProviderConfig, String> {
+        use crate::domain::channels::ProjectProviderConfig;
+        let now = chrono::Utc::now();
+        let record = ProjectProviderConfig {
+            id: Ulid::new().to_string(),
+            project_id: project_id.to_string(),
+            channel_id: input.channel_id,
+            provider_id: input.provider_id,
+            config: input.config,
+            smtp_fallback: None,
+            enabled: input.enabled,
+            created_at: now,
+            updated_at: now,
+        };
+        self.configs.write().unwrap().push(record.clone());
+        Ok(record)
+    }
+
+    async fn update(
+        &self,
+        id: &str,
+        input: crate::domain::channels::ProjectProviderConfigInput,
+    ) -> Result<crate::domain::channels::ProjectProviderConfig, String> {
+        let mut configs = self.configs.write().unwrap();
+        let found = configs.iter_mut().find(|c| c.id == id).map(|c| {
+            c.channel_id = input.channel_id.clone();
+            c.provider_id = input.provider_id.clone();
+            c.config = input.config.clone();
+            c.enabled = input.enabled;
+            c.updated_at = chrono::Utc::now();
+            c.clone()
+        });
+        found.ok_or_else(|| "provider config not found".to_string())
+    }
+
+    async fn delete(&self, id: &str) -> Result<(), String> {
+        self.configs.write().unwrap().retain(|c| c.id != id);
+        Ok(())
+    }
+
+    async fn delete_by_project(&self, project_id: &str) -> Result<(), String> {
+        self.configs
+            .write()
+            .unwrap()
+            .retain(|c| c.project_id != project_id);
+        Ok(())
+    }
+}
+
+/// In-memory schedule store for HTTP tests.
+#[derive(Default)]
+pub struct FakeScheduleStore {
+    schedules: RwLock<Vec<crate::ports::schedule_store::ScheduleRecord>>,
+    visible: RwLock<Vec<(String, String)>>,
+    /// Joined flow snapshots, mirroring the Postgres flow JOIN.
+    flows: RwLock<HashMap<String, (String, serde_json::Value)>>,
+    /// Joined template snapshots, mirroring the Postgres template JOIN.
+    templates: RwLock<HashMap<String, (String, serde_json::Value)>>,
+}
+
+impl FakeScheduleStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Grants `user_id` access to `project_id`.
+    pub fn seed_visible(&self, user_id: &str, project_id: &str) {
+        self.visible
+            .write()
+            .unwrap()
+            .push((user_id.to_string(), project_id.to_string()));
+    }
+
+    /// Seeds the joined flow row (name + definition) for `flow_id`.
+    pub fn seed_flow(&self, flow_id: &str, name: &str, definition: serde_json::Value) {
+        self.flows
+            .write()
+            .unwrap()
+            .insert(flow_id.to_string(), (name.to_string(), definition));
+    }
+
+    /// Seeds the joined template row (name + content) for `template_id`.
+    pub fn seed_template(&self, template_id: &str, name: &str, content: serde_json::Value) {
+        self.templates
+            .write()
+            .unwrap()
+            .insert(template_id.to_string(), (name.to_string(), content));
+    }
+
+    fn is_visible(&self, user_id: &str, project_id: &str) -> bool {
+        self.visible
+            .read()
+            .unwrap()
+            .iter()
+            .any(|(u, p)| u == user_id && p == project_id)
+    }
+
+    fn joined_flow(&self, flow_id: &str) -> (String, serde_json::Value) {
+        self.flows
+            .read()
+            .unwrap()
+            .get(flow_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+}
+
+impl crate::ports::schedule_store::ScheduleStore for FakeScheduleStore {
+    fn project_visible(
+        &self,
+        actor: crate::domain::auth::entities::UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let visible = self.is_visible(&actor.to_string(), project_id);
+        Box::pin(async move { Ok(visible) })
+    }
+
+    fn list_by_project(
+        &self,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Vec<crate::ports::schedule_store::ScheduleRecord>, StoreError>> {
+        let mut rows: Vec<_> = self
+            .schedules
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|s| s.project_id == project_id)
+            .cloned()
+            .collect();
+        rows.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
+        Box::pin(async move { Ok(rows) })
+    }
+
+    fn get(
+        &self,
+        id: &str,
+    ) -> BoxFut<'_, Result<Option<crate::ports::schedule_store::ScheduleRecord>, StoreError>> {
+        let row = self
+            .schedules
+            .read()
+            .unwrap()
+            .iter()
+            .find(|s| s.id == id)
+            .cloned();
+        Box::pin(async move { Ok(row) })
+    }
+
+    fn scheduled_flow_ids(&self, project_id: &str) -> BoxFut<'_, Result<Vec<String>, StoreError>> {
+        let mut ids: Vec<String> = self
+            .schedules
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|s| s.project_id == project_id)
+            .map(|s| s.flow_id.clone())
+            .collect();
+        ids.sort();
+        ids.dedup();
+        Box::pin(async move { Ok(ids) })
+    }
+
+    fn create(
+        &self,
+        draft: &crate::ports::schedule_store::NewSchedule,
+    ) -> BoxFut<'_, Result<crate::ports::schedule_store::ScheduleRecord, StoreError>> {
+        use crate::ports::schedule_store::ScheduleRecord;
+        let now = chrono::Utc::now();
+        let (flow_name, flow_definition) = self.joined_flow(&draft.flow_id);
+        let (template_name, template_content) = draft
+            .template_id
+            .as_deref()
+            .and_then(|tid| {
+                self.templates
+                    .read()
+                    .unwrap()
+                    .get(tid)
+                    .cloned()
+                    .map(|(n, c)| (Some(n), Some(c)))
+            })
+            .unwrap_or((None, None));
+        let record = ScheduleRecord {
+            id: Ulid::new().to_string(),
+            project_id: draft.project_id.clone(),
+            name: draft.name.clone(),
+            flow_id: draft.flow_id.clone(),
+            flow_name,
+            flow_definition,
+            kind: draft.kind.clone(),
+            run_at: draft.run_at,
+            interval_secs: draft.interval_secs,
+            days: draft.days.clone(),
+            run_time: draft.run_time.clone(),
+            timezone: draft.timezone.clone(),
+            template_id: draft.template_id.clone(),
+            template_name,
+            template_content,
+            channel: draft.channel.clone(),
+            title: draft.title.clone(),
+            body: draft.body.clone(),
+            recipients: draft.recipients.clone(),
+            active: draft.active,
+            next_run_at: draft.next_run_at,
+            last_run_at: None,
+            last_status: None,
+            last_error: None,
+            run_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        self.schedules.write().unwrap().push(record.clone());
+        Box::pin(async move { Ok(record) })
+    }
+
+    fn update(
+        &self,
+        id: &str,
+        patch: &crate::ports::schedule_store::ScheduleUpdate,
+    ) -> BoxFut<'_, Result<Option<crate::ports::schedule_store::ScheduleRecord>, StoreError>> {
+        let mut schedules = self.schedules.write().unwrap();
+        let updated = schedules.iter_mut().find(|s| s.id == id).map(|s| {
+            s.name = patch.name.clone();
+            s.flow_id = patch.flow_id.clone();
+            s.kind = patch.kind.clone();
+            s.run_at = patch.run_at;
+            s.interval_secs = patch.interval_secs;
+            s.days = patch.days.clone();
+            s.run_time = patch.run_time.clone();
+            s.timezone = patch.timezone.clone();
+            s.template_id = patch.template_id.clone();
+            s.channel = patch.channel.clone();
+            s.title = patch.title.clone();
+            s.body = patch.body.clone();
+            s.recipients = patch.recipients.clone();
+            s.active = patch.active;
+            s.next_run_at = patch.next_run_at;
+            s.updated_at = chrono::Utc::now();
+            s.clone()
+        });
+        Box::pin(async move { Ok(updated) })
+    }
+
+    fn delete(&self, id: &str) -> BoxFut<'_, Result<bool, StoreError>> {
+        let mut schedules = self.schedules.write().unwrap();
+        let before = schedules.len();
+        schedules.retain(|s| s.id != id);
+        let deleted = schedules.len() < before;
+        drop(schedules);
+        Box::pin(async move { Ok(deleted) })
+    }
+
+    fn claim_due(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> BoxFut<'_, Result<Vec<crate::ports::schedule_store::ScheduleRecord>, StoreError>> {
+        let mut schedules = self.schedules.write().unwrap();
+        let mut claimed = Vec::new();
+        let mut ids: Vec<String> = schedules
+            .iter()
+            .filter(|s| s.active && s.next_run_at.is_some_and(|n| n <= now))
+            .map(|s| (s.next_run_at, s.id.clone()))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .take(limit.max(0) as usize)
+            .map(|(_, id)| id)
+            .collect();
+        ids.sort();
+        for schedule in schedules.iter_mut() {
+            if ids.contains(&schedule.id) {
+                schedule.last_run_at = Some(now);
+                schedule.updated_at = now;
+                claimed.push(schedule.clone());
+            }
+        }
+        claimed.sort_by(|a, b| a.next_run_at.cmp(&b.next_run_at).then(a.id.cmp(&b.id)));
+        Box::pin(async move { Ok(claimed) })
+    }
+
+    fn mark_run(
+        &self,
+        id: &str,
+        last_status: &str,
+        last_error: Option<&str>,
+        next_run_at: Option<chrono::DateTime<chrono::Utc>>,
+        active: bool,
+    ) -> BoxFut<'_, Result<Option<crate::ports::schedule_store::ScheduleRecord>, StoreError>> {
+        let mut schedules = self.schedules.write().unwrap();
+        let updated = schedules.iter_mut().find(|s| s.id == id).map(|s| {
+            s.last_status = Some(last_status.to_string());
+            s.last_error = last_error.map(str::to_string);
+            s.next_run_at = next_run_at;
+            s.active = active;
+            s.run_count += 1;
+            if s.last_run_at.is_none() {
+                s.last_run_at = Some(chrono::Utc::now());
+            }
+            s.updated_at = chrono::Utc::now();
+            s.clone()
+        });
+        Box::pin(async move { Ok(updated) })
+    }
+}
+
+/// Recording HTTP requester for flow HTTP step tests.
+#[derive(Default)]
+pub struct FakeHttpRequester {
+    calls: RwLock<Vec<crate::ports::http_requester::HttpCall>>,
+    fail: RwLock<bool>,
+}
+
+impl FakeHttpRequester {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Recorded outbound calls, in order.
+    pub fn calls(&self) -> Vec<crate::ports::http_requester::HttpCall> {
+        self.calls.read().unwrap().clone()
+    }
+
+    /// When true, every call fails (to exercise log-only semantics).
+    pub fn set_fail(&self, fail: bool) {
+        *self.fail.write().unwrap() = fail;
+    }
+}
+
+impl crate::ports::http_requester::HttpRequester for FakeHttpRequester {
+    fn request(
+        &self,
+        call: &crate::ports::http_requester::HttpCall,
+    ) -> crate::ports::http_requester::BoxHttpFut<
+        '_,
+        Result<crate::ports::http_requester::HttpResult, String>,
+    > {
+        self.calls.write().unwrap().push(call.clone());
+        let fail = *self.fail.read().unwrap();
+        Box::pin(async move {
+            if fail {
+                Err("fake http failure".to_string())
+            } else {
+                Ok(crate::ports::http_requester::HttpResult {
+                    status: 200,
+                    ok: true,
+                })
+            }
+        })
+    }
+}
+
+/// In-memory trigger token store for inbound webhook tests.
+#[derive(Default)]
+pub struct FakeTriggerTokenStore {
+    tokens: RwLock<Vec<crate::ports::trigger_token_store::TriggerTokenRecord>>,
+}
+
+impl FakeTriggerTokenStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl crate::ports::trigger_token_store::TriggerTokenStore for FakeTriggerTokenStore {
+    fn replace_flow_tokens(
+        &self,
+        flow_id: &str,
+        project_id: &str,
+        definition: &serde_json::Value,
+        pairs: &[(String, String)],
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let mut tokens = self.tokens.write().unwrap();
+        tokens.retain(|t| t.flow_id != flow_id);
+        for (token, node_id) in pairs {
+            tokens.push(crate::ports::trigger_token_store::TriggerTokenRecord {
+                token: token.clone(),
+                flow_id: flow_id.to_string(),
+                node_id: node_id.clone(),
+                project_id: project_id.to_string(),
+                flow_definition: definition.clone(),
+            });
+        }
+        Box::pin(async move { Ok(()) })
+    }
+
+    fn lookup(
+        &self,
+        token: &str,
+    ) -> BoxFut<'_, Result<Option<crate::ports::trigger_token_store::TriggerTokenRecord>, StoreError>>
+    {
+        let row = self
+            .tokens
+            .read()
+            .unwrap()
+            .iter()
+            .find(|t| t.token == token)
+            .cloned();
+        Box::pin(async move { Ok(row) })
     }
 }

@@ -397,7 +397,6 @@ export default function WebhooksPage() {
             searchKey="url"
             searchPlaceholder="Search by URL..."
             pageSize={10}
-            tableClassName="bg-card"
             emptyMessage="No endpoints yet. Add one to start receiving event deliveries."
             onRowClick={(row) =>
               setSelectedId((prev) => (prev === row.id ? null : row.id))

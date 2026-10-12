@@ -17,7 +17,7 @@ import {
   FileText,
   Megaphone,
   Clock,
-  Radio,
+  Workflow,
   BarChart3,
   Webhook,
   KeyRound,
@@ -61,9 +61,9 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Channels",
+    label: "Flows",
     items: [
-      { label: "Channels", href: "/channels", icon: Radio },
+      { label: "Flows", href: "/flows", icon: Workflow },
       { label: "Providers", href: "/providers", icon: Link },
     ],
   },

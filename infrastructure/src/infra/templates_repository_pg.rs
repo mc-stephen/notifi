@@ -311,6 +311,35 @@ impl TemplatesStore for PgTemplatesStore {
         })
     }
 
+    fn get_by_id(
+        &self,
+        template_id: &str,
+    ) -> BoxFut<'_, Result<Option<TemplateRecord>, StoreError>> {
+        let pool = self.pool.clone();
+        let template_id = template_id.to_string();
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, TemplateRow>(
+                "SELECT id, project_id, name, description, channel, content, version, created_at, updated_at
+                 FROM platform_templates
+                 WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(&template_id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+
+            match row {
+                Some(row) => {
+                    let attachments = PgTemplatesStore::load_attachments(&pool, &row.id)
+                        .await
+                        .map_err(map_err)?;
+                    Ok(Some(TemplateRecord::from((row, attachments))))
+                }
+                None => Ok(None),
+            }
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn update(
         &self,

@@ -207,7 +207,59 @@ fn run_inner() -> Result<(), String> {
             ))
         });
 
-        // Admin user management: list/stats/suspend across platform users.
+        // Flows: system default flow per project (seeded at creation).
+        let flows = db.as_ref().map(|pool| {
+            std::sync::Arc::new(domain::flows::FlowService::new(std::sync::Arc::new(
+                infra::PgFlowStore::new(pool.clone()),
+            )))
+        });
+
+        // Sends: record-first product sends executed through default flows.
+        let sends = db.as_ref().map(|pool| {
+            let channel_providers = channel_providers
+                .clone()
+                .expect("channel providers built with db");
+            std::sync::Arc::new(domain::sends::SendService::new(
+                std::sync::Arc::new(infra::PgSendStore::new(pool.clone())),
+                flows.clone().expect("flows built with db"),
+                channel_providers,
+                std::sync::Arc::new(infra::delivery_adapters::DefaultAdapterFactory),
+                std::sync::Arc::new(infra::ReqwestHttpRequester::new()),
+            ))
+        });
+
+        // Flow schedules: timed runs of assigned flows. Built after sends
+        // (execution records send rows) with the same provider wiring.
+        let schedules = db.as_ref().map(|pool| {
+            let channel_providers = channel_providers
+                .clone()
+                .expect("channel providers built with db");
+            std::sync::Arc::new(domain::schedules::ScheduleService::new(
+                std::sync::Arc::new(infra::PgScheduleStore::new(pool.clone())),
+                std::sync::Arc::new(infra::PgFlowStore::new(pool.clone())),
+                std::sync::Arc::new(infra::PgSendStore::new(pool.clone())),
+                std::sync::Arc::new(infra::PgTemplatesStore::new(pool.clone())),
+                channel_providers,
+                std::sync::Arc::new(infra::delivery_adapters::DefaultAdapterFactory),
+                std::sync::Arc::new(infra::ReqwestHttpRequester::new()),
+            ))
+        });
+
+        // Inbound webhook fires: token-authenticated, sessionless.
+        // Shares the send records, templates, and provider wiring.
+        let inbound = db.as_ref().map(|pool| {
+            let channel_providers = channel_providers
+                .clone()
+                .expect("channel providers built with db");
+            std::sync::Arc::new(domain::inbound::InboundService::new(
+                std::sync::Arc::new(infra::PgTriggerTokenStore::new(pool.clone())),
+                std::sync::Arc::new(infra::PgSendStore::new(pool.clone())),
+                std::sync::Arc::new(infra::PgTemplatesStore::new(pool.clone())),
+                channel_providers,
+                std::sync::Arc::new(infra::delivery_adapters::DefaultAdapterFactory),
+                std::sync::Arc::new(infra::ReqwestHttpRequester::new()),
+            ))
+        });
         let admin_users = db.as_ref().map(|pool| {
             let auth_store = std::sync::Arc::new(infra::PgAuthStore::new(pool.clone()));
             std::sync::Arc::new(domain::admin::AdminUsersService::new(
@@ -313,6 +365,16 @@ fn run_inner() -> Result<(), String> {
                 "billing disabled (needs database); /app/billing + /admin/billing routes will answer 503"
             );
         }
+        if flows.is_none() || sends.is_none() {
+            tracing::warn!(
+                "flows/sends disabled (needs database); /v1/notifications + flow routes will answer 503"
+            );
+        }
+        if schedules.is_none() {
+            tracing::warn!(
+                "schedules disabled (needs database); /app/schedules routes will answer 503"
+            );
+        }
         if admin_users.is_none() {
             tracing::warn!(
                 "admin user management disabled (needs database); /admin/users routes will answer 503"
@@ -342,6 +404,8 @@ fn run_inner() -> Result<(), String> {
         // Cloned for the scheduled-broadcast worker below (AppState takes
         // ownership of the original).
         let admin_notifications_for_worker = admin_notifications.clone();
+        // Same for the flow-schedule worker.
+        let schedules_for_worker = schedules.clone();
 
         let app = api::build_router(
             api::AppState {
@@ -362,6 +426,10 @@ fn run_inner() -> Result<(), String> {
                 channel_providers,
                 tickets,
                 billing,
+                flows,
+                sends,
+                inbound,
+                schedules,
                 notifications,
                 provider_tester,
             },
@@ -392,32 +460,50 @@ fn run_inner() -> Result<(), String> {
             "api listening"
         );
 
-        // Scheduled-broadcast worker: drains due broadcasts on an interval.
-        // Runs only when the admin notifications service is wired; stops
-        // with the process (a claimed-but-unsent row stays `sending` until
-        // an operator re-queues it — see ARCHITECTURE.md).
-        if let Some(notifications) = admin_notifications_for_worker.clone() {
+        // Sweep dispatch: an external `worker` binary shares the load through
+        // RabbitMQ when configured (one tick per interval); otherwise the
+        // embedded loop below does the work. A failed tick publish degrades
+        // to a local sweep so a RabbitMQ outage stalls nothing — the atomic
+        // claims keep a concurrent worker from double-firing (a
+        // claimed-but-unsent broadcast stays `sending` until an operator
+        // re-queues it — see ARCHITECTURE.md).
+        let rabbit = infra::rabbit::connect(&config).await;
+        if let Some(hub) = rabbit {
+            let admin = admin_notifications_for_worker.clone();
+            let sched = schedules_for_worker.clone();
             tokio::spawn(async move {
-                let mut interval =
-                    tokio::time::interval(std::time::Duration::from_secs(30));
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+                    infra::rabbit::SWEEP_INTERVAL_SECS,
+                ));
                 loop {
                     interval.tick().await;
-                    match notifications
-                        .run_due_worker(chrono::Utc::now())
-                        .await
-                    {
-                        Ok(0) => {}
-                        Ok(n) => tracing::info!(
-                            sent = n,
-                            "scheduled notification worker sent broadcasts"
-                        ),
-                        Err(e) => tracing::error!(
-                            error = %e,
-                            "scheduled notification worker failed"
-                        ),
+                    match hub.publish_sweep().await {
+                        Ok(()) => {}
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
+                                "sweep tick failed; running degraded local sweep"
+                            );
+                            run_sweep_once(&admin, &sched).await;
+                        }
                     }
                 }
             });
+        } else {
+            tracing::info!("sweeps embedded (no rabbitmq configured)");
+            let admin = admin_notifications_for_worker.clone();
+            let sched = schedules_for_worker.clone();
+            if admin.is_some() || sched.is_some() {
+                tokio::spawn(async move {
+                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+                        infra::rabbit::SWEEP_INTERVAL_SECS,
+                    ));
+                    loop {
+                        interval.tick().await;
+                        run_sweep_once(&admin, &sched).await;
+                    }
+                });
+            }
         }
 
         if let Err(e) = axum::serve(listener, app)
@@ -431,6 +517,28 @@ fn run_inner() -> Result<(), String> {
     });
 
     Ok(())
+}
+
+/// Runs one sweep of due broadcasts + due schedules. Shared by the embedded
+/// loop and the degraded tick path above.
+async fn run_sweep_once(
+    admin_notifications: &Option<std::sync::Arc<domain::admin::AdminNotificationsService>>,
+    schedules: &Option<std::sync::Arc<domain::schedules::ScheduleService>>,
+) {
+    if let Some(notifications) = admin_notifications {
+        match notifications.run_due_worker(chrono::Utc::now()).await {
+            Ok(0) => {}
+            Ok(n) => tracing::info!(sent = n, "scheduled notification worker sent broadcasts"),
+            Err(e) => tracing::error!(error = %e, "scheduled notification worker failed"),
+        }
+    }
+    if let Some(schedules) = schedules {
+        match schedules.run_due(chrono::Utc::now()).await {
+            Ok(0) => {}
+            Ok(n) => tracing::info!(ran = n, "schedule worker fired due schedules"),
+            Err(e) => tracing::error!(error = %e, "schedule worker failed"),
+        }
+    }
 }
 
 /// Resolves on SIGINT (Ctrl-C) or SIGTERM; triggers graceful shutdown.

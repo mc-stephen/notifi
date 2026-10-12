@@ -565,7 +565,6 @@ export default function ApiKeysPage() {
             searchPlaceholder="Search keys…"
             pageSize={10}
             emptyMessage="No API keys yet. Generate one to get started."
-            tableClassName="bg-card"
             onRowClick={(row) => {
               setSelectedId((prev) => (prev === row.id ? null : row.id));
             }}

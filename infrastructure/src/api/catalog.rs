@@ -4,8 +4,8 @@
 //! product API under `/v1` — [`APP_ROUTES`] — the user dashboard backend
 //! under `/app` — and [`ADMIN_ROUTES`] — platform administration under
 //! `/admin`). To add a route: declare it in the matching const, then
-//! mount it in the surface's router (`project::router` / `user::app_router` /
-//! `user::admin_router`). All parts live in this file, so drift is visible
+//! mount it in the surface's router (`project::router` / `app::app_router` /
+//! `admin::admin_router`). All parts live in this file, so drift is visible
 //! immediately.
 
 use serde::Serialize;
@@ -47,13 +47,19 @@ pub struct RouteInfo {
     pub description: &'static str,
 }
 
-/// External product API routes (`/v1`). Empty until M2 lands the first
-/// product endpoint; keep this list in lockstep with
+/// External product API routes (`/v1`). First product endpoint: instant
+/// notification sends. Keep this list in lockstep with
 /// [`crate::api::project::router`].
-pub const PROJECT_ROUTES: &[RouteInfo] = &[];
+pub const PROJECT_ROUTES: &[RouteInfo] = &[RouteInfo {
+    method: "POST",
+    path: "/v1/notifications",
+    surface: Surface::Project,
+    feature: "sends",
+    description: "record-first notification send through the default flow",
+}];
 
 /// User dashboard backend (`/app`). Mirrors
-/// [`crate::api::user::app_router`].
+/// [`crate::api::app::app_router`].
 pub const APP_ROUTES: &[RouteInfo] = &[
     // -- auth feature ------------------------------------------------------
     RouteInfo {
@@ -494,6 +500,13 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         description: "project subscription (?project_id=), free ensured on first read",
     },
     RouteInfo {
+        method: "GET",
+        path: "/app/billing/history",
+        surface: Surface::App,
+        feature: "billing",
+        description: "receipt rows for the project history (?project_id=), derived, newest first",
+    },
+    RouteInfo {
         method: "POST",
         path: "/app/billing/subscriptions",
         surface: Surface::App,
@@ -514,10 +527,98 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         feature: "billing",
         description: "restart the current period (422 when the plan retired)",
     },
+    // -- flows feature ------------------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/app/flows",
+        surface: Surface::App,
+        feature: "flows",
+        description: "project flows (?project_id=), oldest first, minus scheduled",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/flows",
+        surface: Surface::App,
+        feature: "flows",
+        description: "create a flow (omitted definition starts empty)",
+    },
+    RouteInfo {
+        method: "PUT",
+        path: "/app/flows/{id}",
+        surface: Surface::App,
+        feature: "flows",
+        description: "replace a flow's name/definition (builder save path)",
+    },
+    RouteInfo {
+        method: "DELETE",
+        path: "/app/flows/{id}",
+        surface: Surface::App,
+        feature: "flows",
+        description: "delete a flow (sends fail closed once none qualify)",
+    },
+    // -- schedules feature --------------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/app/schedules",
+        surface: Surface::App,
+        feature: "schedules",
+        description: "project flow schedules (?project_id=), oldest first",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/schedules",
+        surface: Surface::App,
+        feature: "schedules",
+        description: "attach a flow to a timing (the flow leaves the flows list)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/app/schedules/{id}",
+        surface: Surface::App,
+        feature: "schedules",
+        description: "one schedule with its execution payload (?project_id=)",
+    },
+    RouteInfo {
+        method: "PATCH",
+        path: "/app/schedules/{id}",
+        surface: Surface::App,
+        feature: "schedules",
+        description: "edit name, flow, timing, payload, or pause/resume",
+    },
+    RouteInfo {
+        method: "DELETE",
+        path: "/app/schedules/{id}",
+        surface: Surface::App,
+        feature: "schedules",
+        description: "delete a schedule (the flow reappears in the flows list)",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/schedules/{id}/run-now",
+        surface: Surface::App,
+        feature: "schedules",
+        description: "fire the assigned flow immediately (timing untouched)",
+    },
+    // -- inbound webhooks ---------------------------------------------------
+    RouteInfo {
+        method: "POST",
+        path: "/v1/hooks/{token}",
+        surface: Surface::Project,
+        feature: "inbound",
+        description: "fire a flow's webhook trigger (token auth; caller values win, flow fills gaps)",
+    },
+    // -- sends feature ------------------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/app/sends",
+        surface: Surface::App,
+        feature: "sends",
+        description: "newest-first sends per project (?project_id=, delivery history)",
+    },
 ];
 
 /// Platform administration (`/admin`). Mirrors
-/// [`crate::api::user::admin_router`].
+/// [`crate::api::admin::admin_router`].
 pub const ADMIN_ROUTES: &[RouteInfo] = &[
     // -- admin accounts -----------------------------------------------------
     RouteInfo {

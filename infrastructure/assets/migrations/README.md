@@ -10,6 +10,9 @@ Single-file dev-stage squash, applied automatically at server boot (`src/infra/d
   members, recipients, templates, provider configs), `billing_plans` +
   `project_subscriptions` (pricing catalog + per-project subscriptions),
   `audit_logs` (append-only audit trail), `event_outbox` (transactional outbox).
-- `0009_project_invites.sql` — `project_invites` for GitHub-style team
-  invites (pending row + emailed token; acceptance creates the membership).
-  Numbers 0002–0008 are skipped (consumed by the pre-production squash).
+- Plus: `project_invites` (team invites), `key_ip_allowlist` (per-key IP
+  allowlists), `notification_sends` + `flows` (record-first sends; no `kind`
+  column — "default" is emergent, not stored), `schedules` (once/recurring/
+  weekly + template columns folded in), `flow_trigger_tokens` (inbound
+  webhook tokens). Folded into `0001` on 2026-10-12; the 0010 OAuth backfill
+  was data-only and is omitted on fresh databases.

@@ -6,9 +6,13 @@ pub mod audit;
 pub mod auth;
 pub mod billing;
 pub mod channels;
+pub mod flows;
+pub mod inbound;
 pub mod notifications;
 pub mod projects;
 pub mod recipients;
+pub mod schedules;
+pub mod sends;
 pub mod support;
 pub mod templates;
 

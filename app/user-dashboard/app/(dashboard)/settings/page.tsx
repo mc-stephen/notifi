@@ -3,25 +3,20 @@
 import { useState } from "react";
 import { PageHeader } from "@/components/custom/page-header";
 import { NotificationSettings } from "@/components/custom/settings/notification-settings";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Globe,
   Bell,
   Save,
   Trash2,
   Monitor,
+  Check,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ENVIRONMENT_DOTS } from "@/lib/constants";
 
 type TabId = "general" | "notifications";
 
@@ -30,22 +25,16 @@ const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
   { id: "notifications", label: "Notifications", icon: Bell },
 ];
 
-const TIMEZONES = [
-  "UTC",
-  "Africa/Lagos",
-  "Europe/London",
-  "America/New_York",
-  "Asia/Singapore",
-];
+const ENV_HINTS = {
+  development: "Sandbox — simulated deliveries, nothing real goes out.",
+  production: "Live — real notifications to real recipients.",
+} as const;
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<TabId>("general");
   const [orgName, setOrgName] = useState("Acme Corp");
-  const [orgSlug, setOrgSlug] = useState("acme-corp");
   const [orgEmail, setOrgEmail] = useState("hello@acme-corp.com");
-  const [timezone, setTimezone] = useState("Africa/Lagos");
   const [defaultEnv, setDefaultEnv] = useState<"development" | "production">("development");
-  const [retention, setRetention] = useState("90");
   const [saved, setSaved] = useState(false);
 
   const handleSave = () => {
@@ -103,29 +92,12 @@ export default function SettingsPage() {
                     <Input value={orgName} onChange={(e) => setOrgName(e.target.value)} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Slug</label>
-                    <Input value={orgSlug} onChange={(e) => setOrgSlug(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
                     <label className="text-sm font-medium">Contact email</label>
                     <Input
                       type="email"
                       value={orgEmail}
                       onChange={(e) => setOrgEmail(e.target.value)}
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Timezone</label>
-                    <Select value={timezone} onValueChange={(v) => { if (v) setTimezone(v); }}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TIMEZONES.map((tz) => (
-                          <SelectItem key={tz} value={tz}>{tz}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
                   </div>
                 </div>
               </CardContent>
@@ -136,58 +108,51 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-2 font-medium">
                   <Monitor className="size-4 text-muted-foreground" /> Project defaults
                 </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Default environment</label>
-                    <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1" role="group" aria-label="Default environment">
-                      {(["development", "production"] as const).map((env) => (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Default environment</label>
+                  <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Default environment">
+                    {(["development", "production"] as const).map((env) => {
+                      const active = defaultEnv === env;
+                      return (
                         <button
                           key={env}
                           type="button"
+                          role="radio"
+                          aria-checked={active}
                           onClick={() => setDefaultEnv(env)}
-                          aria-pressed={defaultEnv === env}
                           className={cn(
-                            "rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors",
-                            defaultEnv === env
-                              ? "bg-primary text-primary-foreground"
-                              : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                            "flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+                            active
+                              ? "border-primary bg-primary/5"
+                              : "hover:border-muted-foreground/30",
                           )}
                         >
-                          {env}
+                          <span className={cn("mt-1 size-2 shrink-0 rounded-full", ENVIRONMENT_DOTS[env])} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium capitalize">{env}</span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">{ENV_HINTS[env]}</span>
+                          </span>
+                          {active && <Check className="size-4 shrink-0 text-primary" />}
                         </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Data retention (days)</label>
-                    <Select value={retention} onValueChange={(v) => { if (v) setRetention(v); }}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {["30", "90", "180", "365"].map((days) => (
-                          <SelectItem key={days} value={days}>{days} days</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      );
+                    })}
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 text-sm font-medium text-destructive">
-                      <Trash2 className="size-4" /> Delete organization
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Permanently delete this organization and all its data
-                    </div>
-                  </div>
-                  <Button variant="destructive" size="sm">Delete</Button>
-                </div>
+            <Card className="border-destructive/20 bg-destructive/[0.03]">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-destructive">
+                  <Trash2 className="size-4" />
+                  Delete organization
+                </CardTitle>
+                <CardDescription>
+                  Permanently delete this organization and all its data. This action cannot be undone.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="destructive" size="sm">Delete organization</Button>
               </CardContent>
             </Card>
           </div>

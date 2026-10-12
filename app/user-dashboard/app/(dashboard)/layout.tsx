@@ -22,6 +22,8 @@ export default function DashboardLayout({
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const onboardingCompleted = useAuthStore((s) => s.onboardingCompleted);
   const authHydrated = useAuthStore((s) => s.authHydrated);
+  // Flow builder fills the body edge-to-edge (no padded container).
+  const isFlowPage = pathname.startsWith("/flows/");
 
   // Dead or missing sessions (nuked DB, expiry, revocation elsewhere)
   // land here with a stale cookie: fetchMe settles unauthenticated and
@@ -75,7 +77,11 @@ export default function DashboardLayout({
         <main className="flex-1 min-h-0 overflow-y-auto bg-popover">
           <div
             id="dashboard-panel-host"
-            className="relative mx-auto flex min-h-full max-w-[1400px] flex-col p-6 lg:p-8"
+            className={
+              isFlowPage
+                ? "relative mx-auto flex min-h-full w-full max-w-none flex-col"
+                : "relative mx-auto flex min-h-full max-w-[1400px] flex-col p-6 lg:p-8"
+            }
           >
             {children}
           </div>
@@ -84,7 +90,7 @@ export default function DashboardLayout({
 
       {/* Command palette */}
       <CommandPalette />
-      <Toaster position="top-right" />
+      <Toaster position="bottom-right" />
     </div>
   );
 }

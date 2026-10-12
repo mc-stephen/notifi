@@ -54,7 +54,8 @@ cargo test --test auth_api healthz
 cargo run
 ```
 
-Boots on `127.0.0.1:8080` by default. Override with env vars:
+Boots on `127.0.0.1:8080` by default. Without RabbitMQ the sweeps
+(schedules + scheduled broadcasts) run embedded on a 30s loop. Override with env vars:
 
 ```shell
 NOTIFI_HOST=0.0.0.0 NOTIFI_PORT=9000 NOTIFI_LOG=debug cargo run
@@ -71,32 +72,39 @@ cargo run
 > Migrations in `assets/migrations/` apply automatically at boot when the database
 > connection succeeds.
 
+## 5b. Run the worker (separate sweeps via RabbitMQ)
+
+```shell
+cargo run -p worker
+```
+
+Consumes sweep ticks from RabbitMQ (`notifi.sweep` queue) and runs the same
+sweeps the API embeds. Needs `NOTIFI_RABBITMQ_URL` (else it sweeps on a local
+30s interval) and `NOTIFI_DATABASE_URL` (else it exits — nothing to sweep).
+Safe to run alongside the API: claims are atomic, a second sweeper simply
+finds nothing due. RabbitMQ UI with pending ticks: `http://localhost:15672`.
+
 ## 6. Local database & Redis (docker)
 
 ```shell
 # Edit docker-compose.yml first: replace the CHANGE_ME values
-docker compose up -d            # start Postgres (with pgmq) + Redis
+docker compose up -d            # start Postgres (with pgmq) + Redis + RabbitMQ
 docker compose ps               # status
 docker compose logs -f postgres # follow logs
 docker compose down             # stop (keeps data in volumes)
 docker compose down -v          # stop AND wipe data (fresh start)
 ```
 
-### Local Redis without Docker (manual build, 2026-09-16)
-
-`brew install redis` stalled on an unreachable GNU mirror, so Redis 8.10.1
-was compiled from source into `~/tools/redis` (localhost-only, no password,
-no persistence — the API only PINGs Redis for `/readyz`). Manage it with:
+### Local Redis without Docker (brew)
 
 ```shell
-scripts/redis-local.sh start    # start (also re-run after a reboot)
-scripts/redis-local.sh status   # check
-scripts/redis-local.sh stop     # stop
+brew services start redis   # start (auto-restarts after reboot)
+brew services info redis    # check
+brew services stop redis    # stop
 ```
 
-With it running, set `NOTIFI_REDIS_URL=redis://localhost:6379` in `.env`
-(Contabo line stays commented until that server is back). Redis Insight (GUI)
-connects to `127.0.0.1:6379` with no password.
+With it running, set `NOTIFI_REDIS_URL=redis://localhost:6379` in `.env`.
+Redis Insight (GUI) connects to `127.0.0.1:6379` with no password.
 
 ## 7. Try the API (curl)
 

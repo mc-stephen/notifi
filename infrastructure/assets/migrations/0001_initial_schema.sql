@@ -6,6 +6,12 @@
 -- status; the dropped approval-request flow is omitted entirely),
 -- audit actor attribution, billing catalog + subscriptions, and user
 -- TOTP + project 2FA requirement.
+-- Re-squashed 2026-10-12: folds in 0009 (project_invites), 0011
+-- (key_ip_allowlist), 0012 (notification_sends + flows, minus the
+-- kind column dropped by 0013), 0014 + 0015 (schedules incl. weekly
+-- timing + template columns), 0016 (flow_trigger_tokens). 0010 is
+-- omitted on purpose (data-only OAuth backfill — nothing to backfill
+-- on a fresh database).
 --
 -- Conventions:
 --   * All ids are ULIDs stored as 26-char strings (see notifi_core::id).
@@ -161,6 +167,19 @@ CREATE TABLE auth_api_keys (
 
 CREATE INDEX idx_api_keys_project ON auth_api_keys(project_id);
 
+-- Per-key IP allowlists: only these addresses/CIDRs may use the key.
+-- An empty list means unrestricted (enforcement begins with the first entry).
+CREATE TABLE key_ip_allowlist (
+    id          VARCHAR(26) PRIMARY KEY,
+    key_id      VARCHAR(26) NOT NULL REFERENCES auth_api_keys(id) ON DELETE CASCADE,
+    cidr        TEXT        NOT NULL,
+    label       TEXT        NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_ip_allowlist_key ON key_ip_allowlist(key_id);
+CREATE UNIQUE INDEX uq_ip_allowlist_key_cidr ON key_ip_allowlist(key_id, cidr);
+
 -- ---------------------------------------------------------------------------
 -- per-project membership and user-level project folders
 -- ---------------------------------------------------------------------------
@@ -198,6 +217,27 @@ CREATE TABLE platform_user_group_projects (
     project_id VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
     PRIMARY KEY (group_id, project_id)
 );
+
+-- Project team invites (GitHub-style): inviting creates a pending
+-- row + email; the invitee accepts or declines. Only acceptance
+-- creates the membership row.
+CREATE TABLE project_invites (
+    id          VARCHAR(26) PRIMARY KEY,
+    project_id  VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
+    email       TEXT        NOT NULL,
+    role        TEXT        NOT NULL
+                CHECK (role IN ('owner', 'admin', 'developer', 'viewer', 'billing', 'editor')),
+    token_hash  TEXT        NOT NULL UNIQUE,
+    status      TEXT        NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'accepted', 'declined')),
+    expires_at  TIMESTAMPTZ NOT NULL,
+    created_by  VARCHAR(26) REFERENCES auth_users(id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    decided_at  TIMESTAMPTZ
+);
+
+CREATE INDEX idx_invites_project ON project_invites(project_id) WHERE status = 'pending';
+CREATE INDEX idx_invites_email ON project_invites(email) WHERE status = 'pending';
 
 -- ---------------------------------------------------------------------------
 -- transactional outbox for domain events
@@ -416,6 +456,100 @@ CREATE TABLE platform_in_app_notifications (
 CREATE INDEX idx_inapp_notifications_user_time ON platform_in_app_notifications(user_id, created_at DESC);
 CREATE INDEX idx_inapp_notifications_unread ON platform_in_app_notifications(user_id) WHERE read_at IS NULL AND deleted_at IS NULL;
 CREATE INDEX idx_inapp_broadcast ON platform_in_app_notifications(broadcast_id);
+
+-- ---------------------------------------------------------------------------
+-- product sends + flow definitions (record-first API sends)
+-- ---------------------------------------------------------------------------
+
+-- notification_sends: one row per POST /v1/notifications call. Flows
+-- execute it inline (instant sends); completion is marked on the row.
+CREATE TABLE notification_sends (
+    id          VARCHAR(26) PRIMARY KEY,
+    project_id  VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
+    channel     TEXT        NOT NULL,
+    recipients  JSONB       NOT NULL DEFAULT '[]',
+    title       TEXT        NOT NULL,
+    body        TEXT        NOT NULL DEFAULT '',
+    send_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    status      TEXT        NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'sending', 'completed', 'failed')),
+    attempts    INT         NOT NULL DEFAULT 0,
+    provider    TEXT,
+    external_id TEXT,
+    last_error  TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_sends_project ON notification_sends(project_id);
+
+-- flows: notification routing graphs. "Default" is an emergent property (a
+-- flow carrying a notification.created trigger), not a stored flag.
+CREATE TABLE flows (
+    id          VARCHAR(26) PRIMARY KEY,
+    project_id  VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
+    name        TEXT        NOT NULL,
+    definition  JSONB       NOT NULL DEFAULT '{}',
+    version     INT         NOT NULL DEFAULT 1,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_flows_project ON flows(project_id);
+
+-- ---------------------------------------------------------------------------
+-- flow schedules: run a flow at a time (once), on an interval (recurring),
+-- or weekly. A schedule owns its execution payload (channel, title, body,
+-- recipients) — the worker needs them to deliver. Template schedules render
+-- their template at fire time; legacy rows use the stored payload. Flows
+-- referenced by any schedule are hidden from the /flows list (managed via
+-- schedules instead).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE schedules (
+    id          VARCHAR(26) PRIMARY KEY,
+    project_id  VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
+    name        TEXT        NOT NULL,
+    flow_id     VARCHAR(26) NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+    kind        TEXT        NOT NULL CHECK (kind IN ('once', 'recurring', 'weekly')),
+    run_at      TIMESTAMPTZ,
+    interval_secs BIGINT,
+    days        JSONB,
+    run_time    TEXT,
+    timezone    TEXT        NOT NULL DEFAULT 'UTC',
+    template_id VARCHAR(26) REFERENCES platform_templates(id) ON DELETE SET NULL,
+    channel     TEXT        NOT NULL,
+    title       TEXT        NOT NULL,
+    body        TEXT        NOT NULL DEFAULT '',
+    recipients  JSONB       NOT NULL DEFAULT '[]',
+    active      BOOLEAN     NOT NULL DEFAULT TRUE,
+    next_run_at TIMESTAMPTZ,
+    last_run_at TIMESTAMPTZ,
+    last_status TEXT        CHECK (last_status IN ('completed', 'failed')),
+    last_error  TEXT,
+    run_count   INT         NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_schedules_project ON schedules(project_id);
+CREATE INDEX idx_schedules_flow ON schedules(flow_id);
+CREATE INDEX idx_schedules_due ON schedules(active, next_run_at);
+CREATE INDEX idx_schedules_template ON schedules(template_id);
+
+-- Inbound webhook trigger tokens: unguessable per-trigger-node tokens
+-- mapping to their flow. Synced from flow definitions on every flow
+-- save (the definition is the source of truth); flow deletes cascade.
+CREATE TABLE flow_trigger_tokens (
+    token      TEXT        PRIMARY KEY,
+    flow_id    VARCHAR(26) NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+    node_id    TEXT        NOT NULL,
+    project_id VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_trigger_tokens_flow ON flow_trigger_tokens(flow_id);
+CREATE INDEX idx_trigger_tokens_project ON flow_trigger_tokens(project_id);
 
 -- ---------------------------------------------------------------------------
 -- billing: plan catalog + per-project subscriptions

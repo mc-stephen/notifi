@@ -1,4 +1,11 @@
 use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+
+/// Boxed send future (keeps [`DeliveryProvider`] object-safe).
+pub type BoxSendFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<DeliveryReceipt, DeliveryError>> + Send + 'a>>;
 
 /// A normalized message handed to a channel adapter for delivery.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -62,8 +69,18 @@ pub trait DeliveryProvider: Send + Sync {
     fn provider_name(&self) -> &'static str;
 
     /// Attempts to deliver the message.
-    fn send(
+    fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_>;
+}
+
+/// Builds channel adapters from per-project provider config JSON.
+/// Returns `None` when the channel/provider has no adapter yet — the send
+/// worker treats that as a provider-missing failure and falls through to
+/// the next priority (it must never panic or block).
+pub trait AdapterFactory: Send + Sync {
+    fn adapter(
         &self,
-        message: &DeliveryMessage,
-    ) -> impl std::future::Future<Output = Result<DeliveryReceipt, DeliveryError>> + Send;
+        channel: &str,
+        provider_id: &str,
+        config: &serde_json::Value,
+    ) -> Option<Arc<dyn DeliveryProvider>>;
 }

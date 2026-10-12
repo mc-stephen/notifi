@@ -1,19 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { PageHeader } from "@/components/custom/page-header";
 import { StatCard } from "@/components/custom/stat-card";
 import { DataTable } from "@/components/custom/data-table";
+import { DetailPanel } from "@/components/custom/detail-panel";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -23,214 +17,427 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import {
+  CalendarClock,
+  CircleCheck,
   Clock,
-  Plus,
-  Play,
   Pause,
-  Calendar,
-  Timer,
-  RotateCcw,
+  Play,
+  Plus,
+  Rocket,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
+import { useProjectStore } from "@/store/project-store";
+import {
+  createSchedule,
+  deleteSchedule,
+  patchSchedule,
+  useSchedules,
+  type ServerSchedule,
+} from "@/hooks/use-schedules";
+import { useFlows } from "@/hooks/use-flows";
+import { usePendingFlow } from "@/hooks/use-pending-flow";
+import {
+  UNIT_SECS,
+  blankScheduleForm,
+  fromLocalInput,
+  localTimezone,
+  ScheduleFormFields,
+  type ScheduleFormValue,
+} from "@/components/custom/schedules/schedule-form";
+import { ScheduleDetailPanel } from "@/components/custom/schedules/schedule-detail-panel";
 
-type ScheduleEntry = {
-  id: string;
-  name: string;
-  notificationId: string;
-  cron: string;
-  cronHuman: string;
-  timezone: string;
-  active: boolean;
-  nextRunAt?: string;
-  lastRunAt?: string;
-  channel: string;
-  recipientCount: number;
-  createdAt: string;
-};
-
-const MOCK_SCHEDULES: ScheduleEntry[] = [
-  { id: "sch_001", name: "Daily Welcome Email", notificationId: "ntf_0001", cron: "0 9 * * *", cronHuman: "Every day at 9:00 AM", timezone: "America/New_York", active: true, nextRunAt: "2025-06-26T09:00:00Z", lastRunAt: "2025-06-25T09:00:00Z", channel: "email", recipientCount: 45, createdAt: "2025-01-15T00:00:00Z" },
-  { id: "sch_002", name: "Weekly Newsletter", notificationId: "ntf_0006", cron: "0 10 * * 1", cronHuman: "Every Monday at 10:00 AM", timezone: "America/New_York", active: true, nextRunAt: "2025-06-30T10:00:00Z", lastRunAt: "2025-06-23T10:00:00Z", channel: "email", recipientCount: 12000, createdAt: "2025-02-01T00:00:00Z" },
-  { id: "sch_003", name: "Monthly Usage Report", notificationId: "ntf_0007", cron: "0 8 1 * *", cronHuman: "1st of every month at 8:00 AM", timezone: "Europe/London", active: true, nextRunAt: "2025-07-01T08:00:00Z", lastRunAt: "2025-06-01T08:00:00Z", channel: "email", recipientCount: 500, createdAt: "2025-03-10T00:00:00Z" },
-  { id: "sch_004", name: "Hourly System Health Check", notificationId: "ntf_0010", cron: "0 * * * *", cronHuman: "Every hour", timezone: "UTC", active: false, nextRunAt: undefined, lastRunAt: "2025-06-25T08:00:00Z", channel: "webhook", recipientCount: 1, createdAt: "2025-04-01T00:00:00Z" },
-  { id: "sch_005", name: "Daily Push Digest", notificationId: "ntf_0011", cron: "0 18 * * *", cronHuman: "Every day at 6:00 PM", timezone: "Asia/Tokyo", active: true, nextRunAt: "2025-06-26T18:00:00Z", lastRunAt: "2025-06-25T18:00:00Z", channel: "push-android", recipientCount: 8500, createdAt: "2025-05-01T00:00:00Z" },
-];
+function fmtTime(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : format(d, "MMM d, HH:mm");
+}
 
 export default function SchedulesPage() {
-  const [createDialog, setCreateDialog] = useState(false);
+  const router = useRouter();
+  const projectId = useProjectStore((s) => s.currentProject?.id);
+  const { schedules, loading, error, refresh } = useSchedules();
+  const { flows, refresh: refreshFlows } = useFlows();
 
-  const activeCount = MOCK_SCHEDULES.filter((s) => s.active).length;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ServerSchedule | null>(null);
+  const [form, setForm] = useState<ScheduleFormValue>(blankScheduleForm);
+  const [submitting, setSubmitting] = useState(false);
+  const pendingFlow = usePendingFlow(
+    projectId,
+    form.name.trim() ? `${form.name.trim()} flow` : `Scheduled flow ${schedules.length + 1}`,
+  );
 
-  const columns: ColumnDef<ScheduleEntry>[] = [
+  const selected = schedules.find((s) => s.id === selectedId) ?? null;
+
+  const stats = useMemo(() => {
+    const active = schedules.filter((s) => s.active);
+    const nextTimes = active
+      .map((s) => (s.nextRunAt ? new Date(s.nextRunAt).getTime() : NaN))
+      .filter((t) => Number.isFinite(t));
+    return {
+      active: active.length,
+      nextRun: nextTimes.length > 0 ? Math.min(...nextTimes) : null,
+      totalRuns: schedules.reduce((acc, s) => acc + s.runCount, 0),
+    };
+  }, [schedules]);
+
+  const flowOptions = useMemo(
+    () => flows.map((f) => ({ id: f.id, name: f.name, definition: f.definition })),
+    [flows],
+  );
+
+  const columns: ColumnDef<ServerSchedule>[] = [
     {
       accessorKey: "name",
       header: "Schedule",
       cell: ({ row }) => (
         <div className="min-w-0">
-          <div className="text-sm font-medium">{row.original.name}</div>
-          <div className="text-xs text-muted-foreground">{row.original.timezone}</div>
+          <div className="truncate text-sm font-medium">{row.original.name}</div>
+          <div className="truncate text-xs text-muted-foreground">
+            {row.original.timezone}
+          </div>
         </div>
       ),
     },
     {
-      accessorKey: "cron",
-      header: "Cron",
+      accessorKey: "flowName",
+      header: "Flow",
       cell: ({ row }) => (
-        <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">{row.original.cron}</code>
+        <button
+          type="button"
+          className="truncate text-sm hover:underline"
+          onClick={(e) => {
+            e.stopPropagation();
+            router.push(`/flows/${row.original.flowId}`);
+          }}
+        >
+          {row.original.flowName || "—"}
+        </button>
       ),
     },
     {
-      accessorKey: "cronHuman",
-      header: "Frequency",
-      cell: ({ row }) => <span className="text-xs">{row.original.cronHuman}</span>,
-    },
-    {
-      accessorKey: "channel",
-      header: "Channel",
-      cell: ({ row }) => (
-        <Badge variant="secondary" className="text-xs capitalize">
-          {row.original.channel.replace(/-/g, " ")}
-        </Badge>
-      ),
-    },
-    {
-      accessorKey: "recipientCount",
-      header: "Recipients",
-      cell: ({ row }) => (
-        <span className="text-sm">{row.original.recipientCount.toLocaleString()}</span>
-      ),
+      accessorKey: "timing",
+      header: "Timing",
+      cell: ({ row }) => <span className="text-xs">{row.original.timing}</span>,
     },
     {
       accessorKey: "nextRunAt",
       header: "Next Run",
       cell: ({ row }) => (
-        <span className="text-xs text-muted-foreground">
-          {row.original.nextRunAt ? format(new Date(row.original.nextRunAt), "MMM d, HH:mm") : "—"}
+        <span className="text-xs whitespace-nowrap text-muted-foreground">
+          {fmtTime(row.original.nextRunAt)}
         </span>
       ),
     },
     {
       accessorKey: "lastRunAt",
       header: "Last Run",
-      cell: ({ row }) => (
-        <span className="text-xs text-muted-foreground">
-          {row.original.lastRunAt ? format(new Date(row.original.lastRunAt), "MMM d, HH:mm") : "—"}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const s = row.original;
+        return (
+          <span className="text-xs whitespace-nowrap text-muted-foreground">
+            {fmtTime(s.lastRunAt)}
+            {s.lastStatus === "failed" ? (
+              <span className="text-destructive"> · failed</span>
+            ) : s.lastStatus === "completed" ? (
+              <span className="text-success"> · ok</span>
+            ) : null}
+          </span>
+        );
+      },
     },
     {
       accessorKey: "active",
       header: "Status",
       cell: ({ row }) => (
-        <Badge variant={row.original.active ? "default" : "secondary"} className={row.original.active ? "bg-success/15 text-success border-success/20" : ""}>
+        <Badge
+          variant="secondary"
+          className={
+            row.original.active
+              ? "border-success/20 bg-success/15 text-success"
+              : ""
+          }
+        >
           {row.original.active ? "Active" : "Paused"}
         </Badge>
       ),
     },
   ];
 
+  const openCreate = () => {
+    setForm(blankScheduleForm());
+    setCreateOpen(true);
+  };
+
+  const handleCreateFlow = async () => {
+    const created = await pendingFlow.create();
+    if (!created) return;
+    await refreshFlows();
+    setForm((f) => ({ ...f, flowId: created.id }));
+    toast.success("Flow created and assigned.");
+  };
+
+  const handleDeleteLockedFlow = async () => {
+    const deleted = await pendingFlow.removeLocked();
+    if (deleted) setForm((f) => ({ ...f, flowId: "" }));
+  };
+
+  const closeCreate = () => {
+    // Discard an unsaved just-created flow so no orphan remains.
+    void pendingFlow.discard();
+    setCreateOpen(false);
+  };
+
+  const handleCreate = async () => {
+    if (!projectId) return;
+    setSubmitting(true);
+    try {
+      await createSchedule(projectId, {
+        name: form.name,
+        flowId: form.flowId,
+        kind: form.kind,
+        runAt: form.kind === "once" ? fromLocalInput(form.runAt) : null,
+        intervalSecs:
+          form.kind === "recurring"
+            ? form.intervalAmount * UNIT_SECS[form.intervalUnit]
+            : null,
+        days: form.kind === "weekly" ? form.days : [],
+        runTime: form.kind === "weekly" ? form.runTime : null,
+        timezone: localTimezone(),
+        templateId: form.templateId || null,
+        recipients: [],
+      });
+      setCreateOpen(false);
+      setForm(blankScheduleForm());
+      pendingFlow.commit();
+      await refresh();
+      toast.success("Schedule created.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't create schedule.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!projectId || !deleteTarget) return;
+    try {
+      await deleteSchedule(projectId, deleteTarget.id);
+      if (selectedId === deleteTarget.id) setSelectedId(null);
+      setDeleteTarget(null);
+      await refresh();
+      toast.success("Schedule deleted. Its flow is back on the Flows page.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't delete schedule.");
+    }
+  };
+
+  const handleChanged = async (next: ServerSchedule) => {
+    setSelectedId(next.id);
+    await refresh();
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Schedules"
-        description={`${activeCount} active schedules`}
+        description={`${stats.active} active schedule${stats.active === 1 ? "" : "s"}`}
         actions={
-          <Button size="sm" className="gap-1.5" onClick={() => setCreateDialog(true)}>
+          <Button size="sm" className="gap-1.5" onClick={openCreate} disabled={!projectId}>
             <Plus className="size-3.5" /> New schedule
           </Button>
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Active Schedules" value={activeCount} icon={Clock} />
-        <StatCard
-          label="Next Run"
-          icon={Calendar}
-          value={
-            MOCK_SCHEDULES.filter((s) => s.active && s.nextRunAt).length > 0
-              ? format(
-                  new Date(
-                    Math.min(
-                      ...MOCK_SCHEDULES.filter((s) => s.active && s.nextRunAt).map((s) => new Date(s.nextRunAt!).getTime())
-                    )
-                  ),
-                  "MMM d"
-                )
-              : "—"
-          }
-        />
-        <StatCard
-          label="Total Recipients"
-          icon={Timer}
-          value={MOCK_SCHEDULES.reduce((acc, s) => acc + s.recipientCount, 0).toLocaleString()}
-        />
+      {!error && (schedules.length > 0 || loading) && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard
+            label="Active schedules"
+            value={loading ? "–" : stats.active}
+            icon={Clock}
+          />
+          <StatCard
+            label="Next run"
+            value={
+              loading ? (
+                "–"
+              ) : stats.nextRun ? (
+                format(new Date(stats.nextRun), "MMM d, HH:mm")
+              ) : (
+                "—"
+              )
+            }
+            sub={
+              !loading && stats.nextRun
+                ? formatDistanceToNow(new Date(stats.nextRun), { addSuffix: true })
+                : undefined
+            }
+            icon={CalendarClock}
+          />
+          <StatCard
+            label="Total runs"
+            value={loading ? "–" : stats.totalRuns}
+            icon={Rocket}
+          />
+          <StatCard
+            label="Succeeded"
+            value={
+              loading
+                ? "–"
+                : schedules.filter((s) => s.lastStatus === "completed").length
+            }
+            sub="Schedules whose last run completed"
+            icon={CircleCheck}
+          />
+        </div>
+      )}
+
+      <div className="flex items-start">
+        <div className="min-w-0 flex-1">
+          {loading ? (
+            <div className="overflow-hidden rounded-lg border bg-card">
+              <div className="flex items-center justify-center py-16 text-muted-foreground">
+                <Loader2 className="mr-2 size-5 animate-spin" /> Loading schedules…
+              </div>
+            </div>
+          ) : error ? (
+            <div className="overflow-hidden rounded-lg border bg-card">
+              <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                <AlertTriangle className="size-8 text-warning" />
+                <p className="text-sm text-muted-foreground">{error}</p>
+                <Button size="sm" variant="outline" onClick={() => void refresh()}>
+                  Retry
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={schedules}
+              searchPlaceholder="Search schedules..."
+              emptyMessage="No schedules yet. Create one to run a flow on a timer."
+              onRowClick={(row) => setSelectedId(row.id)}
+              rowActions={(schedule) => (
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    title={schedule.active ? "Pause" : "Resume"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!projectId) return;
+                      void (async () => {
+                        try {
+                          await patchSchedule(projectId, schedule.id, {
+                            active: !schedule.active,
+                          });
+                          await refresh();
+                          toast.success(
+                            schedule.active ? "Schedule paused." : "Schedule resumed.",
+                          );
+                        } catch (err) {
+                          toast.error(
+                            err instanceof Error ? err.message : "Couldn't update schedule.",
+                          );
+                        }
+                      })();
+                    }}
+                  >
+                    {schedule.active ? (
+                      <Pause className="size-3" />
+                    ) : (
+                      <Play className="size-3" />
+                    )}
+                  </Button>
+                </div>
+              )}
+            />
+          )}
+        </div>
+
+        {selected && projectId && (
+          <ScheduleDetailPanel
+            key={selected.id}
+            schedule={selected}
+            projectId={projectId}
+            flowOptions={flowOptions}
+            onClose={() => setSelectedId(null)}
+            onChanged={(next) => void handleChanged(next)}
+            onDeleteRequest={setDeleteTarget}
+            onFlowsChanged={() => void refreshFlows()}
+          />
+        )}
       </div>
 
-      <DataTable
-        columns={columns}
-        data={MOCK_SCHEDULES}
-        searchPlaceholder="Search schedules..."
-        emptyMessage="No schedules found."
-        tableClassName="bg-card"
-        rowActions={(schedule) => (
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon-xs" title={schedule.active ? "Pause" : "Resume"}>
-              {schedule.active ? <Pause className="size-3" /> : <Play className="size-3" />}
+      {createOpen && (
+        <DetailPanel
+          onClose={closeCreate}
+          header={
+            <div>
+              <h3 className="truncate font-semibold text-foreground">New schedule</h3>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                Run a flow on a timer. Assigned flows leave the Flows page and
+                are managed here.
+              </p>
+            </div>
+          }
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="px-5 py-4">
+              <ScheduleFormFields
+                value={form}
+                onChange={setForm}
+                flowOptions={flowOptions}
+                onCreateFlow={() => void handleCreateFlow()}
+                creatingFlow={pendingFlow.busy}
+                lockedFlowId={pendingFlow.pendingId}
+                onDeleteLockedFlow={() => void handleDeleteLockedFlow()}
+                deletingLocked={pendingFlow.busy}
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 border-t border-border p-4">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={closeCreate}
+            >
+              Cancel
             </Button>
-            <Button variant="ghost" size="icon-xs" title="Run now">
-              <RotateCcw className="size-3" />
+            <Button
+              size="sm"
+              className="flex-1"
+              onClick={() => void handleCreate()}
+              disabled={submitting}
+            >
+              {submitting ? "Creating…" : "Create schedule"}
             </Button>
           </div>
-        )}
-      />
+        </DetailPanel>
+      )}
 
-      <Dialog open={createDialog} onOpenChange={setCreateDialog}>
+      <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create schedule</DialogTitle>
-            <DialogDescription>Set up a recurring notification schedule.</DialogDescription>
+            <DialogTitle>Delete schedule</DialogTitle>
+            <DialogDescription>
+              Permanently delete {deleteTarget?.name ?? "this schedule"}? Its
+              flow returns to the Flows page. This cannot be undone.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Schedule name</label>
-              <Input placeholder="e.g. Daily Digest" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Cron expression</label>
-              <Input placeholder="0 9 * * *" />
-              <p className="text-xs text-muted-foreground">Minute Hour Day Month Weekday</p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Timezone</label>
-              <Select defaultValue="UTC">
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="UTC">UTC</SelectItem>
-                  <SelectItem value="America/New_York">America/New_York</SelectItem>
-                  <SelectItem value="Europe/London">Europe/London</SelectItem>
-                  <SelectItem value="Asia/Tokyo">Asia/Tokyo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Notification template</label>
-              <Select defaultValue="tpl_1">
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="tpl_1">Welcome Email</SelectItem>
-                  <SelectItem value="tpl_6">Weekly Digest</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateDialog(false)}>Cancel</Button>
-            <Button onClick={() => setCreateDialog(false)}>Create schedule</Button>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => void handleDelete()}>
+              Delete
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

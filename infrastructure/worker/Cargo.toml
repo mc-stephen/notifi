@@ -1,0 +1,17 @@
+[package]
+name = "worker"
+version.workspace = true
+edition.workspace = true
+description = "Notifi background worker — sweep ticks from RabbitMQ, local interval fallback"
+
+[[bin]]
+name = "worker"
+path = "src/main.rs"
+
+[dependencies]
+chrono = { workspace = true }
+dotenvy = { workspace = true }
+lapin = { workspace = true }
+server = { path = ".." }
+tokio = { workspace = true }
+tracing = { workspace = true }

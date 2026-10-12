@@ -53,8 +53,12 @@ fn app_with_admin_projects() -> Router {
             tickets: Some(tickets),
             notifications: None,
             billing: None,
+            schedules: None,
+            inbound: None,
             provider_tester: Arc::new(ConfigProviderTester::new())
                 as Arc<dyn ProviderTester + Send + Sync>,
+            flows: None,
+            sends: None,
         },
         &AppConfig::default(),
     )
