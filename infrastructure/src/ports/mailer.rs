@@ -106,6 +106,13 @@ pub trait SmtpMailer: Send + Sync {
         text: &str,
         html: Option<&str>,
     ) -> BoxFut<'_, Result<String, MailError>>;
+
+    /// Connection check: handshake + auth, no message sent. `Ok(true)` =
+    /// the relay accepted us. Default passes so fakes and providers
+    /// without a check stay green.
+    fn verify(&self) -> BoxFut<'_, Result<bool, String>> {
+        Box::pin(async move { Ok(true) })
+    }
 }
 
 #[cfg(test)]

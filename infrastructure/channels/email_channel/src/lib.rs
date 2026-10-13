@@ -42,6 +42,41 @@ impl EmailSender {
         }
     }
 
+    /// Handshake + auth check only (SMTP NOOP via
+    /// `AsyncSmtpTransport::test_connection`). No message is sent.
+    /// `Ok(true)` = the relay accepted us; `Ok(false)` = connected but the
+    /// relay refused NOOP; `Err` carries the SMTP error (e.g. 535 auth).
+    pub async fn verify(&self) -> Result<bool, String> {
+        match &self.config {
+            config::EmailConfig::Smtp(smtp_config) => Ok(Self::smtp_transport(smtp_config)?
+                .test_connection()
+                .await
+                .map_err(|e| format!("SMTP verify failed: {e}"))?),
+            _ => Err(format!(
+                "provider {} has no connection check",
+                self.config.provider_name()
+            )),
+        }
+    }
+
+    fn smtp_transport(
+        smtp_config: &providers::smtp::SmtpConfig,
+    ) -> Result<AsyncSmtpTransport<Tokio1Executor>, String> {
+        let creds = Credentials::new(smtp_config.username.clone(), smtp_config.password.clone());
+
+        let mut builder =
+            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&smtp_config.host)
+                .port(smtp_config.port)
+                .credentials(creds);
+        if smtp_config.tls {
+            use lettre::transport::smtp::client::{Tls, TlsParameters};
+            let params = TlsParameters::new(smtp_config.host.clone())
+                .map_err(|e| format!("SMTP TLS setup failed: {e}"))?;
+            builder = builder.tls(Tls::Required(params));
+        }
+        Ok(builder.build())
+    }
+
     /// Sends the message, returning the SMTP response reference on
     /// success. Arrivals are viewed in the provider inbox (for Ethereal,
     /// log in at ethereal.email/messages with the account).
@@ -111,28 +146,11 @@ impl EmailSender {
         // STARTTLS upgrade (port 587 style); without it the
         // connection stays plaintext (local relays).
         match &self.config {
-            config::EmailConfig::Smtp(smtp_config) => {
-                let creds =
-                    Credentials::new(smtp_config.username.clone(), smtp_config.password.clone());
-
-                let mut builder =
-                    AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&smtp_config.host)
-                        .port(smtp_config.port)
-                        .credentials(creds);
-                if smtp_config.tls {
-                    use lettre::transport::smtp::client::{Tls, TlsParameters};
-                    let params = TlsParameters::new(smtp_config.host.clone())
-                        .map_err(|e| format!("SMTP TLS setup failed: {e}"))?;
-                    builder = builder.tls(Tls::Required(params));
-                }
-
-                builder
-                    .build()
-                    .send(email)
-                    .await
-                    .map(|response| response.message().collect::<Vec<_>>().join(" "))
-                    .map_err(|e| format!("SMTP send failed: {e}"))
-            }
+            config::EmailConfig::Smtp(smtp_config) => Self::smtp_transport(smtp_config)?
+                .send(email)
+                .await
+                .map(|response| response.message().collect::<Vec<_>>().join(" "))
+                .map_err(|e| format!("SMTP send failed: {e}")),
             _ => {
                 // For API-based providers, use their specific HTTP clients
                 // TODO: Implement SendGrid, Resend, etc. API calls

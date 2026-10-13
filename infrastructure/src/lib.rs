@@ -88,7 +88,25 @@ fn run_inner() -> Result<(), String> {
                 std::sync::Arc::new(live) as std::sync::Arc<dyn ports::SmtpMailer>
             });
         if mailer.is_some() {
-            tracing::info!("system mail enabled");
+            tracing::info!("system mail configured (verifying at boot)");
+        }
+
+        // SMTP tripwire: handshake + auth now, not at the first send. A
+        // dead relay logs loud but never blocks boot (mail stays optional).
+        if let Some(mailer) = mailer.as_ref() {
+            match tokio::time::timeout(std::time::Duration::from_secs(5), mailer.verify()).await
+            {
+                Ok(Ok(true)) => {
+                    tracing::info!("system mail verified (smtp handshake + auth ok)")
+                }
+                Ok(Ok(false)) => {
+                    tracing::warn!("system mail CONFIGURED BUT BROKEN: relay refused NOOP")
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!(error = %e, "system mail CONFIGURED BUT BROKEN")
+                }
+                Err(_) => tracing::warn!("system mail check timed out after 5s"),
+            }
         }
 
         // Auth is wired only when a database exists; its routes answer 503

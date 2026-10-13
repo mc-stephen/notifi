@@ -39,6 +39,10 @@ impl LiveSmtpMailer {
 }
 
 impl SmtpMailer for LiveSmtpMailer {
+    fn verify(&self) -> BoxFut<'_, Result<bool, String>> {
+        Box::pin(async move { self.sender.verify().await })
+    }
+
     fn send(
         &self,
         from: SystemSender,
