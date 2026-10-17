@@ -72,7 +72,7 @@ Brand source of truth for all of them: `shared/identity/` (colors, typography, l
 
 ## CI & Formatting
 
-`.github/workflows/server.yml` covers `infrastructure/**` only (no frontend CI): `cargo check`, `cargo clippy -- -D warnings`, `cargo test`, plus **`cargo fmt --all --check` — run `cargo fmt` before pushing Rust changes.** All workspace commands take `--exclude web_channel` (see Backend section).
+`.github/workflows/server.yml` covers `infrastructure/**` only (no frontend CI): `cargo check`, `cargo clippy -- -D warnings`, `cargo test`, plus **`cargo fmt --all --check` — run `cargo fmt` before pushing Rust changes.**
 
 ---
 
@@ -94,26 +94,26 @@ Brand source of truth for all of them: `shared/identity/` (colors, typography, l
 
 ## Backend Server (`infrastructure/`)
 
-The server is a **single crate** rooted at `infrastructure/` (`src/{api,domain,ports,infra,testing}`), plus independent channel plugin crates in `infrastructure/channels/*`. API layout (see root `Readme.md`): ops at `/`, external product API at `/v1/*` (empty until M2; API-key auth from M6), user dashboard backend at `/app/*`, administration at `/admin/*`.
+The server is a **single crate** rooted at `infrastructure/` (`src/{api,channels,domain,ports,infra,testing}`). Channel plugins live as modules under `src/channels/` (email, sms, push, chat, web, webhook, android, ios, macos, linux, window, slack, telegram, whatsapp, discord). API layout (see root `Readme.md`): ops at `/`, external product API at `/v1/*` (empty until M2; API-key auth from M6), user dashboard backend at `/app/*`, administration at `/admin/*`.
 
 ### Commands
 
 Run from `infrastructure/`:
 
 ```shell
-cargo check --workspace --exclude web_channel     # Check workspace
-cargo clippy --workspace --exclude web_channel --all-targets -- -D warnings
-cargo test --workspace --exclude web_channel      # Run unit/integration tests
-cargo run                                         # Run main server executable
+cargo check --workspace     # Check workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace      # Run unit/integration tests
+cargo run                   # Run main server executable
 ```
 
 ### Architecture & Quirks
 
 - **Design Doc**: See `infrastructure/assets/docs/ARCHITECTURE.md` — layering rules, conventions, M0–M8 roadmap. §2 documents the current single-crate layout (the doc's earlier multi-crate history is noted at its top).
-- **Module boundaries** (single crate, enforced by visibility): `src/api/` = HTTP presentation only · `src/domain/` = framework-free business logic · `src/ports/` = trait contracts (`AuthStore`, `OAuthIdentityProvider`) implemented by `infra/` · `src/infra/` = concrete drivers (sqlx, reqwest, config, telemetry). Keep axum/sqlx/reqwest out of `domain/` and `ports/`.
-- **API surfaces**: route registry per surface lives in `src/api/catalog.rs` (drives `GET /routes`). Product endpoints mount in `src/api/project/mod.rs` under `/v1` — empty until M2 lands product endpoints. Dashboard endpoints live under `src/api/user/` and mount at `/app/*`; admin endpoints mount at `/admin/*`.
-- **Shared kernel crates**: `crates/core` (errors, ULID ids, events, outbox, config resolver) and `crates/domain-ports` (trait-only contracts) stay framework-free — keep them that way; the channel plugins will consume them in M3.
-- **Known Build Issue**: `web_channel` is currently broken (web-push API mismatch). Always include `--exclude web_channel` when running workspace commands. A fix-checklist TODO sits at the top of `channels/web_channel/src/lib.rs`.
-- **Runtime Tenant Config**: Configs load dynamically at runtime from `{NOTIFI_CONFIG_ROOT}/brands/{brand}/config/{channel_name}/` (root defaults to `configs`; local dev sets it to `infrastructure/assets` via `infrastructure/.cargo/config.toml`). Channels parse their own config; use `notifi_core::config::ConfigResolver::load_json` for new code. Brand templates live at `{NOTIFI_CONFIG_ROOT}/brands/{brand}/templates/{name}/`.
+- **Module boundaries** (single crate, enforced by visibility): `src/api/` = HTTP presentation only · `src/domain/` = framework-free business logic · `src/kernel/` = framework-free shared kernel (errors, ULID ids, events, outbox, config) · `src/ports/` = trait contracts (`AuthStore`, `OAuthIdentityProvider`, `DeliveryProvider`, `QueuePublisher`, …) implemented by `infra/` · `src/infra/` = concrete drivers (sqlx, reqwest, config, telemetry) · `src/channels/` = channel delivery modules. Keep axum/sqlx/reqwest out of `domain/` and `ports/`.
+- **API surfaces**: route registry per surface lives in `src/api/catalog.rs` (drives `GET /routes`). The three audience route surfaces (`app`, `admin`, `external`) live under `src/api/routes/`; product endpoints mount in `src/api/routes/external/mod.rs` under `/v1` — empty until M2 lands product endpoints. Dashboard endpoints live under `src/api/routes/app/` and mount at `/app/*`; admin endpoints live under `src/api/routes/admin/` and mount at `/admin/*`. Cross-cutting middleware stays at `src/api/middleware/`.
+- **Shared kernel**: `src/kernel/` (errors, ULID ids, events, outbox, config resolver) — folded from the old `crates/core` crate; `src/ports/` now also includes `channel`, `delivery`, `event_bus`, `queue` from the old `crates/domain-ports`. All framework-free.
+- **Known Build Issue**: none — `web_channel` was fixed (web-push 0.9.5 API migration) and compiles as part of the workspace.
+- **Runtime Tenant Config**: Configs load dynamically at runtime from `{NOTIFI_CONFIG_ROOT}/brands/{brand}/config/{channel_name}/` (root defaults to `configs`; local dev sets it to `infrastructure/assets` via `infrastructure/.cargo/config.toml`). Channels parse their own config; use `crate::kernel::config::ConfigResolver::load_json` for new code. Brand templates live at `{NOTIFI_CONFIG_ROOT}/brands/{brand}/templates/{name}/`.
 - **Layout**: server-owned data and docs live under `infrastructure/assets/` (`brands/`, `docs/`, `migrations/`); migrations apply from `assets/migrations/` at boot.
 - **Migration gotcha**: `sqlx::migrate!` embeds at compile time but a *new* migration file alone doesn't trigger a rebuild — after adding one, force recompilation (e.g. `touch src/lib.rs`) or the running binary silently keeps the old set. Mismatched Rust/SQL integer types surface only at runtime as decode errors, so keep `INT8`/`BIGINT` in sync with `i64`.

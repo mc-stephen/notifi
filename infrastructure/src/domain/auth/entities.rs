@@ -1,7 +1,7 @@
 //! Auth aggregates and value types.
 
+use crate::define_id;
 use chrono::{DateTime, Utc};
-use notifi_core::define_id;
 use serde::{Deserialize, Serialize};
 
 use crate::domain::auth::value_objects::Email;

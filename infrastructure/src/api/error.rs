@@ -1,6 +1,6 @@
 //! RFC 9457 problem-details rendering for the unified error model.
 //!
-//! [`ApiError`] lives in `notifi_core` (framework-free); the orphan rule keeps
+//! [`ApiError`] lives in `kernel` (framework-free); the orphan rule keeps
 //! us from implementing axum's `IntoResponse` for it here, so we wrap it in
 //! the local [`ApiProblem`] newtype.
 //!
@@ -8,10 +8,10 @@
 //! kernel (`crates/core/src/error.rs`) so every crate can share it without
 //! depending on axum (see `infrastructure/docs/ARCHITECTURE.md`).
 
+use crate::kernel::error::ApiError;
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use notifi_core::error::ApiError;
 use serde_json::{Value, json};
 
 /// Problem-document wrapper around [`ApiError`], renderable as an HTTP response.

@@ -1,10 +1,10 @@
 //! Handlers for the API root and health endpoints.
 
+use crate::kernel::error::ApiError;
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use notifi_core::error::ApiError;
 use serde_json::{Value, json};
 
 use crate::api::error::ApiProblem;

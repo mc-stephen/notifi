@@ -49,7 +49,7 @@ pub struct SendService {
     store: Arc<dyn SendStore>,
     flows: Arc<FlowService>,
     providers: Arc<dyn ChannelProviderStore>,
-    adapters: Arc<dyn notifi_domain_ports::AdapterFactory>,
+    adapters: Arc<dyn crate::ports::AdapterFactory>,
     http: Arc<dyn crate::ports::HttpRequester>,
 }
 
@@ -58,7 +58,7 @@ impl SendService {
         store: Arc<dyn SendStore>,
         flows: Arc<FlowService>,
         providers: Arc<dyn ChannelProviderStore>,
-        adapters: Arc<dyn notifi_domain_ports::AdapterFactory>,
+        adapters: Arc<dyn crate::ports::AdapterFactory>,
         http: Arc<dyn crate::ports::HttpRequester>,
     ) -> Self {
         Self {

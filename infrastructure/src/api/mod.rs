@@ -2,18 +2,17 @@
 //!
 //! API layout (`Readme.md`):
 //! * `/*` — ops routes (`/`, `/healthz`, `/readyz`, `/routes`).
-//! * `/v1/*` — external product API ([`project`]); empty until M2.
-//! * `/app/*` — user dashboard backend ([`app::app_router`]).
-//! * `/admin/*` — platform administration ([`admin::admin_router`]).
+//! * `/v1/*` — external product API ([`routes::external`]); empty until M2.
+//! * `/app/*` — user dashboard backend ([`routes::app::app_router`]).
+//! * `/admin/*` — platform administration ([`routes::admin::admin_router`]).
+//! * `middleware/` — cross-cutting HTTP middleware (cors, request_id).
 
-pub mod admin;
-pub mod app;
+pub mod middleware;
+pub mod routes;
 
 pub mod catalog;
 pub mod error;
 pub mod handlers;
-pub mod middleware;
-pub mod project;
 pub mod state;
 pub use state::AppState;
 
@@ -29,9 +28,9 @@ pub fn build_router(state: AppState, config: &AppConfig) -> Router {
         .route("/healthz", axum::routing::get(handlers::healthz))
         .route("/readyz", axum::routing::get(handlers::readyz))
         .route("/routes", axum::routing::get(handlers::catalog))
-        .nest("/v1", project::router(&state))
-        .nest("/app", app::app_router(&state))
-        .nest("/admin", admin::admin_router(&state))
+        .nest("/v1", routes::external::router(&state))
+        .nest("/app", routes::app::app_router(&state))
+        .nest("/admin", routes::admin::admin_router(&state))
         .fallback(handlers::not_found)
         .with_state(state);
     middleware::apply(router, &config.server.cors_origins)

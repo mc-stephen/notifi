@@ -7,8 +7,10 @@
 
 use std::sync::Arc;
 
-use email_channel::{EmailMessage, EmailSender, config::EmailConfig, providers::smtp::SmtpConfig};
-use notifi_domain_ports::{
+use crate::channels::email_channel::{
+    EmailMessage, EmailSender, config::EmailConfig, providers::smtp::SmtpConfig,
+};
+use crate::ports::{
     AdapterFactory, BoxSendFuture, DeliveryError, DeliveryMessage, DeliveryProvider,
     DeliveryReceipt,
 };

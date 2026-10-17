@@ -29,7 +29,7 @@ pub struct InboundService {
     sends: Arc<dyn SendStore>,
     templates: Arc<dyn TemplatesStore>,
     providers: Arc<dyn crate::ports::ChannelProviderStore>,
-    adapters: Arc<dyn notifi_domain_ports::AdapterFactory>,
+    adapters: Arc<dyn crate::ports::AdapterFactory>,
     http: Arc<dyn crate::ports::HttpRequester>,
 }
 
@@ -39,7 +39,7 @@ impl InboundService {
         sends: Arc<dyn SendStore>,
         templates: Arc<dyn TemplatesStore>,
         providers: Arc<dyn crate::ports::ChannelProviderStore>,
-        adapters: Arc<dyn notifi_domain_ports::AdapterFactory>,
+        adapters: Arc<dyn crate::ports::AdapterFactory>,
         http: Arc<dyn crate::ports::HttpRequester>,
     ) -> Self {
         Self {

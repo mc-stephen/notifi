@@ -1,7 +1,7 @@
 //! Admin user entity — platform administrators (separate from platform customers).
 
+use crate::define_id;
 use chrono::{DateTime, Utc};
-use notifi_core::define_id;
 
 use crate::domain::auth::value_objects::Email;
 

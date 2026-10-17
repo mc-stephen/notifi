@@ -1,6 +1,8 @@
 //! Live SMTP delivery for system mail, backed by `email_channel`.
 
-use email_channel::{EmailMessage, EmailSender, config::EmailConfig, providers::smtp::SmtpConfig};
+use crate::channels::email_channel::{
+    EmailMessage, EmailSender, config::EmailConfig, providers::smtp::SmtpConfig,
+};
 
 use crate::infra::config::MailConfig;
 use crate::ports::mailer::{BoxFut, MailError, SmtpMailer, SystemSender};

@@ -22,7 +22,7 @@ pub struct ServerConfig {
 /// Logging settings.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct LogConfig {
-    /// Tracing filter (e.g. `info`, `notifi_core=debug,tower_http=warn`).
+    /// Tracing filter (e.g. `info`, `kernel=debug,tower_http=warn`).
     #[serde(default = "default_log_level")]
     pub level: String,
 }

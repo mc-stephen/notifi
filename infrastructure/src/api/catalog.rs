@@ -1,6 +1,6 @@
 //! Central route registry — every route the API exposes is declared here.
 //!
-//! Routes are grouped by **surface** ([`PROJECT_ROUTES`] — the external
+//! Routes are grouped by **surface** ([`EXTERNAL_ROUTES`] — the external
 //! product API under `/v1` — [`APP_ROUTES`] — the user dashboard backend
 //! under `/app` — and [`ADMIN_ROUTES`] — platform administration under
 //! `/admin`). To add a route: declare it in the matching const, then
@@ -49,8 +49,8 @@ pub struct RouteInfo {
 
 /// External product API routes (`/v1`). First product endpoint: instant
 /// notification sends. Keep this list in lockstep with
-/// [`crate::api::project::router`].
-pub const PROJECT_ROUTES: &[RouteInfo] = &[RouteInfo {
+/// [`crate::api::routes::external::router`].
+pub const EXTERNAL_ROUTES: &[RouteInfo] = &[RouteInfo {
     method: "POST",
     path: "/v1/notifications",
     surface: Surface::Project,
@@ -59,7 +59,7 @@ pub const PROJECT_ROUTES: &[RouteInfo] = &[RouteInfo {
 }];
 
 /// User dashboard backend (`/app`). Mirrors
-/// [`crate::api::app::app_router`].
+/// [`crate::api::routes::app::app_router`].
 pub const APP_ROUTES: &[RouteInfo] = &[
     // -- auth feature ------------------------------------------------------
     RouteInfo {
@@ -618,7 +618,7 @@ pub const APP_ROUTES: &[RouteInfo] = &[
 ];
 
 /// Platform administration (`/admin`). Mirrors
-/// [`crate::api::admin::admin_router`].
+/// [`crate::api::routes::admin::admin_router`].
 pub const ADMIN_ROUTES: &[RouteInfo] = &[
     // -- admin accounts -----------------------------------------------------
     RouteInfo {
@@ -918,7 +918,7 @@ pub const CORE_ROUTES: &[RouteInfo] = &[
 pub fn all_routes() -> Vec<RouteInfo> {
     CORE_ROUTES
         .iter()
-        .chain(PROJECT_ROUTES.iter())
+        .chain(EXTERNAL_ROUTES.iter())
         .chain(APP_ROUTES.iter())
         .chain(ADMIN_ROUTES.iter())
         .copied()

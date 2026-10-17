@@ -9,7 +9,7 @@ use std::sync::RwLock;
 
 use chrono::{DateTime, Utc};
 
-use notifi_core::Ulid;
+use crate::kernel::Ulid;
 
 use crate::domain::audit::entities::AuditEntry;
 use crate::domain::auth::entities::{AuthToken, Session, TokenPurpose, User, UserId};
@@ -99,7 +99,7 @@ impl FakeAuthStore {
         expires_at: chrono::DateTime<chrono::Utc>,
     ) -> String {
         use crate::ports::projects_store::InviteRecord;
-        let id = notifi_core::Ulid::new().to_string();
+        let id = crate::kernel::Ulid::new().to_string();
         self.invites.write().unwrap().push(InviteRecord {
             id: id.clone(),
             project_id: project_id.to_string(),
@@ -694,7 +694,7 @@ impl ProjectsStore for FakeAuthStore {
                 .map(|(_, p)| p.name.clone())
                 .unwrap_or_else(|| project_id.clone());
             let now = chrono::Utc::now();
-            let id = notifi_core::Ulid::new().to_string();
+            let id = crate::kernel::Ulid::new().to_string();
             invites.push(InviteRecord {
                 id: id.clone(),
                 project_id,
@@ -852,7 +852,7 @@ impl ProjectsStore for FakeAuthStore {
                 slug
             };
             let record = ProjectSummary {
-                id: notifi_core::Ulid::new().to_string(),
+                id: crate::kernel::Ulid::new().to_string(),
                 name,
                 slug,
                 description,
@@ -2446,7 +2446,7 @@ impl NotificationsStore for FakeNotificationsStore {
         let content = content.to_string();
         Box::pin(async move {
             let record = NotificationRecord {
-                id: notifi_core::Ulid::new().to_string(),
+                id: crate::kernel::Ulid::new().to_string(),
                 user_id: user_str,
                 notification_type,
                 origin,
@@ -2668,7 +2668,7 @@ impl NotificationsStore for FakeNotificationsStore {
             let mut list = notifications.write().map_err(lock_err)?;
             for r in &recipients {
                 list.push(NotificationRecord {
-                    id: notifi_core::Ulid::new().to_string(),
+                    id: crate::kernel::Ulid::new().to_string(),
                     user_id: r.user_id.clone(),
                     notification_type,
                     origin: crate::domain::notifications::entities::NotificationOrigin::Admin,

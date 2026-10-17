@@ -28,19 +28,19 @@ src/
 ├── main.rs           # binary entry point → server::run()
 ├── lib.rs            # module tree + run()/build_router()
 ├── api/              # HTTP presentation layer
-│   ├── project/      # external product API under /api/v1 (API-key auth, M6+; empty until M2)
-│   └── user/         # app backend (/api/app) + admin backend (/api/admin, session auth)
-├── domain/           # business logic & models
-│   ├── auth/
-│   └── channels/     # provider registry types (ProviderRegistry, etc.)
-├── ports/            # trait contracts (AuthStore, ChannelProviderStore, ...)
+│   ├── routes/       # app (`/app`), admin (`/admin`), external (`/v1`)
+│   └── middleware/   # cors, request-id
+├── channels/         # channel delivery modules (email, sms, push, web, …)
+├── domain/           # business logic & models (auth, admin, billing, flows, …)
+├── ports/            # trait contracts (AuthStore, DeliveryProvider, QueuePublisher, …)
+├── kernel/           # framework-free kernel: errors, ULID ids, events, outbox, config
 ├── infra/            # concrete drivers: Postgres repos, OAuth client, config, telemetry
 └── testing.rs        # in-memory fakes shared with integration tests
 assets/               # server-owned data & docs
 ├── brands/           # tenant channel configs + templates (NOTIFI_CONFIG_ROOT)
 ├── docs/             # ARCHITECTURE.md, SERVER.md, this README, COMMANDS.md
 └── migrations/       # sqlx migrations (0001_initial_schema.sql)
-channels/             # channel plugin crates (email, sms, push, chat)
+worker/               # background binary — RabbitMQ sweep-tick consumer
 ```
 
 Other root files: `Cargo.toml` (package + workspace index), `rust-toolchain.toml`
@@ -52,12 +52,12 @@ Other root files: `Cargo.toml` (package + workspace index), `rust-toolchain.toml
 | Surface | Base path | Auth | Purpose |
 |---|---|---|---|
 | **ops** | `/` | none | Health, readiness, route catalog |
-| **external** | `/api/v1` | API keys (M6+) | The product API customers integrate with (empty until M2) |
-| **app** | `/api/app` | session cookie | The user dashboard backend |
-| **admin** | `/api/admin` | admin session + 2FA | Platform administration |
+| **external** | `/v1` | API keys (M6+) | The product API customers integrate with (empty until M2) |
+| **app** | `/app` | session cookie | The user dashboard backend |
+| **admin** | `/admin` | admin session + 2FA | Platform administration |
 
 Route declarations live in `src/api/catalog.rs`; each surface's router is in
-its own module (`src/api/project/mod.rs`, `src/api/app/mod.rs`, `src/api/admin/mod.rs`).
+its own module (`src/api/routes/external/mod.rs`, `src/api/routes/app/mod.rs`, `src/api/routes/admin/mod.rs`).
 
 ## Commands
 
@@ -65,15 +65,12 @@ Run from this directory (`infrastructure/`). A full reference with explanations
 lives in [`COMMANDS.md`](./COMMANDS.md).
 
 ```shell
-cargo check --workspace --exclude web_channel
-cargo clippy --workspace --exclude web_channel --all-targets -- -D warnings
-cargo test --workspace --exclude web_channel
+cargo check --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 cargo fmt --all --check
 cargo run
 ```
-
-> `web_channel` is excluded until M3 fixes its web-push API mismatch — see
-> the TODO banner at the top of `channels/web_channel/src/lib.rs`.
 
 ## API endpoints
 
@@ -83,7 +80,7 @@ cargo run
 | `GET /healthz` | ops | Liveness — the process is up |
 | `GET /readyz` | ops | Readiness — Postgres + Redis reachable (503 problem doc otherwise) |
 | `GET /routes` | ops | Route catalog — every endpoint across all surfaces |
-| project surface | external | *(empty until M2 — product endpoints mount under /api/v1)* |
+| `/v1/*` | external | *(empty until M2 — product endpoints mount under /v1)* |
 | `/app/auth/*` | app | Auth: signup, login, logout, me, OAuth, password flows, verify-email, onboarding-complete |
 | `/app/providers` | app | Provider registry — all channels + providers + config fields (GET) |
 | `/app/projects/{id}/channel-configs` | app | Channel configs CRUD (list, create, update, delete) |

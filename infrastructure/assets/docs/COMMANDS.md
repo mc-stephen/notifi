@@ -10,20 +10,20 @@ Every command runs from the `infrastructure/` directory.
 
 ```shell
 # Fast compile check (no codegen) — the "does it compile?" gate
-cargo check --workspace --exclude web_channel
+cargo check --workspace
 
 # Single crate (faster feedback while iterating)
-cargo check
-cargo check -p notifi_core
+cargo check -p server
+cargo check -p worker
 
 # Full build (production binary)
-cargo build --workspace --exclude web_channel
+cargo build --workspace
 ```
 
 ## 2. Lint (clippy) — must be zero warnings
 
 ```shell
-cargo clippy --workspace --exclude web_channel --all-targets -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 > `-D warnings` turns every warning into an error. CI fails on this command.
@@ -39,7 +39,7 @@ cargo fmt --all --check            # check only (CI gate — fails if not format
 
 ```shell
 # All crates (unit + integration tests)
-cargo test --workspace --exclude web_channel
+cargo test --workspace
 
 # One crate only
 cargo test
@@ -149,7 +149,7 @@ requests finish, logs say `api shutdown complete`.
 | Symptom | Likely cause / fix |
 |---|---|
 | `failed to load manifest for workspace member` | run from `infrastructure/` root |
-| `web_channel` compile errors | expected until M3 — keep using `--exclude web_channel` |
+| `web_channel` compile errors | fixed (web-push 0.9.5 API migrated) — compiles as part of workspace |
 | `/readyz` → 503 | set `NOTIFI_DATABASE_URL` / `NOTIFI_REDIS_URL` (or a gitignored `.env`) |
 | `received fatal alert: HandshakeFailure` | server's TLS rejected the handshake — try `sslmode=disable` in the URL and fix the server's TLS config (traffic is then unencrypted!) |
 | migration warnings about checksums | migrations already applied — normal |

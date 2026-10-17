@@ -4,7 +4,7 @@
 //! API_CONTRACT.md`); the verify-email page branches on detail containing
 //! the word "expired", so that wording is load-bearing.
 
-use notifi_core::error::{ApiError, IntoApiError};
+use crate::kernel::error::{ApiError, IntoApiError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthError {

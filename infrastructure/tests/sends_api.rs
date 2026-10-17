@@ -11,10 +11,6 @@ use std::sync::{Arc, Mutex};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use notifi_domain_ports::{
-    AdapterFactory, BoxSendFuture, DeliveryError, DeliveryMessage, DeliveryProvider,
-    DeliveryReceipt,
-};
 use serde_json::{Value, json};
 use server::api::build_router;
 use server::api::state::AppState;
@@ -28,6 +24,10 @@ use server::domain::sends::SendService;
 use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
+use server::ports::{
+    AdapterFactory, BoxSendFuture, DeliveryError, DeliveryMessage, DeliveryProvider,
+    DeliveryReceipt,
+};
 use server::testing::{
     FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeBillingStore, FakeChannelProviderStore,
     FakeFlowStore, FakeHttpRequester, FakeSendStore,

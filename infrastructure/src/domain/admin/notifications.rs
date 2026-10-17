@@ -116,7 +116,7 @@ impl AdminNotificationsService {
         let scheduled = input.scheduled_for.is_some();
         let audience_json = audience_snapshot(&input.audience, &user_ids);
         let broadcast = BroadcastRecord {
-            id: notifi_core::Ulid::new().to_string(),
+            id: crate::kernel::Ulid::new().to_string(),
             admin_id: admin.id.to_string(),
             admin_email: admin.email.to_string(),
             notification_type: input.notification_type,

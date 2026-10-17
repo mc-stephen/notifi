@@ -12,12 +12,13 @@ axum-extra = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 dotenvy = { workspace = true }
-email_channel = { path = "channels/email_channel" }
+futures = { workspace = true }
+handlebars = { workspace = true }
 hex = { workspace = true }
-notifi_core = { path = "crates/core" }
-notifi_domain_ports = { path = "crates/domain-ports" }
-ipnet = { workspace = true }
+jsonwebtoken = { workspace = true }
 lapin = { workspace = true }
+lettre = { workspace = true }
+ipnet = { workspace = true }
 rand = { workspace = true }
 redis = { workspace = true }
 reqwest = { workspace = true }
@@ -37,29 +38,15 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 ulid = { workspace = true }
 urlencoding = { workspace = true }
+web-push = { workspace = true }
+yup-oauth2 = { workspace = true }
 
 [dev-dependencies]
 http-body-util = "0.1"
-notifi_domain_ports = { path = "crates/domain-ports" }
 
 [workspace]
 resolver = "2"
 members = [
-  "channels/android_channel",
-  "channels/chat_channel",
-  "channels/discord_channel",
-  "channels/email_channel",
-  "channels/ios_channel",
-  "channels/linux_channel",
-  "channels/macos_channel",
-  "channels/push_channel",
-  "channels/slack_channel",
-  "channels/sms_channel",
-  "channels/telegram_channel",
-  "channels/web_channel",
-  "channels/webhook_channel",
-  "channels/whatsapp_channel",
-  "channels/window_channel",
   "worker",
 ]
 
@@ -76,9 +63,13 @@ axum-extra = { version = "0.10", features = ["cookie"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 chrono-tz = "0.10"
 dotenvy = "0.15"
+futures = "0.3"
+handlebars = "6"
 hex = "0.4"
 ipnet = "2"
+jsonwebtoken = "9"
 lapin = "2"
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "tokio1", "tokio1-rustls-tls", "builder"] }
 rand = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 # TLS note: this deployment's TLS terminators (Coolify) reject rustls
@@ -101,3 +92,5 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ulid = { version = "1", features = ["serde"] }
 urlencoding = "2"
+web-push = "0.9"
+yup-oauth2 = "8"

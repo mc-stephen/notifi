@@ -40,18 +40,15 @@ notifi/                         # repo root
 ├── infrastructure/             # Rust server (single crate + channel plugins)
 │   ├── src/                    # server crate source
 │   │   ├── api/                # HTTP presentation (axum handlers + routes)
+│   │   │   ├── routes/         # Audience route surfaces (app, admin, project)
+│   │   │   ├── middleware/     # Cross-cutting middleware (cors, request_id)
+│   │   │   └── catalog.rs      # GET /routes — route registry
 │   │   ├── domain/             # Framework-free business logic
-│   │   ├── ports/              # Trait contracts (AuthStore, etc.)
+│   │   ├── ports/              # Trait contracts (AuthStore, DeliveryProvider, QueuePublisher, …)
+│   │   ├── kernel/             # Shared kernel: errors, ULID, events, outbox, config resolver
+│   │   ├── channels/           # Channel delivery modules (email, sms, push, …)
 │   │   ├── infra/              # Concrete drivers (sqlx, reqwest, config, telemetry)
 │   │   └── testing/            # Test utilities
-│   ├── channels/               # Channel plugin crates
-│   │   ├── email_channel/      # Email providers (SMTP, SendGrid, Resend, etc.)
-│   │   ├── sms_channel/        # SMS providers (Twilio, Termii, etc.)
-│   │   ├── push_channel/       # Push providers (FCM, APNS, OneSignal, etc.)
-│   │   └── chat_channel/       # Chat providers (Slack, Telegram, etc.)
-│   ├── crates/                 # Shared kernel crates
-│   │   ├── core/               # Errors, ULID ids, events, outbox, config resolver
-│   │   └── domain-ports/       # Trait-only contracts
 │   └── assets/                 # Migrations, docs, configs
 │       ├── docs/               # Architecture, commands, contracts
 │       └── migrations/         # SQL migrations (0001_initial_schema.sql)
@@ -62,14 +59,8 @@ notifi/                         # repo root
 
 | Crate | Path | Purpose |
 |-------|------|---------|
-| `server` | `infrastructure/` | Main binary + lib — API, domain, infra |
+| `server` | `infrastructure/` | Main binary + lib — API, domain, infra, kernel, ports, channels |
 | `worker` | `infrastructure/worker/` | Background binary — sweep ticks from RabbitMQ, local interval fallback |
-| `notifi_core` | `crates/core/` | Shared kernel: errors, ULID, events, outbox |
-| `domain-ports` | `crates/domain-ports/` | Trait-only contracts |
-| `email_channel` | `channels/email_channel/` | Email providers |
-| `sms_channel` | `channels/sms_channel/` | SMS providers |
-| `push_channel` | `channels/push_channel/` | Push providers |
-| `chat_channel` | `channels/chat_channel/` | Chat providers |
 
 ## 3. Module boundaries (single crate)
 
@@ -77,12 +68,14 @@ The server crate enforces layering through visibility:
 
 | Module | Allowed dependencies | Purpose |
 |--------|---------------------|---------|
-| `api/` | axum, serde, domain, ports, infra | HTTP presentation only |
+| `api/` | axum, serde, domain, ports, kernel, infra | HTTP presentation only |
 | `domain/` | none (framework-free) | Business logic, entities, value objects |
-| `ports/` | domain only | Trait contracts (AuthStore, etc.) |
-| `infra/` | sqlx, reqwest, domain, ports | Concrete driver implementations |
+| `kernel/` | none (framework-free) | Shared kernel — errors, ULID ids, events, outbox, config resolver |
+| `ports/` | domain, kernel only | Trait contracts (AuthStore, DeliveryProvider, QueuePublisher, …) |
+| `infra/` | sqlx, reqwest, domain, ports, kernel | Concrete driver implementations |
+| `channels/` | domain, ports, kernel | Channel delivery modules (email, sms, push, …) |
 
-**Rule**: Keep axum/sqlx/reqwest out of `domain/` and `ports/`.
+**Rule**: Keep axum/sqlx/reqwest out of `domain/`, `kernel/`, and `ports/`.
 
 ## 4. API surfaces
 
@@ -91,11 +84,11 @@ Four API surfaces (see root `note.md`):
 | Surface | Route prefix | Auth | Purpose |
 |---------|-------------|------|---------|
 | **Ops** | `/*` | none | Health, readiness, route catalog |
-| **External API** | `/api/v1/*` | API key (from M6) | Product API (empty until M2) |
+| **External API** | `/v1/*` | API key (from M6) | Product API (empty until M2) |
 | **App API** | `/app/*` | Session cookie (`CurrentUser`) | User dashboard backend |
 | **Admin API** | `/admin/*` | Admin session + 2FA (`CurrentAdmin`) | Platform administration |
 
-App API routes live in `src/api/app/`:
+App API routes live in `src/api/routes/app/`:
 - `/app/auth/*` — signup, login, logout, verify-email, password reset, OAuth
 - `/app/providers` — provider registry (GET)
 - `/app/projects/{id}/channel-configs` — channel configs CRUD
@@ -103,7 +96,7 @@ App API routes live in `src/api/app/`:
 - `/app/projects/{id}/templates` — templates CRUD
 - `/app/support/*`, `/app/notifications/*`, `/app/logs` — tickets, in-app notifications, audit log
 
-Admin API routes live in `src/api/admin/`:
+Admin API routes live in `src/api/routes/admin/`:
 - `/admin/*` — status, bootstrap, login, logout, me, password reset, TOTP
 - `/admin/users/*` — platform user list/detail/suspend
 - `/admin/support/*` — all tickets, replies, status changes
@@ -150,15 +143,17 @@ src/api/
 ├── mod.rs              # Shared middleware, error mapping
 ├── state.rs            # AppState (db, redis, auth, channel_providers)
 ├── catalog.rs          # GET /routes — route registry
-├── app/                # App API (/app/*)
-│   ├── mod.rs          # app_router()
-│   ├── auth/           # /app/auth/*
-│   ├── providers/      # /app/providers
-│   └── channel_configs/ # /app/projects/{id}/channel-configs
-├── admin/              # Admin API (/admin/*)
-│   ├── mod.rs          # admin_router()
-│   └── users/          # /admin/users/*
-└── project/            # Project API (root, M2+)
+├── middleware/         # cors, request_id
+├── routes/
+│   ├── app/            # App API (/app/*)
+│   │   ├── mod.rs      # app_router()
+│   │   ├── auth/       # /app/auth/*
+│   │   ├── providers/  # /app/providers
+│   │   └── channel_configs/ # /app/projects/{id}/channel-configs
+│   ├── admin/          # Admin API (/admin/*)
+│   │   ├── mod.rs      # admin_router()
+│   │   └── users/      # /admin/users/*
+│   └── external/       # External product API (/v1)
 ```
 
 ## 9. Adding a new feature
@@ -176,14 +171,14 @@ All errors map to RFC 9457 Problem Details. See `src/api/mod.rs`.
 
 ## 11. Auth model
 
-Session-cookie based. See `src/api/app/auth/` and `src/ports/auth_store.rs`.
+Session-cookie based. See `src/api/routes/app/auth/` and `src/ports/auth_store.rs`.
 
 ## 12. Testing strategy
 
 - Unit tests in each module
 - Integration tests in `tests/` (auth_api, recipients_api, templates_api)
-- All tests run against SQLite in-memory (sqlx)
-- CI gate: `cargo test --workspace --exclude web_channel`
+- All integration tests run against the local Postgres DB (see `COMMANDS.md` §6)
+- CI gate: `cargo test --workspace`
 
 ## 13. Observability
 
@@ -204,15 +199,15 @@ source of truth, so a lost tick or a second sweeper can never double-send.
 A failed tick publish degrades to a local sweep, and the worker falls back
 to a local interval when RabbitMQ is unreachable.
 
-## 15. Shared kernel crates
+## 15. Shared kernel
 
-- `crates/core`: errors, ULID, events, outbox, config resolver — framework-free
-- `crates/domain-ports`: trait-only contracts — framework-free
+- `src/kernel/`: errors, ULID ids, events, outbox, config resolver — framework-free (folded from the old `crates/core` crate)
+- `src/ports/`: trait-only contracts — framework-free (includes the old `crates/domain-ports` modules: `channel`, `delivery`, `event_bus`, `queue`)
 
-## 16. Channel plugin crates
+## 16. Channel modules
 
-Each channel crate:
-- Lives in `channels/{name}_channel/`
+Each channel module:
+- Lives in `src/channels/{name}_channel/`
 - Defines provider config structs
 - Has a provider enum in `providers/mod.rs`
 - Implements the channel's delivery trait
@@ -246,7 +241,7 @@ file per provider. Each file defines a config struct. The channel's
 ### Architecture
 
 ```
-channels/email_channel/src/
+src/channels/email_channel/src/
 ├── providers/
 │   ├── mod.rs           # EmailProvider enum + EmailChannel definition
 │   ├── smtp.rs          # SmtpConfig struct
@@ -285,7 +280,7 @@ pub enum EmailProvider {
 }
 ```
 
-3. **Add builder entry** in `src/api/app/providers/handlers.rs`:
+3. **Add builder entry** in `src/api/routes/app/providers/handlers.rs`:
 
 ```rust
 fn build_new_provider() -> ProviderDefinition {

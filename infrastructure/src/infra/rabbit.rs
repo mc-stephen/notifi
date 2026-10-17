@@ -103,13 +103,9 @@ impl RabbitHub {
     }
 }
 
-impl notifi_domain_ports::QueuePublisher for RabbitHub {
-    async fn publish(
-        &self,
-        topic: &str,
-        payload: &[u8],
-    ) -> Result<(), notifi_domain_ports::QueueError> {
-        use notifi_domain_ports::QueueError;
+impl crate::ports::QueuePublisher for RabbitHub {
+    async fn publish(&self, topic: &str, payload: &[u8]) -> Result<(), crate::ports::QueueError> {
+        use crate::ports::QueueError;
         let channel = self
             .connection
             .create_channel()

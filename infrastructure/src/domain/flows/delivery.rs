@@ -18,7 +18,7 @@ pub const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(30);
 #[allow(clippy::too_many_arguments)]
 pub async fn deliver_through_chain(
     providers: &Arc<dyn crate::ports::ChannelProviderStore>,
-    adapters: &Arc<dyn notifi_domain_ports::AdapterFactory>,
+    adapters: &Arc<dyn crate::ports::AdapterFactory>,
     project_id: &str,
     chain: &[ProviderStep],
     channel: &str,
@@ -55,7 +55,7 @@ pub async fn deliver_through_chain(
         let mut step_ok = true;
         let mut step_receipt_external: Option<String> = None;
         for recipient in recipients {
-            let message = notifi_domain_ports::DeliveryMessage {
+            let message = crate::ports::DeliveryMessage {
                 channel: step.channel_id.clone(),
                 recipient: recipient.clone(),
                 title: title.trim().to_string(),

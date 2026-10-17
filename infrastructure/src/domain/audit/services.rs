@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use crate::domain::audit::entities::{AuditEntry, AuditEvent};
 use crate::domain::auth::errors::AuthError;
+use crate::kernel::Ulid;
 use crate::ports::audit_store::{AdminAuditFilters, AuditFilters, AuditStore};
-use notifi_core::Ulid;
 
 pub struct AuditService {
     store: Arc<dyn AuditStore>,
