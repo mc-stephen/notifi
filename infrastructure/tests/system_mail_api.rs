@@ -1,7 +1,10 @@
 //! End-to-end HTTP tests for system mail (fake mailer + templates).
 
+mod common;
+
 use std::sync::Arc;
 
+use crate::common::{FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeMailer, FakeTemplates};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -15,7 +18,6 @@ use server::domain::auth::AuthService;
 use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
-use server::testing::{FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeMailer, FakeTemplates};
 use tower::ServiceExt;
 
 fn app_with_mail() -> (Router, Arc<FakeMailer>) {

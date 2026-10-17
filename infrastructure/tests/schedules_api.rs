@@ -5,9 +5,15 @@
 //! the assigned flow, cross-project isolation, and reactivation
 //! re-anchoring. Adapter behavior is scripted via a stub factory.
 
+mod common;
+
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
+use crate::common::{
+    FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeBillingStore, FakeChannelProviderStore,
+    FakeFlowStore, FakeHttpRequester, FakeScheduleStore, FakeSendStore, FakeTemplatesStore,
+};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -29,10 +35,6 @@ use server::ports::ProviderTester;
 use server::ports::{
     AdapterFactory, BoxSendFuture, DeliveryError, DeliveryMessage, DeliveryProvider,
     DeliveryReceipt,
-};
-use server::testing::{
-    FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeBillingStore, FakeChannelProviderStore,
-    FakeFlowStore, FakeHttpRequester, FakeScheduleStore, FakeSendStore, FakeTemplatesStore,
 };
 use tower::ServiceExt;
 

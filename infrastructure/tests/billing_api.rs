@@ -4,8 +4,11 @@
 //! subscribe/change/cancel/renew, retired-plan refusal, isolation) and
 //! the admin plan catalog (CRUD + delete guard).
 
+mod common;
+
 use std::sync::Arc;
 
+use crate::common::{FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeBillingStore};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -21,7 +24,6 @@ use server::domain::projects::ProjectService;
 use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
-use server::testing::{FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeBillingStore};
 use tower::ServiceExt;
 
 fn app_with_billing() -> (Router, Arc<FakeBillingStore>) {

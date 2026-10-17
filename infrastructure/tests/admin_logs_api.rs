@@ -1,7 +1,10 @@
 //! End-to-end HTTP tests for the admin audit-log surface.
 
+mod common;
+
 use std::sync::Arc;
 
+use crate::common::{FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeTicketsStore};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -17,7 +20,6 @@ use server::domain::support::TicketService;
 use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
-use server::testing::{FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeTicketsStore};
 use tower::ServiceExt;
 
 fn app_with_admin_logs() -> Router {

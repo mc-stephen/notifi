@@ -1,7 +1,10 @@
 //! End-to-end HTTP tests for user TOTP two-factor authentication.
 
+mod common;
+
 use std::sync::Arc;
 
+use crate::common::{FakeAuditStore, FakeAuthStore};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -14,7 +17,6 @@ use server::domain::auth::AuthService;
 use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
-use server::testing::{FakeAuditStore, FakeAuthStore};
 use totp_rs::{Rfc6238, Secret, TOTP};
 use tower::ServiceExt;
 

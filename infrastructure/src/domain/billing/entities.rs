@@ -280,7 +280,7 @@ pub fn build_receipts(
         .iter()
         .filter(|e| e.project_id == project.id)
         .collect();
-    ordered.sort_by(|a, b| a.occurred_at.cmp(&b.occurred_at));
+    ordered.sort_by_key(|e| e.occurred_at);
     for event in ordered {
         match event.kind {
             HistoryEventKind::Changed => {
@@ -297,7 +297,7 @@ pub fn build_receipts(
             }
         }
     }
-    timeline.sort_by(|a, b| a.0.cmp(&b.0));
+    timeline.sort_by_key(|s| s.0);
 
     let mut receipts = Vec::new();
     for (i, (seg_start, plan_id, cycle)) in timeline.iter().enumerate() {
@@ -425,7 +425,7 @@ pub fn build_history(
             .push((project.created_at, FREE_PLAN_ID.to_string()));
     }
     let mut ordered: Vec<&HistoryEvent> = events.iter().collect();
-    ordered.sort_by(|a, b| a.occurred_at.cmp(&b.occurred_at));
+    ordered.sort_by_key(|e| e.occurred_at);
     for event in ordered {
         let timeline = match by_project.get_mut(event.project_id.as_str()) {
             Some(timeline) => timeline,
@@ -443,7 +443,7 @@ pub fn build_history(
         }
     }
     for timeline in by_project.values_mut() {
-        timeline.sort_by(|a, b| a.0.cmp(&b.0));
+        timeline.sort_by_key(|s| s.0);
     }
 
     buckets

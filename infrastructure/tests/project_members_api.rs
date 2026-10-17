@@ -2,8 +2,11 @@
 //! invite → email → accept/decline, with the 2FA gate enforced at
 //! accept time, plus the require-2fa flag and the team roster.
 
+mod common;
+
 use std::sync::Arc;
 
+use crate::common::{FakeAuditStore, FakeAuthStore, FakeMailer, FakeTemplates};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -17,7 +20,6 @@ use server::domain::projects::{ProjectMembersService, ProjectService};
 use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
-use server::testing::{FakeAuditStore, FakeAuthStore, FakeMailer, FakeTemplates};
 use totp_rs::{Rfc6238, Secret, TOTP};
 use tower::ServiceExt;
 

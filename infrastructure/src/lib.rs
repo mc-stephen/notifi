@@ -16,7 +16,6 @@ pub mod domain;
 pub mod infra;
 pub mod kernel;
 pub mod ports;
-pub mod testing;
 
 use crate::infra::config::AppConfig;
 

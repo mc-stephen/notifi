@@ -4,9 +4,15 @@
 //! caller-wins/fallback resolution, unknown-token 404s, fail-closed
 //! validation, and token rotation on flow updates.
 
+mod common;
+
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
+use crate::common::{
+    FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeBillingStore, FakeChannelProviderStore,
+    FakeFlowStore, FakeHttpRequester, FakeSendStore, FakeTemplatesStore, FakeTriggerTokenStore,
+};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -27,10 +33,6 @@ use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
 use server::ports::{
     AdapterFactory, BoxSendFuture, DeliveryMessage, DeliveryProvider, DeliveryReceipt,
-};
-use server::testing::{
-    FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeBillingStore, FakeChannelProviderStore,
-    FakeFlowStore, FakeHttpRequester, FakeSendStore, FakeTemplatesStore, FakeTriggerTokenStore,
 };
 use tower::ServiceExt;
 

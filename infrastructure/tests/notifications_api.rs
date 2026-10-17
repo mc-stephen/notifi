@@ -1,7 +1,10 @@
 //! End-to-end HTTP tests for the in-app notifications feature (fake-backed services).
 
+mod common;
+
 use std::sync::Arc;
 
+use crate::common::{FakeAuditStore, FakeAuthStore, FakeNotificationsStore};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -15,7 +18,6 @@ use server::domain::notifications::NotificationService;
 use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
-use server::testing::{FakeAuditStore, FakeAuthStore, FakeNotificationsStore};
 use tower::ServiceExt;
 
 fn app_with_notifications() -> (Router, Arc<FakeNotificationsStore>) {

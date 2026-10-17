@@ -4,8 +4,11 @@
 //! complete onboarding to create a real project, then exercise the template
 //! endpoints scoped to that project.
 
+mod common;
+
 use std::sync::Arc;
 
+use crate::common::{FakeAuditStore, FakeAuthStore, FakeTemplatesStore};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -20,7 +23,6 @@ use server::domain::templates::TemplateService;
 use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
-use server::testing::{FakeAuditStore, FakeAuthStore, FakeTemplatesStore};
 use tower::ServiceExt;
 
 /// App wired with fake auth + templates services.

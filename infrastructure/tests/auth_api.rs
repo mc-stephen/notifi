@@ -3,8 +3,11 @@
 //! Runs without a database: the router is built with an in-memory
 //! [`FakeAuthStore`], exercising the full presentation → application path.
 
+mod common;
+
 use std::sync::Arc;
 
+use crate::common::{FakeAuditStore, FakeAuthStore};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -22,7 +25,6 @@ use server::ports::auth_store::{AuthStore, BoxFut};
 use server::ports::oauth::{
     AuthorizeStart, OAuthError, OAuthIdentityProvider, OAuthProfile, OAuthRuntime,
 };
-use server::testing::{FakeAuditStore, FakeAuthStore};
 use tower::ServiceExt;
 
 use server::infra::config::AppConfig;

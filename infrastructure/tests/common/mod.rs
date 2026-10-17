@@ -1,31 +1,33 @@
-//! In-memory [`AuthStore`] and [`ProjectsStore`] implementations for tests.
+//! In-memory fake implementations of the server's port traits for the
+//! integration tests (shared via `tests/common/mod.rs`).
 //!
-//! Not compiled out: they are small, dependency-free, and let downstream
-//! crates (the `api` binary's HTTP tests) build fully functional auth
-//! and project services without a database.
+//! Lives under `tests/` so the shipped library stays pure production code:
+//! every fake implements the pub port/domain API only — no database needed.
+#![allow(dead_code)] // fixtures are shared by ~20 test binaries; each binary uses only some
 
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
 use chrono::{DateTime, Utc};
 
-use crate::kernel::Ulid;
+use server::kernel::Ulid;
 
-use crate::domain::audit::entities::AuditEntry;
-use crate::domain::auth::entities::{AuthToken, Session, TokenPurpose, User, UserId};
-use crate::domain::notifications::entities::{NotificationOrigin, NotificationType};
-use crate::ports::audit_store::{AuditFilters, AuditStore};
-use crate::ports::auth_store::{AuthStore, BoxFut, StoreError};
-use crate::ports::notifications_store::{
+use server::domain::audit::entities::AuditEntry;
+use server::domain::auth::entities::{AuthToken, Session, TokenPurpose, User, UserId};
+use server::domain::notifications::entities::{NotificationOrigin, NotificationType};
+use server::ports::audit_store::{AuditFilters, AuditStore};
+use server::ports::auth_store::{AuthStore, BoxFut, StoreError};
+use server::ports::notifications_store::{
     BroadcastRecipient, BroadcastRecord, BroadcastStats, BroadcastStatus, NotificationRecord,
     NotificationsStore,
 };
-use crate::ports::projects_store::{ProjectSummary, ProjectsStore};
-use crate::ports::recipients_store::{RecipientRecord, RecipientsStore};
-use crate::ports::templates_store::{
+use server::ports::projects_store::{ProjectSummary, ProjectsStore};
+use server::ports::recipients_store::{RecipientRecord, RecipientsStore};
+use server::ports::templates_store::{
     AttachmentInput, AttachmentRecord, TemplateRecord, TemplatesStore,
 };
-use crate::ports::tickets_store::{
+use server::ports::tickets_store::{
     AdminTicketMessageRecord, AdminTicketRecord, TicketMessageRecord, TicketRecord, TicketsStore,
 };
 
@@ -42,7 +44,7 @@ pub struct FakeAuthStore {
     /// Project memberships: (project_id, user_id, role).
     members: RwLock<Vec<(String, String, String)>>,
     /// Team invites: InviteRecord by id.
-    invites: RwLock<Vec<crate::ports::projects_store::InviteRecord>>,
+    invites: RwLock<Vec<server::ports::projects_store::InviteRecord>>,
 }
 
 impl FakeAuthStore {
@@ -67,7 +69,7 @@ impl FakeAuthStore {
 
     /// Marks `user_id` as already owning/belonging to a project (e.g. an
     /// invited member) so onboarding is considered complete.
-    pub fn seed_project(&self, user_id: crate::domain::auth::entities::UserId) {
+    pub fn seed_project(&self, user_id: server::domain::auth::entities::UserId) {
         self.onboarded.write().unwrap().push(user_id.to_string());
     }
 
@@ -98,8 +100,8 @@ impl FakeAuthStore {
         token_hash: &str,
         expires_at: chrono::DateTime<chrono::Utc>,
     ) -> String {
-        use crate::ports::projects_store::InviteRecord;
-        let id = crate::kernel::Ulid::new().to_string();
+        use server::ports::projects_store::InviteRecord;
+        let id = server::kernel::Ulid::new().to_string();
         self.invites.write().unwrap().push(InviteRecord {
             id: id.clone(),
             project_id: project_id.to_string(),
@@ -149,7 +151,7 @@ impl AuthStore for FakeAuthStore {
 
     fn find_user_by_id(
         &self,
-        id: crate::domain::auth::entities::UserId,
+        id: server::domain::auth::entities::UserId,
     ) -> BoxFut<'_, Result<Option<User>, StoreError>> {
         let users = &self.users;
         Box::pin(async move {
@@ -164,7 +166,7 @@ impl AuthStore for FakeAuthStore {
 
     fn set_email_verified(
         &self,
-        user_id: crate::domain::auth::entities::UserId,
+        user_id: server::domain::auth::entities::UserId,
         verified_at: DateTime<Utc>,
     ) -> BoxFut<'_, Result<(), StoreError>> {
         let users = &self.users;
@@ -179,7 +181,7 @@ impl AuthStore for FakeAuthStore {
 
     fn update_password(
         &self,
-        user_id: crate::domain::auth::entities::UserId,
+        user_id: server::domain::auth::entities::UserId,
         password_hash: String,
     ) -> BoxFut<'_, Result<(), StoreError>> {
         let users = &self.users;
@@ -194,7 +196,7 @@ impl AuthStore for FakeAuthStore {
 
     fn touch_last_login(
         &self,
-        user_id: crate::domain::auth::entities::UserId,
+        user_id: server::domain::auth::entities::UserId,
         at: DateTime<Utc>,
     ) -> BoxFut<'_, Result<(), StoreError>> {
         let users = &self.users;
@@ -209,7 +211,7 @@ impl AuthStore for FakeAuthStore {
 
     fn set_totp_secret(
         &self,
-        user_id: crate::domain::auth::entities::UserId,
+        user_id: server::domain::auth::entities::UserId,
         secret: String,
     ) -> BoxFut<'_, Result<(), StoreError>> {
         let users = &self.users;
@@ -224,7 +226,7 @@ impl AuthStore for FakeAuthStore {
 
     fn enable_totp(
         &self,
-        user_id: crate::domain::auth::entities::UserId,
+        user_id: server::domain::auth::entities::UserId,
     ) -> BoxFut<'_, Result<(), StoreError>> {
         let users = &self.users;
         Box::pin(async move {
@@ -238,7 +240,7 @@ impl AuthStore for FakeAuthStore {
 
     fn disable_totp(
         &self,
-        user_id: crate::domain::auth::entities::UserId,
+        user_id: server::domain::auth::entities::UserId,
     ) -> BoxFut<'_, Result<(), StoreError>> {
         let users = &self.users;
         Box::pin(async move {
@@ -254,7 +256,7 @@ impl AuthStore for FakeAuthStore {
     fn list_users(
         &self,
         search: Option<&str>,
-        status: Option<crate::domain::auth::entities::UserStatus>,
+        status: Option<server::domain::auth::entities::UserStatus>,
         limit: i64,
         offset: i64,
     ) -> BoxFut<'_, Result<(Vec<User>, i64), StoreError>> {
@@ -298,8 +300,8 @@ impl AuthStore for FakeAuthStore {
 
     fn set_user_status(
         &self,
-        user_id: crate::domain::auth::entities::UserId,
-        status: crate::domain::auth::entities::UserStatus,
+        user_id: server::domain::auth::entities::UserId,
+        status: server::domain::auth::entities::UserStatus,
     ) -> BoxFut<'_, Result<bool, StoreError>> {
         let users = &self.users;
         Box::pin(async move {
@@ -314,11 +316,11 @@ impl AuthStore for FakeAuthStore {
 
     fn list_all_user_ids(
         &self,
-        status: Option<crate::domain::auth::entities::UserStatus>,
-    ) -> BoxFut<'_, Result<Vec<crate::domain::auth::entities::UserId>, StoreError>> {
+        status: Option<server::domain::auth::entities::UserStatus>,
+    ) -> BoxFut<'_, Result<Vec<server::domain::auth::entities::UserId>, StoreError>> {
         let users = &self.users;
         Box::pin(async move {
-            let mut ids: Vec<crate::domain::auth::entities::UserId> = users
+            let mut ids: Vec<server::domain::auth::entities::UserId> = users
                 .read()
                 .map_err(lock_err)?
                 .iter()
@@ -363,7 +365,7 @@ impl AuthStore for FakeAuthStore {
 
     fn revoke_session(
         &self,
-        id: crate::domain::auth::entities::SessionId,
+        id: server::domain::auth::entities::SessionId,
     ) -> BoxFut<'_, Result<(), StoreError>> {
         let sessions = &self.sessions;
         Box::pin(async move {
@@ -377,7 +379,7 @@ impl AuthStore for FakeAuthStore {
 
     fn revoke_all_sessions_for_user(
         &self,
-        user_id: crate::domain::auth::entities::UserId,
+        user_id: server::domain::auth::entities::UserId,
     ) -> BoxFut<'_, Result<(), StoreError>> {
         let sessions = &self.sessions;
         Box::pin(async move {
@@ -419,7 +421,7 @@ impl AuthStore for FakeAuthStore {
 
     fn consume_token(
         &self,
-        id: crate::domain::auth::entities::AuthTokenId,
+        id: server::domain::auth::entities::AuthTokenId,
     ) -> BoxFut<'_, Result<(), StoreError>> {
         let tokens = &self.tokens;
         Box::pin(async move {
@@ -433,7 +435,7 @@ impl AuthStore for FakeAuthStore {
 
     fn consume_tokens_for_user(
         &self,
-        user_id: crate::domain::auth::entities::UserId,
+        user_id: server::domain::auth::entities::UserId,
         purpose: TokenPurpose,
     ) -> BoxFut<'_, Result<(), StoreError>> {
         let tokens = &self.tokens;
@@ -474,7 +476,7 @@ impl AuthStore for FakeAuthStore {
 
     fn link_oauth_to_user(
         &self,
-        user_id: crate::domain::auth::entities::UserId,
+        user_id: server::domain::auth::entities::UserId,
         provider: &str,
         subject: &str,
     ) -> BoxFut<'_, Result<(), StoreError>> {
@@ -493,7 +495,7 @@ impl AuthStore for FakeAuthStore {
 
     fn has_project(
         &self,
-        user_id: crate::domain::auth::entities::UserId,
+        user_id: server::domain::auth::entities::UserId,
     ) -> BoxFut<'_, Result<bool, StoreError>> {
         let onboarded = &self.onboarded;
         Box::pin(async move {
@@ -507,8 +509,8 @@ impl AuthStore for FakeAuthStore {
 
     fn complete_onboarding(
         &self,
-        user_id: crate::domain::auth::entities::UserId,
-        input: crate::ports::auth_store::OnboardingInput,
+        user_id: server::domain::auth::entities::UserId,
+        input: server::ports::auth_store::OnboardingInput,
     ) -> BoxFut<'_, Result<(), StoreError>> {
         let onboarded = &self.onboarded;
         let id = user_id.to_string();
@@ -523,7 +525,7 @@ impl AuthStore for FakeAuthStore {
             }
             // Delegate project creation to the ProjectsStore implementation —
             // single source of truth for the fake's project-seeding logic.
-            crate::ports::projects_store::ProjectsStore::create_project(
+            server::ports::projects_store::ProjectsStore::create_project(
                 self,
                 user_id,
                 &name,
@@ -577,8 +579,8 @@ impl ProjectsStore for FakeAuthStore {
         &self,
         user_id: UserId,
         project_id: &str,
-    ) -> BoxFut<'_, Result<Option<crate::ports::projects_store::ProjectAccess>, StoreError>> {
-        use crate::ports::projects_store::ProjectAccess;
+    ) -> BoxFut<'_, Result<Option<server::ports::projects_store::ProjectAccess>, StoreError>> {
+        use server::ports::projects_store::ProjectAccess;
         let project_id = project_id.to_string();
         let user_id_str = user_id.to_string();
         let projects = self.projects.read().unwrap().clone();
@@ -671,7 +673,7 @@ impl ProjectsStore for FakeAuthStore {
         expires_at: chrono::DateTime<chrono::Utc>,
         created_by: UserId,
     ) -> BoxFut<'_, Result<String, StoreError>> {
-        use crate::ports::projects_store::InviteRecord;
+        use server::ports::projects_store::InviteRecord;
         let project_id = project_id.to_string();
         let email = email.to_string();
         let role = role.to_string();
@@ -694,7 +696,7 @@ impl ProjectsStore for FakeAuthStore {
                 .map(|(_, p)| p.name.clone())
                 .unwrap_or_else(|| project_id.clone());
             let now = chrono::Utc::now();
-            let id = crate::kernel::Ulid::new().to_string();
+            let id = server::kernel::Ulid::new().to_string();
             invites.push(InviteRecord {
                 id: id.clone(),
                 project_id,
@@ -714,7 +716,7 @@ impl ProjectsStore for FakeAuthStore {
     fn find_pending_invite(
         &self,
         token_hash: &str,
-    ) -> BoxFut<'_, Result<Option<crate::ports::projects_store::InviteRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Option<server::ports::projects_store::InviteRecord>, StoreError>> {
         let token_hash = token_hash.to_string();
         let found = self
             .invites
@@ -729,7 +731,7 @@ impl ProjectsStore for FakeAuthStore {
     fn find_invite_by_hash(
         &self,
         token_hash: &str,
-    ) -> BoxFut<'_, Result<Option<crate::ports::projects_store::InviteRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Option<server::ports::projects_store::InviteRecord>, StoreError>> {
         let token_hash = token_hash.to_string();
         let found = self
             .invites
@@ -769,8 +771,8 @@ impl ProjectsStore for FakeAuthStore {
         &self,
         user_id: UserId,
         project_id: &str,
-    ) -> BoxFut<'_, Result<Vec<crate::ports::projects_store::TeamMemberRecord>, StoreError>> {
-        use crate::ports::projects_store::TeamMemberRecord;
+    ) -> BoxFut<'_, Result<Vec<server::ports::projects_store::TeamMemberRecord>, StoreError>> {
+        use server::ports::projects_store::TeamMemberRecord;
         let project_id = project_id.to_string();
         let user_id_str = user_id.to_string();
         let projects = self.projects.read().unwrap().clone();
@@ -852,7 +854,7 @@ impl ProjectsStore for FakeAuthStore {
                 slug
             };
             let record = ProjectSummary {
-                id: crate::kernel::Ulid::new().to_string(),
+                id: server::kernel::Ulid::new().to_string(),
                 name,
                 slug,
                 description,
@@ -873,14 +875,14 @@ impl ProjectsStore for FakeAuthStore {
         environment: Option<&str>,
         limit: i64,
         offset: i64,
-    ) -> BoxFut<'_, Result<(Vec<crate::ports::projects_store::AdminProjectRecord>, i64), StoreError>>
+    ) -> BoxFut<'_, Result<(Vec<server::ports::projects_store::AdminProjectRecord>, i64), StoreError>>
     {
         let search_owned = search.map(|s| s.to_lowercase());
         let environment_owned = environment.map(str::to_owned);
         let projects = self.projects.read().unwrap().clone();
         let users = self.users.read().unwrap().clone();
         Box::pin(async move {
-            let mut result: Vec<crate::ports::projects_store::AdminProjectRecord> = projects
+            let mut result: Vec<server::ports::projects_store::AdminProjectRecord> = projects
                 .iter()
                 .filter(|(_, p)| {
                     if let Some(ref env) = environment_owned {
@@ -899,7 +901,7 @@ impl ProjectsStore for FakeAuthStore {
                 })
                 .map(|(owner, p)| {
                     let owner_user = users.iter().find(|u| u.id.to_string() == *owner);
-                    crate::ports::projects_store::AdminProjectRecord {
+                    server::ports::projects_store::AdminProjectRecord {
                         project: p.clone(),
                         owner_id: Some(owner.clone()),
                         owner_name: owner_user.map(|u| u.name.clone()),
@@ -916,7 +918,7 @@ impl ProjectsStore for FakeAuthStore {
                     .then(b.project.id.cmp(&a.project.id))
             });
             let total = result.len() as i64;
-            let page: Vec<crate::ports::projects_store::AdminProjectRecord> = result
+            let page: Vec<server::ports::projects_store::AdminProjectRecord> = result
                 .into_iter()
                 .skip(offset.max(0) as usize)
                 .take(limit.max(0) as usize)
@@ -928,7 +930,7 @@ impl ProjectsStore for FakeAuthStore {
     fn get_any_project(
         &self,
         project_id: &str,
-    ) -> BoxFut<'_, Result<Option<crate::ports::projects_store::AdminProjectRecord>, StoreError>>
+    ) -> BoxFut<'_, Result<Option<server::ports::projects_store::AdminProjectRecord>, StoreError>>
     {
         let project_id = project_id.to_string();
         let projects = self.projects.read().unwrap().clone();
@@ -939,7 +941,7 @@ impl ProjectsStore for FakeAuthStore {
                 .find(|(_, p)| p.id == project_id)
                 .map(|(owner, p)| {
                     let owner_user = users.iter().find(|u| u.id.to_string() == *owner);
-                    crate::ports::projects_store::AdminProjectRecord {
+                    server::ports::projects_store::AdminProjectRecord {
                         project: p.clone(),
                         owner_id: Some(owner.clone()),
                         owner_name: owner_user.map(|u| u.name.clone()),
@@ -954,7 +956,7 @@ impl ProjectsStore for FakeAuthStore {
     fn list_project_members(
         &self,
         _project_id: &str,
-    ) -> BoxFut<'_, Result<Vec<crate::ports::projects_store::ProjectMemberRecord>, StoreError>>
+    ) -> BoxFut<'_, Result<Vec<server::ports::projects_store::ProjectMemberRecord>, StoreError>>
     {
         // The fake tracks ownership only, not membership rows.
         Box::pin(async move { Ok(Vec::new()) })
@@ -1020,7 +1022,7 @@ impl AuditStore for FakeAuditStore {
 
     fn list_all(
         &self,
-        filters: crate::ports::audit_store::AdminAuditFilters<'_>,
+        filters: server::ports::audit_store::AdminAuditFilters<'_>,
         limit: i64,
         offset: i64,
     ) -> BoxFut<'_, Result<(Vec<AuditEntry>, i64), StoreError>> {
@@ -1110,7 +1112,7 @@ impl FakeRecipientsStore {
     /// The full contents (for assertions).
     pub fn all(&self) -> Vec<RecipientRecord> {
         let mut all = self.recipients.read().unwrap().clone();
-        all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        all.sort_by_key(|e| Reverse(e.created_at));
         all
     }
 
@@ -1126,7 +1128,7 @@ impl FakeRecipientsStore {
 impl RecipientsStore for FakeRecipientsStore {
     fn create(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
         user_id: &str,
         name: &str,
@@ -1166,7 +1168,7 @@ impl RecipientsStore for FakeRecipientsStore {
 
     fn list(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
         _search: Option<&str>,
         limit: i64,
@@ -1185,7 +1187,7 @@ impl RecipientsStore for FakeRecipientsStore {
                 .filter(|r| r.project_id == project_id)
                 .filter(|r| before.as_deref().is_none_or(|b| r.id.as_str() < b))
                 .collect();
-            list.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            list.sort_by_key(|e| Reverse(e.created_at));
             list.truncate(limit.max(0) as usize);
             Ok(list)
         })
@@ -1193,7 +1195,7 @@ impl RecipientsStore for FakeRecipientsStore {
 
     fn get(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
         recipient_id: &str,
     ) -> BoxFut<'_, Result<Option<RecipientRecord>, StoreError>> {
@@ -1213,7 +1215,7 @@ impl RecipientsStore for FakeRecipientsStore {
 
     fn update(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
         recipient_id: &str,
         name: &str,
@@ -1244,7 +1246,7 @@ impl RecipientsStore for FakeRecipientsStore {
 
     fn remove(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
         recipient_id: &str,
     ) -> BoxFut<'_, Result<bool, StoreError>> {
@@ -1292,7 +1294,7 @@ impl FakeTemplatesStore {
     /// The full contents (for assertions), newest first.
     pub fn all(&self) -> Vec<TemplateRecord> {
         let mut all = self.templates.read().unwrap().clone();
-        all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        all.sort_by_key(|e| Reverse(e.created_at));
         all
     }
 
@@ -1322,7 +1324,7 @@ impl TemplatesStore for FakeTemplatesStore {
     #[allow(clippy::too_many_arguments)]
     fn create(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
         name: &str,
         description: Option<&str>,
@@ -1363,7 +1365,7 @@ impl TemplatesStore for FakeTemplatesStore {
 
     fn list(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
         _search: Option<&str>,
         limit: i64,
@@ -1382,7 +1384,7 @@ impl TemplatesStore for FakeTemplatesStore {
                 .filter(|t| t.project_id == project_id)
                 .filter(|t| before.as_deref().is_none_or(|b| t.id.as_str() < b))
                 .collect();
-            list.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            list.sort_by_key(|e| Reverse(e.created_at));
             list.truncate(limit.max(0) as usize);
             Ok(list)
         })
@@ -1390,7 +1392,7 @@ impl TemplatesStore for FakeTemplatesStore {
 
     fn get(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
         template_id: &str,
     ) -> BoxFut<'_, Result<Option<TemplateRecord>, StoreError>> {
@@ -1420,7 +1422,7 @@ impl TemplatesStore for FakeTemplatesStore {
     #[allow(clippy::too_many_arguments)]
     fn update(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
         template_id: &str,
         name: &str,
@@ -1462,7 +1464,7 @@ impl TemplatesStore for FakeTemplatesStore {
 
     fn remove(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
         template_id: &str,
     ) -> BoxFut<'_, Result<bool, StoreError>> {
@@ -1543,11 +1545,11 @@ impl FakeTicketsStore {
     ) -> Option<String> {
         let author_id = message.author_id.as_deref()?;
         match message.author {
-            crate::domain::support::entities::MessageAuthor::Customer => users
+            server::domain::support::entities::MessageAuthor::Customer => users
                 .iter()
                 .find(|(id, _, _)| id == author_id)
                 .map(|(_, name, _)| name.clone()),
-            crate::domain::support::entities::MessageAuthor::Support => admins
+            server::domain::support::entities::MessageAuthor::Support => admins
                 .iter()
                 .find(|(id, _)| id == author_id)
                 .map(|(_, name)| name.clone()),
@@ -1556,7 +1558,7 @@ impl FakeTicketsStore {
 
     pub fn all(&self) -> Vec<TicketRecord> {
         let mut all = self.tickets.read().unwrap().clone();
-        all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        all.sort_by_key(|e| Reverse(e.created_at));
         all
     }
 }
@@ -1564,7 +1566,7 @@ impl FakeTicketsStore {
 impl TicketsStore for FakeTicketsStore {
     fn create(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: Option<&str>,
         subject: &str,
         category: &str,
@@ -1598,7 +1600,7 @@ impl TicketsStore for FakeTicketsStore {
                 category,
                 priority,
                 description,
-                status: crate::domain::support::entities::TicketStatus::Open,
+                status: server::domain::support::entities::TicketStatus::Open,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
                 deleted_at: None,
@@ -1612,7 +1614,7 @@ impl TicketsStore for FakeTicketsStore {
 
     fn list(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: Option<&str>,
         status: Option<&str>,
         limit: i64,
@@ -1675,7 +1677,7 @@ impl TicketsStore for FakeTicketsStore {
 
     fn get(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         ticket_id: &str,
     ) -> BoxFut<'_, Result<Option<TicketRecord>, StoreError>> {
         let actor_str = actor.to_string();
@@ -1702,7 +1704,7 @@ impl TicketsStore for FakeTicketsStore {
 
     fn list_messages(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         ticket_id: &str,
     ) -> BoxFut<'_, Result<Vec<TicketMessageRecord>, StoreError>> {
         let actor_str = actor.to_string();
@@ -1738,7 +1740,7 @@ impl TicketsStore for FakeTicketsStore {
 
     fn add_message(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         ticket_id: &str,
         body: &str,
     ) -> BoxFut<'_, Result<Option<TicketMessageRecord>, StoreError>> {
@@ -1765,7 +1767,7 @@ impl TicketsStore for FakeTicketsStore {
             let record = TicketMessageRecord {
                 id: Ulid::new().to_string(),
                 ticket_id: ticket_id.clone(),
-                author: crate::domain::support::entities::MessageAuthor::Customer,
+                author: server::domain::support::entities::MessageAuthor::Customer,
                 author_id: Some(actor_str),
                 body,
                 created_at: Utc::now(),
@@ -1787,7 +1789,7 @@ impl TicketsStore for FakeTicketsStore {
 
     fn reopen(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         ticket_id: &str,
     ) -> BoxFut<'_, Result<bool, StoreError>> {
         let actor_str = actor.to_string();
@@ -1805,9 +1807,9 @@ impl TicketsStore for FakeTicketsStore {
                                 *u == actor_str
                                     && p.as_str() == t.project_id.as_deref().unwrap_or("")
                             }))
-            }) && t.status == crate::domain::support::entities::TicketStatus::Resolved
+            }) && t.status == server::domain::support::entities::TicketStatus::Resolved
             {
-                t.status = crate::domain::support::entities::TicketStatus::Open;
+                t.status = server::domain::support::entities::TicketStatus::Open;
                 t.updated_at = Utc::now();
                 return Ok(true);
             }
@@ -1936,7 +1938,7 @@ impl TicketsStore for FakeTicketsStore {
 
     fn add_support_message(
         &self,
-        admin_id: crate::domain::admin::entities::AdminUserId,
+        admin_id: server::domain::admin::entities::AdminUserId,
         ticket_id: &str,
         body: &str,
     ) -> BoxFut<'_, Result<Option<TicketMessageRecord>, StoreError>> {
@@ -1957,7 +1959,7 @@ impl TicketsStore for FakeTicketsStore {
             let record = TicketMessageRecord {
                 id: Ulid::new().to_string(),
                 ticket_id: ticket_id.clone(),
-                author: crate::domain::support::entities::MessageAuthor::Support,
+                author: server::domain::support::entities::MessageAuthor::Support,
                 author_id: Some(admin_id_str),
                 body,
                 created_at: Utc::now(),
@@ -1979,7 +1981,7 @@ impl TicketsStore for FakeTicketsStore {
     fn set_status(
         &self,
         ticket_id: &str,
-        status: crate::domain::support::entities::TicketStatus,
+        status: server::domain::support::entities::TicketStatus,
     ) -> BoxFut<'_, Result<bool, StoreError>> {
         let ticket_id = ticket_id.to_string();
 
@@ -2022,7 +2024,7 @@ impl TicketsStore for FakeTicketsStore {
     fn count_tickets_for_user(
         &self,
         user_id: &str,
-    ) -> BoxFut<'_, Result<crate::ports::tickets_store::TicketCounts, StoreError>> {
+    ) -> BoxFut<'_, Result<server::ports::tickets_store::TicketCounts, StoreError>> {
         let user_id = user_id.to_string();
         let tickets = self.tickets.read().unwrap().clone();
 
@@ -2037,12 +2039,12 @@ impl TicketsStore for FakeTicketsStore {
                 .filter(|t| {
                     matches!(
                         t.status,
-                        crate::domain::support::entities::TicketStatus::Open
-                            | crate::domain::support::entities::TicketStatus::InProgress
+                        server::domain::support::entities::TicketStatus::Open
+                            | server::domain::support::entities::TicketStatus::InProgress
                     )
                 })
                 .count() as i64;
-            Ok(crate::ports::tickets_store::TicketCounts { total, open })
+            Ok(server::ports::tickets_store::TicketCounts { total, open })
         })
     }
 }
@@ -2053,8 +2055,8 @@ impl TicketsStore for FakeTicketsStore {
 
 #[derive(Default)]
 pub struct FakeApiKeysStore {
-    keys: RwLock<Vec<crate::ports::api_keys_store::ApiKeyRecord>>,
-    ips: RwLock<Vec<crate::ports::api_keys_store::IpAllowEntry>>,
+    keys: RwLock<Vec<server::ports::api_keys_store::ApiKeyRecord>>,
+    ips: RwLock<Vec<server::ports::api_keys_store::IpAllowEntry>>,
     /// (user_id, project_id) pairs the actor may access (project visibility).
     visible: RwLock<Vec<(String, String)>>,
 }
@@ -2085,7 +2087,7 @@ impl FakeApiKeysStore {
         actor: &str,
         project_id: &str,
         key_id: &str,
-    ) -> Option<crate::ports::api_keys_store::ApiKeyRecord> {
+    ) -> Option<server::ports::api_keys_store::ApiKeyRecord> {
         if !self.can_see(actor, project_id) {
             return None;
         }
@@ -2098,7 +2100,7 @@ impl FakeApiKeysStore {
     }
 }
 
-impl crate::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
+impl server::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
     #[allow(clippy::too_many_arguments)]
     fn create_key(
         &self,
@@ -2110,8 +2112,8 @@ impl crate::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
         expires_at: Option<DateTime<Utc>>,
         prefix: &str,
         key_hash: &str,
-    ) -> BoxFut<'_, Result<crate::ports::api_keys_store::ApiKeyRecord, StoreError>> {
-        use crate::ports::api_keys_store::ApiKeyRecord;
+    ) -> BoxFut<'_, Result<server::ports::api_keys_store::ApiKeyRecord, StoreError>> {
+        use server::ports::api_keys_store::ApiKeyRecord;
         let actor_str = actor.to_string();
         let project_id = project_id.to_string();
         let name = name.to_string();
@@ -2157,7 +2159,7 @@ impl crate::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
         &self,
         actor: UserId,
         project_id: &str,
-    ) -> BoxFut<'_, Result<Vec<crate::ports::api_keys_store::ApiKeyRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Vec<server::ports::api_keys_store::ApiKeyRecord>, StoreError>> {
         let actor_str = actor.to_string();
         let project_id = project_id.to_string();
         Box::pin(async move {
@@ -2172,7 +2174,7 @@ impl crate::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
                 .filter(|k| k.project_id == project_id)
                 .cloned()
                 .collect();
-            keys.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            keys.sort_by_key(|e| Reverse(e.created_at));
             Ok(keys)
         })
     }
@@ -2182,7 +2184,7 @@ impl crate::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
         actor: UserId,
         project_id: &str,
         key_id: &str,
-    ) -> BoxFut<'_, Result<Option<crate::ports::api_keys_store::ApiKeyRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Option<server::ports::api_keys_store::ApiKeyRecord>, StoreError>> {
         let actor_str = actor.to_string();
         let project_id = project_id.to_string();
         let key_id = key_id.to_string();
@@ -2280,7 +2282,7 @@ impl crate::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
     fn find_key_by_hash(
         &self,
         key_hash: &str,
-    ) -> BoxFut<'_, Result<Option<crate::ports::api_keys_store::ApiKeyRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Option<server::ports::api_keys_store::ApiKeyRecord>, StoreError>> {
         let key_hash = key_hash.to_string();
         Box::pin(async move {
             Ok(self
@@ -2314,7 +2316,7 @@ impl crate::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
         actor: UserId,
         project_id: &str,
         key_id: &str,
-    ) -> BoxFut<'_, Result<Vec<crate::ports::api_keys_store::IpAllowEntry>, StoreError>> {
+    ) -> BoxFut<'_, Result<Vec<server::ports::api_keys_store::IpAllowEntry>, StoreError>> {
         let actor_str = actor.to_string();
         let project_id = project_id.to_string();
         let key_id = key_id.to_string();
@@ -2330,7 +2332,7 @@ impl crate::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
                 .filter(|e| e.key_id == key_id)
                 .cloned()
                 .collect();
-            entries.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+            entries.sort_by_key(|e| e.created_at);
             Ok(entries)
         })
     }
@@ -2338,7 +2340,7 @@ impl crate::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
     fn list_ips_for_key(
         &self,
         key_id: &str,
-    ) -> BoxFut<'_, Result<Vec<crate::ports::api_keys_store::IpAllowEntry>, StoreError>> {
+    ) -> BoxFut<'_, Result<Vec<server::ports::api_keys_store::IpAllowEntry>, StoreError>> {
         let key_id = key_id.to_string();
         Box::pin(async move {
             Ok(self
@@ -2359,8 +2361,8 @@ impl crate::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
         key_id: &str,
         cidr: &str,
         label: &str,
-    ) -> BoxFut<'_, Result<crate::ports::api_keys_store::IpAllowEntry, StoreError>> {
-        use crate::ports::api_keys_store::IpAllowEntry;
+    ) -> BoxFut<'_, Result<server::ports::api_keys_store::IpAllowEntry, StoreError>> {
+        use server::ports::api_keys_store::IpAllowEntry;
         let actor_str = actor.to_string();
         let project_id = project_id.to_string();
         let key_id = key_id.to_string();
@@ -2426,7 +2428,7 @@ impl FakeNotificationsStore {
 
     pub fn all(&self) -> Vec<NotificationRecord> {
         let mut all = self.notifications.read().unwrap().clone();
-        all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        all.sort_by_key(|e| Reverse(e.created_at));
         all
     }
 }
@@ -2446,7 +2448,7 @@ impl NotificationsStore for FakeNotificationsStore {
         let content = content.to_string();
         Box::pin(async move {
             let record = NotificationRecord {
-                id: crate::kernel::Ulid::new().to_string(),
+                id: server::kernel::Ulid::new().to_string(),
                 user_id: user_str,
                 notification_type,
                 origin,
@@ -2482,7 +2484,7 @@ impl NotificationsStore for FakeNotificationsStore {
                 .filter(|n| !unread_only || n.read_at.is_none())
                 .filter(|n| before_owned.as_deref().is_none_or(|b| n.id.as_str() < b))
                 .collect();
-            list.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            list.sort_by_key(|e| Reverse(e.created_at));
             list.truncate(limit.max(0) as usize);
             Ok(list)
         })
@@ -2658,7 +2660,7 @@ impl NotificationsStore for FakeNotificationsStore {
     fn create_many(
         &self,
         broadcast_id: &str,
-        notification_type: crate::domain::notifications::entities::NotificationType,
+        notification_type: server::domain::notifications::entities::NotificationType,
         recipients: &[BroadcastRecipient],
     ) -> BoxFut<'_, Result<i64, StoreError>> {
         let notifications = &self.notifications;
@@ -2668,10 +2670,10 @@ impl NotificationsStore for FakeNotificationsStore {
             let mut list = notifications.write().map_err(lock_err)?;
             for r in &recipients {
                 list.push(NotificationRecord {
-                    id: crate::kernel::Ulid::new().to_string(),
+                    id: server::kernel::Ulid::new().to_string(),
                     user_id: r.user_id.clone(),
                     notification_type,
-                    origin: crate::domain::notifications::entities::NotificationOrigin::Admin,
+                    origin: server::domain::notifications::entities::NotificationOrigin::Admin,
                     title: r.title.clone(),
                     content: r.content.clone(),
                     read_at: None,
@@ -2770,11 +2772,11 @@ impl NotificationsStore for FakeNotificationsStore {
 // FakeAdminStore — in-memory admin store for tests
 // ------------------------------------------------------------------
 
-use crate::domain::admin::entities::{
+use server::domain::admin::entities::{
     AdminPasswordResetToken, AdminPasswordResetTokenId, AdminSession, AdminSessionId, AdminStatus,
     AdminUser, AdminUserId,
 };
-use crate::ports::admin_store::AdminStore;
+use server::ports::admin_store::AdminStore;
 
 #[derive(Default)]
 pub struct FakeAdminStore {
@@ -3073,9 +3075,9 @@ impl AdminStore for FakeAdminStore {
 // FakeBillingStore — in-memory [`BillingStore`] for tests.
 // ---------------------------------------------------------------------------
 
-use crate::domain::billing::entities::{BillingCycle, SubscriptionStatus};
-use crate::domain::billing::{NewPlan, UpdatePlan};
-use crate::ports::billing_store::{BillingStore, PlanRecord, SubscriptionRecord};
+use server::domain::billing::entities::{BillingCycle, SubscriptionStatus};
+use server::domain::billing::{NewPlan, UpdatePlan};
+use server::ports::billing_store::{BillingStore, PlanRecord, SubscriptionRecord};
 
 fn seed_plan(
     id: &str,
@@ -3212,7 +3214,7 @@ impl FakeBillingStore {
 impl BillingStore for FakeBillingStore {
     fn project_visible(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
     ) -> BoxFut<'_, Result<bool, StoreError>> {
         let visible = self.is_visible(&actor.to_string(), project_id);
@@ -3376,7 +3378,7 @@ impl BillingStore for FakeBillingStore {
 
     fn list_projects_with_created(
         &self,
-    ) -> BoxFut<'_, Result<Vec<crate::ports::billing_store::ProjectBirth>, StoreError>> {
+    ) -> BoxFut<'_, Result<Vec<server::ports::billing_store::ProjectBirth>, StoreError>> {
         let born = self.born.read().unwrap().clone();
         let visible = self.visible.read().unwrap().clone();
         let projects = self.projects.read().unwrap().clone();
@@ -3518,8 +3520,8 @@ impl BillingStore for FakeBillingStore {
     fn list_subscribers(
         &self,
         plan_id: &str,
-    ) -> BoxFut<'_, Result<Vec<crate::ports::billing_store::SubscriberRecord>, StoreError>> {
-        use crate::domain::billing::entities::SubscriptionStatus;
+    ) -> BoxFut<'_, Result<Vec<server::ports::billing_store::SubscriberRecord>, StoreError>> {
+        use server::domain::billing::entities::SubscriptionStatus;
         let plan_id = plan_id.to_string();
         let subs = self.subs.read().unwrap().clone();
         let projects = self.projects.read().unwrap().clone();
@@ -3550,7 +3552,7 @@ impl BillingStore for FakeBillingStore {
                             .map(|(_, n, e)| (Some(n.clone()), Some(e.clone())))
                     })
                     .unwrap_or((None, None));
-                out.push(crate::ports::billing_store::SubscriberRecord {
+                out.push(server::ports::billing_store::SubscriberRecord {
                     subscription: s,
                     project_name,
                     customer_name,
@@ -3566,7 +3568,7 @@ impl BillingStore for FakeBillingStore {
 // FakeMailer + FakeTemplates — in-memory system mail for tests.
 // ---------------------------------------------------------------------------
 
-use crate::ports::mailer::{
+use server::ports::mailer::{
     BoxFut as MailBoxFut, MailError, RenderedTemplate, SmtpMailer, SystemSender, SystemTemplates,
 };
 
@@ -3664,7 +3666,7 @@ impl SystemTemplates for FakeTemplates {
 /// Thread-safe in-memory flow store.
 #[derive(Default)]
 pub struct FakeFlowStore {
-    flows: RwLock<Vec<crate::ports::flow_store::FlowRecord>>,
+    flows: RwLock<Vec<server::ports::flow_store::FlowRecord>>,
     visible: RwLock<Vec<(String, String)>>,
 }
 
@@ -3690,10 +3692,10 @@ impl FakeFlowStore {
     }
 }
 
-impl crate::ports::flow_store::FlowStore for FakeFlowStore {
+impl server::ports::flow_store::FlowStore for FakeFlowStore {
     fn project_visible(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
     ) -> BoxFut<'_, Result<bool, StoreError>> {
         let visible = self.is_visible(&actor.to_string(), project_id);
@@ -3703,7 +3705,7 @@ impl crate::ports::flow_store::FlowStore for FakeFlowStore {
     fn list_by_project(
         &self,
         project_id: &str,
-    ) -> BoxFut<'_, Result<Vec<crate::ports::flow_store::FlowRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Vec<server::ports::flow_store::FlowRecord>, StoreError>> {
         let mut rows: Vec<_> = self
             .flows
             .read()
@@ -3719,7 +3721,7 @@ impl crate::ports::flow_store::FlowStore for FakeFlowStore {
     fn get(
         &self,
         id: &str,
-    ) -> BoxFut<'_, Result<Option<crate::ports::flow_store::FlowRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Option<server::ports::flow_store::FlowRecord>, StoreError>> {
         let found = self
             .flows
             .read()
@@ -3735,8 +3737,8 @@ impl crate::ports::flow_store::FlowStore for FakeFlowStore {
         project_id: &str,
         name: &str,
         definition: &serde_json::Value,
-    ) -> BoxFut<'_, Result<crate::ports::flow_store::FlowRecord, StoreError>> {
-        use crate::ports::flow_store::FlowRecord;
+    ) -> BoxFut<'_, Result<server::ports::flow_store::FlowRecord, StoreError>> {
+        use server::ports::flow_store::FlowRecord;
         let now = chrono::Utc::now();
         let record = FlowRecord {
             id: Ulid::new().to_string(),
@@ -3756,7 +3758,7 @@ impl crate::ports::flow_store::FlowStore for FakeFlowStore {
         id: &str,
         name: &str,
         definition: &serde_json::Value,
-    ) -> BoxFut<'_, Result<Option<crate::ports::flow_store::FlowRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Option<server::ports::flow_store::FlowRecord>, StoreError>> {
         let mut flows = self.flows.write().unwrap();
         let updated = flows.iter_mut().find(|f| f.id == id).map(|f| {
             f.name = name.to_string();
@@ -3782,7 +3784,7 @@ impl crate::ports::flow_store::FlowStore for FakeFlowStore {
 /// Thread-safe in-memory send store.
 #[derive(Default)]
 pub struct FakeSendStore {
-    sends: RwLock<Vec<crate::ports::send_store::SendRecord>>,
+    sends: RwLock<Vec<server::ports::send_store::SendRecord>>,
     visible: RwLock<Vec<(String, String)>>,
 }
 
@@ -3808,10 +3810,10 @@ impl FakeSendStore {
     }
 }
 
-impl crate::ports::send_store::SendStore for FakeSendStore {
+impl server::ports::send_store::SendStore for FakeSendStore {
     fn project_visible(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
     ) -> BoxFut<'_, Result<bool, StoreError>> {
         let visible = self.is_visible(&actor.to_string(), project_id);
@@ -3826,8 +3828,8 @@ impl crate::ports::send_store::SendStore for FakeSendStore {
         title: &str,
         body: &str,
         send_at: DateTime<Utc>,
-    ) -> BoxFut<'_, Result<crate::ports::send_store::SendRecord, StoreError>> {
-        use crate::ports::send_store::SendRecord;
+    ) -> BoxFut<'_, Result<server::ports::send_store::SendRecord, StoreError>> {
+        use server::ports::send_store::SendRecord;
         let now = chrono::Utc::now();
         let record = SendRecord {
             id: Ulid::new().to_string(),
@@ -3854,7 +3856,7 @@ impl crate::ports::send_store::SendStore for FakeSendStore {
         id: &str,
         provider: &str,
         external_id: Option<&str>,
-    ) -> BoxFut<'_, Result<Option<crate::ports::send_store::SendRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Option<server::ports::send_store::SendRecord>, StoreError>> {
         let mut sends = self.sends.write().unwrap();
         let updated = sends.iter_mut().find(|s| s.id == id).map(|s| {
             s.status = "completed".to_string();
@@ -3870,7 +3872,7 @@ impl crate::ports::send_store::SendStore for FakeSendStore {
         &self,
         id: &str,
         last_error: &str,
-    ) -> BoxFut<'_, Result<Option<crate::ports::send_store::SendRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Option<server::ports::send_store::SendRecord>, StoreError>> {
         let mut sends = self.sends.write().unwrap();
         let updated = sends.iter_mut().find(|s| s.id == id).map(|s| {
             s.status = "failed".to_string();
@@ -3886,7 +3888,7 @@ impl crate::ports::send_store::SendStore for FakeSendStore {
         &self,
         project_id: &str,
         limit: i64,
-    ) -> BoxFut<'_, Result<Vec<crate::ports::send_store::SendRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Vec<server::ports::send_store::SendRecord>, StoreError>> {
         let mut rows: Vec<_> = self
             .sends
             .read()
@@ -3895,7 +3897,7 @@ impl crate::ports::send_store::SendStore for FakeSendStore {
             .filter(|s| s.project_id == project_id)
             .cloned()
             .collect();
-        rows.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        rows.sort_by_key(|e| Reverse(e.created_at));
         rows.truncate(limit.max(0) as usize);
         Box::pin(async move { Ok(rows) })
     }
@@ -3904,7 +3906,7 @@ impl crate::ports::send_store::SendStore for FakeSendStore {
 /// Thread-safe in-memory channel provider config store.
 #[derive(Default)]
 pub struct FakeChannelProviderStore {
-    configs: RwLock<Vec<crate::domain::channels::ProjectProviderConfig>>,
+    configs: RwLock<Vec<server::domain::channels::ProjectProviderConfig>>,
     visible: RwLock<Vec<(String, String)>>,
 }
 
@@ -3924,7 +3926,7 @@ impl FakeChannelProviderStore {
 
     /// Seeds an enabled provider config for a project channel.
     pub fn seed_config(&self, project_id: &str, channel_id: &str, provider_id: &str) {
-        use crate::domain::channels::ProjectProviderConfig;
+        use server::domain::channels::ProjectProviderConfig;
         let now = chrono::Utc::now();
         self.configs.write().unwrap().push(ProjectProviderConfig {
             id: Ulid::new().to_string(),
@@ -3941,11 +3943,11 @@ impl FakeChannelProviderStore {
 }
 
 #[async_trait::async_trait]
-impl crate::ports::channel_provider_store::ChannelProviderStore for FakeChannelProviderStore {
+impl server::ports::channel_provider_store::ChannelProviderStore for FakeChannelProviderStore {
     async fn list_by_project(
         &self,
         project_id: &str,
-    ) -> Result<Vec<crate::domain::channels::ProjectProviderConfig>, String> {
+    ) -> Result<Vec<server::domain::channels::ProjectProviderConfig>, String> {
         Ok(self
             .configs
             .read()
@@ -3959,7 +3961,7 @@ impl crate::ports::channel_provider_store::ChannelProviderStore for FakeChannelP
     async fn get(
         &self,
         id: &str,
-    ) -> Result<Option<crate::domain::channels::ProjectProviderConfig>, String> {
+    ) -> Result<Option<server::domain::channels::ProjectProviderConfig>, String> {
         Ok(self
             .configs
             .read()
@@ -3974,7 +3976,7 @@ impl crate::ports::channel_provider_store::ChannelProviderStore for FakeChannelP
         project_id: &str,
         channel_id: &str,
         provider_id: &str,
-    ) -> Result<Option<crate::domain::channels::ProjectProviderConfig>, String> {
+    ) -> Result<Option<server::domain::channels::ProjectProviderConfig>, String> {
         Ok(self
             .configs
             .read()
@@ -3990,10 +3992,10 @@ impl crate::ports::channel_provider_store::ChannelProviderStore for FakeChannelP
 
     async fn create(
         &self,
-        input: crate::domain::channels::ProjectProviderConfigInput,
+        input: server::domain::channels::ProjectProviderConfigInput,
         project_id: &str,
-    ) -> Result<crate::domain::channels::ProjectProviderConfig, String> {
-        use crate::domain::channels::ProjectProviderConfig;
+    ) -> Result<server::domain::channels::ProjectProviderConfig, String> {
+        use server::domain::channels::ProjectProviderConfig;
         let now = chrono::Utc::now();
         let record = ProjectProviderConfig {
             id: Ulid::new().to_string(),
@@ -4013,8 +4015,8 @@ impl crate::ports::channel_provider_store::ChannelProviderStore for FakeChannelP
     async fn update(
         &self,
         id: &str,
-        input: crate::domain::channels::ProjectProviderConfigInput,
-    ) -> Result<crate::domain::channels::ProjectProviderConfig, String> {
+        input: server::domain::channels::ProjectProviderConfigInput,
+    ) -> Result<server::domain::channels::ProjectProviderConfig, String> {
         let mut configs = self.configs.write().unwrap();
         let found = configs.iter_mut().find(|c| c.id == id).map(|c| {
             c.channel_id = input.channel_id.clone();
@@ -4044,7 +4046,7 @@ impl crate::ports::channel_provider_store::ChannelProviderStore for FakeChannelP
 /// In-memory schedule store for HTTP tests.
 #[derive(Default)]
 pub struct FakeScheduleStore {
-    schedules: RwLock<Vec<crate::ports::schedule_store::ScheduleRecord>>,
+    schedules: RwLock<Vec<server::ports::schedule_store::ScheduleRecord>>,
     visible: RwLock<Vec<(String, String)>>,
     /// Joined flow snapshots, mirroring the Postgres flow JOIN.
     flows: RwLock<HashMap<String, (String, serde_json::Value)>>,
@@ -4099,10 +4101,10 @@ impl FakeScheduleStore {
     }
 }
 
-impl crate::ports::schedule_store::ScheduleStore for FakeScheduleStore {
+impl server::ports::schedule_store::ScheduleStore for FakeScheduleStore {
     fn project_visible(
         &self,
-        actor: crate::domain::auth::entities::UserId,
+        actor: server::domain::auth::entities::UserId,
         project_id: &str,
     ) -> BoxFut<'_, Result<bool, StoreError>> {
         let visible = self.is_visible(&actor.to_string(), project_id);
@@ -4112,7 +4114,7 @@ impl crate::ports::schedule_store::ScheduleStore for FakeScheduleStore {
     fn list_by_project(
         &self,
         project_id: &str,
-    ) -> BoxFut<'_, Result<Vec<crate::ports::schedule_store::ScheduleRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Vec<server::ports::schedule_store::ScheduleRecord>, StoreError>> {
         let mut rows: Vec<_> = self
             .schedules
             .read()
@@ -4128,7 +4130,7 @@ impl crate::ports::schedule_store::ScheduleStore for FakeScheduleStore {
     fn get(
         &self,
         id: &str,
-    ) -> BoxFut<'_, Result<Option<crate::ports::schedule_store::ScheduleRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Option<server::ports::schedule_store::ScheduleRecord>, StoreError>> {
         let row = self
             .schedules
             .read()
@@ -4155,9 +4157,9 @@ impl crate::ports::schedule_store::ScheduleStore for FakeScheduleStore {
 
     fn create(
         &self,
-        draft: &crate::ports::schedule_store::NewSchedule,
-    ) -> BoxFut<'_, Result<crate::ports::schedule_store::ScheduleRecord, StoreError>> {
-        use crate::ports::schedule_store::ScheduleRecord;
+        draft: &server::ports::schedule_store::NewSchedule,
+    ) -> BoxFut<'_, Result<server::ports::schedule_store::ScheduleRecord, StoreError>> {
+        use server::ports::schedule_store::ScheduleRecord;
         let now = chrono::Utc::now();
         let (flow_name, flow_definition) = self.joined_flow(&draft.flow_id);
         let (template_name, template_content) = draft
@@ -4208,8 +4210,8 @@ impl crate::ports::schedule_store::ScheduleStore for FakeScheduleStore {
     fn update(
         &self,
         id: &str,
-        patch: &crate::ports::schedule_store::ScheduleUpdate,
-    ) -> BoxFut<'_, Result<Option<crate::ports::schedule_store::ScheduleRecord>, StoreError>> {
+        patch: &server::ports::schedule_store::ScheduleUpdate,
+    ) -> BoxFut<'_, Result<Option<server::ports::schedule_store::ScheduleRecord>, StoreError>> {
         let mut schedules = self.schedules.write().unwrap();
         let updated = schedules.iter_mut().find(|s| s.id == id).map(|s| {
             s.name = patch.name.clone();
@@ -4246,7 +4248,7 @@ impl crate::ports::schedule_store::ScheduleStore for FakeScheduleStore {
         &self,
         now: chrono::DateTime<chrono::Utc>,
         limit: i64,
-    ) -> BoxFut<'_, Result<Vec<crate::ports::schedule_store::ScheduleRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Vec<server::ports::schedule_store::ScheduleRecord>, StoreError>> {
         let mut schedules = self.schedules.write().unwrap();
         let mut claimed = Vec::new();
         let mut ids: Vec<String> = schedules
@@ -4277,7 +4279,7 @@ impl crate::ports::schedule_store::ScheduleStore for FakeScheduleStore {
         last_error: Option<&str>,
         next_run_at: Option<chrono::DateTime<chrono::Utc>>,
         active: bool,
-    ) -> BoxFut<'_, Result<Option<crate::ports::schedule_store::ScheduleRecord>, StoreError>> {
+    ) -> BoxFut<'_, Result<Option<server::ports::schedule_store::ScheduleRecord>, StoreError>> {
         let mut schedules = self.schedules.write().unwrap();
         let updated = schedules.iter_mut().find(|s| s.id == id).map(|s| {
             s.last_status = Some(last_status.to_string());
@@ -4298,7 +4300,7 @@ impl crate::ports::schedule_store::ScheduleStore for FakeScheduleStore {
 /// Recording HTTP requester for flow HTTP step tests.
 #[derive(Default)]
 pub struct FakeHttpRequester {
-    calls: RwLock<Vec<crate::ports::http_requester::HttpCall>>,
+    calls: RwLock<Vec<server::ports::http_requester::HttpCall>>,
     fail: RwLock<bool>,
 }
 
@@ -4308,7 +4310,7 @@ impl FakeHttpRequester {
     }
 
     /// Recorded outbound calls, in order.
-    pub fn calls(&self) -> Vec<crate::ports::http_requester::HttpCall> {
+    pub fn calls(&self) -> Vec<server::ports::http_requester::HttpCall> {
         self.calls.read().unwrap().clone()
     }
 
@@ -4318,13 +4320,13 @@ impl FakeHttpRequester {
     }
 }
 
-impl crate::ports::http_requester::HttpRequester for FakeHttpRequester {
+impl server::ports::http_requester::HttpRequester for FakeHttpRequester {
     fn request(
         &self,
-        call: &crate::ports::http_requester::HttpCall,
-    ) -> crate::ports::http_requester::BoxHttpFut<
+        call: &server::ports::http_requester::HttpCall,
+    ) -> server::ports::http_requester::BoxHttpFut<
         '_,
-        Result<crate::ports::http_requester::HttpResult, String>,
+        Result<server::ports::http_requester::HttpResult, String>,
     > {
         self.calls.write().unwrap().push(call.clone());
         let fail = *self.fail.read().unwrap();
@@ -4332,7 +4334,7 @@ impl crate::ports::http_requester::HttpRequester for FakeHttpRequester {
             if fail {
                 Err("fake http failure".to_string())
             } else {
-                Ok(crate::ports::http_requester::HttpResult {
+                Ok(server::ports::http_requester::HttpResult {
                     status: 200,
                     ok: true,
                 })
@@ -4344,7 +4346,7 @@ impl crate::ports::http_requester::HttpRequester for FakeHttpRequester {
 /// In-memory trigger token store for inbound webhook tests.
 #[derive(Default)]
 pub struct FakeTriggerTokenStore {
-    tokens: RwLock<Vec<crate::ports::trigger_token_store::TriggerTokenRecord>>,
+    tokens: RwLock<Vec<server::ports::trigger_token_store::TriggerTokenRecord>>,
 }
 
 impl FakeTriggerTokenStore {
@@ -4353,7 +4355,7 @@ impl FakeTriggerTokenStore {
     }
 }
 
-impl crate::ports::trigger_token_store::TriggerTokenStore for FakeTriggerTokenStore {
+impl server::ports::trigger_token_store::TriggerTokenStore for FakeTriggerTokenStore {
     fn replace_flow_tokens(
         &self,
         flow_id: &str,
@@ -4364,7 +4366,7 @@ impl crate::ports::trigger_token_store::TriggerTokenStore for FakeTriggerTokenSt
         let mut tokens = self.tokens.write().unwrap();
         tokens.retain(|t| t.flow_id != flow_id);
         for (token, node_id) in pairs {
-            tokens.push(crate::ports::trigger_token_store::TriggerTokenRecord {
+            tokens.push(server::ports::trigger_token_store::TriggerTokenRecord {
                 token: token.clone(),
                 flow_id: flow_id.to_string(),
                 node_id: node_id.clone(),
@@ -4378,8 +4380,10 @@ impl crate::ports::trigger_token_store::TriggerTokenStore for FakeTriggerTokenSt
     fn lookup(
         &self,
         token: &str,
-    ) -> BoxFut<'_, Result<Option<crate::ports::trigger_token_store::TriggerTokenRecord>, StoreError>>
-    {
+    ) -> BoxFut<
+        '_,
+        Result<Option<server::ports::trigger_token_store::TriggerTokenRecord>, StoreError>,
+    > {
         let row = self
             .tokens
             .read()

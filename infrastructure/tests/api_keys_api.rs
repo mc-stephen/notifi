@@ -5,8 +5,11 @@
 //! the fake keys store, then exercise issuance (secret shown once),
 //! lifecycle, and IP allowlist endpoints.
 
+mod common;
+
 use std::sync::Arc;
 
+use crate::common::{FakeApiKeysStore, FakeAuditStore, FakeAuthStore};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -21,7 +24,6 @@ use server::domain::projects::ProjectService;
 use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
-use server::testing::{FakeApiKeysStore, FakeAuditStore, FakeAuthStore};
 use tower::ServiceExt;
 
 /// App wired with fake auth + api-keys services.

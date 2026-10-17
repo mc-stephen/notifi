@@ -1,7 +1,10 @@
 //! End-to-end HTTP tests for the support tickets feature (fake-backed services).
 
+mod common;
+
 use std::sync::Arc;
 
+use crate::common::{FakeAuditStore, FakeAuthStore, FakeRecipientsStore, FakeTicketsStore};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -16,7 +19,6 @@ use server::domain::support::TicketService;
 use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
-use server::testing::{FakeAuditStore, FakeAuthStore, FakeRecipientsStore, FakeTicketsStore};
 use tower::ServiceExt;
 
 fn app_with_tickets() -> (Router, Arc<FakeTicketsStore>, Arc<FakeRecipientsStore>) {

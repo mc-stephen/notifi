@@ -4,8 +4,11 @@
 //! complete onboarding to create a real project, then exercise the recipient
 //! endpoints scoped to that project.
 
+mod common;
+
 use std::sync::Arc;
 
+use crate::common::{FakeAuditStore, FakeAuthStore, FakeRecipientsStore};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -20,7 +23,6 @@ use server::domain::recipients::RecipientService;
 use server::infra::config::AppConfig;
 use server::infra::provider_tester::ConfigProviderTester;
 use server::ports::ProviderTester;
-use server::testing::{FakeAuditStore, FakeAuthStore, FakeRecipientsStore};
 use tower::ServiceExt;
 
 /// App wired with fake auth + recipients services.

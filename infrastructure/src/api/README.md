@@ -24,3 +24,7 @@ src/api/
 Rule: new surface → new folder under `routes/` named after its caller; middleware
 stays in `middleware/`, never mixed into a surface. Detail:
 `assets/docs/ARCHITECTURE.md` §8.
+
+Why only `admin/` has a `users/` folder: `app/auth/` covers your **own** account
+(signup, login, profile, password, OAuth); `admin/users/` is the platform-wide
+directory of **everyone else** (list, detail, suspend).
