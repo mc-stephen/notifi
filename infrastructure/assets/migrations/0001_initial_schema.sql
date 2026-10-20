@@ -12,6 +12,10 @@
 -- timing + template columns), 0016 (flow_trigger_tokens). 0010 is
 -- omitted on purpose (data-only OAuth backfill — nothing to backfill
 -- on a fresh database).
+-- Re-squashed 2026-10-20: folds in 0002 (environment gate → project
+-- `active` flag), 0003 (webhook ownership), and 0004+0005 (campaigns
+-- incl. the explicit provider pick). Applied migrations are append-only
+-- from here on: new schema changes ride new files, never edits.
 --
 -- Conventions:
 --   * All ids are ULIDs stored as 26-char strings (see notifi_core::id).
@@ -132,8 +136,9 @@ CREATE TABLE platform_projects (
     slug        TEXT        NOT NULL UNIQUE,
     description TEXT,
     created_by  VARCHAR(26) REFERENCES auth_users(id) ON DELETE SET NULL,
-    environment TEXT        NOT NULL DEFAULT 'development'
-               CHECK (environment IN ('development', 'production')),
+    -- Traffic switch: one boolean that turns all of the project's
+    -- sends on or off (replaces the historic dev/prod environment gate).
+    active      BOOLEAN     NOT NULL DEFAULT TRUE,
     require_2fa BOOLEAN     NOT NULL DEFAULT FALSE,
     version     INT         NOT NULL DEFAULT 1,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -149,8 +154,6 @@ CREATE TABLE auth_api_keys (
     name           TEXT        NOT NULL,
     prefix         TEXT        NOT NULL,
     key_hash       TEXT        NOT NULL UNIQUE,
-    environment    TEXT        NOT NULL DEFAULT 'development'
-                   CHECK (environment IN ('development', 'production')),
     permissions    TEXT[]      NOT NULL DEFAULT '{}',
     scopes         TEXT[]      NOT NULL DEFAULT '{}',
     rate_limit     INT,
@@ -162,7 +165,7 @@ CREATE TABLE auth_api_keys (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at     TIMESTAMPTZ,
-    UNIQUE (project_id, environment, name)
+    UNIQUE (project_id, name)
 );
 
 CREATE INDEX idx_api_keys_project ON auth_api_keys(project_id);
@@ -461,8 +464,11 @@ CREATE INDEX idx_inapp_broadcast ON platform_in_app_notifications(broadcast_id);
 -- product sends + flow definitions (record-first API sends)
 -- ---------------------------------------------------------------------------
 
--- notification_sends: one row per POST /v1/notifications call. Flows
--- execute it inline (instant sends); completion is marked on the row.
+-- notification_sends: one row per POST /v1/notifications call, and one
+-- row per recipient expanded from a campaign fan-out (`campaign_id`
+-- set). Flows execute direct sends inline (instant sends); campaigns
+-- deliver their rows directly through connected providers; completion
+-- is marked on the row.
 CREATE TABLE notification_sends (
     id          VARCHAR(26) PRIMARY KEY,
     project_id  VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
@@ -476,12 +482,15 @@ CREATE TABLE notification_sends (
     attempts    INT         NOT NULL DEFAULT 0,
     provider    TEXT,
     external_id TEXT,
+    -- Set for campaign fan-out rows; NULL for direct API sends.
+    campaign_id VARCHAR(26),
     last_error  TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_sends_project ON notification_sends(project_id);
+CREATE INDEX idx_sends_campaign ON notification_sends(campaign_id);
 
 -- flows: notification routing graphs. "Default" is an emergent property (a
 -- flow carrying a notification.created trigger), not a stored flag.
@@ -496,6 +505,35 @@ CREATE TABLE flows (
 );
 
 CREATE INDEX idx_flows_project ON flows(project_id);
+
+-- Webhooks: inbound event receivers. Doctrine: an owner (schedule or
+-- webhook) creates its flow — a flow can never be assigned to one from
+-- the outside. The owner names the flow, seeds its locked trigger node,
+-- and deletes it when the owner dies. Both kinds of owned flows stay
+-- off the `/flows` list; the only door in is the owner's page.
+-- `archived_at` is the non-destructive alternative to deletion: archived
+-- owners stop running but keep their flow bound (still openable via the
+-- owner page) and can be restored.
+CREATE TABLE webhooks (
+    id          VARCHAR(26) PRIMARY KEY,
+    project_id  VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
+    name        TEXT        NOT NULL,
+    description TEXT        NOT NULL DEFAULT '',
+    -- 1:1: the flow this webhook created and owns. Unique — one flow back
+    -- at most one owner. Deleting the flow deletes the webhook row.
+    flow_id     VARCHAR(26) NOT NULL UNIQUE REFERENCES flows(id) ON DELETE CASCADE,
+    -- Event names this webhook is interested in (display metadata for the
+    -- trigger node; inbound firing still keys on the trigger token).
+    events      JSONB       NOT NULL DEFAULT '[]',
+    active      BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_by  VARCHAR(26) NOT NULL REFERENCES auth_users(id),
+    archived_at TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_webhooks_project ON webhooks(project_id);
+CREATE INDEX idx_webhooks_flow ON webhooks(flow_id);
 
 -- ---------------------------------------------------------------------------
 -- flow schedules: run a flow at a time (once), on an interval (recurring),
@@ -528,6 +566,10 @@ CREATE TABLE schedules (
     last_status TEXT        CHECK (last_status IN ('completed', 'failed')),
     last_error  TEXT,
     run_count   INT         NOT NULL DEFAULT 0,
+    -- Non-destructive alternative to deletion (see webhooks): archived
+    -- schedules stop running but keep their flow bound and can be
+    -- restored.
+    archived_at TIMESTAMPTZ,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -550,6 +592,54 @@ CREATE TABLE flow_trigger_tokens (
 
 CREATE INDEX idx_trigger_tokens_flow ON flow_trigger_tokens(flow_id);
 CREATE INDEX idx_trigger_tokens_project ON flow_trigger_tokens(project_id);
+
+-- ---------------------------------------------------------------------------
+-- campaigns: one-shot messages — one channel × one audience × one message
+-- × one timing.
+-- ---------------------------------------------------------------------------
+--
+-- Flow-less doctrine: campaigns deliver directly through the project's
+-- connected providers for their channel (the Providers page is the only
+-- delivery prerequisite; flows stay the door for API sends, schedules,
+-- and webhooks). Campaign rows keep the composed copy of the message
+-- (template renders are snapshotted at compose time), and fan-out lives
+-- in `notification_sends`: one pending row per recipient with
+-- `campaign_id` set. Campaign stats derive from those rows — nothing is
+-- ever stored twice.
+CREATE TABLE campaigns (
+    id          VARCHAR(26) PRIMARY KEY,
+    project_id  VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
+    name        TEXT        NOT NULL,
+    description TEXT        NOT NULL DEFAULT '',
+    created_by  VARCHAR(26) NOT NULL REFERENCES auth_users(id),
+    -- Exactly one channel per campaign: content and delivery semantics
+    -- (HTML bodies vs push payloads) do not mix.
+    channel     TEXT        NOT NULL,
+    -- When composed from a template the rendered content snapshot lives
+    -- in title/body; the reference is kept for provenance.
+    template_id VARCHAR(26) REFERENCES platform_templates(id) ON DELETE SET NULL,
+    title       TEXT        NOT NULL DEFAULT '',
+    body        TEXT        NOT NULL DEFAULT '',
+    -- Who gets it: 'all' = every recipient with a contact for the
+    -- channel (resolved live at fire time); 'custom' = only the
+    -- selected recipients (their keys, contacts still resolved live).
+    audience_mode     TEXT NOT NULL DEFAULT 'all',
+    selected_user_ids JSONB NOT NULL DEFAULT '[]',
+    -- Explicit primary provider pick (empty = no explicit pick: the
+    -- connected providers for the channel try in store order with
+    -- fallback; a named pick is tried first).
+    provider_id TEXT        NOT NULL DEFAULT '',
+    status      TEXT        NOT NULL DEFAULT 'draft',
+    send_at     TIMESTAMPTZ,
+    started_at  TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    last_error  TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_campaigns_project ON campaigns(project_id);
+CREATE INDEX idx_campaigns_status ON campaigns(status);
 
 -- ---------------------------------------------------------------------------
 -- billing: plan catalog + per-project subscriptions

@@ -9,7 +9,7 @@ pub struct Project {
     pub name: String,
     pub slug: String,
     pub description: Option<String>,
-    pub environment: String,
+    pub active: bool,
     pub require_2fa: bool,
     pub created_at: DateTime<Utc>,
 }
@@ -21,7 +21,7 @@ impl From<crate::ports::projects_store::ProjectSummary> for Project {
             name: summary.name,
             slug: summary.slug,
             description: summary.description,
-            environment: summary.environment,
+            active: summary.active,
             require_2fa: summary.require_2fa,
             created_at: summary.created_at,
         }

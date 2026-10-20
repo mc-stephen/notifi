@@ -26,11 +26,11 @@ pub enum StoreError {
     Storage(String),
 }
 
-impl From<StoreError> for crate::domain::auth::errors::AuthError {
+impl From<StoreError> for crate::domain::error::AppError {
     fn from(err: StoreError) -> Self {
         match err {
-            StoreError::Conflict => crate::domain::auth::errors::AuthError::EmailAlreadyExists,
-            StoreError::Storage(m) => crate::domain::auth::errors::AuthError::Storage(m),
+            StoreError::Conflict => crate::domain::error::AppError::EmailAlreadyExists,
+            StoreError::Storage(m) => crate::domain::error::AppError::Storage(m),
         }
     }
 }
@@ -139,7 +139,7 @@ pub trait AuthStore: Send + Sync {
     /// Whether `user_id` owns or belongs to at least one project — the "can
     /// skip onboarding" test.
     fn has_project(&self, user_id: UserId) -> BoxFut<'_, Result<bool, StoreError>>;
-    /// Creates the first project and its default environment atomically.
+    /// Creates the first project atomically.
     fn complete_onboarding(
         &self,
         user_id: UserId,

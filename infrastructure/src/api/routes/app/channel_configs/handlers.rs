@@ -3,8 +3,8 @@ use axum::extract::{Extension, Path};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::domain::auth::errors::AuthError;
 use crate::domain::channels::{ProjectProviderConfig, ProjectProviderConfigInput};
+use crate::domain::error::AppError;
 use crate::domain::notifications::{NotificationService, NotificationType};
 use crate::ports::channel_provider_store::ChannelProviderStore;
 use crate::ports::provider_tester::ProviderTester;
@@ -66,7 +66,7 @@ pub async fn list_configs(
     let configs = store
         .list_by_project(&project_id)
         .await
-        .map_err(|e| Problem::from(AuthError::Storage(e)))?;
+        .map_err(|e| Problem::from(AppError::Storage(e)))?;
 
     Ok(Json(configs.into_iter().map(|c| c.into()).collect()))
 }
@@ -107,7 +107,7 @@ pub async fn create_config(
     let config = store
         .create(input, &project_id)
         .await
-        .map_err(|e| Problem::from(AuthError::Storage(e)))?;
+        .map_err(|e| Problem::from(AppError::Storage(e)))?;
 
     let _ = notifications
         .create_system(
@@ -142,7 +142,7 @@ pub async fn update_config(
     let config = store
         .update(&config_id, input)
         .await
-        .map_err(|e| Problem::from(AuthError::Storage(e)))?;
+        .map_err(|e| Problem::from(AppError::Storage(e)))?;
 
     Ok(Json(config.into()))
 }
@@ -158,12 +158,12 @@ pub async fn delete_config(
     let existing = store
         .get(&config_id)
         .await
-        .map_err(|e| Problem::from(AuthError::Storage(e)))?;
+        .map_err(|e| Problem::from(AppError::Storage(e)))?;
 
     store
         .delete(&config_id)
         .await
-        .map_err(|e| Problem::from(AuthError::Storage(e)))?;
+        .map_err(|e| Problem::from(AppError::Storage(e)))?;
 
     if let Some(cfg) = existing {
         let _ = notifications

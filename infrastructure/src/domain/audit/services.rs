@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use crate::domain::audit::entities::{AuditEntry, AuditEvent};
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::kernel::Ulid;
 use crate::ports::audit_store::{AdminAuditFilters, AuditFilters, AuditStore};
 
@@ -36,7 +36,7 @@ impl AuditService {
         filters: AuditFilters<'_>,
         limit: i64,
         before_id: Option<&str>,
-    ) -> Result<Vec<AuditEntry>, AuthError> {
+    ) -> Result<Vec<AuditEntry>, AppError> {
         self.store
             .list(user_id, filters, limit, before_id)
             .await
@@ -50,7 +50,7 @@ impl AuditService {
         filters: AdminAuditFilters<'_>,
         limit: i64,
         offset: i64,
-    ) -> Result<(Vec<AuditEntry>, i64), AuthError> {
+    ) -> Result<(Vec<AuditEntry>, i64), AppError> {
         self.store
             .list_all(filters, limit, offset)
             .await

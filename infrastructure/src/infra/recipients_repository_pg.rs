@@ -167,6 +167,32 @@ impl RecipientsStore for PgRecipientsStore {
         })
     }
 
+    fn list_by_project(
+        &self,
+        project_id: &str,
+        limit: i64,
+    ) -> BoxFut<'_, Result<Vec<RecipientRecord>, StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        Box::pin(async move {
+            let rows = sqlx::query_as::<_, RecipientRow>(
+                "SELECT id, project_id, user_id, name, contacts, created_at
+                     FROM platform_recipients
+                     WHERE project_id = $1
+                       AND deleted_at IS NULL
+                     ORDER BY created_at DESC, id DESC
+                     LIMIT $2",
+            )
+            .bind(&project_id)
+            .bind(limit)
+            .fetch_all(&pool)
+            .await
+            .map_err(map_err)?;
+
+            Ok(rows.into_iter().map(RecipientRecord::from).collect())
+        })
+    }
+
     fn get(
         &self,
         actor: UserId,

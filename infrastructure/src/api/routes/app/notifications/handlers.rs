@@ -58,9 +58,7 @@ pub async fn get_notification(
     let notification = service
         .get(user.id, &notification_id)
         .await?
-        .ok_or_else(|| {
-            crate::domain::auth::errors::AuthError::NotFound("notification not found".into())
-        })?;
+        .ok_or_else(|| crate::domain::error::AppError::NotFound("notification not found".into()))?;
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "notification": InAppNotificationDto::from(notification) })),
@@ -77,9 +75,7 @@ pub async fn set_read(
     let notification = service
         .set_read(user.id, &notification_id, body.read)
         .await?
-        .ok_or_else(|| {
-            crate::domain::auth::errors::AuthError::NotFound("notification not found".into())
-        })?;
+        .ok_or_else(|| crate::domain::error::AppError::NotFound("notification not found".into()))?;
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "notification": InAppNotificationDto::from(notification) })),
@@ -106,10 +102,9 @@ pub async fn delete_notification(
 ) -> Result<StatusCode, Problem> {
     let deleted = service.delete(user.id, &notification_id).await?;
     if !deleted {
-        return Err(crate::domain::auth::errors::AuthError::NotFound(
-            "notification not found".into(),
-        )
-        .into());
+        return Err(
+            crate::domain::error::AppError::NotFound("notification not found".into()).into(),
+        );
     }
     Ok(StatusCode::NO_CONTENT)
 }

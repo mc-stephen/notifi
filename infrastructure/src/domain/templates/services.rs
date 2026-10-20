@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use crate::domain::audit::AuditService;
 use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::UserId;
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::templates::entities::Template;
 use crate::ports::auth_store::StoreError;
 use crate::ports::templates_store::{AttachmentInput, TemplatesStore};
@@ -46,16 +46,16 @@ impl TemplateService {
         channel: &str,
         content: Value,
         attachments: Vec<AttachmentInput>,
-    ) -> Result<Template, AuthError> {
+    ) -> Result<Template, AppError> {
         let name = name.trim();
         if name.is_empty() || name.len() > MAX_NAME {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "name is required (200 characters max)".to_string(),
             ));
         }
         let description = match description {
             Some(d) if d.len() > MAX_DESCRIPTION => {
-                return Err(AuthError::Validation(
+                return Err(AppError::Validation(
                     "description too long (2000 characters max)".to_string(),
                 ));
             }
@@ -63,10 +63,10 @@ impl TemplateService {
         };
         let channel = channel.trim();
         if channel.is_empty() {
-            return Err(AuthError::Validation("channel is required".to_string()));
+            return Err(AppError::Validation("channel is required".to_string()));
         }
         if !content.is_null() && !content.is_object() {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "content must be a JSON object".to_string(),
             ));
         }
@@ -117,7 +117,7 @@ impl TemplateService {
         search: Option<&str>,
         limit: i64,
         before: Option<&str>,
-    ) -> Result<Vec<Template>, AuthError> {
+    ) -> Result<Vec<Template>, AppError> {
         Ok(self
             .store
             .list(actor, project_id.as_ref(), search, limit, before)
@@ -134,7 +134,7 @@ impl TemplateService {
         actor: UserId,
         project_id: &str,
         template_id: &str,
-    ) -> Result<Option<Template>, AuthError> {
+    ) -> Result<Option<Template>, AppError> {
         Ok(self
             .store
             .get(actor, project_id, template_id)
@@ -157,16 +157,16 @@ impl TemplateService {
         channel: &str,
         content: Value,
         attachments: Option<Vec<AttachmentInput>>,
-    ) -> Result<Template, AuthError> {
+    ) -> Result<Template, AppError> {
         let name = name.trim();
         if name.is_empty() || name.len() > MAX_NAME {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "name is required (200 characters max)".to_string(),
             ));
         }
         let description = match description {
             Some(d) if d.len() > MAX_DESCRIPTION => {
-                return Err(AuthError::Validation(
+                return Err(AppError::Validation(
                     "description too long (2000 characters max)".to_string(),
                 ));
             }
@@ -174,10 +174,10 @@ impl TemplateService {
         };
         let channel = channel.trim();
         if channel.is_empty() {
-            return Err(AuthError::Validation("channel is required".to_string()));
+            return Err(AppError::Validation("channel is required".to_string()));
         }
         if !content.is_null() && !content.is_object() {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "content must be a JSON object".to_string(),
             ));
         }
@@ -196,7 +196,7 @@ impl TemplateService {
                     .get(actor, project_id, template_id)
                     .await
                     .map_err(map_store_error)?
-                    .ok_or_else(|| AuthError::NotFound("template not found".to_string()))?;
+                    .ok_or_else(|| AppError::NotFound("template not found".to_string()))?;
                 current
                     .attachments
                     .into_iter()
@@ -224,7 +224,7 @@ impl TemplateService {
             )
             .await
             .map_err(map_store_error)?
-            .ok_or_else(|| AuthError::NotFound("template not found".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("template not found".to_string()))?;
 
         let template = Template::from(record);
 
@@ -251,7 +251,7 @@ impl TemplateService {
         actor: UserId,
         project_id: &str,
         template_id: &str,
-    ) -> Result<(), AuthError> {
+    ) -> Result<(), AppError> {
         let removed = self
             .store
             .remove(actor, project_id, template_id)
@@ -278,11 +278,11 @@ impl TemplateService {
     }
 }
 
-fn map_store_error(err: StoreError) -> AuthError {
+fn map_store_error(err: StoreError) -> AppError {
     match err {
         StoreError::Conflict => {
-            AuthError::Conflict("A template with this id already exists.".to_string())
+            AppError::Conflict("A template with this id already exists.".to_string())
         }
-        StoreError::Storage(m) => AuthError::Storage(m),
+        StoreError::Storage(m) => AppError::Storage(m),
     }
 }

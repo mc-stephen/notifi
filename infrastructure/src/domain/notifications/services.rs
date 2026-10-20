@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::domain::auth::entities::UserId;
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::notifications::entities::{
     InAppNotification, NotificationOrigin, NotificationType,
 };
@@ -26,7 +26,7 @@ impl NotificationService {
         notification_type: NotificationType,
         title: &str,
         content: &str,
-    ) -> Result<InAppNotification, AuthError> {
+    ) -> Result<InAppNotification, AppError> {
         self.create_inner(
             user_id,
             notification_type,
@@ -43,7 +43,7 @@ impl NotificationService {
         notification_type: NotificationType,
         title: &str,
         content: &str,
-    ) -> Result<InAppNotification, AuthError> {
+    ) -> Result<InAppNotification, AppError> {
         self.create_inner(
             user_id,
             notification_type,
@@ -61,7 +61,7 @@ impl NotificationService {
         origin: NotificationOrigin,
         title: &str,
         content: &str,
-    ) -> Result<InAppNotification, AuthError> {
+    ) -> Result<InAppNotification, AppError> {
         let (title, content) = validate_content(title, content)?;
 
         let record = self
@@ -79,7 +79,7 @@ impl NotificationService {
         unread_only: bool,
         limit: i64,
         before: Option<&str>,
-    ) -> Result<Vec<InAppNotification>, AuthError> {
+    ) -> Result<Vec<InAppNotification>, AppError> {
         Ok(self
             .store
             .list(user_id, unread_only, limit, before)
@@ -90,7 +90,7 @@ impl NotificationService {
             .collect())
     }
 
-    pub async fn count_unread(&self, user_id: UserId) -> Result<i64, AuthError> {
+    pub async fn count_unread(&self, user_id: UserId) -> Result<i64, AppError> {
         self.store
             .count_unread(user_id)
             .await
@@ -101,7 +101,7 @@ impl NotificationService {
         &self,
         user_id: UserId,
         notification_id: &str,
-    ) -> Result<Option<InAppNotification>, AuthError> {
+    ) -> Result<Option<InAppNotification>, AppError> {
         Ok(self
             .store
             .get(user_id, notification_id)
@@ -115,7 +115,7 @@ impl NotificationService {
         user_id: UserId,
         notification_id: &str,
         read: bool,
-    ) -> Result<Option<InAppNotification>, AuthError> {
+    ) -> Result<Option<InAppNotification>, AppError> {
         Ok(self
             .store
             .set_read(user_id, notification_id, read)
@@ -124,14 +124,14 @@ impl NotificationService {
             .map(InAppNotification::from))
     }
 
-    pub async fn mark_all_read(&self, user_id: UserId) -> Result<i64, AuthError> {
+    pub async fn mark_all_read(&self, user_id: UserId) -> Result<i64, AppError> {
         self.store
             .mark_all_read(user_id)
             .await
             .map_err(map_store_error)
     }
 
-    pub async fn delete(&self, user_id: UserId, notification_id: &str) -> Result<bool, AuthError> {
+    pub async fn delete(&self, user_id: UserId, notification_id: &str) -> Result<bool, AppError> {
         self.store
             .delete(user_id, notification_id)
             .await
@@ -139,27 +139,27 @@ impl NotificationService {
     }
 }
 
-fn map_store_error(err: StoreError) -> AuthError {
+fn map_store_error(err: StoreError) -> AppError {
     match err {
         StoreError::Conflict => {
-            AuthError::Conflict("A notification with this ID already exists.".to_string())
+            AppError::Conflict("A notification with this ID already exists.".to_string())
         }
-        StoreError::Storage(m) => AuthError::Storage(m),
+        StoreError::Storage(m) => AppError::Storage(m),
     }
 }
 
 /// Shared title/content policy (also used by admin broadcasts).
-pub fn validate_content(title: &str, content: &str) -> Result<(String, String), AuthError> {
+pub fn validate_content(title: &str, content: &str) -> Result<(String, String), AppError> {
     let title = title.trim();
     let content = content.trim();
 
     if title.is_empty() || title.len() > MAX_TITLE {
-        return Err(AuthError::Validation(
+        return Err(AppError::Validation(
             "title is required (300 characters max)".to_string(),
         ));
     }
     if content.is_empty() || content.len() > MAX_CONTENT {
-        return Err(AuthError::Validation(
+        return Err(AppError::Validation(
             "content is required (100,000 characters max)".to_string(),
         ));
     }

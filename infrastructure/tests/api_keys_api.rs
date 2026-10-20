@@ -56,6 +56,7 @@ fn app_with_api_keys() -> (Router, Arc<FakeApiKeysStore>) {
                 notifications: None,
                 billing: None,
                 schedules: None,
+                webhooks: None,
                 inbound: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
                     as std::sync::Arc<dyn ProviderTester + Send + Sync>,
@@ -220,16 +221,16 @@ async fn create_returns_secret_once_and_lists_without_it() {
     let res = post_with_cookie(
         app.clone(),
         &format!("/app/projects/{pid}/api-keys"),
-        json!({"name": "Prod key", "environment": "production", "permissions": ["read", "write"]}),
+        json!({"name": "Prod key", "permissions": ["read", "write"]}),
         &token,
     )
     .await;
     assert_eq!(res.status(), StatusCode::CREATED);
     let body = body_json(res).await;
     let secret = body["secret"].as_str().unwrap().to_string();
-    assert!(secret.starts_with("napi_prod_"));
+    assert!(secret.starts_with("napi_"));
     assert_eq!(body["key"]["name"], "Prod key");
-    assert_eq!(body["key"]["prefix"], "napi_prod_");
+    assert_eq!(body["key"]["prefix"], "napi_");
     // Stored record never echoes the secret back on reads.
     let key_id = body["key"]["id"].as_str().unwrap().to_string();
 
@@ -265,17 +266,7 @@ async fn create_validates_inputs() {
     let res = post_with_cookie(
         app.clone(),
         &format!("/app/projects/{pid}/api-keys"),
-        json!({"name": "  ", "environment": "production"}),
-        &token,
-    )
-    .await;
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-
-    // Unknown environment → 400.
-    let res = post_with_cookie(
-        app.clone(),
-        &format!("/app/projects/{pid}/api-keys"),
-        json!({"name": "K", "environment": "staging"}),
+        json!({"name": "  "}),
         &token,
     )
     .await;
@@ -285,17 +276,17 @@ async fn create_validates_inputs() {
     let res = post_with_cookie(
         app.clone(),
         &format!("/app/projects/{pid}/api-keys"),
-        json!({"name": "K", "environment": "development", "permissions": ["admin"]}),
+        json!({"name": "K", "permissions": ["admin"]}),
         &token,
     )
     .await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 
-    // Duplicate name in same environment → 409.
+    // Duplicate name for the project → 409.
     let res = post_with_cookie(
         app.clone(),
         &format!("/app/projects/{pid}/api-keys"),
-        json!({"name": "Dup", "environment": "development"}),
+        json!({"name": "Dup"}),
         &token,
     )
     .await;
@@ -303,7 +294,7 @@ async fn create_validates_inputs() {
     let res = post_with_cookie(
         app.clone(),
         &format!("/app/projects/{pid}/api-keys"),
-        json!({"name": "Dup", "environment": "development"}),
+        json!({"name": "Dup"}),
         &token,
     )
     .await;
@@ -319,7 +310,7 @@ async fn rename_disable_and_revoke_roundtrip() {
     let res = post_with_cookie(
         app.clone(),
         &format!("/app/projects/{pid}/api-keys"),
-        json!({"name": "Old", "environment": "development"}),
+        json!({"name": "Old"}),
         &token,
     )
     .await;
@@ -383,7 +374,7 @@ async fn ip_allowlist_crud_and_validation() {
     let res = post_with_cookie(
         app.clone(),
         &format!("/app/projects/{pid}/api-keys"),
-        json!({"name": "K", "environment": "development"}),
+        json!({"name": "K"}),
         &token,
     )
     .await;

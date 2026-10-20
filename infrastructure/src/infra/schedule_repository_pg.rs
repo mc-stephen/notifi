@@ -50,6 +50,7 @@ struct ScheduleRow {
     body: String,
     recipients: serde_json::Value,
     active: bool,
+    archived_at: Option<DateTime<Utc>>,
     next_run_at: Option<DateTime<Utc>>,
     last_run_at: Option<DateTime<Utc>>,
     last_status: Option<String>,
@@ -98,6 +99,7 @@ impl From<ScheduleRow> for ScheduleRecord {
             body: r.body,
             recipients: r.recipients,
             active: r.active,
+            archived_at: r.archived_at,
             next_run_at: r.next_run_at,
             last_run_at: r.last_run_at,
             last_status: r.last_status,
@@ -113,7 +115,7 @@ const COLUMNS: &str = "s.id, s.project_id, s.name, s.flow_id, f.name AS flow_nam
     f.definition AS flow_definition, s.kind, s.run_at, s.interval_secs, s.days, \
     s.run_time, s.timezone, s.template_id, t.name AS template_name, \
     t.content AS template_content, s.channel, s.title, s.body, s.recipients, \
-    s.active, s.next_run_at, s.last_run_at, s.last_status, s.last_error, \
+    s.active, s.archived_at, s.next_run_at, s.last_run_at, s.last_status, s.last_error, \
     s.run_count, s.created_at, s.updated_at";
 const JOINS: &str = "FROM schedules s JOIN flows f ON f.id = s.flow_id \
     LEFT JOIN platform_templates t ON t.id = s.template_id";
@@ -204,8 +206,8 @@ impl ScheduleStore for PgScheduleStore {
                 "WITH ins AS (
                    INSERT INTO schedules (id, project_id, name, flow_id, kind, run_at,
                        interval_secs, days, run_time, timezone, template_id,
-                       channel, title, body, recipients, active, next_run_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                       channel, title, body, recipients, active, archived_at, next_run_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
                    RETURNING *
                  )
                  SELECT ins.id, ins.project_id, ins.name, ins.flow_id,
@@ -214,7 +216,7 @@ impl ScheduleStore for PgScheduleStore {
                      ins.timezone, ins.template_id,
                      t.name AS template_name, t.content AS template_content,
                      ins.channel, ins.title, ins.body, ins.recipients, ins.active,
-                     ins.next_run_at, ins.last_run_at, ins.last_status, ins.last_error,
+                     ins.archived_at, ins.next_run_at, ins.last_run_at, ins.last_status, ins.last_error,
                      ins.run_count, ins.created_at, ins.updated_at
                  FROM ins JOIN flows f ON f.id = ins.flow_id
                  LEFT JOIN platform_templates t ON t.id = ins.template_id",
@@ -235,6 +237,7 @@ impl ScheduleStore for PgScheduleStore {
             .bind(&draft.body)
             .bind(&draft.recipients)
             .bind(draft.active)
+            .bind(draft.archived_at)
             .bind(draft.next_run_at)
             .fetch_one(&pool)
             .await
@@ -258,7 +261,7 @@ impl ScheduleStore for PgScheduleStore {
                        run_at = $5, interval_secs = $6, timezone = $7,
                        channel = $8, title = $9, body = $10, recipients = $11,
                        active = $12, next_run_at = $13, days = $14, run_time = $15,
-                       template_id = $16, updated_at = now()
+                       template_id = $16, archived_at = $17, updated_at = now()
                    WHERE id = $1
                    RETURNING *
                  )
@@ -268,7 +271,7 @@ impl ScheduleStore for PgScheduleStore {
                      upd.timezone, upd.template_id,
                      t.name AS template_name, t.content AS template_content,
                      upd.channel, upd.title, upd.body, upd.recipients, upd.active,
-                     upd.next_run_at, upd.last_run_at, upd.last_status, upd.last_error,
+                     upd.archived_at, upd.next_run_at, upd.last_run_at, upd.last_status, upd.last_error,
                      upd.run_count, upd.created_at, upd.updated_at
                  FROM upd JOIN flows f ON f.id = upd.flow_id
                  LEFT JOIN platform_templates t ON t.id = upd.template_id",
@@ -289,6 +292,7 @@ impl ScheduleStore for PgScheduleStore {
             .bind(days_json(&patch.days))
             .bind(&patch.run_time)
             .bind(&patch.template_id)
+            .bind(patch.archived_at)
             .fetch_optional(&pool)
             .await
             .map_err(map_err)?;
@@ -319,7 +323,7 @@ impl ScheduleStore for PgScheduleStore {
             let rows: Vec<ScheduleRow> = sqlx::query_as(
                 "WITH due AS (
                    SELECT id FROM schedules
-                   WHERE active AND next_run_at <= $1
+                   WHERE active AND archived_at IS NULL AND next_run_at <= $1
                    ORDER BY next_run_at ASC, id ASC
                    LIMIT $2
                    FOR UPDATE SKIP LOCKED
@@ -336,7 +340,7 @@ impl ScheduleStore for PgScheduleStore {
                      claimed.template_id,
                      t.name AS template_name, t.content AS template_content,
                      claimed.channel, claimed.title, claimed.body, claimed.recipients,
-                     claimed.active, claimed.next_run_at, claimed.last_run_at,
+                     claimed.active, claimed.archived_at, claimed.next_run_at, claimed.last_run_at,
                      claimed.last_status, claimed.last_error, claimed.run_count,
                      claimed.created_at, claimed.updated_at
                  FROM claimed JOIN flows f ON f.id = claimed.flow_id
@@ -381,7 +385,7 @@ impl ScheduleStore for PgScheduleStore {
                      upd.timezone, upd.template_id,
                      t.name AS template_name, t.content AS template_content,
                      upd.channel, upd.title, upd.body, upd.recipients, upd.active,
-                     upd.next_run_at, upd.last_run_at, upd.last_status, upd.last_error,
+                     upd.archived_at, upd.next_run_at, upd.last_run_at, upd.last_status, upd.last_error,
                      upd.run_count, upd.created_at, upd.updated_at
                  FROM upd JOIN flows f ON f.id = upd.flow_id
                  LEFT JOIN platform_templates t ON t.id = upd.template_id",

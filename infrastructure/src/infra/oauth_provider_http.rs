@@ -21,7 +21,7 @@ use sha2::{Digest, Sha256};
 
 use crate::domain::auth::value_objects::{new_token, urlsafe_b64};
 use crate::ports::auth_store::BoxFut;
-use crate::ports::oauth::{AuthorizeStart, OAuthError, OAuthIdentityProvider, OAuthProfile};
+use crate::ports::oauth::{AuthorizeStart, OAppError, OAuthIdentityProvider, OAuthProfile};
 
 const GITHUB_AUTHORIZE_URL: &str = "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
@@ -71,17 +71,17 @@ impl HttpOAuthIdentityProvider {
         }
     }
 
-    fn creds(&self, provider: &str) -> Result<&ProviderCredentials, OAuthError> {
+    fn creds(&self, provider: &str) -> Result<&ProviderCredentials, OAppError> {
         match provider {
             "github" => self
                 .github
                 .as_ref()
-                .ok_or_else(|| OAuthError::NotConfigured(provider.to_string())),
+                .ok_or_else(|| OAppError::NotConfigured(provider.to_string())),
             "google" => self
                 .google
                 .as_ref()
-                .ok_or_else(|| OAuthError::NotConfigured(provider.to_string())),
-            other => Err(OAuthError::Flow(format!("unsupported provider '{other}'"))),
+                .ok_or_else(|| OAppError::NotConfigured(provider.to_string())),
+            other => Err(OAppError::Flow(format!("unsupported provider '{other}'"))),
         }
     }
 
@@ -97,19 +97,19 @@ impl HttpOAuthIdentityProvider {
     async fn get_with_retry(
         &self,
         request: reqwest::RequestBuilder,
-    ) -> Result<reqwest::Response, OAuthError> {
+    ) -> Result<reqwest::Response, OAppError> {
         let mut attempt = 0;
         loop {
             attempt += 1;
             let cloned = request
                 .try_clone()
-                .ok_or_else(|| OAuthError::Flow("request is not cloneable".to_string()))?;
+                .ok_or_else(|| OAppError::Flow("request is not cloneable".to_string()))?;
             match cloned.send().await {
                 Ok(response) => return Ok(response),
                 Err(err) if attempt < 2 => {
                     tracing::warn!(attempt, error = %err, "transient transport error; retrying once");
                 }
-                Err(err) => return Err(OAuthError::Flow(err.to_string())),
+                Err(err) => return Err(OAppError::Flow(err.to_string())),
             }
         }
     }
@@ -119,7 +119,7 @@ impl HttpOAuthIdentityProvider {
         creds: &ProviderCredentials,
         code: &str,
         redirect_uri: &str,
-    ) -> Result<OAuthProfile, OAuthError> {
+    ) -> Result<OAuthProfile, OAppError> {
         #[derive(Deserialize)]
         struct TokenResponse {
             access_token: String,
@@ -137,12 +137,12 @@ impl HttpOAuthIdentityProvider {
             ])
             .send()
             .await
-            .map_err(|e| OAuthError::Flow(e.to_string()))?
+            .map_err(|e| OAppError::Flow(e.to_string()))?
             .error_for_status()
-            .map_err(|e| OAuthError::Flow(e.to_string()))?
+            .map_err(|e| OAppError::Flow(e.to_string()))?
             .json()
             .await
-            .map_err(|e| OAuthError::Flow(e.to_string()))?;
+            .map_err(|e| OAppError::Flow(e.to_string()))?;
 
         // GitHub requires a User-Agent on API calls.
         let profile_request = self
@@ -154,10 +154,10 @@ impl HttpOAuthIdentityProvider {
             .get_with_retry(profile_request)
             .await?
             .error_for_status()
-            .map_err(|e| OAuthError::Flow(e.to_string()))?
+            .map_err(|e| OAppError::Flow(e.to_string()))?
             .json()
             .await
-            .map_err(|e| OAuthError::Flow(e.to_string()))?;
+            .map_err(|e| OAppError::Flow(e.to_string()))?;
 
         // Email resolution order:
         //   1. /user/emails list (primary + verified, else any verified)
@@ -186,10 +186,10 @@ impl HttpOAuthIdentityProvider {
                     Some(
                         response
                             .error_for_status()
-                            .map_err(|e| OAuthError::Flow(e.to_string()))?
+                            .map_err(|e| OAppError::Flow(e.to_string()))?
                             .json()
                             .await
-                            .map_err(|e| OAuthError::Flow(e.to_string()))?,
+                            .map_err(|e| OAppError::Flow(e.to_string()))?,
                     )
                 }
             }
@@ -207,7 +207,7 @@ impl HttpOAuthIdentityProvider {
                     .map(|e| e.email.clone())
             })
             .or_else(|| profile_email.map(str::to_string))
-            .ok_or_else(|| OAuthError::Flow(GITHUB_NO_EMAIL_HINT.to_string()))?;
+            .ok_or_else(|| OAppError::Flow(GITHUB_NO_EMAIL_HINT.to_string()))?;
 
         Ok(OAuthProfile {
             subject: user["id"].to_string(),
@@ -227,7 +227,7 @@ impl HttpOAuthIdentityProvider {
         code: &str,
         pkce_verifier: &str,
         redirect_uri: &str,
-    ) -> Result<OAuthProfile, OAuthError> {
+    ) -> Result<OAuthProfile, OAppError> {
         #[derive(Deserialize)]
         struct TokenResponse {
             access_token: String,
@@ -249,12 +249,12 @@ impl HttpOAuthIdentityProvider {
             ])
             .send()
             .await
-            .map_err(|e| OAuthError::Flow(e.to_string()))?
+            .map_err(|e| OAppError::Flow(e.to_string()))?
             .error_for_status()
-            .map_err(|e| OAuthError::Flow(e.to_string()))?
+            .map_err(|e| OAppError::Flow(e.to_string()))?
             .json()
             .await
-            .map_err(|e| OAuthError::Flow(e.to_string()))?;
+            .map_err(|e| OAppError::Flow(e.to_string()))?;
 
         // Primary path: the id_token already carries the full profile.
         if let Some(profile) = token.id_token.as_deref().and_then(decode_id_token) {
@@ -279,10 +279,10 @@ impl HttpOAuthIdentityProvider {
             .get_with_retry(userinfo_request)
             .await?
             .error_for_status()
-            .map_err(|e| OAuthError::Flow(e.to_string()))?
+            .map_err(|e| OAppError::Flow(e.to_string()))?
             .json()
             .await
-            .map_err(|e| OAuthError::Flow(e.to_string()))?;
+            .map_err(|e| OAppError::Flow(e.to_string()))?;
 
         Ok(OAuthProfile {
             subject: info.sub,
@@ -295,11 +295,7 @@ impl HttpOAuthIdentityProvider {
 }
 
 impl OAuthIdentityProvider for HttpOAuthIdentityProvider {
-    fn authorize_url(
-        &self,
-        provider: &str,
-        csrf_state: &str,
-    ) -> Result<AuthorizeStart, OAuthError> {
+    fn authorize_url(&self, provider: &str, csrf_state: &str) -> Result<AuthorizeStart, OAppError> {
         let creds = self.creds(provider)?;
         let redirect_uri = self.redirect_uri(provider);
         let redirect_uri = urlencoding::encode(&redirect_uri).into_owned();
@@ -321,7 +317,7 @@ impl OAuthIdentityProvider for HttpOAuthIdentityProvider {
                     urlencoding::encode("openid email profile"),
                 )
             }
-            other => return Err(OAuthError::Flow(format!("unsupported provider '{other}'"))),
+            other => return Err(OAppError::Flow(format!("unsupported provider '{other}'"))),
         };
 
         Ok(AuthorizeStart { url, pkce_verifier })
@@ -332,7 +328,7 @@ impl OAuthIdentityProvider for HttpOAuthIdentityProvider {
         provider: &str,
         code: &str,
         pkce_verifier: &str,
-    ) -> BoxFut<'_, Result<OAuthProfile, OAuthError>> {
+    ) -> BoxFut<'_, Result<OAuthProfile, OAppError>> {
         // Own everything the async block touches — the boxed future must
         // outlive the borrowed parameters.
         let provider = provider.to_string();
@@ -350,7 +346,7 @@ impl OAuthIdentityProvider for HttpOAuthIdentityProvider {
                     self.google_exchange(&creds, &code, &pkce_verifier, &redirect_uri)
                         .await
                 }
-                other => Err(OAuthError::Flow(format!("unsupported provider '{other}'"))),
+                other => Err(OAppError::Flow(format!("unsupported provider '{other}'"))),
             }
         })
     }
@@ -383,7 +379,7 @@ fn decode_id_token(id_token: &str) -> Option<OAuthProfile> {
 
 /// URL-safe base64 without padding → raw bytes (inverse of
 /// [`crate::domain::auth::value_objects::urlsafe_b64`]).
-fn urlsafe_b64_decode(input: &str) -> Result<Vec<u8>, OAuthError> {
+fn urlsafe_b64_decode(input: &str) -> Result<Vec<u8>, OAppError> {
     const CHARS: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
     let mut out = Vec::with_capacity(input.len() * 3 / 4);
@@ -396,7 +392,7 @@ fn urlsafe_b64_decode(input: &str) -> Result<Vec<u8>, OAuthError> {
         let value = CHARS
             .iter()
             .position(|&c| c == byte)
-            .ok_or_else(|| OAuthError::Flow("invalid base64url input".to_string()))?
+            .ok_or_else(|| OAppError::Flow("invalid base64url input".to_string()))?
             as u32;
         acc = (acc << 6) | value;
         bits += 6;

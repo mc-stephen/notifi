@@ -12,11 +12,10 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
-use serde_json::json;
 
 use crate::domain::auth::AuthService;
 use crate::domain::auth::entities::User;
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 
 /// Cookie name shared with the dashboard proxy (`proxy.ts`).
 pub const SESSION_COOKIE: &str = "session_token";
@@ -25,33 +24,19 @@ pub const SESSION_COOKIE: &str = "session_token";
 /// ports, and both frontends share the API host's jar).
 pub const ADMIN_SESSION_COOKIE: &str = "admin_session";
 
-/// Renders an [`AuthError`] as an RFC 9457 problem document.
+/// Renders an [`AppError`] as an RFC 9457 problem document.
 ///
-/// Local twin of the api crate's `ApiProblem` (the kernel error model must
-/// stay framework-free, and cross-crate impls hit the orphan rule); both are
-/// consolidated into a shared http-support crate when the next domain lands.
-pub fn problem_response(err: AuthError) -> Response {
+/// Delegates the rendering to `ApiProblem`; this wrapper exists to log the
+/// raw cause for 5xx responses — e.g. the sqlx error text inside
+/// `Storage` — before the wire detail goes generic.
+pub fn problem_response(err: AppError) -> Response {
     let problem = err.to_api_error();
     // Server-side log keeps the underlying cause (e.g. raw sqlx error
     // strings inside `Storage`) — the wire detail stays generic on purpose.
     if problem.status >= 500 {
-        tracing::error!(status = problem.status, error = %err, "auth request failed");
+        tracing::error!(status = problem.status, error = %err, "request failed");
     }
-    let status = axum::http::StatusCode::from_u16(problem.status)
-        .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-    let body = json!({
-        "type": problem.type_url,
-        "title": problem.title,
-        "status": problem.status,
-        "detail": problem.detail,
-        "correlation_id": problem.correlation_id,
-    });
-    (
-        status,
-        [("content-type", "application/problem+json")],
-        axum::Json(body),
-    )
-        .into_response()
+    crate::api::error::ApiProblem(problem).into_response()
 }
 
 /// Handler-error wrapper around a pre-rendered problem response.
@@ -60,8 +45,8 @@ pub fn problem_response(err: AuthError) -> Response {
 /// clippy's `result_large_err` (a bare `Response` is too large).
 pub struct Problem(Box<Response>);
 
-impl From<AuthError> for Problem {
-    fn from(err: AuthError) -> Self {
+impl From<AppError> for Problem {
+    fn from(err: AppError) -> Self {
         Self(Box::new(problem_response(err)))
     }
 }
@@ -90,16 +75,16 @@ where
             .extensions
             .get::<Arc<AuthService>>()
             .cloned()
-            .ok_or_else(|| problem_response(AuthError::NotConfigured))?;
+            .ok_or_else(|| problem_response(AppError::NotConfigured))?;
 
         let jar = CookieJar::from_request_parts(parts, _state)
             .await
-            .map_err(|_| problem_response(AuthError::Unauthorized))?;
+            .map_err(|_| problem_response(AppError::Unauthorized))?;
 
         let raw_cookie = jar
             .get(SESSION_COOKIE)
             .map(|cookie| cookie.value().to_string())
-            .ok_or_else(|| problem_response(AuthError::Unauthorized))?;
+            .ok_or_else(|| problem_response(AppError::Unauthorized))?;
 
         let user = service
             .authenticate(&raw_cookie)

@@ -6,7 +6,7 @@ use crate::domain::admin::entities::AdminUser;
 use crate::domain::audit::AuditService;
 use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::UserId;
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::support::entities::TicketStatus;
 use crate::domain::support::entities::{AdminTicket, AdminTicketMessage, Ticket, TicketMessage};
 use crate::ports::auth_store::StoreError;
@@ -23,10 +23,10 @@ const MAX_MESSAGE: usize = 10_000;
 pub const TICKET_PRIORITIES: [&str; 4] = ["low", "medium", "high", "urgent"];
 pub const DEFAULT_PRIORITY: &str = "medium";
 
-fn normalize_priority(raw: &str) -> Result<String, AuthError> {
+fn normalize_priority(raw: &str) -> Result<String, AppError> {
     let normalized = raw.trim().to_lowercase();
     if normalized.len() > MAX_PRIORITY || !TICKET_PRIORITIES.contains(&normalized.as_str()) {
-        return Err(AuthError::Validation(format!(
+        return Err(AppError::Validation(format!(
             "invalid priority (expected one of: {})",
             TICKET_PRIORITIES.join(", ")
         )));
@@ -52,24 +52,24 @@ impl TicketService {
         category: &str,
         priority: &str,
         description: &str,
-    ) -> Result<Ticket, AuthError> {
+    ) -> Result<Ticket, AppError> {
         let subject = subject.trim();
         let category = category.trim();
         let description = description.trim();
 
         if subject.is_empty() || subject.len() > MAX_SUBJECT {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "subject is required (300 characters max)".to_string(),
             ));
         }
         if category.is_empty() || category.len() > MAX_CATEGORY {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "category is required (100 characters max)".to_string(),
             ));
         }
         let priority = normalize_priority(priority)?;
         if description.is_empty() || description.len() > MAX_DESCRIPTION {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "description is required (10,000 characters max)".to_string(),
             ));
         }
@@ -106,7 +106,7 @@ impl TicketService {
         status: Option<&str>,
         limit: i64,
         before: Option<&str>,
-    ) -> Result<Vec<Ticket>, AuthError> {
+    ) -> Result<Vec<Ticket>, AppError> {
         Ok(self
             .store
             .list(actor, project_id, status, limit, before)
@@ -117,7 +117,7 @@ impl TicketService {
             .collect())
     }
 
-    pub async fn get(&self, actor: UserId, ticket_id: &str) -> Result<Option<Ticket>, AuthError> {
+    pub async fn get(&self, actor: UserId, ticket_id: &str) -> Result<Option<Ticket>, AppError> {
         Ok(self
             .store
             .get(actor, ticket_id)
@@ -130,7 +130,7 @@ impl TicketService {
         &self,
         actor: UserId,
         ticket_id: &str,
-    ) -> Result<Vec<TicketMessage>, AuthError> {
+    ) -> Result<Vec<TicketMessage>, AppError> {
         Ok(self
             .store
             .list_messages(actor, ticket_id)
@@ -146,23 +146,23 @@ impl TicketService {
         actor: UserId,
         ticket_id: &str,
         body: &str,
-    ) -> Result<TicketMessage, AuthError> {
+    ) -> Result<TicketMessage, AppError> {
         let ticket = self
             .store
             .get(actor, ticket_id)
             .await
             .map_err(map_store_error)?
-            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("ticket not found".into()))?;
 
         if ticket.status == crate::domain::support::entities::TicketStatus::Closed {
-            return Err(AuthError::Conflict(
+            return Err(AppError::Conflict(
                 "This ticket is closed. Please open a new ticket.".to_string(),
             ));
         }
 
         let body = body.trim();
         if body.is_empty() || body.len() > MAX_MESSAGE {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "body is required (10,000 characters max)".to_string(),
             ));
         }
@@ -172,7 +172,7 @@ impl TicketService {
             .add_message(actor, ticket_id, body)
             .await
             .map_err(map_store_error)?
-            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("ticket not found".into()))?;
 
         if ticket.status == crate::domain::support::entities::TicketStatus::Resolved {
             let _ = self
@@ -209,7 +209,7 @@ impl TicketService {
         search: Option<&str>,
         limit: i64,
         offset: i64,
-    ) -> Result<(Vec<AdminTicket>, i64), AuthError> {
+    ) -> Result<(Vec<AdminTicket>, i64), AppError> {
         let (records, total) = self
             .store
             .list_all(status, search, limit, offset)
@@ -218,7 +218,7 @@ impl TicketService {
         Ok((records.into_iter().map(AdminTicket::from).collect(), total))
     }
 
-    pub async fn get_any_ticket(&self, ticket_id: &str) -> Result<Option<AdminTicket>, AuthError> {
+    pub async fn get_any_ticket(&self, ticket_id: &str) -> Result<Option<AdminTicket>, AppError> {
         Ok(self
             .store
             .get_any(ticket_id)
@@ -230,7 +230,7 @@ impl TicketService {
     pub async fn list_any_messages(
         &self,
         ticket_id: &str,
-    ) -> Result<Vec<AdminTicketMessage>, AuthError> {
+    ) -> Result<Vec<AdminTicketMessage>, AppError> {
         Ok(self
             .store
             .list_messages_any(ticket_id)
@@ -246,23 +246,23 @@ impl TicketService {
         admin: &AdminUser,
         ticket_id: &str,
         body: &str,
-    ) -> Result<TicketMessage, AuthError> {
+    ) -> Result<TicketMessage, AppError> {
         let ticket = self
             .store
             .get_any(ticket_id)
             .await
             .map_err(map_store_error)?
-            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("ticket not found".into()))?;
 
         if ticket.ticket.status == TicketStatus::Closed {
-            return Err(AuthError::Conflict(
+            return Err(AppError::Conflict(
                 "This ticket is closed. Reopen it before replying.".to_string(),
             ));
         }
 
         let body = body.trim();
         if body.is_empty() || body.len() > MAX_MESSAGE {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "body is required (10,000 characters max)".to_string(),
             ));
         }
@@ -272,7 +272,7 @@ impl TicketService {
             .add_support_message(admin.id, ticket_id, body)
             .await
             .map_err(map_store_error)?
-            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("ticket not found".into()))?;
 
         // A support reply on a resolved ticket resumes work.
         if ticket.ticket.status == TicketStatus::Resolved {
@@ -307,10 +307,10 @@ impl TicketService {
         admin: &AdminUser,
         ticket_id: &str,
         status: &str,
-    ) -> Result<AdminTicket, AuthError> {
+    ) -> Result<AdminTicket, AppError> {
         use std::str::FromStr;
         let new_status = TicketStatus::from_str(status.trim()).map_err(|_| {
-            AuthError::Validation(
+            AppError::Validation(
                 "invalid status (expected open, in_progress, resolved, or closed)".to_string(),
             )
         })?;
@@ -320,7 +320,7 @@ impl TicketService {
             .get_any(ticket_id)
             .await
             .map_err(map_store_error)?
-            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("ticket not found".into()))?;
 
         if ticket.ticket.status != new_status {
             let updated = self
@@ -329,7 +329,7 @@ impl TicketService {
                 .await
                 .map_err(map_store_error)?;
             if !updated {
-                return Err(AuthError::NotFound("ticket not found".into()));
+                return Err(AppError::NotFound("ticket not found".into()));
             }
 
             self.audit
@@ -358,7 +358,7 @@ impl TicketService {
 
         self.get_any_ticket(ticket_id)
             .await?
-            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))
+            .ok_or_else(|| AppError::NotFound("ticket not found".into()))
     }
 
     /// Sets a ticket's triage priority (support only). No-op when unchanged.
@@ -367,7 +367,7 @@ impl TicketService {
         admin: &AdminUser,
         ticket_id: &str,
         priority: &str,
-    ) -> Result<AdminTicket, AuthError> {
+    ) -> Result<AdminTicket, AppError> {
         let priority = normalize_priority(priority)?;
 
         let ticket = self
@@ -375,13 +375,13 @@ impl TicketService {
             .get_any(ticket_id)
             .await
             .map_err(map_store_error)?
-            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("ticket not found".into()))?;
 
         if ticket.ticket.priority == priority {
             return self
                 .get_any_ticket(ticket_id)
                 .await?
-                .ok_or_else(|| AuthError::NotFound("ticket not found".into()));
+                .ok_or_else(|| AppError::NotFound("ticket not found".into()));
         }
 
         let updated = self
@@ -390,7 +390,7 @@ impl TicketService {
             .await
             .map_err(map_store_error)?;
         if !updated {
-            return Err(AuthError::NotFound("ticket not found".into()));
+            return Err(AppError::NotFound("ticket not found".into()));
         }
 
         self.audit
@@ -416,15 +416,15 @@ impl TicketService {
 
         self.get_any_ticket(ticket_id)
             .await?
-            .ok_or_else(|| AuthError::NotFound("ticket not found".into()))
+            .ok_or_else(|| AppError::NotFound("ticket not found".into()))
     }
 }
 
-fn map_store_error(err: StoreError) -> AuthError {
+fn map_store_error(err: StoreError) -> AppError {
     match err {
         StoreError::Conflict => {
-            AuthError::Conflict("A ticket with this ID already exists.".to_string())
+            AppError::Conflict("A ticket with this ID already exists.".to_string())
         }
-        StoreError::Storage(m) => AuthError::Storage(m),
+        StoreError::Storage(m) => AppError::Storage(m),
     }
 }

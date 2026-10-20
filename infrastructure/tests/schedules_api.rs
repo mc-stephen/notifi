@@ -1,9 +1,11 @@
 //! End-to-end HTTP tests for flow schedules.
 //!
-//! Covers schedule CRUD, validation edges, hiding assigned flows from the
-//! `/flows` list (and their reappearance on delete), manual fire through
-//! the assigned flow, cross-project isolation, and reactivation
-//! re-anchoring. Adapter behavior is scripted via a stub factory.
+//! Covers schedule CRUD (each create builds its own flow — the owner
+//! doctrine), validation edges, owned flows staying off the `/flows`
+//! list and dying with the schedule, flow-by-id reads tagging `source`,
+//! archive/restore, manual fire through the owned flow, cross-project
+//! isolation, and reactivation re-anchoring. Adapter behavior is
+//! scripted via a stub factory.
 
 mod common;
 
@@ -128,7 +130,7 @@ fn app_with_schedules() -> (Router, Fakes) {
         Arc::new(StubFactory::succeeding()),
         http.clone(),
     ));
-    let schedule_store = Arc::new(FakeScheduleStore::new());
+    let schedule_store = Arc::new(FakeScheduleStore::new(flow_store.clone()));
     let template_store = Arc::new(FakeTemplatesStore::new());
     let templates = Arc::new(TemplateService::new(template_store.clone(), audit.clone()));
     let schedules = Arc::new(ScheduleService::new(
@@ -162,6 +164,7 @@ fn app_with_schedules() -> (Router, Fakes) {
             flows: Some(flows),
             sends: Some(sends),
             schedules: Some(schedules),
+            webhooks: None,
             notifications: None,
             inbound: None,
             provider_tester: Arc::new(ConfigProviderTester::new())
@@ -264,43 +267,35 @@ async fn setup_project(app: Router, fakes: &Fakes, email: &str, name: &str) -> (
     (token, project)
 }
 
-async fn create_flow(
+/// Replaces the schedule's flow definition (the builder's save path).
+/// The flow is created by the schedule; this wires actual steps onto it.
+async fn put_flow_definition(
     app: Router,
-    fakes: &Fakes,
     token: &str,
     project: &str,
-    provider: &str,
-) -> String {
-    let definition = email_flow_definition(provider);
+    flow_id: &str,
+    name: &str,
+    definition: Value,
+) {
     let res = request_with_cookie(
         app.clone(),
-        "POST",
-        "/app/flows",
+        "PUT",
+        &format!("/app/flows/{flow_id}"),
         Some(json!({
             "projectId": project,
-            "name": "Schedulable flow",
+            "name": name,
             "definition": definition,
         })),
         token,
     )
     .await;
-    assert_eq!(res.status(), StatusCode::CREATED);
-    let id = body_json(res).await["flow"]["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    // Mirror the Postgres flow JOIN in schedule reads.
-    fakes
-        .schedules
-        .seed_flow(&id, "Schedulable flow", email_flow_definition(provider));
-    id
+    assert_eq!(res.status(), StatusCode::OK);
 }
 
-fn recurring_body(project: &str, flow_id: &str) -> Value {
+fn recurring_body(project: &str) -> Value {
     json!({
         "projectId": project,
         "name": "Morning digest",
-        "flowId": flow_id,
         "kind": "recurring",
         "intervalSecs": 3600,
         "timezone": "UTC",
@@ -321,17 +316,36 @@ async fn create_schedule(app: Router, token: &str, body: Value) -> Value {
 async fn schedules_crud_round_trip() {
     let (app, fakes) = app_with_schedules();
     let (token, project) = setup_project(app.clone(), &fakes, "a@x.com", "P").await;
-    let flow = create_flow(app.clone(), &fakes, &token, &project, "smtp").await;
 
-    let created = create_schedule(app.clone(), &token, recurring_body(&project, &flow)).await;
+    let created = create_schedule(app.clone(), &token, recurring_body(&project)).await;
     assert_eq!(created["name"], "Morning digest");
     assert_eq!(created["kind"], "recurring");
-    assert_eq!(created["flowId"], flow);
-    assert_eq!(created["flowName"], "Schedulable flow");
+    // The flow is born with the schedule: same name, trigger seeded.
+    let flow = created["flowId"].as_str().unwrap().to_string();
+    assert_eq!(created["flowName"], "Morning digest");
     assert_eq!(created["timing"], "Every 1 hour");
     assert_eq!(created["active"], true);
+    assert!(created["archivedAt"].is_null());
     assert!(created["nextRunAt"].is_string());
     let id = created["id"].as_str().unwrap().to_string();
+
+    // The seeded flow carries one locked schedule trigger.
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        &format!("/app/flows/{flow}?project_id={project}"),
+        None,
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let flow_doc = body_json(res).await["flow"].clone();
+    assert_eq!(flow_doc["name"], "Morning digest");
+    assert_eq!(flow_doc["source"], "schedule");
+    let nodes = flow_doc["definition"]["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 1);
+    assert_eq!(nodes[0]["type"], "trigger");
+    assert_eq!(nodes[0]["data"]["kind"], "schedule");
 
     // Get one.
     let res = request_with_cookie(
@@ -357,7 +371,7 @@ async fn schedules_crud_round_trip() {
     let list = body_json(res).await;
     assert_eq!(list["schedules"].as_array().unwrap().len(), 1);
 
-    // Pause + rename.
+    // Pause + rename — the rename syncs down to the flow.
     let res = request_with_cookie(
         app.clone(),
         "PATCH",
@@ -369,6 +383,7 @@ async fn schedules_crud_round_trip() {
     assert_eq!(res.status(), StatusCode::OK);
     let patched = body_json(res).await["schedule"].clone();
     assert_eq!(patched["name"], "Evening digest");
+    assert_eq!(patched["flowName"], "Evening digest");
     assert_eq!(patched["active"], false);
 
     // Delete.
@@ -399,10 +414,9 @@ async fn schedules_crud_round_trip() {
 async fn schedule_validation_edges() {
     let (app, fakes) = app_with_schedules();
     let (token, project) = setup_project(app.clone(), &fakes, "b@x.com", "P").await;
-    let flow = create_flow(app.clone(), &fakes, &token, &project, "smtp").await;
 
     // Unknown kind.
-    let mut bad = recurring_body(&project, &flow);
+    let mut bad = recurring_body(&project);
     bad["kind"] = json!("cron");
     let res = request_with_cookie(app.clone(), "POST", "/app/schedules", Some(bad), &token).await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
@@ -413,7 +427,7 @@ async fn schedule_validation_edges() {
         "POST",
         "/app/schedules",
         Some(json!({
-            "projectId": project, "name": "x", "flowId": flow, "kind": "once",
+            "projectId": project, "name": "x", "kind": "once",
             "channel": "email", "title": "t", "recipients": ["u"],
         })),
         &token,
@@ -422,19 +436,13 @@ async fn schedule_validation_edges() {
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 
     // Interval below the one-minute floor.
-    let mut bad = recurring_body(&project, &flow);
+    let mut bad = recurring_body(&project);
     bad["intervalSecs"] = json!(30);
     let res = request_with_cookie(app.clone(), "POST", "/app/schedules", Some(bad), &token).await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 
-    // Unknown flow.
-    let mut bad = recurring_body(&project, "nope");
-    bad["flowId"] = json!("nope");
-    let res = request_with_cookie(app.clone(), "POST", "/app/schedules", Some(bad), &token).await;
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-
     // Empty recipients.
-    let mut bad = recurring_body(&project, &flow);
+    let mut bad = recurring_body(&project);
     bad["recipients"] = json!([]);
     let res = request_with_cookie(app.clone(), "POST", "/app/schedules", Some(bad), &token).await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
@@ -445,26 +453,14 @@ async fn schedule_validation_edges() {
 }
 
 #[tokio::test]
-async fn assigned_flow_hidden_from_flows_list() {
+async fn owned_flow_hidden_from_flows_list_and_deleted_with_schedule() {
     let (app, fakes) = app_with_schedules();
     let (token, project) = setup_project(app.clone(), &fakes, "c@x.com", "P").await;
-    let flow = create_flow(app.clone(), &fakes, &token, &project, "smtp").await;
 
-    // Visible before assignment.
-    let res = request_with_cookie(
-        app.clone(),
-        "GET",
-        &format!("/app/flows?project_id={project}"),
-        None,
-        &token,
-    )
-    .await;
-    assert_eq!(body_json(res).await["flows"].as_array().unwrap().len(), 1);
-
-    let created = create_schedule(app.clone(), &token, recurring_body(&project, &flow)).await;
+    let created = create_schedule(app.clone(), &token, recurring_body(&project)).await;
     let id = created["id"].as_str().unwrap().to_string();
 
-    // Hidden after assignment.
+    // Hidden from the flows list (owner-managed).
     let res = request_with_cookie(
         app.clone(),
         "GET",
@@ -475,7 +471,7 @@ async fn assigned_flow_hidden_from_flows_list() {
     .await;
     assert_eq!(body_json(res).await["flows"].as_array().unwrap().len(), 0);
 
-    // Deleting the schedule re-exposes the flow.
+    // Deleting the schedule deletes its flow too — it never reappears.
     let res = request_with_cookie(
         app.clone(),
         "DELETE",
@@ -493,16 +489,37 @@ async fn assigned_flow_hidden_from_flows_list() {
         &token,
     )
     .await;
-    assert_eq!(body_json(res).await["flows"].as_array().unwrap().len(), 1);
+    assert_eq!(body_json(res).await["flows"].as_array().unwrap().len(), 0);
+    let flow = created["flowId"].as_str().unwrap().to_string();
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        &format!("/app/flows/{flow}?project_id={project}"),
+        None,
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
-async fn run_now_executes_assigned_flow() {
+async fn run_now_executes_owned_flow() {
     let (app, fakes) = app_with_schedules();
     let (token, project) = setup_project(app.clone(), &fakes, "d@x.com", "P").await;
-    let flow = create_flow(app.clone(), &fakes, &token, &project, "smtp").await;
-    let created = create_schedule(app.clone(), &token, recurring_body(&project, &flow)).await;
+    let created = create_schedule(app.clone(), &token, recurring_body(&project)).await;
     let id = created["id"].as_str().unwrap().to_string();
+    let flow = created["flowId"].as_str().unwrap().to_string();
+
+    // Wire a real provider route onto the owned flow (builder save path).
+    put_flow_definition(
+        app.clone(),
+        &token,
+        &project,
+        &flow,
+        "Morning digest",
+        email_flow_definition("smtp"),
+    )
+    .await;
 
     let res = request_with_cookie(
         app.clone(),
@@ -537,8 +554,8 @@ async fn run_now_executes_assigned_flow() {
 async fn run_now_without_provider_route_fails() {
     let (app, fakes) = app_with_schedules();
     let (token, project) = setup_project(app.clone(), &fakes, "e@x.com", "P").await;
-    let flow = create_flow(app.clone(), &fakes, &token, &project, "ghost").await;
-    let created = create_schedule(app.clone(), &token, recurring_body(&project, &flow)).await;
+    // A freshly born flow only has the trigger — no provider route.
+    let created = create_schedule(app.clone(), &token, recurring_body(&project)).await;
     let id = created["id"].as_str().unwrap().to_string();
 
     let res = request_with_cookie(
@@ -560,9 +577,9 @@ async fn schedules_are_project_scoped() {
     let (app, fakes) = app_with_schedules();
     let (token_a, project_a) = setup_project(app.clone(), &fakes, "f@x.com", "PA").await;
     let (token_b, project_b) = setup_project(app.clone(), &fakes, "g@x.com", "PB").await;
-    let flow = create_flow(app.clone(), &fakes, &token_a, &project_a, "smtp").await;
-    let created = create_schedule(app.clone(), &token_a, recurring_body(&project_a, &flow)).await;
+    let created = create_schedule(app.clone(), &token_a, recurring_body(&project_a)).await;
     let id = created["id"].as_str().unwrap().to_string();
+    let flow = created["flowId"].as_str().unwrap().to_string();
 
     // B lists nothing and reads 404.
     let res = request_with_cookie(
@@ -587,16 +604,16 @@ async fn schedules_are_project_scoped() {
     .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
-    // B cannot adopt A's flow.
+    // B cannot read A's flow either (project-scoped by id).
     let res = request_with_cookie(
         app.clone(),
-        "POST",
-        "/app/schedules",
-        Some(recurring_body(&project_b, &flow)),
+        "GET",
+        &format!("/app/flows/{flow}?project_id={project_b}"),
+        None,
         &token_b,
     )
     .await;
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
 
 async fn create_template(app: Router, fakes: &Fakes, token: &str, project: &str) -> String {
@@ -630,14 +647,13 @@ async fn create_template(app: Router, fakes: &Fakes, token: &str, project: &str)
 async fn weekly_schedule_round_trip() {
     let (app, fakes) = app_with_schedules();
     let (token, project) = setup_project(app.clone(), &fakes, "i@x.com", "P").await;
-    let flow = create_flow(app.clone(), &fakes, &token, &project, "smtp").await;
 
     let res = request_with_cookie(
         app.clone(),
         "POST",
         "/app/schedules",
         Some(json!({
-            "projectId": project, "name": "Mon/Wed blast", "flowId": flow,
+            "projectId": project, "name": "Mon/Wed blast",
             "kind": "weekly", "days": [1, 3], "runTime": "09:00", "timezone": "UTC",
             "channel": "email", "title": "t", "recipients": ["u"],
         })),
@@ -651,11 +667,11 @@ async fn weekly_schedule_round_trip() {
 
     // Weekly validation edges.
     for body in [
-        json!({"projectId": project, "name": "x", "flowId": flow, "kind": "weekly",
+        json!({"projectId": project, "name": "x", "kind": "weekly",
                "days": [], "runTime": "09:00", "channel": "email", "title": "t", "recipients": ["u"]}),
-        json!({"projectId": project, "name": "x", "flowId": flow, "kind": "weekly",
+        json!({"projectId": project, "name": "x", "kind": "weekly",
                "days": [1], "runTime": "25:00", "channel": "email", "title": "t", "recipients": ["u"]}),
-        json!({"projectId": project, "name": "x", "flowId": flow, "kind": "weekly",
+        json!({"projectId": project, "name": "x", "kind": "weekly",
                "days": [1], "runTime": "09:00", "timezone": "Nope/Nowhere",
                "channel": "email", "title": "t", "recipients": ["u"]}),
     ] {
@@ -669,7 +685,6 @@ async fn weekly_schedule_round_trip() {
 async fn template_schedule_runs_rendered_content() {
     let (app, fakes) = app_with_schedules();
     let (token, project) = setup_project(app.clone(), &fakes, "j@x.com", "P").await;
-    let flow = create_flow(app.clone(), &fakes, &token, &project, "smtp").await;
     let template = create_template(app.clone(), &fakes, &token, &project).await;
 
     let res = request_with_cookie(
@@ -677,7 +692,7 @@ async fn template_schedule_runs_rendered_content() {
         "POST",
         "/app/schedules",
         Some(json!({
-            "projectId": project, "name": "templated", "flowId": flow,
+            "projectId": project, "name": "templated",
             "kind": "recurring", "intervalSecs": 3600, "templateId": template,
             "recipients": ["user-9"],
         })),
@@ -689,6 +704,18 @@ async fn template_schedule_runs_rendered_content() {
     assert_eq!(created["templateId"], template);
     assert_eq!(created["templateName"], "Morning edition");
     let id = created["id"].as_str().unwrap().to_string();
+    let flow = created["flowId"].as_str().unwrap().to_string();
+
+    // Wire an email provider route onto the owned flow.
+    put_flow_definition(
+        app.clone(),
+        &token,
+        &project,
+        &flow,
+        "templated",
+        email_flow_definition("smtp"),
+    )
+    .await;
 
     let res = request_with_cookie(
         app.clone(),
@@ -720,7 +747,6 @@ async fn template_schedule_runs_rendered_content() {
 async fn template_schedule_without_recipients_fails_closed() {
     let (app, fakes) = app_with_schedules();
     let (token, project) = setup_project(app.clone(), &fakes, "k@x.com", "P").await;
-    let flow = create_flow(app.clone(), &fakes, &token, &project, "smtp").await;
     let template = create_template(app.clone(), &fakes, &token, &project).await;
 
     let res = request_with_cookie(
@@ -728,7 +754,7 @@ async fn template_schedule_without_recipients_fails_closed() {
         "POST",
         "/app/schedules",
         Some(json!({
-            "projectId": project, "name": "no-audience", "flowId": flow,
+            "projectId": project, "name": "no-audience",
             "kind": "recurring", "intervalSecs": 3600, "templateId": template,
             "recipients": [],
         })),
@@ -759,14 +785,13 @@ async fn template_schedule_without_recipients_fails_closed() {
 async fn unknown_template_rejected() {
     let (app, fakes) = app_with_schedules();
     let (token, project) = setup_project(app.clone(), &fakes, "l@x.com", "P").await;
-    let flow = create_flow(app.clone(), &fakes, &token, &project, "smtp").await;
 
     let res = request_with_cookie(
         app.clone(),
         "POST",
         "/app/schedules",
         Some(json!({
-            "projectId": project, "name": "bad-tpl", "flowId": flow,
+            "projectId": project, "name": "bad-tpl",
             "kind": "recurring", "intervalSecs": 3600, "templateId": "tpl_nope",
             "recipients": [],
         })),
@@ -780,7 +805,6 @@ async fn unknown_template_rejected() {
 async fn reactivation_reanchors_stale_next_run() {
     let (app, fakes) = app_with_schedules();
     let (token, project) = setup_project(app.clone(), &fakes, "h@x.com", "P").await;
-    let flow = create_flow(app.clone(), &fakes, &token, &project, "smtp").await;
 
     // One-shot in the past: next run is already stale.
     let res = request_with_cookie(
@@ -788,7 +812,7 @@ async fn reactivation_reanchors_stale_next_run() {
         "POST",
         "/app/schedules",
         Some(json!({
-            "projectId": project, "name": "past", "flowId": flow, "kind": "once",
+            "projectId": project, "name": "past", "kind": "once",
             "runAt": "2020-01-01T00:00:00Z",
             "channel": "email", "title": "t", "recipients": ["u"],
         })),
@@ -819,39 +843,109 @@ async fn reactivation_reanchors_stale_next_run() {
 }
 
 #[tokio::test]
-async fn schedule_runs_fire_http_steps_without_affecting_outcome() {
+async fn archive_parks_schedule_and_restores_runs() {
     let (app, fakes) = app_with_schedules();
-    let (token, project) = setup_project(app.clone(), &fakes, "m@x.com", "P").await;
+    let (token, project) = setup_project(app.clone(), &fakes, "n@x.com", "P").await;
+    let created = create_schedule(app.clone(), &token, recurring_body(&project)).await;
+    let id = created["id"].as_str().unwrap().to_string();
+    let flow = created["flowId"].as_str().unwrap().to_string();
+    put_flow_definition(
+        app.clone(),
+        &token,
+        &project,
+        &flow,
+        "Morning digest",
+        email_flow_definition("smtp"),
+    )
+    .await;
+
+    // Archive.
     let res = request_with_cookie(
         app.clone(),
-        "POST",
-        "/app/flows",
-        Some(json!({
-            "projectId": project,
-            "name": "Ping chain",
-            "definition": {
-                "version": 1,
-                "nodes": [
-                    {"id": "t", "type": "trigger", "position": {"x": 0, "y": 0}, "data": {"event": "notification.created"}},
-                    {"id": "p1", "type": "provider", "position": {"x": 0, "y": 0}, "data": {"channelId": "email", "providerId": "smtp", "priority": 1}},
-                    {"id": "h1", "type": "http-request", "position": {"x": 0, "y": 0},
-                     "data": {"url": "https://hooks.example.com/ping", "method": "POST", "headers": [], "body": "{}"}},
-                    {"id": "s", "type": "stop", "position": {"x": 0, "y": 0}, "data": {"reason": ""}}
-                ],
-                "edges": []
-            },
-        })),
+        "PATCH",
+        &format!("/app/schedules/{id}"),
+        Some(json!({"projectId": project, "archived": true})),
         &token,
     )
     .await;
-    assert_eq!(res.status(), StatusCode::CREATED);
-    let flow = body_json(res).await["flow"]["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    fakes.schedules.seed_flow(&flow, "Ping chain", json!({}));
-    let created = create_schedule(app.clone(), &token, recurring_body(&project, &flow)).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let archived = body_json(res).await["schedule"].clone();
+    assert!(archived["archivedAt"].is_string());
+
+    // Run-now is refused while archived (the flow stays bound).
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        &format!("/app/schedules/{id}/run-now"),
+        Some(json!({"projectId": project})),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+
+    // The flow is still reachable by id (source still tags schedule).
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        &format!("/app/flows/{flow}?project_id={project}"),
+        None,
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res).await["flow"]["source"], "schedule");
+
+    // Restore — next run re-anchors, run-now works again.
+    let res = request_with_cookie(
+        app.clone(),
+        "PATCH",
+        &format!("/app/schedules/{id}"),
+        Some(json!({"projectId": project, "archived": false})),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(body_json(res).await["schedule"]["archivedAt"].is_null());
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        &format!("/app/schedules/{id}/run-now"),
+        Some(json!({"projectId": project})),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res).await["schedule"]["lastStatus"], "completed");
+}
+
+#[tokio::test]
+async fn schedule_runs_fire_http_steps_without_affecting_outcome() {
+    let (app, fakes) = app_with_schedules();
+    let (token, project) = setup_project(app.clone(), &fakes, "m@x.com", "P").await;
+    let created = create_schedule(app.clone(), &token, recurring_body(&project)).await;
     let id = created["id"].as_str().unwrap().to_string();
+    let flow = created["flowId"].as_str().unwrap().to_string();
+
+    // Wire a trigger + provider + HTTP step onto the owned flow.
+    put_flow_definition(
+        app.clone(),
+        &token,
+        &project,
+        &flow,
+        "Morning digest",
+        json!({
+            "version": 1,
+            "nodes": [
+                {"id": "t", "type": "trigger", "position": {"x": 0, "y": 0}, "data": {"kind": "schedule"}},
+                {"id": "p1", "type": "provider", "position": {"x": 0, "y": 0}, "data": {"channelId": "email", "providerId": "smtp", "priority": 1}},
+                {"id": "h1", "type": "http-request", "position": {"x": 0, "y": 0},
+                 "data": {"url": "https://hooks.example.com/ping", "method": "POST", "headers": [], "body": "{}"}},
+                {"id": "s", "type": "stop", "position": {"x": 0, "y": 0}, "data": {"reason": ""}}
+            ],
+            "edges": []
+        }),
+    )
+    .await;
 
     let res = request_with_cookie(
         app.clone(),

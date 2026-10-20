@@ -4,35 +4,26 @@
 //! product API under `/v1` — [`APP_ROUTES`] — the user dashboard backend
 //! under `/app` — and [`ADMIN_ROUTES`] — platform administration under
 //! `/admin`). To add a route: declare it in the matching const, then
-//! mount it in the surface's router (`project::router` / `app::app_router` /
+//! mount it in the surface's router (`external::router` / `app::app_router` /
 //! `admin::admin_router`). All parts live in this file, so drift is visible
 //! immediately.
 
 use serde::Serialize;
 
-/// Which API surface a route belongs to.
+/// Which API surface a route belongs to. The three audience variants map to
+/// the folders under `src/api/routes/`; ops endpoints (`Core`) are mounted
+/// directly at `/` from `api/handlers.rs` and belong to no audience.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Surface {
     /// External product API under `/v1` (API-key authenticated, M6+).
-    Project,
+    External,
     /// User dashboard backend under `/app` (session-cookie authenticated).
     App,
     /// Platform administration under `/admin` (admin session + 2FA).
     Admin,
     /// Ops/infrastructure endpoints outside all surfaces.
     Core,
-}
-
-impl Surface {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Surface::Project => "project",
-            Surface::App => "app",
-            Surface::Admin => "admin",
-            Surface::Core => "core",
-        }
-    }
 }
 
 /// One exposed route, as listed in the catalog.
@@ -53,7 +44,7 @@ pub struct RouteInfo {
 pub const EXTERNAL_ROUTES: &[RouteInfo] = &[RouteInfo {
     method: "POST",
     path: "/v1/notifications",
-    surface: Surface::Project,
+    surface: Surface::External,
     feature: "sends",
     description: "record-first notification send through the default flow",
 }];
@@ -184,10 +175,10 @@ pub const APP_ROUTES: &[RouteInfo] = &[
     },
     RouteInfo {
         method: "PATCH",
-        path: "/app/projects/{id}/environment",
+        path: "/app/projects/{id}/active",
         surface: Surface::App,
         feature: "projects",
-        description: "switch the project-level environment gate",
+        description: "flip the project-level active switch",
     },
     RouteInfo {
         method: "PATCH",
@@ -533,7 +524,7 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         path: "/app/flows",
         surface: Surface::App,
         feature: "flows",
-        description: "project flows (?project_id=), oldest first, minus scheduled",
+        description: "flows-page flows (?project_id=), oldest first — owner-managed flows (schedules/webhooks) excluded",
     },
     RouteInfo {
         method: "POST",
@@ -541,6 +532,13 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         surface: Surface::App,
         feature: "flows",
         description: "create a flow (omitted definition starts empty)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/app/flows/{id}",
+        surface: Surface::App,
+        feature: "flows",
+        description: "one flow by id (?project_id=) — works for owner-managed flows; tags source (flow_page/schedule/webhook)",
     },
     RouteInfo {
         method: "PUT",
@@ -569,7 +567,7 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         path: "/app/schedules",
         surface: Surface::App,
         feature: "schedules",
-        description: "attach a flow to a timing (the flow leaves the flows list)",
+        description: "create a schedule and its flow (trigger: schedule)",
     },
     RouteInfo {
         method: "GET",
@@ -583,27 +581,64 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         path: "/app/schedules/{id}",
         surface: Surface::App,
         feature: "schedules",
-        description: "edit name, flow, timing, payload, or pause/resume",
+        description: "edit name, timing, payload, pause/resume, or archive/restore (rename syncs to the flow)",
     },
     RouteInfo {
         method: "DELETE",
         path: "/app/schedules/{id}",
         surface: Surface::App,
         feature: "schedules",
-        description: "delete a schedule (the flow reappears in the flows list)",
+        description: "delete a schedule and its owned flow (archive instead to keep the flow)",
     },
     RouteInfo {
         method: "POST",
         path: "/app/schedules/{id}/run-now",
         surface: Surface::App,
         feature: "schedules",
-        description: "fire the assigned flow immediately (timing untouched)",
+        description: "fire the flow immediately (timing untouched; 409 when archived)",
+    },
+    // -- webhooks feature ---------------------------------------------------
+    RouteInfo {
+        method: "GET",
+        path: "/app/webhooks",
+        surface: Surface::App,
+        feature: "webhooks",
+        description: "project webhooks (?project_id=), oldest first",
+    },
+    RouteInfo {
+        method: "POST",
+        path: "/app/webhooks",
+        surface: Surface::App,
+        feature: "webhooks",
+        description: "create a webhook and its flow (trigger: webhook with a fresh token)",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/app/webhooks/{id}",
+        surface: Surface::App,
+        feature: "webhooks",
+        description: "one webhook with its config (?project_id=)",
+    },
+    RouteInfo {
+        method: "PATCH",
+        path: "/app/webhooks/{id}",
+        surface: Surface::App,
+        feature: "webhooks",
+        description: "edit name, description, events, pause/resume, or archive/restore (rename syncs to the flow)",
+    },
+    RouteInfo {
+        method: "DELETE",
+        path: "/app/webhooks/{id}",
+        surface: Surface::App,
+        feature: "webhooks",
+        description: "delete a webhook and its owned flow (archive instead to keep the flow)",
+    },
     },
     // -- inbound webhooks ---------------------------------------------------
     RouteInfo {
         method: "POST",
         path: "/v1/hooks/{token}",
-        surface: Surface::Project,
+        surface: Surface::External,
         feature: "inbound",
         description: "fire a flow's webhook trigger (token auth; caller values win, flow fills gaps)",
     },

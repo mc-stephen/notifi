@@ -23,7 +23,7 @@ use server::domain::auth::{
 use server::domain::projects::ProjectService;
 use server::ports::auth_store::{AuthStore, BoxFut};
 use server::ports::oauth::{
-    AuthorizeStart, OAuthError, OAuthIdentityProvider, OAuthProfile, OAuthRuntime,
+    AuthorizeStart, OAppError, OAuthIdentityProvider, OAuthProfile, OAuthRuntime,
 };
 use tower::ServiceExt;
 
@@ -58,6 +58,7 @@ fn app() -> (Router, Arc<FakeAuthStore>) {
                 notifications: None,
                 billing: None,
                 schedules: None,
+                webhooks: None,
                 inbound: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
                     as std::sync::Arc<dyn ProviderTester + Send + Sync>,
@@ -93,6 +94,7 @@ fn app_without_auth() -> Router {
             notifications: None,
             billing: None,
             schedules: None,
+            webhooks: None,
             inbound: None,
             provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
                 as std::sync::Arc<dyn ProviderTester + Send + Sync>,
@@ -136,6 +138,7 @@ fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
                 notifications: None,
                 billing: None,
                 schedules: None,
+                webhooks: None,
                 inbound: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
                     as std::sync::Arc<dyn ProviderTester + Send + Sync>,
@@ -155,7 +158,7 @@ impl OAuthIdentityProvider for StubOAuthProvider {
         &self,
         _provider: &str,
         csrf_state: &str,
-    ) -> Result<AuthorizeStart, OAuthError> {
+    ) -> Result<AuthorizeStart, OAppError> {
         Ok(AuthorizeStart {
             url: format!("https://provider.example/authorize?state={csrf_state}"),
             pkce_verifier: "test-verifier".to_string(),
@@ -167,7 +170,7 @@ impl OAuthIdentityProvider for StubOAuthProvider {
         _provider: &str,
         _code: &str,
         _pkce_verifier: &str,
-    ) -> BoxFut<'_, Result<OAuthProfile, OAuthError>> {
+    ) -> BoxFut<'_, Result<OAuthProfile, OAppError>> {
         Box::pin(async move {
             Ok(OAuthProfile {
                 subject: "subject-1".to_string(),
@@ -940,6 +943,7 @@ fn app_with_projects() -> (Router, Arc<FakeAuthStore>) {
                 notifications: None,
                 billing: None,
                 schedules: None,
+                webhooks: None,
                 inbound: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
                     as std::sync::Arc<dyn ProviderTester + Send + Sync>,
@@ -976,18 +980,18 @@ async fn list_projects_returns_onboarded_project() {
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    // list should now return that project with environment = development
+    // list should now return that project, inactive by default
     let res = get_with_cookie_on(app, "/app/projects", Some(&token)).await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     let projects = body["projects"].as_array().unwrap();
     assert_eq!(projects.len(), 1);
     assert_eq!(projects[0]["name"], "My App");
-    assert_eq!(projects[0]["environment"], "development");
+    assert_eq!(projects[0]["active"], false);
 }
 
 #[tokio::test]
-async fn patch_environment_switches_gate() {
+async fn patch_active_flips_switch() {
     let (app, _store) = app_with_projects();
     let (token, _uid) = signup_and_login_on(app.clone(), "proj-patch@example.com").await;
 
@@ -995,7 +999,7 @@ async fn patch_environment_switches_gate() {
     let res = post_json_with_cookie(
         app.clone(),
         "/app/auth/onboarding/complete",
-        json!({"project": {"name": "Env App"}}),
+        json!({"project": {"name": "Gate App"}}),
         &token,
     )
     .await;
@@ -1009,64 +1013,45 @@ async fn patch_environment_switches_gate() {
         .unwrap()
         .to_string();
 
-    // switch to production
+    // new projects start inactive: switch ON first and confirm both
+    // responses
     let res = patch_json_with_cookie(
         app.clone(),
-        &format!("/app/projects/{project_id}/environment"),
-        json!({"environment": "production"}),
-        &token,
-    )
-    .await;
-    assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(body_json(res).await["project"]["environment"], "production");
-
-    // verify via list
-    let res = get_with_cookie_on(app, "/app/projects", Some(&token)).await;
-    assert_eq!(
-        body_json(res).await["projects"][0]["environment"],
-        "production"
-    );
-}
-
-#[tokio::test]
-async fn patch_environment_rejects_invalid_env() {
-    let (app, _store) = app_with_projects();
-    let (token, _uid) = signup_and_login_on(app.clone(), "proj-invalid-env@example.com").await;
-
-    let res = post_json_with_cookie(
-        app.clone(),
-        "/app/auth/onboarding/complete",
-        json!({"project": {"name": "Bad Env"}}),
+        &format!("/app/projects/{project_id}/active"),
+        json!({"active": true}),
         &token,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
     let res = get_with_cookie_on(app.clone(), "/app/projects", Some(&token)).await;
-    let project_id = body_json(res).await["projects"][0]["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    assert_eq!(body_json(res).await["projects"][0]["active"], true);
 
+    // flip to inactive
     let res = patch_json_with_cookie(
-        app,
-        &format!("/app/projects/{project_id}/environment"),
-        json!({"environment": "staging"}),
+        app.clone(),
+        &format!("/app/projects/{project_id}/active"),
+        json!({"active": false}),
         &token,
     )
     .await;
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res).await["project"]["active"], false);
+
+    // verify via list
+    let res = get_with_cookie_on(app, "/app/projects", Some(&token)).await;
+    assert_eq!(body_json(res).await["projects"][0]["active"], false);
 }
 
 #[tokio::test]
-async fn patch_environment_returns_404_for_unknown_project() {
+async fn patch_active_returns_404_for_unknown_project() {
     let (app, _store) = app_with_projects();
     let (token, _uid) = signup_and_login_on(app.clone(), "proj-404@example.com").await;
 
     let res = patch_json_with_cookie(
         app,
-        "/app/projects/nonexistent/environment",
-        json!({"environment": "production"}),
+        "/app/projects/nonexistent/active",
+        json!({"active": false}),
         &token,
     )
     .await;
@@ -1125,9 +1110,9 @@ async fn logs_return_recorded_actions_after_signup_and_login() {
 }
 
 #[tokio::test]
-async fn logs_record_project_environment_switch() {
+async fn logs_record_project_active_change() {
     let (app, _store) = app_with_projects();
-    let (token, _uid) = signup_and_login_on(app.clone(), "logs-env@example.com").await;
+    let (token, _uid) = signup_and_login_on(app.clone(), "logs-active@example.com").await;
 
     // complete onboarding → creates a project; capture its id from /projects
     let res = post_json_with_cookie(
@@ -1147,8 +1132,8 @@ async fn logs_record_project_environment_switch() {
 
     let res = patch_json_with_cookie(
         app.clone(),
-        &format!("/app/projects/{project_id}/environment"),
-        json!({"environment": "production"}),
+        &format!("/app/projects/{project_id}/active"),
+        json!({"active": false}),
         &token,
     )
     .await;
@@ -1159,8 +1144,8 @@ async fn logs_record_project_environment_switch() {
     let logs = body["logs"].as_array().unwrap();
     assert!(
         logs.iter().any(|l| {
-            l["eventType"] == "project.environment_changed" && l["projectId"] == project_id
+            l["eventType"] == "project.active_changed" && l["projectId"] == project_id
         }),
-        "expected the environment switch entry, got {logs:?}"
+        "expected the active-switch entry, got {logs:?}"
     );
 }

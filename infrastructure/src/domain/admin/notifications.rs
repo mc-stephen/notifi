@@ -10,7 +10,7 @@ use crate::domain::admin::entities::AdminUser;
 use crate::domain::audit::AuditService;
 use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::{UserId, UserStatus};
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::notifications::entities::NotificationType;
 use crate::domain::notifications::services::validate_content;
 use crate::ports::auth_store::AuthStore;
@@ -75,7 +75,7 @@ impl AdminNotificationsService {
         &self,
         admin: &AdminUser,
         input: BroadcastInput,
-    ) -> Result<BroadcastResult, AuthError> {
+    ) -> Result<BroadcastResult, AppError> {
         let (title, content) = validate_content(&input.title, &input.content)?;
 
         let mut channels: Vec<String> = input
@@ -87,12 +87,12 @@ impl AdminNotificationsService {
         channels.sort();
         channels.dedup();
         if channels.is_empty() || channels.iter().any(|c| c != "in_app" && c != "email") {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "channels must be a non-empty subset of in_app, email".to_string(),
             ));
         }
         if !channels.contains(&"in_app".to_string()) {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "email delivery is not implemented yet; select in-app to deliver".to_string(),
             ));
         }
@@ -100,14 +100,14 @@ impl AdminNotificationsService {
         if let Some(at) = input.scheduled_for
             && at <= Utc::now()
         {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "scheduled_for must be in the future".to_string(),
             ));
         }
 
         let user_ids = self.resolve_audience(&input.audience).await?;
         if user_ids.is_empty() {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "audience matches no active users".to_string(),
             ));
         }
@@ -191,14 +191,14 @@ impl AdminNotificationsService {
     }
 
     /// Cancels a scheduled broadcast. Only scheduled rows can be cancelled.
-    pub async fn cancel_broadcast(&self, admin: &AdminUser, id: &str) -> Result<(), AuthError> {
+    pub async fn cancel_broadcast(&self, admin: &AdminUser, id: &str) -> Result<(), AppError> {
         self.notifications
             .get_broadcast(id)
             .await?
-            .ok_or_else(|| AuthError::NotFound("broadcast not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("broadcast not found".into()))?;
         let cancelled = self.notifications.cancel_broadcast(id).await?;
         if !cancelled {
-            return Err(AuthError::Conflict(
+            return Err(AppError::Conflict(
                 "only scheduled broadcasts can be cancelled".to_string(),
             ));
         }
@@ -224,7 +224,7 @@ impl AdminNotificationsService {
         notification_type: Option<&str>,
         limit: i64,
         offset: i64,
-    ) -> Result<(Vec<BroadcastRecord>, i64), AuthError> {
+    ) -> Result<(Vec<BroadcastRecord>, i64), AppError> {
         Ok(self
             .notifications
             .list_broadcasts(status, notification_type, limit, offset)
@@ -234,7 +234,7 @@ impl AdminNotificationsService {
     pub async fn detail(
         &self,
         id: &str,
-    ) -> Result<Option<(BroadcastRecord, BroadcastStats)>, AuthError> {
+    ) -> Result<Option<(BroadcastRecord, BroadcastStats)>, AppError> {
         let Some(broadcast) = self.notifications.get_broadcast(id).await? else {
             return Ok(None);
         };
@@ -244,7 +244,7 @@ impl AdminNotificationsService {
 
     /// Worker step: claims due broadcasts, materializes them, marks sent.
     /// Returns the number of broadcasts sent.
-    pub async fn run_due_worker(&self, now: DateTime<Utc>) -> Result<i64, AuthError> {
+    pub async fn run_due_worker(&self, now: DateTime<Utc>) -> Result<i64, AppError> {
         let due = self.notifications.claim_due_scheduled(now, 25).await?;
         let mut sent = 0i64;
         for broadcast in due {
@@ -269,7 +269,7 @@ impl AdminNotificationsService {
     }
 
     /// Resolves an audience to active user ids (deduped, stable order).
-    async fn resolve_audience(&self, audience: &Audience) -> Result<Vec<UserId>, AuthError> {
+    async fn resolve_audience(&self, audience: &Audience) -> Result<Vec<UserId>, AppError> {
         let mut ids = BTreeSet::new();
         match audience {
             Audience::All => {
@@ -287,9 +287,9 @@ impl AdminNotificationsService {
                         .auth
                         .find_user_by_id(*id)
                         .await?
-                        .ok_or_else(|| AuthError::Validation(format!("unknown user '{id}'")))?;
+                        .ok_or_else(|| AppError::Validation(format!("unknown user '{id}'")))?;
                     if user.status != UserStatus::Active {
-                        return Err(AuthError::Validation(format!(
+                        return Err(AppError::Validation(format!(
                             "user '{}' is not active",
                             user.email
                         )));
@@ -301,7 +301,7 @@ impl AdminNotificationsService {
                 for pid in project_ids {
                     let record =
                         self.projects.get_any_project(pid).await?.ok_or_else(|| {
-                            AuthError::Validation(format!("unknown project '{pid}'"))
+                            AppError::Validation(format!("unknown project '{pid}'"))
                         })?;
                     if let Some(owner) = record.owner_id
                         && self.is_active_id(&owner).await?
@@ -322,7 +322,7 @@ impl AdminNotificationsService {
             .collect())
     }
 
-    async fn is_active_id(&self, id: &str) -> Result<bool, AuthError> {
+    async fn is_active_id(&self, id: &str) -> Result<bool, AppError> {
         let Ok(uid) = id.parse::<UserId>() else {
             return Ok(false);
         };

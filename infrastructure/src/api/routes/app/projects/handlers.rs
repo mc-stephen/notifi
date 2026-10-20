@@ -14,9 +14,9 @@ use axum::http::StatusCode;
 use super::super::auth::{CurrentUser, Problem};
 use super::dto::{
     AddMemberRequest, CreateProjectRequest, ProjectDto, ProjectInviteDto, ProjectMemberDto,
-    SetRequire2faRequest, UpdateEnvironmentRequest,
+    SetRequire2faRequest, UpdateActiveRequest,
 };
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::projects::{ProjectMembersService, ProjectService};
 
 /// `GET /app/projects` — list all projects the current user owns or belongs to.
@@ -47,15 +47,15 @@ pub async fn create_project(
     ))
 }
 
-/// `PATCH /app/projects/:id/environment` — switch the project's environment gate.
-pub async fn update_environment(
+/// `PATCH /app/projects/:id/active` — flip the project's active switch.
+pub async fn update_active(
     CurrentUser(user): CurrentUser,
     Extension(service): Extension<Arc<ProjectService>>,
     Path(project_id): Path<String>,
-    Json(body): Json<UpdateEnvironmentRequest>,
+    Json(body): Json<UpdateActiveRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let project = service
-        .set_environment(user.id, &project_id, &body.environment)
+        .set_active(user.id, &project_id, body.active)
         .await?;
     Ok((
         StatusCode::OK,
@@ -70,7 +70,7 @@ fn require_members_service(
 ) -> Result<Arc<ProjectMembersService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 /// `PATCH /app/projects/{id}/require-2fa` — flip the "new members must

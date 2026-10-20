@@ -36,11 +36,11 @@
 
 ```
 notifi/                         # repo root
-├── app/user-dashboard/          # Next.js 16 + React 19 frontend
-├── infrastructure/             # Rust server (single crate + channel plugins)
+├── app/dashboard/user/          # Next.js 16 + React 19 frontend
+├── infrastructure/             # Rust server (single crate)
 │   ├── src/                    # server crate source
 │   │   ├── api/                # HTTP presentation (axum handlers + routes)
-│   │   │   ├── routes/         # Audience route surfaces (app, admin, project)
+│   │   │   ├── routes/         # Audience route surfaces (app, admin, external)
 │   │   │   ├── middleware/     # Cross-cutting middleware (cors, request_id)
 │   │   │   └── catalog.rs      # GET /routes — route registry
 │   │   ├── domain/             # Framework-free business logic

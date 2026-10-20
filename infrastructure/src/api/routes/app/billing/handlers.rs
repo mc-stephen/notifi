@@ -7,15 +7,15 @@ use axum::http::StatusCode;
 
 use super::super::auth::{CurrentUser, Problem};
 use super::dto::{CancelRequest, PlanDto, ReceiptDto, SubscribeRequest, SubscriptionDto};
-use crate::domain::auth::errors::AuthError;
 use crate::domain::billing::BillingService;
+use crate::domain::error::AppError;
 
 type MaybeBillingService = Option<Extension<Arc<BillingService>>>;
 
 fn require_service(extension: MaybeBillingService) -> Result<Arc<BillingService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 /// `GET /app/billing/plans` — active plans for the pricing grid.
@@ -37,9 +37,9 @@ pub async fn get_subscription(
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let service = require_service(service)?;
-    let project_id = query.get("project_id").ok_or_else(|| {
-        Problem::from(AuthError::Validation("project_id is required".to_string()))
-    })?;
+    let project_id = query
+        .get("project_id")
+        .ok_or_else(|| Problem::from(AppError::Validation("project_id is required".to_string())))?;
     let subscription = service.get_subscription(user.id, project_id).await?;
     Ok((
         StatusCode::OK,
@@ -55,9 +55,9 @@ pub async fn get_history(
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let service = require_service(service)?;
-    let project_id = query.get("project_id").ok_or_else(|| {
-        Problem::from(AuthError::Validation("project_id is required".to_string()))
-    })?;
+    let project_id = query
+        .get("project_id")
+        .ok_or_else(|| Problem::from(AppError::Validation("project_id is required".to_string())))?;
     let receipts = service.receipt_history(user.id, project_id).await?;
     let dtos: Vec<ReceiptDto> = receipts.into_iter().map(ReceiptDto::from).collect();
     Ok((

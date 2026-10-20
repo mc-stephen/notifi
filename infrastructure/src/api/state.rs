@@ -24,7 +24,7 @@ pub struct AppState {
     pub admin_projects: Option<Arc<crate::domain::admin::AdminProjectsService>>,
     /// Admin notification broadcasts — wired alongside admin/db.
     pub admin_notifications: Option<Arc<crate::domain::admin::AdminNotificationsService>>,
-    /// Project listing and environment gate — wired alongside auth.
+    /// Project listing and the active switch — wired alongside auth.
     pub projects: Option<Arc<crate::domain::projects::ProjectService>>,
     /// Project team management (2FA gate flag + member invites) — wired
     /// alongside auth/db.
@@ -51,6 +51,8 @@ pub struct AppState {
     pub inbound: Option<Arc<crate::domain::inbound::InboundService>>,
     /// Flow schedules (timed runs of assigned flows) — wired alongside auth/db.
     pub schedules: Option<Arc<crate::domain::schedules::ScheduleService>>,
+
+    pub webhooks: Option<Arc<crate::domain::webhooks::WebhookService>>,
     /// In-app notifications (personal, per-user) — wired alongside auth/db.
     pub notifications: Option<Arc<crate::domain::notifications::NotificationService>>,
     /// Provider connection tester — always available.

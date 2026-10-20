@@ -74,6 +74,10 @@ pub async fn readyz(State(state): State<AppState>) -> Response {
         .into_response();
     }
 
+    // The response body reports which dependency is down; mirrored into the
+    // logs so operators see the outage without a client calling /readyz.
+    tracing::error!(database, redis, "readiness check failed");
+
     ApiProblem::from(ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE.as_u16(),
         "about:blank",

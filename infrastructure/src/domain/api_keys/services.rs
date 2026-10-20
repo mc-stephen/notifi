@@ -12,31 +12,22 @@ use crate::domain::api_keys::entities::{ApiKey, IpAllowEntry};
 use crate::domain::audit::AuditService;
 use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::UserId;
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::ports::api_keys_store::{ApiKeysStore, KeyAuth, ip_allowed, normalize_cidr};
 use crate::ports::auth_store::StoreError;
 
-pub const KEY_ENVIRONMENTS: [&str; 2] = ["development", "production"];
 pub const KEY_PERMISSIONS: [&str; 2] = ["read", "write"];
 pub const DEFAULT_KEY_PERMISSIONS: [&str; 1] = ["read"];
 
 const MAX_NAME: usize = 100;
 const MAX_LABEL: usize = 100;
 
-fn short_env(environment: &str) -> &'static str {
-    match environment {
-        "production" => "prod",
-        "development" => "dev",
-        _ => "dev",
-    }
-}
-
 fn hash_secret(raw: &str) -> String {
     hex::encode(Sha256::digest(raw.as_bytes()))
 }
 
-fn generate_secret(environment: &str) -> (String, String, String) {
-    let prefix = format!("napi_{}_", short_env(environment));
+fn generate_secret() -> (String, String, String) {
+    let prefix = "napi_".to_string();
     let mut bytes = [0u8; 24];
     rand::rng().fill_bytes(&mut bytes);
     let raw = format!("{prefix}{}", hex::encode(bytes));
@@ -44,7 +35,7 @@ fn generate_secret(environment: &str) -> (String, String, String) {
     (raw, prefix, hash)
 }
 
-fn normalize_permissions(raw: &[String]) -> Result<Vec<String>, AuthError> {
+fn normalize_permissions(raw: &[String]) -> Result<Vec<String>, AppError> {
     if raw.is_empty() {
         return Ok(DEFAULT_KEY_PERMISSIONS
             .iter()
@@ -55,7 +46,7 @@ fn normalize_permissions(raw: &[String]) -> Result<Vec<String>, AuthError> {
     for permission in raw {
         let normalized = permission.trim().to_lowercase();
         if !KEY_PERMISSIONS.contains(&normalized.as_str()) {
-            return Err(AuthError::Validation(format!(
+            return Err(AppError::Validation(format!(
                 "invalid permission '{permission}' (expected one of: {})",
                 KEY_PERMISSIONS.join(", ")
             )));
@@ -84,40 +75,31 @@ impl ApiKeyService {
         actor: UserId,
         project_id: &str,
         name: &str,
-        environment: &str,
         permissions: &[String],
         expires_at: Option<DateTime<Utc>>,
-    ) -> Result<(ApiKey, String), AuthError> {
+    ) -> Result<(ApiKey, String), AppError> {
         let name = name.trim();
         if name.is_empty() || name.len() > MAX_NAME {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "name is required (100 characters max)".to_string(),
             ));
-        }
-        let environment = environment.trim().to_lowercase();
-        if !KEY_ENVIRONMENTS.contains(&environment.as_str()) {
-            return Err(AuthError::Validation(format!(
-                "environment must be one of: {}",
-                KEY_ENVIRONMENTS.join(", ")
-            )));
         }
         let permissions = normalize_permissions(permissions)?;
         if let Some(expires_at) = expires_at
             && expires_at <= Utc::now()
         {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "expiry must be in the future".to_string(),
             ));
         }
 
-        let (raw, prefix, hash) = generate_secret(&environment);
+        let (raw, prefix, hash) = generate_secret();
         let record = self
             .store
             .create_key(
                 actor,
                 project_id,
                 name,
-                &environment,
                 &permissions,
                 expires_at,
                 &prefix,
@@ -125,13 +107,13 @@ impl ApiKeyService {
             )
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict(
-                    "a key with this name already exists in this environment".into(),
+                StoreError::Conflict => AppError::Conflict(
+                    "a key with this name already exists for this project".into(),
                 ),
                 StoreError::Storage(m) if m.contains("not visible") => {
-                    AuthError::NotFound("project not found".to_string())
+                    AppError::NotFound("project not found".to_string())
                 }
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?;
 
         let key = ApiKey::from(record);
@@ -151,7 +133,7 @@ impl ApiKeyService {
         Ok((key, raw))
     }
 
-    pub async fn list(&self, actor: UserId, project_id: &str) -> Result<Vec<ApiKey>, AuthError> {
+    pub async fn list(&self, actor: UserId, project_id: &str) -> Result<Vec<ApiKey>, AppError> {
         Ok(self
             .store
             .list_keys(actor, project_id)
@@ -167,13 +149,13 @@ impl ApiKeyService {
         actor: UserId,
         project_id: &str,
         key_id: &str,
-    ) -> Result<ApiKey, AuthError> {
+    ) -> Result<ApiKey, AppError> {
         self.store
             .get_key(actor, project_id, key_id)
             .await
             .map_err(map_store_error)?
             .map(ApiKey::from)
-            .ok_or_else(|| AuthError::NotFound("API key not found".to_string()))
+            .ok_or_else(|| AppError::NotFound("API key not found".to_string()))
     }
 
     pub async fn rename(
@@ -182,10 +164,10 @@ impl ApiKeyService {
         project_id: &str,
         key_id: &str,
         name: &str,
-    ) -> Result<ApiKey, AuthError> {
+    ) -> Result<ApiKey, AppError> {
         let name = name.trim();
         if name.is_empty() || name.len() > MAX_NAME {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "name is required (100 characters max)".to_string(),
             ));
         }
@@ -194,13 +176,13 @@ impl ApiKeyService {
             .rename_key(actor, project_id, key_id, name)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict(
-                    "a key with this name already exists in this environment".into(),
+                StoreError::Conflict => AppError::Conflict(
+                    "a key with this name already exists for this project".into(),
                 ),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?;
         if !updated {
-            return Err(AuthError::NotFound("API key not found".to_string()));
+            return Err(AppError::NotFound("API key not found".to_string()));
         }
         self.get(actor, project_id, key_id).await
     }
@@ -211,14 +193,14 @@ impl ApiKeyService {
         project_id: &str,
         key_id: &str,
         enabled: bool,
-    ) -> Result<ApiKey, AuthError> {
+    ) -> Result<ApiKey, AppError> {
         let updated = self
             .store
             .set_key_enabled(actor, project_id, key_id, enabled)
             .await
             .map_err(map_store_error)?;
         if !updated {
-            return Err(AuthError::NotFound("API key not found".to_string()));
+            return Err(AppError::NotFound("API key not found".to_string()));
         }
         self.get(actor, project_id, key_id).await
     }
@@ -228,7 +210,7 @@ impl ApiKeyService {
         actor: UserId,
         project_id: &str,
         key_id: &str,
-    ) -> Result<ApiKey, AuthError> {
+    ) -> Result<ApiKey, AppError> {
         let key = self.get(actor, project_id, key_id).await?;
         if key.revoked_at.is_some() {
             return Ok(key);
@@ -239,7 +221,7 @@ impl ApiKeyService {
             .await
             .map_err(map_store_error)?;
         if !revoked {
-            return Err(AuthError::NotFound("API key not found".to_string()));
+            return Err(AppError::NotFound("API key not found".to_string()));
         }
         self.audit
             .record(
@@ -262,7 +244,7 @@ impl ApiKeyService {
         actor: UserId,
         project_id: &str,
         key_id: &str,
-    ) -> Result<Vec<IpAllowEntry>, AuthError> {
+    ) -> Result<Vec<IpAllowEntry>, AppError> {
         self.get(actor, project_id, key_id).await?;
         Ok(self
             .store
@@ -281,12 +263,12 @@ impl ApiKeyService {
         key_id: &str,
         cidr: &str,
         label: &str,
-    ) -> Result<IpAllowEntry, AuthError> {
+    ) -> Result<IpAllowEntry, AppError> {
         let key = self.get(actor, project_id, key_id).await?;
-        let cidr = normalize_cidr(cidr).map_err(AuthError::Validation)?;
+        let cidr = normalize_cidr(cidr).map_err(AppError::Validation)?;
         let label = label.trim();
         if label.len() > MAX_LABEL {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "label must be under 100 characters".to_string(),
             ));
         }
@@ -296,9 +278,9 @@ impl ApiKeyService {
             .await
             .map_err(|e| match e {
                 StoreError::Conflict => {
-                    AuthError::Conflict("this address is already allowlisted on this key".into())
+                    AppError::Conflict("this address is already allowlisted on this key".into())
                 }
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?;
         self.audit
             .record(
@@ -322,7 +304,7 @@ impl ApiKeyService {
         project_id: &str,
         key_id: &str,
         entry_id: &str,
-    ) -> Result<(), AuthError> {
+    ) -> Result<(), AppError> {
         let key = self.get(actor, project_id, key_id).await?;
         let removed = self
             .store
@@ -330,7 +312,7 @@ impl ApiKeyService {
             .await
             .map_err(map_store_error)?;
         if !removed {
-            return Err(AuthError::NotFound("allowlist entry not found".to_string()));
+            return Err(AppError::NotFound("allowlist entry not found".to_string()));
         }
         self.audit
             .record(
@@ -351,7 +333,7 @@ impl ApiKeyService {
     /// Verification seam for key-authenticated surfaces (the external API).
     /// Pure transport inputs: the presented secret and the already-parsed
     /// peer IP string. Touches `last_used_at` on success only.
-    pub async fn verify(&self, raw_secret: &str, peer_ip: &str) -> Result<KeyAuth, AuthError> {
+    pub async fn verify(&self, raw_secret: &str, peer_ip: &str) -> Result<KeyAuth, AppError> {
         let Some(record) = self
             .store
             .find_key_by_hash(&hash_secret(raw_secret.trim()))
@@ -380,12 +362,12 @@ impl ApiKeyService {
     }
 }
 
-fn map_store_error(err: StoreError) -> AuthError {
+fn map_store_error(err: StoreError) -> AppError {
     match err {
-        StoreError::Conflict => AuthError::Conflict("conflicting update".into()),
+        StoreError::Conflict => AppError::Conflict("conflicting update".into()),
         StoreError::Storage(m) if m.contains("not visible") || m.contains("not found") => {
-            AuthError::NotFound("API key not found".to_string())
+            AppError::NotFound("API key not found".to_string())
         }
-        StoreError::Storage(m) => AuthError::Storage(m),
+        StoreError::Storage(m) => AppError::Storage(m),
     }
 }

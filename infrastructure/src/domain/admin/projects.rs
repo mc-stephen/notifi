@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::projects::entities::Project;
 use crate::ports::projects_store::{ProjectMemberRecord, ProjectsStore};
 
@@ -30,20 +30,19 @@ impl AdminProjectsService {
     pub async fn list_projects(
         &self,
         search: Option<&str>,
-        environment: Option<&str>,
         limit: i64,
         offset: i64,
-    ) -> Result<(Vec<crate::ports::projects_store::AdminProjectRecord>, i64), AuthError> {
+    ) -> Result<(Vec<crate::ports::projects_store::AdminProjectRecord>, i64), AppError> {
         Ok(self
             .projects
-            .list_all_projects(search, environment, limit, offset)
+            .list_all_projects(search, limit, offset)
             .await?)
     }
 
     pub async fn get_project_detail(
         &self,
         project_id: &str,
-    ) -> Result<Option<ProjectDetail>, AuthError> {
+    ) -> Result<Option<ProjectDetail>, AppError> {
         let Some(record) = self.projects.get_any_project(project_id).await? else {
             return Ok(None);
         };

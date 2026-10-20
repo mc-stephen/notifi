@@ -1,6 +1,8 @@
-//! Project flow CRUD. Sends execute every flow carrying a
-//! `notification.created` trigger (oldest first); no stored default flag.
+//! Project flow CRUD. Owner-managed flows (schedules/webhooks) never
+//! list here; sends execute every flow carrying a `notification.created`
+//! trigger (oldest first); no stored default flag.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::Json;
@@ -8,55 +10,115 @@ use axum::extract::{Extension, Path, Query};
 use axum::http::StatusCode;
 
 use super::super::auth::{CurrentUser, Problem};
-use super::dto::{CreateFlowRequest, FlowDto, UpdateFlowRequest};
-use crate::domain::auth::errors::AuthError;
+use super::dto::{CreateFlowRequest, FlowDto, SOURCE_SCHEDULE, SOURCE_WEBHOOK, UpdateFlowRequest};
+use crate::domain::error::AppError;
 use crate::domain::flows::FlowService;
 use crate::domain::inbound::InboundService;
 use crate::domain::schedules::ScheduleService;
-use std::collections::HashMap;
+use crate::domain::webhooks::WebhookService;
 
 type MaybeFlowService = Option<Extension<Arc<FlowService>>>;
 type MaybeScheduleService = Option<Extension<Arc<ScheduleService>>>;
 type MaybeInboundService = Option<Extension<Arc<InboundService>>>;
+type MaybeWebhookService = Option<Extension<Arc<WebhookService>>>;
 
 fn require_service(extension: MaybeFlowService) -> Result<Arc<FlowService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 fn project_id(query: &HashMap<String, String>) -> Result<&String, Problem> {
     query
         .get("project_id")
-        .ok_or_else(|| Problem::from(AuthError::Validation("project_id is required".to_string())))
+        .ok_or_else(|| Problem::from(AppError::Validation("project_id is required".to_string())))
 }
 
-/// `GET /app/flows?project_id=` — all flows, oldest first, excluding
-/// flows assigned to a schedule (those live on the Schedules page).
-/// The schedule service is optional: without it (or with none wired)
-/// nothing is hidden.
+/// The ids hidden from the flows list by an owner. Both owner services
+/// are optional: without one nothing from it is hidden.
+async fn hidden_flow_ids(
+    schedules: &MaybeScheduleService,
+    webhooks: &MaybeWebhookService,
+    user: crate::domain::auth::entities::UserId,
+    project: &str,
+) -> std::collections::HashSet<String> {
+    let mut hidden = std::collections::HashSet::new();
+    if let Some(Extension(schedules)) = schedules {
+        hidden.extend(
+            schedules
+                .scheduled_flow_ids(user, project)
+                .await
+                .unwrap_or_default(),
+        );
+    }
+    if let Some(Extension(webhooks)) = webhooks {
+        hidden.extend(
+            webhooks
+                .owned_flow_ids(user, project)
+                .await
+                .unwrap_or_default(),
+        );
+    }
+    hidden
+}
+
+/// `GET /app/flows?project_id=` — flows created on the flows page,
+/// oldest first. Owner-created flows (schedules/webhooks) are excluded:
+/// they live on their owner's page.
 pub async fn list_flows(
     CurrentUser(user): CurrentUser,
     service: MaybeFlowService,
     schedules: MaybeScheduleService,
+    webhooks: MaybeWebhookService,
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let service = require_service(service)?;
-    let project = project_id(&query)?;
-    let flows = service.list(user.id, project).await?;
-    let hidden = match schedules {
-        Some(Extension(schedules)) => schedules
-            .scheduled_flow_ids(user.id, project)
-            .await
-            .unwrap_or_default(),
-        None => Default::default(),
-    };
+    let project = project_id(&query)?.to_string();
+    let flows = service.list(user.id, &project).await?;
+    let hidden = hidden_flow_ids(&schedules, &webhooks, user.id, &project).await;
     let dtos: Vec<FlowDto> = flows
         .into_iter()
         .filter(|f| !hidden.contains(&f.id))
         .map(FlowDto::from)
         .collect();
     Ok((StatusCode::OK, Json(serde_json::json!({ "flows": dtos }))))
+}
+
+/// `GET /app/flows/:id?project_id=` — one flow, even when an owner
+/// (schedule/webhook) hides it from the list; the builder loads by id.
+/// The response tags `source` so the builder scopes the trigger UI to
+/// the owner.
+pub async fn get_flow(
+    CurrentUser(user): CurrentUser,
+    service: MaybeFlowService,
+    schedules: MaybeScheduleService,
+    webhooks: MaybeWebhookService,
+    Path(id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
+    let service = require_service(service)?;
+    let project = project_id(&query)?;
+    let flow = service.get(user.id, project, &id).await?;
+    let mut dto = FlowDto::from(flow);
+    if let Some(Extension(schedules)) = &schedules
+        && schedules
+            .scheduled_flow_ids(user.id, project)
+            .await
+            .unwrap_or_default()
+            .contains(&dto.id)
+    {
+        dto.source = SOURCE_SCHEDULE;
+    }
+    if let Some(Extension(webhooks)) = &webhooks
+        && webhooks
+            .owned_flow_ids(user.id, project)
+            .await
+            .unwrap_or_default()
+            .contains(&dto.id)
+    {
+        dto.source = SOURCE_WEBHOOK;
+    }
+    Ok((StatusCode::OK, Json(serde_json::json!({ "flow": dto }))))
 }
 
 /// `POST /app/flows` — create a flow. Omitted definition starts empty

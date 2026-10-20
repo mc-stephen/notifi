@@ -279,6 +279,18 @@ fn run_inner() -> Result<(), String> {
                 std::sync::Arc::new(infra::ReqwestHttpRequester::new()),
             ))
         });
+
+        // Owner-managed webhooks: each creates + owns exactly one flow
+        // (seeded with a locked webhook trigger). Shares the flow store
+        // and the inbound token sync.
+        let webhooks = db.as_ref().map(|pool| {
+            std::sync::Arc::new(domain::webhooks::WebhookService::new(
+                std::sync::Arc::new(infra::PgWebhookStore::new(pool.clone())),
+                std::sync::Arc::new(infra::PgFlowStore::new(pool.clone())),
+                inbound.clone().expect("inbound built with db"),
+            ))
+        });
+
         let admin_users = db.as_ref().map(|pool| {
             let auth_store = std::sync::Arc::new(infra::PgAuthStore::new(pool.clone()));
             std::sync::Arc::new(domain::admin::AdminUsersService::new(
@@ -394,6 +406,11 @@ fn run_inner() -> Result<(), String> {
                 "schedules disabled (needs database); /app/schedules routes will answer 503"
             );
         }
+        if webhooks.is_none() {
+            tracing::warn!(
+                "webhooks disabled (needs database); /app/webhooks routes will answer 503"
+            );
+        }
         if admin_users.is_none() {
             tracing::warn!(
                 "admin user management disabled (needs database); /admin/users routes will answer 503"
@@ -449,6 +466,7 @@ fn run_inner() -> Result<(), String> {
                 sends,
                 inbound,
                 schedules,
+                webhooks,
                 notifications,
                 provider_tester,
             },

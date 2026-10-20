@@ -1,17 +1,14 @@
-//! Project use cases: listing and the environment gate.
+//! Project use cases: listing and the active switch.
 
 use std::sync::Arc;
 
 use crate::domain::audit::AuditService;
 use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::UserId;
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::projects::entities::Project;
 use crate::ports::auth_store::StoreError;
 use crate::ports::projects_store::ProjectsStore;
-
-/// Allowed project gate values (mirrors the schema CHECK).
-pub const ENVIRONMENTS: [&str; 2] = ["development", "production"];
 
 pub struct ProjectService {
     store: Arc<dyn ProjectsStore>,
@@ -24,7 +21,7 @@ impl ProjectService {
     }
 
     /// Projects the user owns or belongs to, oldest first.
-    pub async fn list(&self, user_id: UserId) -> Result<Vec<Project>, AuthError> {
+    pub async fn list(&self, user_id: UserId) -> Result<Vec<Project>, AppError> {
         Ok(self
             .store
             .list_projects(user_id)
@@ -40,9 +37,9 @@ impl ProjectService {
         user_id: UserId,
         name: &str,
         description: Option<&str>,
-    ) -> Result<Project, AuthError> {
+    ) -> Result<Project, AppError> {
         if name.trim().is_empty() {
-            return Err(AuthError::Validation("project name is required".into()));
+            return Err(AppError::Validation("project name is required".into()));
         }
         let record = self
             .store
@@ -50,9 +47,9 @@ impl ProjectService {
             .await
             .map_err(|e| match e {
                 StoreError::Conflict => {
-                    AuthError::Conflict("a project with this name already exists".into())
+                    AppError::Conflict("a project with this name already exists".into())
                 }
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?;
 
         let project = Project::from(record);
@@ -74,36 +71,33 @@ impl ProjectService {
         Ok(project)
     }
 
-    /// Switches the project's environment gate.
-    pub async fn set_environment(
+    /// Flips the project's active switch. `false` stops the project's
+    /// delivery and external traffic entirely.
+    pub async fn set_active(
         &self,
         user_id: UserId,
         project_id: &str,
-        environment: &str,
-    ) -> Result<Project, AuthError> {
-        if !ENVIRONMENTS.contains(&environment) {
-            return Err(AuthError::Validation(format!(
-                "environment must be one of: {}",
-                ENVIRONMENTS.join(", ")
-            )));
-        }
-
+        active: bool,
+    ) -> Result<Project, AppError> {
         let project = self
             .store
-            .set_project_environment(user_id, project_id, environment)
+            .set_project_active(user_id, project_id, active)
             .await?
             .map(Project::from)
-            .ok_or_else(|| AuthError::NotFound("project not found".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("project not found".to_string()))?;
 
         self.audit
             .record(
                 chrono::Utc::now(),
                 &AuditEvent::new(
-                    AuditAction::ProjectEnvironmentChanged,
+                    AuditAction::ProjectActiveChanged,
                     Some(&user_id.to_string()),
                     None,
                     Some(project_id),
-                    format!("environment switched to {environment}"),
+                    format!(
+                        "project marked {}",
+                        if active { "active" } else { "inactive" }
+                    ),
                     None,
                 ),
             )
@@ -172,22 +166,22 @@ impl ProjectMembersService {
         actor: UserId,
         project_id: &str,
         enabled: bool,
-    ) -> Result<bool, AuthError> {
+    ) -> Result<bool, AppError> {
         let access = self
             .projects
             .get_project_access(actor, project_id)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting update".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting update".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
-            .ok_or_else(|| AuthError::NotFound("project not found".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("project not found".to_string()))?;
         if !Self::is_manager(
             access.created_by.as_deref(),
             access.member_role.as_deref(),
             &actor,
         ) {
-            return Err(AuthError::Forbidden(
+            return Err(AppError::Forbidden(
                 "only project owners and admins can change this setting".into(),
             ));
         }
@@ -196,10 +190,10 @@ impl ProjectMembersService {
             .set_require_2fa(project_id, enabled)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting update".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting update".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
-            .ok_or_else(|| AuthError::NotFound("project not found".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("project not found".to_string()))?;
 
         self.audit
             .record(
@@ -237,13 +231,13 @@ impl ProjectMembersService {
             crate::domain::projects::entities::ProjectInvite,
             Option<String>,
         ),
-        AuthError,
+        AppError,
     > {
         use crate::domain::auth::value_objects::{Email, new_token};
 
         let role = role.trim().to_lowercase();
         if !MEMBER_ROLES.contains(&role.as_str()) {
-            return Err(AuthError::Validation(format!(
+            return Err(AppError::Validation(format!(
                 "role must be one of: {}",
                 MEMBER_ROLES.join(", ")
             )));
@@ -253,40 +247,38 @@ impl ProjectMembersService {
             .get_project_access(actor, project_id)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting update".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting update".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
-            .ok_or_else(|| AuthError::NotFound("project not found".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("project not found".to_string()))?;
         let is_owner = access.created_by.as_deref() == Some(actor.to_string().as_str());
         if !is_owner && !matches!(access.member_role.as_deref(), Some("owner") | Some("admin")) {
-            return Err(AuthError::Forbidden(
+            return Err(AppError::Forbidden(
                 "only project owners and admins can invite members".into(),
             ));
         }
         if role == "owner" && !is_owner {
-            return Err(AuthError::Forbidden(
+            return Err(AppError::Forbidden(
                 "only the project owner can grant the owner role".into(),
             ));
         }
 
         let parsed = Email::parse(email)
-            .map_err(|_| AuthError::Validation("enter a valid email address".to_string()))?;
+            .map_err(|_| AppError::Validation("enter a valid email address".to_string()))?;
         let target = self
             .auth
             .find_user_by_email(parsed.as_str())
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting lookup".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting lookup".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
-            .ok_or_else(|| AuthError::NotFound("no account with this email address".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("no account with this email address".to_string()))?;
         if target.status == crate::domain::auth::entities::UserStatus::Suspended {
-            return Err(AuthError::Forbidden(
-                "that account is suspended".to_string(),
-            ));
+            return Err(AppError::Forbidden("that account is suspended".to_string()));
         }
         if Self::is_member(&self.projects, &target.id, project_id).await? {
-            return Err(AuthError::Conflict(
+            return Err(AppError::Conflict(
                 "that account is already on this team".to_string(),
             ));
         }
@@ -305,8 +297,8 @@ impl ProjectMembersService {
             )
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting update".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting update".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?;
 
         self.audit
@@ -385,13 +377,13 @@ impl ProjectMembersService {
         store: &Arc<dyn ProjectsStore>,
         user_id: &crate::domain::auth::entities::UserId,
         project_id: &str,
-    ) -> Result<bool, AuthError> {
+    ) -> Result<bool, AppError> {
         let access = store
             .get_project_access(*user_id, project_id)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?;
         Ok(access
             .map(|a| Self::is_on_team(&a, user_id))
@@ -406,7 +398,7 @@ impl ProjectMembersService {
         &self,
         actor: UserId,
         raw_token: &str,
-    ) -> Result<crate::domain::projects::entities::ProjectMember, AuthError> {
+    ) -> Result<crate::domain::projects::entities::ProjectMember, AppError> {
         use crate::domain::auth::value_objects::hash_token;
 
         let token_hash = hash_token(raw_token);
@@ -415,8 +407,8 @@ impl ProjectMembersService {
             .find_pending_invite(&token_hash)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?;
         let invite = match invite {
             Some(invite) => invite,
@@ -424,7 +416,7 @@ impl ProjectMembersService {
         };
         if invite.expires_at <= chrono::Utc::now() {
             let _ = self.projects.decide_invite(&invite.id, false).await;
-            return Err(AuthError::TokenExpired(
+            return Err(AppError::TokenExpired(
                 "this invitation has expired".to_string(),
             ));
         }
@@ -434,19 +426,17 @@ impl ProjectMembersService {
             .find_user_by_id(actor)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting lookup".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting lookup".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
-            .ok_or(AuthError::Unauthorized)?;
+            .ok_or(AppError::Unauthorized)?;
         if !me.email.as_str().eq_ignore_ascii_case(&invite.email) {
-            return Err(AuthError::Forbidden(
+            return Err(AppError::Forbidden(
                 "this invitation belongs to a different account".to_string(),
             ));
         }
         if me.status == crate::domain::auth::entities::UserStatus::Suspended {
-            return Err(AuthError::Forbidden(
-                "that account is suspended".to_string(),
-            ));
+            return Err(AppError::Forbidden("that account is suspended".to_string()));
         }
 
         // The actor isn't on the team yet, so the flag must be read
@@ -456,12 +446,12 @@ impl ProjectMembersService {
             .project_require_2fa(&invite.project_id)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
-            .ok_or_else(|| AuthError::NotFound("project not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("project not found".into()))?;
         if require_2fa && !me.totp_enabled {
-            return Err(AuthError::Forbidden(
+            return Err(AppError::Forbidden(
                 "this project requires two-factor authentication: enable 2FA on your profile first"
                     .to_string(),
             ));
@@ -472,8 +462,8 @@ impl ProjectMembersService {
             .get_project_access(actor, &invite.project_id)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
             .as_ref()
             .map(|a| Self::is_on_team(a, &actor) || a.member_role.is_some())
@@ -484,8 +474,8 @@ impl ProjectMembersService {
                 .insert_member(&invite.project_id, actor, &invite.role)
                 .await
                 .map_err(|e| match e {
-                    StoreError::Conflict => AuthError::Conflict("already a member".into()),
-                    StoreError::Storage(m) => AuthError::Storage(m),
+                    StoreError::Conflict => AppError::Conflict("already a member".into()),
+                    StoreError::Storage(m) => AppError::Storage(m),
                 })?;
             if !inserted {
                 // Lost a race with another accept; fall through idempotently.
@@ -495,8 +485,8 @@ impl ProjectMembersService {
             .decide_invite(&invite.id, true)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting update".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting update".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?;
 
         self.audit
@@ -529,30 +519,30 @@ impl ProjectMembersService {
         &self,
         actor: UserId,
         token_hash: &str,
-    ) -> Result<crate::domain::projects::entities::ProjectMember, AuthError> {
+    ) -> Result<crate::domain::projects::entities::ProjectMember, AppError> {
         let invite = self
             .projects
             .find_invite_by_hash(token_hash)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
-            .ok_or_else(|| AuthError::NotFound("invitation not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("invitation not found".into()))?;
         if invite.status != "accepted" {
-            return Err(AuthError::NotFound("invitation not found".into()));
+            return Err(AppError::NotFound("invitation not found".into()));
         }
         let me = self
             .auth
             .find_user_by_id(actor)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting lookup".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting lookup".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
-            .ok_or(AuthError::Unauthorized)?;
+            .ok_or(AppError::Unauthorized)?;
         if !me.email.as_str().eq_ignore_ascii_case(&invite.email) {
-            return Err(AuthError::NotFound("invitation not found".into()));
+            return Err(AppError::NotFound("invitation not found".into()));
         }
         // Report the live membership role, not the stale invite copy.
         let access = self
@@ -560,8 +550,8 @@ impl ProjectMembersService {
             .get_project_access(actor, &invite.project_id)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?;
         let role = match access.as_ref() {
             Some(a) if Self::is_on_team(a, &actor) => {
@@ -571,7 +561,7 @@ impl ProjectMembersService {
                     a.member_role.clone().unwrap_or_else(|| invite.role.clone())
                 }
             }
-            _ => return Err(AuthError::NotFound("invitation not found".into())),
+            _ => return Err(AppError::NotFound("invitation not found".into())),
         };
         Ok(crate::domain::projects::entities::ProjectMember {
             user_id: actor.to_string(),
@@ -589,7 +579,7 @@ impl ProjectMembersService {
         &self,
         actor: UserId,
         raw_token: &str,
-    ) -> Result<crate::domain::projects::entities::ProjectInvite, AuthError> {
+    ) -> Result<crate::domain::projects::entities::ProjectInvite, AppError> {
         use crate::domain::auth::value_objects::hash_token;
 
         let invite = self
@@ -597,12 +587,12 @@ impl ProjectMembersService {
             .find_pending_invite(&hash_token(raw_token))
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
-            .ok_or_else(|| AuthError::NotFound("invitation not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("invitation not found".into()))?;
         if invite.expires_at <= chrono::Utc::now() {
-            return Err(AuthError::TokenExpired(
+            return Err(AppError::TokenExpired(
                 "this invitation has expired".to_string(),
             ));
         }
@@ -611,12 +601,12 @@ impl ProjectMembersService {
             .find_user_by_id(actor)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting lookup".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting lookup".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
-            .ok_or(AuthError::Unauthorized)?;
+            .ok_or(AppError::Unauthorized)?;
         if !me.email.as_str().eq_ignore_ascii_case(&invite.email) {
-            return Err(AuthError::NotFound("invitation not found".into()));
+            return Err(AppError::NotFound("invitation not found".into()));
         }
         Ok(crate::domain::projects::entities::ProjectInvite {
             id: invite.id,
@@ -630,7 +620,7 @@ impl ProjectMembersService {
 
     /// Declines a pending invite. Idempotent and quiet on unknown tokens
     /// (no enumeration of outstanding invites).
-    pub async fn decline_invite(&self, actor: UserId, raw_token: &str) -> Result<(), AuthError> {
+    pub async fn decline_invite(&self, actor: UserId, raw_token: &str) -> Result<(), AppError> {
         use crate::domain::auth::value_objects::hash_token;
 
         let Some(invite) = self
@@ -638,8 +628,8 @@ impl ProjectMembersService {
             .find_pending_invite(&hash_token(raw_token))
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
         else {
             return Ok(());
@@ -649,12 +639,12 @@ impl ProjectMembersService {
             .find_user_by_id(actor)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting lookup".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting lookup".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
-            .ok_or(AuthError::Unauthorized)?;
+            .ok_or(AppError::Unauthorized)?;
         if !me.email.as_str().eq_ignore_ascii_case(&invite.email) {
-            return Err(AuthError::Forbidden(
+            return Err(AppError::Forbidden(
                 "this invitation belongs to a different account".to_string(),
             ));
         }
@@ -662,8 +652,8 @@ impl ProjectMembersService {
             .decide_invite(&invite.id, false)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting update".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting update".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?;
 
         self.audit
@@ -687,22 +677,22 @@ impl ProjectMembersService {
         &self,
         actor: UserId,
         project_id: &str,
-    ) -> Result<Vec<crate::domain::projects::entities::ProjectMember>, AuthError> {
+    ) -> Result<Vec<crate::domain::projects::entities::ProjectMember>, AppError> {
         self.projects
             .get_project_access(actor, project_id)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
-            .ok_or_else(|| AuthError::NotFound("project not found".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("project not found".to_string()))?;
         Ok(self
             .projects
             .list_members(actor, project_id)
             .await
             .map_err(|e| match e {
-                StoreError::Conflict => AuthError::Conflict("conflicting read".into()),
-                StoreError::Storage(m) => AuthError::Storage(m),
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
             })?
             .into_iter()
             .map(|record| crate::domain::projects::entities::ProjectMember {

@@ -1,13 +1,15 @@
-//! Unified auth error model mapped to RFC 9457 problem documents.
+//! Unified application error model for every domain service and route
+//! handler, mapped to RFC 9457 problem documents (`IntoApiError`).
 //!
-//! Messages match the dashboard contract (`app/user-dashboard/app/auth/
-//! API_CONTRACT.md`); the verify-email page branches on detail containing
-//! the word "expired", so that wording is load-bearing.
+//! While it lives in `domain/`, several of its messages double as the
+//! dashboard auth contract (`app/dashboard/user/app/auth/API_CONTRACT.md`);
+//! the verify-email page branches on detail containing the word "expired",
+//! so that wording is load-bearing.
 
 use crate::kernel::error::{ApiError, IntoApiError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AuthError {
+pub enum AppError {
     /// Wrong email or password (login).
     InvalidCredentials,
     /// The account exists but an admin suspended it.
@@ -42,7 +44,7 @@ pub enum AuthError {
     TotpRequired,
 }
 
-impl std::fmt::Display for AuthError {
+impl std::fmt::Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidCredentials => write!(f, "invalid credentials"),
@@ -65,9 +67,9 @@ impl std::fmt::Display for AuthError {
     }
 }
 
-impl std::error::Error for AuthError {}
+impl std::error::Error for AppError {}
 
-impl IntoApiError for AuthError {
+impl IntoApiError for AppError {
     fn to_api_error(&self) -> ApiError {
         match self {
             Self::InvalidCredentials => ApiError::new(
@@ -141,13 +143,13 @@ mod tests {
 
     #[test]
     fn contract_error_messages_and_statuses() {
-        assert_eq!(AuthError::InvalidCredentials.to_api_error().status, 401);
+        assert_eq!(AppError::InvalidCredentials.to_api_error().status, 401);
         assert_eq!(
-            AuthError::EmailAlreadyExists.to_api_error().detail,
+            AppError::EmailAlreadyExists.to_api_error().detail,
             "An account with this email already exists."
         );
         // the verify-email page branches on this word — do not change it
-        let expired = AuthError::TokenExpired("This verification link has expired.".to_string());
+        let expired = AppError::TokenExpired("This verification link has expired.".to_string());
         let problem = expired.to_api_error();
         assert_eq!(problem.status, 410);
         assert!(problem.detail.contains("expired"));

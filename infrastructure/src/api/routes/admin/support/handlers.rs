@@ -9,7 +9,7 @@ use super::super::handlers::CurrentAdmin;
 use super::dto::{AdminTicketDto, AdminTicketMessageDto, UpdateTicketRequest};
 use crate::api::routes::app::auth::Problem;
 use crate::api::routes::app::support::dto::{SendReplyRequest, TicketMessageDto};
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::support::TicketService;
 
 const DEFAULT_LIMIT: i64 = 100;
@@ -19,7 +19,7 @@ type MaybeTicketService = Option<Extension<Arc<TicketService>>>;
 fn require_tickets_service(extension: MaybeTicketService) -> Result<Arc<TicketService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 /// `GET /admin/support/tickets` — list all tickets (admin view).
@@ -64,7 +64,7 @@ pub async fn get_ticket(
     let ticket = service
         .get_any_ticket(&ticket_id)
         .await?
-        .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("ticket not found".into()))?;
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "ticket": AdminTicketDto::from(ticket) })),
@@ -82,7 +82,7 @@ pub async fn list_messages(
     service
         .get_any_ticket(&ticket_id)
         .await?
-        .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("ticket not found".into()))?;
     let messages = service.list_any_messages(&ticket_id).await?;
     let dtos: Vec<AdminTicketMessageDto> = messages
         .into_iter()
@@ -120,7 +120,7 @@ pub async fn set_status(
     Json(body): Json<UpdateTicketRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     if body.status.is_none() && body.priority.is_none() {
-        return Err(AuthError::Validation(
+        return Err(AppError::Validation(
             "nothing to update (expected status and/or priority)".into(),
         )
         .into());
@@ -139,7 +139,7 @@ pub async fn set_status(
     let ticket = service
         .get_any_ticket(&ticket_id)
         .await?
-        .ok_or_else(|| AuthError::NotFound("ticket not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("ticket not found".into()))?;
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "ticket": AdminTicketDto::from(ticket) })),

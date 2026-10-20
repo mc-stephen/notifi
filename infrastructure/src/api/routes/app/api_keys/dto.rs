@@ -7,7 +7,6 @@ use crate::domain::api_keys::entities::{ApiKey, IpAllowEntry};
 #[serde(rename_all = "camelCase")]
 pub struct CreateApiKeyRequest {
     pub name: String,
-    pub environment: String,
     #[serde(default)]
     pub permissions: Vec<String>,
     #[serde(default)]
@@ -38,7 +37,6 @@ pub struct ApiKeyDto {
     pub project_id: String,
     pub name: String,
     pub prefix: String,
-    pub environment: String,
     pub permissions: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
     pub last_used_at: Option<DateTime<Utc>>,
@@ -54,7 +52,6 @@ impl From<ApiKey> for ApiKeyDto {
             project_id: key.project_id,
             name: key.name,
             prefix: key.prefix,
-            environment: key.environment,
             permissions: key.permissions,
             expires_at: key.expires_at,
             last_used_at: key.last_used_at,

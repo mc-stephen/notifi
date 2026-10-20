@@ -36,6 +36,7 @@ pub struct ScheduleRecord {
     pub body: String,
     pub recipients: serde_json::Value,
     pub active: bool,
+    pub archived_at: Option<chrono::DateTime<chrono::Utc>>,
     pub next_run_at: Option<chrono::DateTime<chrono::Utc>>,
     pub last_run_at: Option<chrono::DateTime<chrono::Utc>>,
     pub last_status: Option<String>,
@@ -63,6 +64,7 @@ pub struct NewSchedule {
     pub body: String,
     pub recipients: serde_json::Value,
     pub active: bool,
+    pub archived_at: Option<chrono::DateTime<chrono::Utc>>,
     pub next_run_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -84,6 +86,7 @@ pub struct ScheduleUpdate {
     pub body: String,
     pub recipients: serde_json::Value,
     pub active: bool,
+    pub archived_at: Option<chrono::DateTime<chrono::Utc>>,
     pub next_run_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 

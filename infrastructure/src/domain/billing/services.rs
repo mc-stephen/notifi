@@ -9,11 +9,11 @@ use crate::domain::admin::entities::AdminUser;
 use crate::domain::audit::AuditService;
 use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::UserId;
-use crate::domain::auth::errors::AuthError;
 use crate::domain::billing::entities::{
     BillingCycle, Plan, PlanCapability, Subscription, SubscriptionStatus, YearlyDiscount,
     cycle_price_cents,
 };
+use crate::domain::error::AppError;
 use crate::ports::auth_store::StoreError;
 use crate::ports::billing_store::BillingStore;
 
@@ -30,17 +30,17 @@ impl BillingService {
         Self { store, audit }
     }
 
-    fn map_store_error(e: StoreError) -> AuthError {
+    fn map_store_error(e: StoreError) -> AppError {
         match e {
-            StoreError::Conflict => AuthError::Conflict("conflicting billing change".into()),
-            StoreError::Storage(m) => AuthError::Storage(m),
+            StoreError::Conflict => AppError::Conflict("conflicting billing change".into()),
+            StoreError::Storage(m) => AppError::Storage(m),
         }
     }
 
     // === User catalog + subscription ========================================
 
     /// Active plans for the customer pricing grid.
-    pub async fn list_plans(&self) -> Result<Vec<Plan>, AuthError> {
+    pub async fn list_plans(&self) -> Result<Vec<Plan>, AppError> {
         Ok(self
             .store
             .list_active_plans()
@@ -59,14 +59,14 @@ impl BillingService {
         &self,
         actor: UserId,
         project_id: &str,
-    ) -> Result<Subscription, AuthError> {
+    ) -> Result<Subscription, AppError> {
         if !self
             .store
             .project_visible(actor, project_id)
             .await
             .map_err(Self::map_store_error)?
         {
-            return Err(AuthError::NotFound("project not found".into()));
+            return Err(AppError::NotFound("project not found".into()));
         }
         let record = match self
             .store
@@ -96,17 +96,17 @@ impl BillingService {
         project_id: &str,
         plan_id: &str,
         billing_cycle: &str,
-    ) -> Result<Subscription, AuthError> {
+    ) -> Result<Subscription, AppError> {
         use std::str::FromStr;
         let cycle = BillingCycle::from_str(billing_cycle.trim())
-            .map_err(|_| AuthError::Validation("billing cycle must be monthly or yearly".into()))?;
+            .map_err(|_| AppError::Validation("billing cycle must be monthly or yearly".into()))?;
         if !self
             .store
             .project_visible(actor, project_id)
             .await
             .map_err(Self::map_store_error)?
         {
-            return Err(AuthError::NotFound("project not found".into()));
+            return Err(AppError::NotFound("project not found".into()));
         }
         let plan = self
             .store
@@ -114,19 +114,19 @@ impl BillingService {
             .await
             .map_err(Self::map_store_error)?
             .map(Plan::from)
-            .ok_or_else(|| AuthError::NotFound("plan not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("plan not found".into()))?;
         if !plan.is_active {
-            return Err(AuthError::PlanRetired(
+            return Err(AppError::PlanRetired(
                 "this plan is retired and can no longer be purchased or renewed".into(),
             ));
         }
         if plan.price_cents.is_none() {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "this plan needs a tailored quote — contact sales".into(),
             ));
         }
         if cycle == BillingCycle::Yearly && plan.yearly_discount.is_none() {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "this plan has no yearly billing option".into(),
             ));
         }
@@ -171,10 +171,10 @@ impl BillingService {
     /// Cancel: the Free plan is the default and can't be cancelled.
     /// A paid plan keeps its benefits until `period_end`, then reverts
     /// to free (see [`Self::get_subscription`]).
-    pub async fn cancel(&self, actor: UserId, project_id: &str) -> Result<Subscription, AuthError> {
+    pub async fn cancel(&self, actor: UserId, project_id: &str) -> Result<Subscription, AppError> {
         let current = self.get_subscription(actor, project_id).await?;
         if current.plan.id == FREE_PLAN_ID {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "the Free plan is the default and can't be cancelled".into(),
             ));
         }
@@ -183,7 +183,7 @@ impl BillingService {
             .set_cancel_at_period_end(project_id, true)
             .await
             .map_err(Self::map_store_error)?
-            .ok_or_else(|| AuthError::NotFound("project not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("project not found".into()))?;
         let subscription = self.with_plan(record).await?;
 
         self.audit
@@ -210,10 +210,10 @@ impl BillingService {
     }
 
     /// Restart the current period. Refuses archived plans.
-    pub async fn renew(&self, actor: UserId, project_id: &str) -> Result<Subscription, AuthError> {
+    pub async fn renew(&self, actor: UserId, project_id: &str) -> Result<Subscription, AppError> {
         let current = self.get_subscription(actor, project_id).await?;
         if !current.plan.is_active {
-            return Err(AuthError::PlanRetired(
+            return Err(AppError::PlanRetired(
                 "this plan is retired and can no longer be renewed".into(),
             ));
         }
@@ -237,14 +237,14 @@ impl BillingService {
     async fn with_plan(
         &self,
         record: crate::ports::billing_store::SubscriptionRecord,
-    ) -> Result<Subscription, AuthError> {
+    ) -> Result<Subscription, AppError> {
         let plan = self
             .store
             .get_plan(&record.plan_id)
             .await
             .map_err(Self::map_store_error)?
             .map(Plan::from)
-            .ok_or_else(|| AuthError::Storage("subscription references a missing plan".into()))?;
+            .ok_or_else(|| AppError::Storage("subscription references a missing plan".into()))?;
         Ok(Subscription {
             id: record.id,
             project_id: record.project_id,
@@ -265,7 +265,7 @@ impl BillingService {
         &self,
         actor: UserId,
         project_id: &str,
-    ) -> Result<Subscription, AuthError> {
+    ) -> Result<Subscription, AppError> {
         let now = chrono::Utc::now();
         let record = self
             .store
@@ -298,7 +298,7 @@ impl BillingService {
 
     // === Admin plan management ==============================================
 
-    pub async fn list_all_plans(&self) -> Result<Vec<Plan>, AuthError> {
+    pub async fn list_all_plans(&self) -> Result<Vec<Plan>, AppError> {
         Ok(self
             .store
             .list_all_plans()
@@ -309,7 +309,7 @@ impl BillingService {
             .collect())
     }
 
-    pub async fn subscriber_count(&self, plan_id: &str) -> Result<i64, AuthError> {
+    pub async fn subscriber_count(&self, plan_id: &str) -> Result<i64, AppError> {
         self.store
             .count_active_subscribers(plan_id)
             .await
@@ -317,7 +317,7 @@ impl BillingService {
     }
 
     /// Any plan by id, active or archived (admin + internal use).
-    pub async fn get_plan(&self, plan_id: &str) -> Result<Option<Plan>, AuthError> {
+    pub async fn get_plan(&self, plan_id: &str) -> Result<Option<Plan>, AppError> {
         Ok(self
             .store
             .get_plan(plan_id)
@@ -330,9 +330,9 @@ impl BillingService {
     pub async fn list_subscribers(
         &self,
         plan_id: &str,
-    ) -> Result<Vec<crate::domain::billing::PlanSubscriber>, AuthError> {
+    ) -> Result<Vec<crate::domain::billing::PlanSubscriber>, AppError> {
         if self.get_plan(plan_id).await?.is_none() {
-            return Err(AuthError::NotFound("plan not found".into()));
+            return Err(AppError::NotFound("plan not found".into()));
         }
         Ok(self
             .store
@@ -349,7 +349,7 @@ impl BillingService {
     pub async fn subscription_history(
         &self,
         months: usize,
-    ) -> Result<Vec<crate::domain::billing::SubscriberHistoryPoint>, AuthError> {
+    ) -> Result<Vec<crate::domain::billing::SubscriberHistoryPoint>, AppError> {
         use crate::domain::billing::{
             HistoryEvent, HistoryEventKind, HistoryProject, build_history,
         };
@@ -432,7 +432,7 @@ impl BillingService {
         &self,
         actor: UserId,
         project_id: &str,
-    ) -> Result<Vec<crate::domain::billing::Receipt>, AuthError> {
+    ) -> Result<Vec<crate::domain::billing::Receipt>, AppError> {
         use crate::domain::billing::{
             HistoryEvent, HistoryEventKind, HistoryProject, build_receipts,
         };
@@ -445,7 +445,7 @@ impl BillingService {
             .await
             .map_err(Self::map_store_error)?
         {
-            return Err(AuthError::NotFound("project not found".into()));
+            return Err(AppError::NotFound("project not found".into()));
         }
         let record = match self
             .store
@@ -553,7 +553,7 @@ impl BillingService {
         Ok(receipts)
     }
 
-    pub async fn create_plan(&self, admin: &AdminUser, input: NewPlan) -> Result<Plan, AuthError> {
+    pub async fn create_plan(&self, admin: &AdminUser, input: NewPlan) -> Result<Plan, AppError> {
         let input = input.validated()?;
         let id = self.unique_id(&input.name, None).await?;
         let record = self
@@ -583,14 +583,14 @@ impl BillingService {
         admin: &AdminUser,
         plan_id: &str,
         input: UpdatePlan,
-    ) -> Result<Plan, AuthError> {
+    ) -> Result<Plan, AppError> {
         let input = input.validated()?;
         let record = self
             .store
             .update_plan(plan_id, &input)
             .await
             .map_err(Self::map_store_error)?
-            .ok_or_else(|| AuthError::NotFound("plan not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("plan not found".into()))?;
         let plan = Plan::from(record);
         self.audit
             .record(
@@ -610,10 +610,10 @@ impl BillingService {
 
     /// Hard delete. Blocked while the plan still has subscribers — the
     /// admin console archives (`is_active = false`) instead.
-    pub async fn delete_plan(&self, admin: &AdminUser, plan_id: &str) -> Result<(), AuthError> {
+    pub async fn delete_plan(&self, admin: &AdminUser, plan_id: &str) -> Result<(), AppError> {
         let count = self.subscriber_count(plan_id).await?;
         if count > 0 {
-            return Err(AuthError::Conflict(format!(
+            return Err(AppError::Conflict(format!(
                 "plan still has {count} active subscriber(s); archive it instead"
             )));
         }
@@ -623,7 +623,7 @@ impl BillingService {
             .await
             .map_err(Self::map_store_error)?;
         if !deleted {
-            return Err(AuthError::NotFound("plan not found".into()));
+            return Err(AppError::NotFound("plan not found".into()));
         }
         self.audit
             .record(
@@ -641,7 +641,7 @@ impl BillingService {
         Ok(())
     }
 
-    async fn unique_id(&self, name: &str, ignore: Option<&str>) -> Result<String, AuthError> {
+    async fn unique_id(&self, name: &str, ignore: Option<&str>) -> Result<String, AppError> {
         let base = slugify(name);
         let plans = self.list_all_plans().await?;
         let taken: std::collections::HashSet<&str> = plans
@@ -690,7 +690,7 @@ pub struct NewPlan {
 }
 
 impl NewPlan {
-    fn validated(self) -> Result<Self, AuthError> {
+    fn validated(self) -> Result<Self, AppError> {
         validate_plan_fields(&self.name, self.price_cents, &self.yearly_discount)?;
         Ok(Self {
             name: self.name.trim().to_string(),
@@ -710,7 +710,7 @@ pub struct UpdatePlan {
 }
 
 impl UpdatePlan {
-    fn validated(self) -> Result<Self, AuthError> {
+    fn validated(self) -> Result<Self, AppError> {
         validate_plan_fields(&self.name, self.price_cents, &self.yearly_discount)?;
         Ok(Self {
             name: self.name.trim().to_string(),
@@ -723,26 +723,26 @@ fn validate_plan_fields(
     name: &str,
     price_cents: Option<i64>,
     yearly_discount: &Option<YearlyDiscount>,
-) -> Result<(), AuthError> {
+) -> Result<(), AppError> {
     let name = name.trim();
     if name.is_empty() || name.len() > MAX_NAME {
-        return Err(AuthError::Validation(
+        return Err(AppError::Validation(
             "plan name is required (60 characters max)".into(),
         ));
     }
     if let Some(price) = price_cents
         && price < 0
     {
-        return Err(AuthError::Validation("price can't be negative".into()));
+        return Err(AppError::Validation("price can't be negative".into()));
     }
     match yearly_discount {
         None => Ok(()),
-        Some(_) if price_cents.is_none() => Err(AuthError::Validation(
+        Some(_) if price_cents.is_none() => Err(AppError::Validation(
             "custom-price plans can't offer a yearly discount".into(),
         )),
         Some(YearlyDiscount::Percent(p)) => {
             if !(*p > 0.0 && *p < 100.0) {
-                return Err(AuthError::Validation(
+                return Err(AppError::Validation(
                     "percent discount must be between 0 and 100".into(),
                 ));
             }
@@ -751,7 +751,7 @@ fn validate_plan_fields(
         Some(YearlyDiscount::Fixed(cents)) => {
             let base = price_cents.unwrap_or(0).saturating_mul(12);
             if *cents <= 0 || *cents >= base {
-                return Err(AuthError::Validation(
+                return Err(AppError::Validation(
                     "fixed discount must be below the 12-month total".into(),
                 ));
             }

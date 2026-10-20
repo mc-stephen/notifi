@@ -39,7 +39,6 @@ struct ApiKeyRow {
     name: String,
     prefix: String,
     key_hash: String,
-    environment: String,
     permissions: Vec<String>,
     expires_at: Option<DateTime<Utc>>,
     last_used_at: Option<DateTime<Utc>>,
@@ -56,7 +55,6 @@ impl From<ApiKeyRow> for ApiKeyRecord {
             name: row.name,
             prefix: row.prefix,
             key_hash: row.key_hash,
-            environment: row.environment,
             permissions: row.permissions,
             expires_at: row.expires_at,
             last_used_at: row.last_used_at,
@@ -88,7 +86,7 @@ impl From<IpAllowRow> for IpAllowEntry {
     }
 }
 
-const KEY_COLUMNS: &str = "id, project_id, name, prefix, key_hash, environment, permissions, expires_at, last_used_at, enabled, revoked_at, created_at";
+const KEY_COLUMNS: &str = "id, project_id, name, prefix, key_hash, permissions, expires_at, last_used_at, enabled, revoked_at, created_at";
 
 /// Scopes a key row to projects the actor can see; invisible rows read as missing.
 fn visible_key(actor: &str, project_id: &str, key_id: Option<&str>) -> (String, Vec<String>) {
@@ -119,7 +117,6 @@ impl ApiKeysStore for PgApiKeysStore {
         actor: UserId,
         project_id: &str,
         name: &str,
-        environment: &str,
         permissions: &[String],
         expires_at: Option<DateTime<Utc>>,
         prefix: &str,
@@ -129,14 +126,13 @@ impl ApiKeysStore for PgApiKeysStore {
         let actor = actor.to_string();
         let project_id = project_id.to_string();
         let name = name.to_string();
-        let environment = environment.to_string();
         let permissions = permissions.to_vec();
         let prefix = prefix.to_string();
         let key_hash = key_hash.to_string();
         Box::pin(async move {
             let row = sqlx::query_as::<_, ApiKeyRow>(&format!(
-                "INSERT INTO auth_api_keys (id, project_id, name, prefix, key_hash, environment, permissions, expires_at)
-                 SELECT $2, $3, $4, $5, $6, $7, $8, $9
+                "INSERT INTO auth_api_keys (id, project_id, name, prefix, key_hash, permissions, expires_at)
+                 SELECT $2, $3, $4, $5, $6, $7, $8
                  WHERE EXISTS (
                      SELECT 1 FROM platform_projects p
                      WHERE p.id = $3 AND p.deleted_at IS NULL
@@ -153,7 +149,6 @@ impl ApiKeysStore for PgApiKeysStore {
             .bind(&name)
             .bind(&prefix)
             .bind(&key_hash)
-            .bind(&environment)
             .bind(&permissions)
             .bind(expires_at)
             .fetch_optional(&pool)

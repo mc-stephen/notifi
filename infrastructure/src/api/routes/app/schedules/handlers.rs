@@ -1,5 +1,8 @@
-//! Schedule CRUD plus manual fire. Assigned flows vanish from the
-//! `/flows` list (managed here); the builder stays reachable by id.
+//! Schedule CRUD plus manual fire. Owner doctrine: creating a schedule
+//! creates its flow (named after it, trigger seeded); deleting the
+//! schedule deletes that flow. Owned flows stay off the `/flows` list;
+//! the builder stays reachable by id. Archive (PATCH `archived`) is the
+//! non-destructive alternative.
 
 use std::sync::Arc;
 
@@ -9,7 +12,7 @@ use axum::http::StatusCode;
 
 use super::super::auth::{CurrentUser, Problem};
 use super::dto::{CreateScheduleRequest, RunNowRequest, ScheduleDto, UpdateScheduleRequest};
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::schedules::entities::{ScheduleInput, ScheduleKind};
 use crate::domain::schedules::services::{SchedulePatch, ScheduleService};
 use std::collections::HashMap;
@@ -19,18 +22,18 @@ type MaybeScheduleService = Option<Extension<Arc<ScheduleService>>>;
 fn require_service(extension: MaybeScheduleService) -> Result<Arc<ScheduleService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 fn project_id(query: &HashMap<String, String>) -> Result<&String, Problem> {
     query
         .get("project_id")
-        .ok_or_else(|| Problem::from(AuthError::Validation("project_id is required".to_string())))
+        .ok_or_else(|| Problem::from(AppError::Validation("project_id is required".to_string())))
 }
 
 fn parse_kind(kind: &str) -> Result<ScheduleKind, Problem> {
     ScheduleKind::parse(kind).ok_or_else(|| {
-        Problem::from(AuthError::Validation(
+        Problem::from(AppError::Validation(
             "kind must be 'once', 'recurring', or 'weekly'".to_string(),
         ))
     })
@@ -67,8 +70,8 @@ pub async fn get_schedule(
     ))
 }
 
-/// `POST /app/schedules` — attach a flow to a timing. The flow leaves the
-/// `/flows` list from this point on.
+/// `POST /app/schedules` — create a schedule and its flow (the flow is
+/// born here, named after the schedule; never assigned).
 pub async fn create_schedule(
     CurrentUser(user): CurrentUser,
     service: MaybeScheduleService,
@@ -81,7 +84,6 @@ pub async fn create_schedule(
             &body.project_id,
             ScheduleInput {
                 name: body.name,
-                flow_id: body.flow_id,
                 kind: parse_kind(&body.kind)?,
                 run_at: body.run_at,
                 interval_secs: body.interval_secs,
@@ -102,9 +104,9 @@ pub async fn create_schedule(
     ))
 }
 
-/// `PATCH /app/schedules/:id` — edit name, flow, timing, payload, or
-/// pause/resume. Null `run_at`/`interval_secs` clears the field (kind
-/// switches).
+/// `PATCH /app/schedules/:id` — edit name, timing, payload, pause/resume,
+/// or archive/restore (renames sync down to the owned flow). Null
+/// `run_at`/`interval_secs` clears the field (kind switches).
 pub async fn update_schedule(
     CurrentUser(user): CurrentUser,
     service: MaybeScheduleService,
@@ -120,7 +122,6 @@ pub async fn update_schedule(
             &id,
             SchedulePatch {
                 name: body.name,
-                flow_id: body.flow_id,
                 kind,
                 run_at: body.run_at,
                 interval_secs: body.interval_secs,
@@ -133,6 +134,7 @@ pub async fn update_schedule(
                 body: body.body,
                 recipients: body.recipients,
                 active: body.active,
+                archived: body.archived,
             },
         )
         .await?;
@@ -142,8 +144,9 @@ pub async fn update_schedule(
     ))
 }
 
-/// `DELETE /app/schedules/:id` — delete a schedule. The assigned flow
-/// automatically reappears in the `/flows` list.
+/// `DELETE /app/schedules/:id` — delete a schedule and its flow (the
+/// flow never shows in `/flows`, so it is not released; archive first
+/// when the flow should survive).
 pub async fn delete_schedule(
     CurrentUser(user): CurrentUser,
     service: MaybeScheduleService,

@@ -11,7 +11,7 @@ use super::dto::{AdminUserDetailDto, AdminUserDto, SetUserStatusRequest};
 use crate::api::routes::app::auth::Problem;
 use crate::domain::admin::users::AdminUsersService;
 use crate::domain::auth::entities::{UserId, UserStatus};
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 
 const DEFAULT_LIMIT: i64 = 50;
 
@@ -20,11 +20,11 @@ type MaybeUsersService = Option<Extension<Arc<AdminUsersService>>>;
 fn require_users_service(extension: MaybeUsersService) -> Result<Arc<AdminUsersService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 fn parse_user_id(raw: &str) -> Result<UserId, Problem> {
-    UserId::from_str(raw).map_err(|_| AuthError::Validation("invalid user id".to_string()).into())
+    UserId::from_str(raw).map_err(|_| AppError::Validation("invalid user id".to_string()).into())
 }
 
 /// `GET /admin/users` — list platform users (newest first).
@@ -40,7 +40,7 @@ pub async fn list_users(
         .get("status")
         .map(|s| {
             UserStatus::from_str(s.trim()).map_err(|_| {
-                Problem::from(AuthError::Validation(
+                Problem::from(AppError::Validation(
                     "invalid status (expected active or suspended)".to_string(),
                 ))
             })
@@ -80,7 +80,7 @@ pub async fn get_user(
     let detail = service
         .get_user_detail(parse_user_id(&user_id)?)
         .await?
-        .ok_or_else(|| AuthError::NotFound("user not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("user not found".into()))?;
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "user": AdminUserDetailDto::from(detail) })),
@@ -96,7 +96,7 @@ pub async fn set_user_status(
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let service = require_users_service(service)?;
     let status = UserStatus::from_str(body.status.trim()).map_err(|_| {
-        Problem::from(AuthError::Validation(
+        Problem::from(AppError::Validation(
             "invalid status (expected active or suspended)".to_string(),
         ))
     })?;

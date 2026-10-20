@@ -17,6 +17,7 @@ pub mod schedules;
 pub mod sends;
 pub mod support;
 pub mod templates;
+pub mod webhooks;
 
 use axum::Router;
 
@@ -130,6 +131,9 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
     if let Some(service) = state.inbound.clone() {
         flows_routes = flows_routes.layer(axum::Extension(service));
     }
+    if let Some(service) = state.webhooks.clone() {
+        flows_routes = flows_routes.layer(axum::Extension(service));
+    }
 
     let mut sends_routes = sends::routes::router();
     if let Some(auth_service) = state.auth.clone() {
@@ -145,6 +149,14 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
     }
     if let Some(service) = state.schedules.clone() {
         schedules_routes = schedules_routes.layer(axum::Extension(service));
+    }
+
+    let mut webhook_routes = webhooks::routes::router();
+    if let Some(auth_service) = state.auth.clone() {
+        webhook_routes = webhook_routes.layer(axum::Extension(auth_service));
+    }
+    if let Some(service) = state.webhooks.clone() {
+        webhook_routes = webhook_routes.layer(axum::Extension(service));
     }
 
     let mut invite_routes = invites::routes::router();
@@ -180,6 +192,7 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
         .nest("/flows", flows_routes)
         .nest("/sends", sends_routes)
         .nest("/schedules", schedules_routes)
+        .nest("/webhooks", webhook_routes)
         .nest("/invites", invite_routes)
         .nest("/logs", log_routes)
 }

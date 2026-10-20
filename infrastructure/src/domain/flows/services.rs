@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use crate::domain::auth::entities::UserId;
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::flows::entities::Flow;
 use crate::ports::auth_store::StoreError;
 use crate::ports::flow_store::{FlowRecord, FlowStore};
@@ -21,21 +21,21 @@ impl FlowService {
         Self { store }
     }
 
-    fn map_store_error(e: StoreError) -> AuthError {
+    fn map_store_error(e: StoreError) -> AppError {
         match e {
-            StoreError::Conflict => AuthError::Conflict("conflicting flow change".into()),
-            StoreError::Storage(m) => AuthError::Storage(m),
+            StoreError::Conflict => AppError::Conflict("conflicting flow change".into()),
+            StoreError::Storage(m) => AppError::Storage(m),
         }
     }
 
-    async fn check_visible(&self, actor: UserId, project_id: &str) -> Result<(), AuthError> {
+    async fn check_visible(&self, actor: UserId, project_id: &str) -> Result<(), AppError> {
         if !self
             .store
             .project_visible(actor, project_id)
             .await
             .map_err(Self::map_store_error)?
         {
-            return Err(AuthError::NotFound("project not found".into()));
+            return Err(AppError::NotFound("project not found".into()));
         }
         Ok(())
     }
@@ -52,11 +52,11 @@ impl FlowService {
         }
     }
 
-    fn check_definition(definition: &serde_json::Value) -> Result<(), AuthError> {
+    fn check_definition(definition: &serde_json::Value) -> Result<(), AppError> {
         let is_doc =
             definition.is_object() && definition.get("nodes").is_some_and(|n| n.is_array());
         if !is_doc {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "definition must be a flow document with a nodes array".into(),
             ));
         }
@@ -64,7 +64,7 @@ impl FlowService {
     }
 
     /// All flows for a project, oldest first.
-    pub async fn list(&self, actor: UserId, project_id: &str) -> Result<Vec<Flow>, AuthError> {
+    pub async fn list(&self, actor: UserId, project_id: &str) -> Result<Vec<Flow>, AppError> {
         self.check_visible(actor, project_id).await?;
         Ok(self
             .store
@@ -76,8 +76,22 @@ impl FlowService {
             .collect())
     }
 
+    /// Project flows without a caller check — worker/system contexts only
+    /// (campaign pipeline resolution at fire time). Never route this to
+    /// HTTP handlers.
+    pub async fn list_by_project(&self, project_id: &str) -> Result<Vec<Flow>, AppError> {
+        Ok(self
+            .store
+            .list_by_project(project_id)
+            .await
+            .map_err(Self::map_store_error)?
+            .into_iter()
+            .map(Self::to_flow)
+            .collect())
+    }
+
     /// One flow by id. Project-scoped: foreign rows read as missing.
-    pub async fn get(&self, actor: UserId, project_id: &str, id: &str) -> Result<Flow, AuthError> {
+    pub async fn get(&self, actor: UserId, project_id: &str, id: &str) -> Result<Flow, AppError> {
         self.check_visible(actor, project_id).await?;
         self.store
             .get(id)
@@ -85,7 +99,7 @@ impl FlowService {
             .map_err(Self::map_store_error)?
             .filter(|r| r.project_id == project_id)
             .map(Self::to_flow)
-            .ok_or_else(|| AuthError::NotFound("flow not found".into()))
+            .ok_or_else(|| AppError::NotFound("flow not found".into()))
     }
 
     /// Insert a flow. Empty names fall back to "Untitled flow"; an omitted
@@ -96,7 +110,7 @@ impl FlowService {
         project_id: &str,
         name: &str,
         definition: Option<serde_json::Value>,
-    ) -> Result<Flow, AuthError> {
+    ) -> Result<Flow, AppError> {
         self.check_visible(actor, project_id).await?;
         let name = name.trim();
         let name = if name.is_empty() {
@@ -126,7 +140,7 @@ impl FlowService {
         id: &str,
         name: &str,
         definition: &serde_json::Value,
-    ) -> Result<Flow, AuthError> {
+    ) -> Result<Flow, AppError> {
         self.check_visible(actor, project_id).await?;
         let existing = self
             .store
@@ -135,11 +149,11 @@ impl FlowService {
             .map_err(Self::map_store_error)?
             .filter(|r| r.project_id == project_id);
         if existing.is_none() {
-            return Err(AuthError::NotFound("flow not found".into()));
+            return Err(AppError::NotFound("flow not found".into()));
         }
         let name = name.trim();
         if name.is_empty() {
-            return Err(AuthError::Validation("flow name is required".into()));
+            return Err(AppError::Validation("flow name is required".into()));
         }
         Self::check_definition(definition)?;
         self.store
@@ -147,7 +161,7 @@ impl FlowService {
             .await
             .map_err(Self::map_store_error)?
             .map(Self::to_flow)
-            .ok_or_else(|| AuthError::NotFound("flow not found".into()))
+            .ok_or_else(|| AppError::NotFound("flow not found".into()))
     }
 
     /// Delete a flow. Returns false when there was nothing to delete.
@@ -157,7 +171,7 @@ impl FlowService {
         actor: UserId,
         project_id: &str,
         id: &str,
-    ) -> Result<bool, AuthError> {
+    ) -> Result<bool, AppError> {
         self.check_visible(actor, project_id).await?;
         let existing = self
             .store

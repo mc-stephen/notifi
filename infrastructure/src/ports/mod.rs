@@ -27,6 +27,7 @@ pub mod send_store;
 pub mod templates_store;
 pub mod tickets_store;
 pub mod trigger_token_store;
+pub mod webhook_store;
 
 pub use audit_store::{AdminAuditFilters, AuditFilters, AuditStore};
 pub use auth_store::{AuthStore, BoxFut, OnboardingInput, StoreError};
@@ -39,7 +40,7 @@ pub use delivery::{
 pub use event_bus::{EventBus, EventBusError};
 pub use http_requester::{HttpCall, HttpRequester, HttpResult};
 pub use mailer::{MailError, RenderedTemplate, SmtpMailer, SystemSender, SystemTemplates};
-pub use oauth::{AuthorizeStart, OAuthError, OAuthIdentityProvider, OAuthProfile, OAuthRuntime};
+pub use oauth::{AuthorizeStart, OAppError, OAuthIdentityProvider, OAuthProfile, OAuthRuntime};
 pub use projects_store::{ProjectSummary, ProjectsStore};
 pub use provider_tester::{ProviderTester, TestResult};
 pub use queue::{QueueError, QueuePublisher};

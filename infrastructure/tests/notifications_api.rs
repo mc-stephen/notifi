@@ -48,6 +48,7 @@ fn app_with_notifications() -> (Router, Arc<FakeNotificationsStore>) {
                 notifications: Some(notifications),
                 billing: None,
                 schedules: None,
+                webhooks: None,
                 inbound: None,
                 provider_tester: Arc::new(ConfigProviderTester::new())
                     as Arc<dyn ProviderTester + Send + Sync>,

@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 
 use super::super::auth::{CurrentUser, Problem};
 use super::dto::{ProjectInviteDto, ProjectMemberDto};
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::projects::ProjectMembersService;
 
 type MaybeMembersService = Option<Extension<Arc<ProjectMembersService>>>;
@@ -16,7 +16,7 @@ fn require_members_service(
 ) -> Result<Arc<ProjectMembersService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 /// `GET /app/invites/{token}` — preview a pending invite for the accept

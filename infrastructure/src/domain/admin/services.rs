@@ -13,8 +13,8 @@ use crate::domain::admin::entities::{
 };
 use crate::domain::audit::AuditService;
 use crate::domain::audit::entities::{AuditAction, AuditEvent};
-use crate::domain::auth::errors::AuthError;
 use crate::domain::auth::value_objects::{Email, hash_token, new_token, validate_password};
+use crate::domain::error::AppError;
 use crate::ports::admin_store::AdminStore;
 
 pub struct AdminService {
@@ -62,7 +62,7 @@ impl AdminService {
     }
 
     /// Whether at least one admin user exists.
-    pub async fn admin_exists(&self) -> Result<bool, AuthError> {
+    pub async fn admin_exists(&self) -> Result<bool, AppError> {
         Ok(self.store.admin_exists().await?)
     }
 
@@ -72,19 +72,19 @@ impl AdminService {
         name: &str,
         email: &str,
         password: &str,
-    ) -> Result<AdminUser, AuthError> {
+    ) -> Result<AdminUser, AppError> {
         let email = Email::parse(email)?;
         validate_password(password)?;
 
         let name = name.trim();
         if name.is_empty() || name.len() > 100 {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "name must be between 1 and 100 characters".to_string(),
             ));
         }
 
         if self.store.admin_exists().await? {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "An admin account already exists. Use the login flow instead.".to_string(),
             ));
         }
@@ -95,7 +95,7 @@ impl AdminService {
             .await?
             .is_some()
         {
-            return Err(AuthError::EmailAlreadyExists);
+            return Err(AppError::EmailAlreadyExists);
         }
 
         let now = Utc::now();
@@ -131,17 +131,17 @@ impl AdminService {
     }
 
     /// Finds an admin by email (for login).
-    pub async fn find_admin_by_email(&self, email: &str) -> Result<Option<AdminUser>, AuthError> {
+    pub async fn find_admin_by_email(&self, email: &str) -> Result<Option<AdminUser>, AppError> {
         Ok(self.store.find_admin_by_email(email).await?)
     }
 
     /// Finds an admin by id.
-    pub async fn find_admin_by_id(&self, id: AdminUserId) -> Result<Option<AdminUser>, AuthError> {
+    pub async fn find_admin_by_id(&self, id: AdminUserId) -> Result<Option<AdminUser>, AppError> {
         Ok(self.store.find_admin_by_id(id).await?)
     }
 
     /// Alias for find_admin_by_id — used by the CurrentAdmin extractor.
-    pub async fn find_by_id(&self, id: AdminUserId) -> Result<Option<AdminUser>, AuthError> {
+    pub async fn find_by_id(&self, id: AdminUserId) -> Result<Option<AdminUser>, AppError> {
         self.find_admin_by_id(id).await
     }
 
@@ -151,15 +151,15 @@ impl AdminService {
         &self,
         email: &str,
         password: &str,
-    ) -> Result<AdminUser, AuthError> {
+    ) -> Result<AdminUser, AppError> {
         let admin = self
             .store
             .find_admin_by_email(email)
             .await?
-            .ok_or(AuthError::InvalidCredentials)?;
+            .ok_or(AppError::InvalidCredentials)?;
 
         if !verify_password(password, &admin.password_hash) {
-            return Err(AuthError::InvalidCredentials);
+            return Err(AppError::InvalidCredentials);
         }
 
         ensure_active_admin(&admin)?;
@@ -187,22 +187,22 @@ impl AdminService {
 
     /// Authenticates an admin from a session token.
     /// Session tokens are stored as SHA-256 hashes; we look up by the hash.
-    pub async fn authenticate(&self, raw_token: &str) -> Result<AdminUser, AuthError> {
+    pub async fn authenticate(&self, raw_token: &str) -> Result<AdminUser, AppError> {
         let session = self
             .store
             .find_admin_session_by_hash(&hash_token(raw_token))
             .await?
-            .ok_or(AuthError::Unauthorized)?;
+            .ok_or(AppError::Unauthorized)?;
 
         if !session.is_active(Utc::now()) {
-            return Err(AuthError::Unauthorized);
+            return Err(AppError::Unauthorized);
         }
 
         let admin = self
             .store
             .find_admin_by_id(session.admin_id)
             .await?
-            .ok_or(AuthError::Unauthorized)?;
+            .ok_or(AppError::Unauthorized)?;
 
         ensure_active_admin(&admin)?;
 
@@ -210,7 +210,7 @@ impl AdminService {
     }
 
     /// Issues a fresh admin session. Returns the raw cookie value (shown once).
-    pub async fn issue_session(&self, admin_id: AdminUserId) -> Result<String, AuthError> {
+    pub async fn issue_session(&self, admin_id: AdminUserId) -> Result<String, AppError> {
         let (raw, hash) = new_token();
         let now = Utc::now();
         let session = AdminSession {
@@ -226,7 +226,7 @@ impl AdminService {
     }
 
     /// Revokes the session behind `session_cookie` (idempotent).
-    pub async fn logout(&self, session_cookie: &str) -> Result<(), AuthError> {
+    pub async fn logout(&self, session_cookie: &str) -> Result<(), AppError> {
         if let Some(session) = self
             .store
             .find_admin_session_by_hash(&hash_token(session_cookie))
@@ -257,13 +257,13 @@ impl AdminService {
         &self,
         admin_id: AdminUserId,
         secret: String,
-    ) -> Result<(), AuthError> {
+    ) -> Result<(), AppError> {
         self.store.set_totp_secret(admin_id, secret).await?;
         Ok(())
     }
 
     /// Enables TOTP for an admin after successful code verification.
-    pub async fn enable_totp(&self, admin_id: AdminUserId) -> Result<(), AuthError> {
+    pub async fn enable_totp(&self, admin_id: AdminUserId) -> Result<(), AppError> {
         self.store.enable_totp(admin_id).await?;
         if let Some(admin) = self.store.find_admin_by_id(admin_id).await? {
             self.audit
@@ -289,7 +289,7 @@ impl AdminService {
 
     /// Always succeeds from the caller's perspective (no enumeration):
     /// returns `Some(raw_token)` only when the account exists.
-    pub async fn forgot_password(&self, email: &str) -> Result<Option<String>, AuthError> {
+    pub async fn forgot_password(&self, email: &str) -> Result<Option<String>, AppError> {
         let email = match Email::parse(email) {
             Ok(email) => email,
             // malformed input behaves like an unknown address
@@ -344,7 +344,7 @@ impl AdminService {
         &self,
         raw_token: &str,
         new_password: &str,
-    ) -> Result<(), AuthError> {
+    ) -> Result<(), AppError> {
         validate_password(new_password)?;
 
         let token = self
@@ -352,11 +352,9 @@ impl AdminService {
             .find_admin_reset_token_by_hash(&hash_token(raw_token))
             .await?
             .filter(|t| t.consumed_at.is_none())
-            .ok_or_else(|| {
-                AuthError::TokenInvalid("Invalid or expired reset token.".to_string())
-            })?;
+            .ok_or_else(|| AppError::TokenInvalid("Invalid or expired reset token.".to_string()))?;
         if !token.is_usable(Utc::now()) {
-            return Err(AuthError::TokenExpired(
+            return Err(AppError::TokenExpired(
                 "This reset link has expired. Request a new one.".to_string(),
             ));
         }
@@ -382,9 +380,9 @@ impl AdminService {
         admin: &AdminUser,
         current_password: &str,
         new_password: &str,
-    ) -> Result<String, AuthError> {
+    ) -> Result<String, AppError> {
         if !verify_password(current_password, &admin.password_hash) {
-            return Err(AuthError::InvalidCredentials);
+            return Err(AppError::InvalidCredentials);
         }
         validate_password(new_password)?;
 
@@ -418,7 +416,7 @@ impl AdminService {
         &self,
         limit: i64,
         offset: i64,
-    ) -> Result<(Vec<AdminUser>, i64), AuthError> {
+    ) -> Result<(Vec<AdminUser>, i64), AppError> {
         Ok(self.store.list_admins(limit, offset).await?)
     }
 
@@ -429,7 +427,7 @@ impl AdminService {
         name: &str,
         email: &str,
         password: &str,
-    ) -> Result<AdminUser, AuthError> {
+    ) -> Result<AdminUser, AppError> {
         require_super_admin(caller)?;
 
         let email = Email::parse(email)?;
@@ -437,7 +435,7 @@ impl AdminService {
 
         let name = name.trim();
         if name.is_empty() || name.len() > 100 {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "name must be between 1 and 100 characters".to_string(),
             ));
         }
@@ -448,7 +446,7 @@ impl AdminService {
             .await?
             .is_some()
         {
-            return Err(AuthError::EmailAlreadyExists);
+            return Err(AppError::EmailAlreadyExists);
         }
 
         let now = Utc::now();
@@ -491,20 +489,20 @@ impl AdminService {
         &self,
         caller: &AdminUser,
         target_id: AdminUserId,
-    ) -> Result<(), AuthError> {
+    ) -> Result<(), AppError> {
         require_super_admin(caller)?;
         let target = self
             .store
             .find_admin_by_id(target_id)
             .await?
-            .ok_or_else(|| AuthError::NotFound("admin not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("admin not found".into()))?;
         if target.is_super_admin {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "the super admin account cannot be removed".to_string(),
             ));
         }
         if target.id == caller.id {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "you cannot remove your own admin account".to_string(),
             ));
         }
@@ -538,20 +536,20 @@ impl AdminService {
         caller: &AdminUser,
         target_id: AdminUserId,
         suspended: bool,
-    ) -> Result<(), AuthError> {
+    ) -> Result<(), AppError> {
         require_super_admin(caller)?;
         let target = self
             .store
             .find_admin_by_id(target_id)
             .await?
-            .ok_or_else(|| AuthError::NotFound("admin not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("admin not found".into()))?;
         if target.is_super_admin {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "the super admin account cannot be suspended".to_string(),
             ));
         }
         if target.id == caller.id {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "you cannot suspend your own admin account".to_string(),
             ));
         }
@@ -593,7 +591,7 @@ impl AdminService {
     }
 
     /// Deactivates an admin: soft-delete + revoke every session.
-    async fn apply_removal(&self, target: &AdminUser) -> Result<(), AuthError> {
+    async fn apply_removal(&self, target: &AdminUser) -> Result<(), AppError> {
         self.store.soft_delete_admin(target.id).await?;
         self.store.revoke_admin_sessions(target.id).await?;
         Ok(())
@@ -601,23 +599,23 @@ impl AdminService {
 }
 
 /// Rejects sign-in/session use for anything but active accounts.
-fn ensure_active_admin(admin: &AdminUser) -> Result<(), AuthError> {
+fn ensure_active_admin(admin: &AdminUser) -> Result<(), AppError> {
     match admin.status {
         AdminStatus::Active => Ok(()),
-        AdminStatus::Pending => Err(AuthError::Forbidden(
+        AdminStatus::Pending => Err(AppError::Forbidden(
             "this admin account is awaiting approval".to_string(),
         )),
-        AdminStatus::Suspended => Err(AuthError::Forbidden(
+        AdminStatus::Suspended => Err(AppError::Forbidden(
             "this admin account has been suspended".to_string(),
         )),
     }
 }
 
-fn require_super_admin(caller: &AdminUser) -> Result<(), AuthError> {
+fn require_super_admin(caller: &AdminUser) -> Result<(), AppError> {
     if caller.is_super_admin {
         Ok(())
     } else {
-        Err(AuthError::Forbidden(
+        Err(AppError::Forbidden(
             "only the super admin can perform this action".to_string(),
         ))
     }
@@ -627,12 +625,12 @@ fn require_super_admin(caller: &AdminUser) -> Result<(), AuthError> {
 // password hashing (argon2id)
 // ------------------------------------------------------------------
 
-fn hash_password(password: &str) -> Result<String, AuthError> {
+fn hash_password(password: &str) -> Result<String, AppError> {
     use argon2::password_hash::rand_core::OsRng;
     let salt = SaltString::generate(&mut OsRng);
     Ok(Argon2::default()
         .hash_password(password.as_bytes(), &salt)
-        .map_err(|e| AuthError::Storage(format!("password hashing failed: {e}")))?
+        .map_err(|e| AppError::Storage(format!("password hashing failed: {e}")))?
         .to_string())
 }
 

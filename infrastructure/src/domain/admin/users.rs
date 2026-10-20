@@ -8,7 +8,7 @@ use crate::domain::admin::entities::AdminUser;
 use crate::domain::audit::AuditService;
 use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::{User, UserId, UserStatus};
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::ports::auth_store::AuthStore;
 use crate::ports::notifications_store::NotificationsStore;
 use crate::ports::projects_store::ProjectsStore;
@@ -55,11 +55,11 @@ impl AdminUsersService {
         status: Option<UserStatus>,
         limit: i64,
         offset: i64,
-    ) -> Result<(Vec<User>, i64), AuthError> {
+    ) -> Result<(Vec<User>, i64), AppError> {
         Ok(self.auth.list_users(search, status, limit, offset).await?)
     }
 
-    pub async fn get_user_detail(&self, user_id: UserId) -> Result<Option<UserDetail>, AuthError> {
+    pub async fn get_user_detail(&self, user_id: UserId) -> Result<Option<UserDetail>, AppError> {
         let Some(user) = self.auth.find_user_by_id(user_id).await? else {
             return Ok(None);
         };
@@ -71,17 +71,17 @@ impl AdminUsersService {
         admin: &AdminUser,
         user_id: UserId,
         status: UserStatus,
-    ) -> Result<UserDetail, AuthError> {
+    ) -> Result<UserDetail, AppError> {
         let user = self
             .auth
             .find_user_by_id(user_id)
             .await?
-            .ok_or_else(|| AuthError::NotFound("user not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("user not found".into()))?;
 
         if user.status != status {
             let updated = self.auth.set_user_status(user_id, status).await?;
             if !updated {
-                return Err(AuthError::NotFound("user not found".into()));
+                return Err(AppError::NotFound("user not found".into()));
             }
             if status == UserStatus::Suspended {
                 // Suspended accounts lose every session immediately.
@@ -115,19 +115,19 @@ impl AdminUsersService {
 
         self.get_user_detail(user_id)
             .await?
-            .ok_or_else(|| AuthError::NotFound("user not found".into()))
+            .ok_or_else(|| AppError::NotFound("user not found".into()))
     }
 
     pub async fn revoke_user_sessions(
         &self,
         admin: &AdminUser,
         user_id: UserId,
-    ) -> Result<(), AuthError> {
+    ) -> Result<(), AppError> {
         let user = self
             .auth
             .find_user_by_id(user_id)
             .await?
-            .ok_or_else(|| AuthError::NotFound("user not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("user not found".into()))?;
         self.auth.revoke_all_sessions_for_user(user_id).await?;
         self.audit
             .record(
@@ -148,7 +148,7 @@ impl AdminUsersService {
         Ok(())
     }
 
-    async fn detail_for(&self, user: User) -> Result<UserDetail, AuthError> {
+    async fn detail_for(&self, user: User) -> Result<UserDetail, AppError> {
         let projects = self.projects.list_projects(user.id).await?;
         let tickets = self
             .tickets

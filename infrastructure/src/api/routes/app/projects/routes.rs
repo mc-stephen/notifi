@@ -13,7 +13,7 @@ where
             "/",
             get(handlers::list_projects).post(handlers::create_project),
         )
-        .route("/{id}/environment", patch(handlers::update_environment))
+        .route("/{id}/active", patch(handlers::update_active))
         .route("/{id}/require-2fa", patch(handlers::set_require_2fa))
         .route(
             "/{id}/members",

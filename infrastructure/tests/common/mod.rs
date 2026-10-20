@@ -7,7 +7,7 @@
 
 use std::cmp::Reverse;
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use chrono::{DateTime, Utc};
 
@@ -18,6 +18,7 @@ use server::domain::auth::entities::{AuthToken, Session, TokenPurpose, User, Use
 use server::domain::notifications::entities::{NotificationOrigin, NotificationType};
 use server::ports::audit_store::{AuditFilters, AuditStore};
 use server::ports::auth_store::{AuthStore, BoxFut, StoreError};
+use server::ports::flow_store::FlowStore;
 use server::ports::notifications_store::{
     BroadcastRecipient, BroadcastRecord, BroadcastStats, BroadcastStatus, NotificationRecord,
     NotificationsStore,
@@ -74,7 +75,7 @@ impl FakeAuthStore {
     }
 
     /// Seeds a real project summary for the given user so the projects
-    /// API returns data in list/set-environment endpoints.
+    /// API returns data in list/set-active endpoints.
     pub fn seed_project_summary(&self, user_id: UserId, project: ProjectSummary) {
         self.projects
             .write()
@@ -553,15 +554,14 @@ impl ProjectsStore for FakeAuthStore {
         })
     }
 
-    fn set_project_environment(
+    fn set_project_active(
         &self,
         user_id: UserId,
         project_id: &str,
-        environment: &str,
+        active: bool,
     ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>> {
         let projects = &self.projects;
         let project_id = project_id.to_string();
-        let environment = environment.to_string();
         let user_id_str = user_id.to_string();
         Box::pin(async move {
             let mut projects = projects.write().map_err(lock_err)?;
@@ -569,7 +569,7 @@ impl ProjectsStore for FakeAuthStore {
                 .iter_mut()
                 .find(|(owner, p)| *owner == user_id_str && p.id == project_id)
                 .map(|(_, p)| {
-                    p.environment = environment;
+                    p.active = active;
                     p.clone()
                 }))
         })
@@ -858,7 +858,7 @@ impl ProjectsStore for FakeAuthStore {
                 name,
                 slug,
                 description,
-                environment: "development".to_string(),
+                active: false,
                 require_2fa: false,
                 created_at: chrono::Utc::now(),
             };
@@ -872,25 +872,16 @@ impl ProjectsStore for FakeAuthStore {
     fn list_all_projects(
         &self,
         search: Option<&str>,
-        environment: Option<&str>,
         limit: i64,
         offset: i64,
     ) -> BoxFut<'_, Result<(Vec<server::ports::projects_store::AdminProjectRecord>, i64), StoreError>>
     {
         let search_owned = search.map(|s| s.to_lowercase());
-        let environment_owned = environment.map(str::to_owned);
         let projects = self.projects.read().unwrap().clone();
         let users = self.users.read().unwrap().clone();
         Box::pin(async move {
             let mut result: Vec<server::ports::projects_store::AdminProjectRecord> = projects
                 .iter()
-                .filter(|(_, p)| {
-                    if let Some(ref env) = environment_owned {
-                        p.environment == *env
-                    } else {
-                        true
-                    }
-                })
                 .filter(|(_, p)| {
                     if let Some(ref q) = search_owned {
                         p.name.to_lowercase().contains(q.as_str())
@@ -1115,7 +1106,6 @@ impl FakeRecipientsStore {
         all.sort_by_key(|e| Reverse(e.created_at));
         all
     }
-
     fn is_visible(&self, user_id: &str, project_id: &str) -> bool {
         self.visible
             .read()
@@ -1186,6 +1176,24 @@ impl RecipientsStore for FakeRecipientsStore {
                 .into_iter()
                 .filter(|r| r.project_id == project_id)
                 .filter(|r| before.as_deref().is_none_or(|b| r.id.as_str() < b))
+                .collect();
+            list.sort_by_key(|e| Reverse(e.created_at));
+            list.truncate(limit.max(0) as usize);
+            Ok(list)
+        })
+    }
+
+    fn list_by_project(
+        &self,
+        project_id: &str,
+        limit: i64,
+    ) -> BoxFut<'_, Result<Vec<RecipientRecord>, StoreError>> {
+        let project_id = project_id.to_string();
+        let recipients = self.recipients.read().unwrap().clone();
+        Box::pin(async move {
+            let mut list: Vec<_> = recipients
+                .into_iter()
+                .filter(|r| r.project_id == project_id)
                 .collect();
             list.sort_by_key(|e| Reverse(e.created_at));
             list.truncate(limit.max(0) as usize);
@@ -2107,7 +2115,6 @@ impl server::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
         actor: UserId,
         project_id: &str,
         name: &str,
-        environment: &str,
         permissions: &[String],
         expires_at: Option<DateTime<Utc>>,
         prefix: &str,
@@ -2117,7 +2124,6 @@ impl server::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
         let actor_str = actor.to_string();
         let project_id = project_id.to_string();
         let name = name.to_string();
-        let environment = environment.to_string();
         let permissions = permissions.to_vec();
         let prefix = prefix.to_string();
         let key_hash = key_hash.to_string();
@@ -2128,9 +2134,10 @@ impl server::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
                 ));
             }
             let mut keys = self.keys.write().map_err(lock_err)?;
-            if keys.iter().any(|k| {
-                k.project_id == project_id && k.environment == environment && k.name == name
-            }) {
+            if keys
+                .iter()
+                .any(|k| k.project_id == project_id && k.name == name)
+            {
                 return Err(StoreError::Conflict);
             }
             if keys.iter().any(|k| k.key_hash == key_hash) {
@@ -2142,7 +2149,6 @@ impl server::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
                 name,
                 prefix,
                 key_hash,
-                environment,
                 permissions,
                 expires_at,
                 last_used_at: None,
@@ -2204,17 +2210,10 @@ impl server::ports::api_keys_store::ApiKeysStore for FakeApiKeysStore {
         let name = name.to_string();
         Box::pin(async move {
             let mut keys = self.keys.write().map_err(lock_err)?;
-            if keys.iter().any(|k| {
-                k.id != key_id
-                    && k.project_id == project_id
-                    && k.name == name
-                    && k.environment
-                        == keys
-                            .iter()
-                            .find(|k| k.id == key_id)
-                            .map(|k| k.environment.clone())
-                            .unwrap_or_default()
-            }) {
+            if keys
+                .iter()
+                .any(|k| k.id != key_id && k.project_id == project_id && k.name == name)
+            {
                 return Err(StoreError::Conflict);
             }
             match keys
@@ -3808,6 +3807,13 @@ impl FakeSendStore {
             .iter()
             .any(|(u, p)| u == user_id && p == project_id)
     }
+
+    /// The full contents, oldest first (for assertions).
+    pub fn all(&self) -> Vec<server::ports::send_store::SendRecord> {
+        let mut all = self.sends.read().unwrap().clone();
+        all.sort_by_key(|s| (s.created_at, s.id.clone()));
+        all
+    }
 }
 
 impl server::ports::send_store::SendStore for FakeSendStore {
@@ -3901,6 +3907,7 @@ impl server::ports::send_store::SendStore for FakeSendStore {
         rows.truncate(limit.max(0) as usize);
         Box::pin(async move { Ok(rows) })
     }
+
 }
 
 /// Thread-safe in-memory channel provider config store.
@@ -4045,18 +4052,26 @@ impl server::ports::channel_provider_store::ChannelProviderStore for FakeChannel
 
 /// In-memory schedule store for HTTP tests.
 #[derive(Default)]
+/// Thread-safe in-memory schedule store. The flow JOIN reads **live**
+/// from a shared [`FakeFlowStore`] (mirrors the Postgres JOIN, so
+/// owner-created flows resolve without manual seeding).
 pub struct FakeScheduleStore {
     schedules: RwLock<Vec<server::ports::schedule_store::ScheduleRecord>>,
     visible: RwLock<Vec<(String, String)>>,
-    /// Joined flow snapshots, mirroring the Postgres flow JOIN.
-    flows: RwLock<HashMap<String, (String, serde_json::Value)>>,
+    /// Shared with the app wiring — the Postgres flow JOIN, in-memory.
+    flow_store: Arc<FakeFlowStore>,
     /// Joined template snapshots, mirroring the Postgres template JOIN.
     templates: RwLock<HashMap<String, (String, serde_json::Value)>>,
 }
 
 impl FakeScheduleStore {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(flow_store: Arc<FakeFlowStore>) -> Self {
+        Self {
+            schedules: RwLock::new(Vec::new()),
+            visible: RwLock::new(Vec::new()),
+            flow_store,
+            templates: RwLock::new(HashMap::new()),
+        }
     }
 
     /// Grants `user_id` access to `project_id`.
@@ -4065,14 +4080,6 @@ impl FakeScheduleStore {
             .write()
             .unwrap()
             .push((user_id.to_string(), project_id.to_string()));
-    }
-
-    /// Seeds the joined flow row (name + definition) for `flow_id`.
-    pub fn seed_flow(&self, flow_id: &str, name: &str, definition: serde_json::Value) {
-        self.flows
-            .write()
-            .unwrap()
-            .insert(flow_id.to_string(), (name.to_string(), definition));
     }
 
     /// Seeds the joined template row (name + content) for `template_id`.
@@ -4091,13 +4098,17 @@ impl FakeScheduleStore {
             .any(|(u, p)| u == user_id && p == project_id)
     }
 
-    fn joined_flow(&self, flow_id: &str) -> (String, serde_json::Value) {
-        self.flows
-            .read()
-            .unwrap()
-            .get(flow_id)
-            .cloned()
-            .unwrap_or_default()
+    /// Re-resolves the flow JOIN columns (name + definition) from the
+    /// shared flow store, mirroring the live Postgres JOIN.
+    async fn resolve_join(
+        &self,
+        mut record: server::ports::schedule_store::ScheduleRecord,
+    ) -> server::ports::schedule_store::ScheduleRecord {
+        if let Ok(Some(flow)) = self.flow_store.get(&record.flow_id).await {
+            record.flow_name = flow.name;
+            record.flow_definition = flow.definition;
+        }
+        record
     }
 }
 
@@ -4124,7 +4135,12 @@ impl server::ports::schedule_store::ScheduleStore for FakeScheduleStore {
             .cloned()
             .collect();
         rows.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
-        Box::pin(async move { Ok(rows) })
+        Box::pin(async move {
+            for row in rows.iter_mut() {
+                *row = self.resolve_join(row.clone()).await;
+            }
+            Ok(rows)
+        })
     }
 
     fn get(
@@ -4138,7 +4154,12 @@ impl server::ports::schedule_store::ScheduleStore for FakeScheduleStore {
             .iter()
             .find(|s| s.id == id)
             .cloned();
-        Box::pin(async move { Ok(row) })
+        Box::pin(async move {
+            match row {
+                Some(record) => Ok(Some(self.resolve_join(record).await)),
+                None => Ok(None),
+            }
+        })
     }
 
     fn scheduled_flow_ids(&self, project_id: &str) -> BoxFut<'_, Result<Vec<String>, StoreError>> {
@@ -4161,7 +4182,6 @@ impl server::ports::schedule_store::ScheduleStore for FakeScheduleStore {
     ) -> BoxFut<'_, Result<server::ports::schedule_store::ScheduleRecord, StoreError>> {
         use server::ports::schedule_store::ScheduleRecord;
         let now = chrono::Utc::now();
-        let (flow_name, flow_definition) = self.joined_flow(&draft.flow_id);
         let (template_name, template_content) = draft
             .template_id
             .as_deref()
@@ -4174,37 +4194,47 @@ impl server::ports::schedule_store::ScheduleStore for FakeScheduleStore {
                     .map(|(n, c)| (Some(n), Some(c)))
             })
             .unwrap_or((None, None));
-        let record = ScheduleRecord {
-            id: Ulid::new().to_string(),
-            project_id: draft.project_id.clone(),
-            name: draft.name.clone(),
-            flow_id: draft.flow_id.clone(),
-            flow_name,
-            flow_definition,
-            kind: draft.kind.clone(),
-            run_at: draft.run_at,
-            interval_secs: draft.interval_secs,
-            days: draft.days.clone(),
-            run_time: draft.run_time.clone(),
-            timezone: draft.timezone.clone(),
-            template_id: draft.template_id.clone(),
-            template_name,
-            template_content,
-            channel: draft.channel.clone(),
-            title: draft.title.clone(),
-            body: draft.body.clone(),
-            recipients: draft.recipients.clone(),
-            active: draft.active,
-            next_run_at: draft.next_run_at,
-            last_run_at: None,
-            last_status: None,
-            last_error: None,
-            run_count: 0,
-            created_at: now,
-            updated_at: now,
-        };
-        self.schedules.write().unwrap().push(record.clone());
-        Box::pin(async move { Ok(record) })
+        let flow_store = self.flow_store.clone();
+        let draft = draft.clone();
+        Box::pin(async move {
+            let (flow_name, flow_definition) = flow_store
+                .get(&draft.flow_id)
+                .await
+                .map(|f| f.map(|f| (f.name, f.definition)).unwrap_or_default())
+                .unwrap_or_default();
+            let record = ScheduleRecord {
+                id: Ulid::new().to_string(),
+                project_id: draft.project_id.clone(),
+                name: draft.name.clone(),
+                flow_id: draft.flow_id.clone(),
+                flow_name,
+                flow_definition,
+                kind: draft.kind.clone(),
+                run_at: draft.run_at,
+                interval_secs: draft.interval_secs,
+                days: draft.days.clone(),
+                run_time: draft.run_time.clone(),
+                timezone: draft.timezone.clone(),
+                template_id: draft.template_id.clone(),
+                template_name,
+                template_content,
+                channel: draft.channel.clone(),
+                title: draft.title.clone(),
+                body: draft.body.clone(),
+                recipients: draft.recipients.clone(),
+                active: draft.active,
+                archived_at: draft.archived_at,
+                next_run_at: draft.next_run_at,
+                last_run_at: None,
+                last_status: None,
+                last_error: None,
+                run_count: 0,
+                created_at: now,
+                updated_at: now,
+            };
+            self.schedules.write().unwrap().push(record.clone());
+            Ok(record)
+        })
     }
 
     fn update(
@@ -4228,11 +4258,19 @@ impl server::ports::schedule_store::ScheduleStore for FakeScheduleStore {
             s.body = patch.body.clone();
             s.recipients = patch.recipients.clone();
             s.active = patch.active;
+            s.archived_at = patch.archived_at;
             s.next_run_at = patch.next_run_at;
             s.updated_at = chrono::Utc::now();
             s.clone()
         });
-        Box::pin(async move { Ok(updated) })
+        // Mirror the Postgres UPDATE ... JOIN flows: the joined columns
+        // resolve live (so service-side flow renames show through).
+        Box::pin(async move {
+            match updated {
+                Some(record) => Ok(Some(self.resolve_join(record).await)),
+                None => Ok(None),
+            }
+        })
     }
 
     fn delete(&self, id: &str) -> BoxFut<'_, Result<bool, StoreError>> {
@@ -4253,7 +4291,9 @@ impl server::ports::schedule_store::ScheduleStore for FakeScheduleStore {
         let mut claimed = Vec::new();
         let mut ids: Vec<String> = schedules
             .iter()
-            .filter(|s| s.active && s.next_run_at.is_some_and(|n| n <= now))
+            .filter(|s| {
+                s.active && s.archived_at.is_none() && s.next_run_at.is_some_and(|n| n <= now)
+            })
             .map(|s| (s.next_run_at, s.id.clone()))
             .collect::<Vec<_>>()
             .into_iter()
@@ -4297,100 +4337,186 @@ impl server::ports::schedule_store::ScheduleStore for FakeScheduleStore {
     }
 }
 
-/// Recording HTTP requester for flow HTTP step tests.
-#[derive(Default)]
-pub struct FakeHttpRequester {
-    calls: RwLock<Vec<server::ports::http_requester::HttpCall>>,
-    fail: RwLock<bool>,
+/// Thread-safe in-memory webhook store. The flow JOIN reads **live**
+/// from a shared [`FakeFlowStore`] (mirrors the Postgres JOIN, so
+/// owner-managed renames show up on read).
+pub struct FakeWebhookStore {
+    webhooks: RwLock<Vec<server::ports::webhook_store::WebhookRecord>>,
+    visible: RwLock<Vec<(String, String)>>,
+    /// Shared with the app wiring — the Postgres flow JOIN, in-memory.
+    flow_store: Arc<FakeFlowStore>,
 }
 
-impl FakeHttpRequester {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Recorded outbound calls, in order.
-    pub fn calls(&self) -> Vec<server::ports::http_requester::HttpCall> {
-        self.calls.read().unwrap().clone()
-    }
-
-    /// When true, every call fails (to exercise log-only semantics).
-    pub fn set_fail(&self, fail: bool) {
-        *self.fail.write().unwrap() = fail;
-    }
-}
-
-impl server::ports::http_requester::HttpRequester for FakeHttpRequester {
-    fn request(
-        &self,
-        call: &server::ports::http_requester::HttpCall,
-    ) -> server::ports::http_requester::BoxHttpFut<
-        '_,
-        Result<server::ports::http_requester::HttpResult, String>,
-    > {
-        self.calls.write().unwrap().push(call.clone());
-        let fail = *self.fail.read().unwrap();
-        Box::pin(async move {
-            if fail {
-                Err("fake http failure".to_string())
-            } else {
-                Ok(server::ports::http_requester::HttpResult {
-                    status: 200,
-                    ok: true,
-                })
-            }
-        })
-    }
-}
-
-/// In-memory trigger token store for inbound webhook tests.
-#[derive(Default)]
-pub struct FakeTriggerTokenStore {
-    tokens: RwLock<Vec<server::ports::trigger_token_store::TriggerTokenRecord>>,
-}
-
-impl FakeTriggerTokenStore {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-impl server::ports::trigger_token_store::TriggerTokenStore for FakeTriggerTokenStore {
-    fn replace_flow_tokens(
-        &self,
-        flow_id: &str,
-        project_id: &str,
-        definition: &serde_json::Value,
-        pairs: &[(String, String)],
-    ) -> BoxFut<'_, Result<(), StoreError>> {
-        let mut tokens = self.tokens.write().unwrap();
-        tokens.retain(|t| t.flow_id != flow_id);
-        for (token, node_id) in pairs {
-            tokens.push(server::ports::trigger_token_store::TriggerTokenRecord {
-                token: token.clone(),
-                flow_id: flow_id.to_string(),
-                node_id: node_id.clone(),
-                project_id: project_id.to_string(),
-                flow_definition: definition.clone(),
-            });
+impl FakeWebhookStore {
+    pub fn new(flow_store: Arc<FakeFlowStore>) -> Self {
+        Self {
+            webhooks: RwLock::new(Vec::new()),
+            visible: RwLock::new(Vec::new()),
+            flow_store,
         }
-        Box::pin(async move { Ok(()) })
     }
 
-    fn lookup(
-        &self,
-        token: &str,
-    ) -> BoxFut<
-        '_,
-        Result<Option<server::ports::trigger_token_store::TriggerTokenRecord>, StoreError>,
-    > {
-        let row = self
-            .tokens
+    /// Grants `user_id` access to `project_id`.
+    pub fn seed_visible(&self, user_id: &str, project_id: &str) {
+        self.visible
+            .write()
+            .unwrap()
+            .push((user_id.to_string(), project_id.to_string()));
+    }
+
+    fn is_visible(&self, user_id: &str, project_id: &str) -> bool {
+        self.visible
             .read()
             .unwrap()
             .iter()
-            .find(|t| t.token == token)
-            .cloned();
-        Box::pin(async move { Ok(row) })
+            .any(|(u, p)| u == user_id && p == project_id)
+    }
+
+    /// Re-resolves the flow JOIN column (name) from the shared flow
+    /// store, mirroring the live Postgres JOIN.
+    async fn resolve_join(
+        &self,
+        mut record: server::ports::webhook_store::WebhookRecord,
+    ) -> server::ports::webhook_store::WebhookRecord {
+        if let Ok(Some(flow)) = self.flow_store.get(&record.flow_id).await {
+            record.flow_name = flow.name;
+        }
+        record
     }
 }
+
+impl server::ports::webhook_store::WebhookStore for FakeWebhookStore {
+    fn project_visible(
+        &self,
+        actor: server::domain::auth::entities::UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let visible = self.is_visible(&actor.to_string(), project_id);
+        Box::pin(async move { Ok(visible) })
+    }
+
+    fn list_by_project(
+        &self,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Vec<server::ports::webhook_store::WebhookRecord>, StoreError>> {
+        let mut rows: Vec<_> = self
+            .webhooks
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|w| w.project_id == project_id)
+            .cloned()
+            .collect();
+        rows.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
+        Box::pin(async move {
+            for row in rows.iter_mut() {
+                *row = self.resolve_join(row.clone()).await;
+            }
+            Ok(rows)
+        })
+    }
+
+    fn get(
+        &self,
+        id: &str,
+    ) -> BoxFut<'_, Result<Option<server::ports::webhook_store::WebhookRecord>, StoreError>> {
+        let row = self
+            .webhooks
+            .read()
+            .unwrap()
+            .iter()
+            .find(|w| w.id == id)
+            .cloned();
+        Box::pin(async move {
+            match row {
+                Some(record) => Ok(Some(self.resolve_join(record).await)),
+                None => Ok(None),
+            }
+        })
+    }
+
+    fn owned_flow_ids(&self, project_id: &str) -> BoxFut<'_, Result<Vec<String>, StoreError>> {
+        let mut ids: Vec<String> = self
+            .webhooks
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|w| w.project_id == project_id)
+            .map(|w| w.flow_id.clone())
+            .collect();
+        ids.sort();
+        ids.dedup();
+        Box::pin(async move { Ok(ids) })
+    }
+
+    fn create(
+        &self,
+        draft: &server::ports::webhook_store::NewWebhook,
+    ) -> BoxFut<'_, Result<server::ports::webhook_store::WebhookRecord, StoreError>> {
+        use server::ports::webhook_store::WebhookRecord;
+        let now = chrono::Utc::now();
+        let flow_store = self.flow_store.clone();
+        let draft = draft.clone();
+        Box::pin(async move {
+            // Mirror the Postgres create: the flow JOIN resolves the name.
+            let flow_name = flow_store
+                .get(&draft.flow_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|f| f.name)
+                .unwrap_or_default();
+            let record = WebhookRecord {
+                id: Ulid::new().to_string(),
+                project_id: draft.project_id.clone(),
+                name: draft.name.clone(),
+                description: draft.description.clone(),
+                flow_id: draft.flow_id.clone(),
+                flow_name,
+                events: draft.events.clone(),
+                active: draft.active,
+                archived_at: None,
+                created_at: now,
+                updated_at: now,
+            };
+            self.webhooks.write().unwrap().push(record.clone());
+            Ok(record)
+        })
+    }
+
+    fn update(
+        &self,
+        id: &str,
+        patch: &server::ports::webhook_store::WebhookUpdate,
+    ) -> BoxFut<'_, Result<Option<server::ports::webhook_store::WebhookRecord>, StoreError>> {
+        let mut webhooks = self.webhooks.write().unwrap();
+        let updated = webhooks.iter_mut().find(|w| w.id == id).map(|w| {
+            w.name = patch.name.clone();
+            w.description = patch.description.clone();
+            w.events = patch.events.clone();
+            w.active = patch.active;
+            w.archived_at = patch.archived_at;
+            w.updated_at = chrono::Utc::now();
+            w.clone()
+        });
+        drop(webhooks);
+        // Mirror the Postgres UPDATE ... JOIN flows: the joined flow name
+        // resolves live (so service-side flow renames show through).
+        Box::pin(async move {
+            match updated {
+                Some(record) => Ok(Some(self.resolve_join(record).await)),
+                None => Ok(None),
+            }
+        })
+    }
+
+    fn delete(&self, id: &str) -> BoxFut<'_, Result<bool, StoreError>> {
+        let mut webhooks = self.webhooks.write().unwrap();
+        let before = webhooks.len();
+        webhooks.retain(|w| w.id != id);
+        let deleted = webhooks.len() < before;
+        drop(webhooks);
+        Box::pin(async move { Ok(deleted) })
+    }
+}
+

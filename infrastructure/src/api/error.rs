@@ -1,12 +1,13 @@
 //! RFC 9457 problem-details rendering for the unified error model.
 //!
-//! [`ApiError`] lives in `kernel` (framework-free); the orphan rule keeps
-//! us from implementing axum's `IntoResponse` for it here, so we wrap it in
-//! the local [`ApiProblem`] newtype.
+//! [`ApiError`] lives in the framework-free kernel (`src/kernel/error.rs`);
+//! axum's `IntoResponse` is implemented one boundary out, here — also
+//! exposed through the [`ApiProblem`] newtype so handlers can convert
+//! cheaply and dodge `result_large_err`.
 //!
 //! This is presentation-layer code by design: the error *model* stays in the
-//! kernel (`crates/core/src/error.rs`) so every crate can share it without
-//! depending on axum (see `infrastructure/docs/ARCHITECTURE.md`).
+//! kernel so every layer (domains, channels, binaries) can share it without
+//! depending on axum (see `assets/docs/ARCHITECTURE.md`).
 
 use crate::kernel::error::ApiError;
 use axum::Json;

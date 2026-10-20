@@ -85,9 +85,7 @@ pub async fn get_recipient(
     let recipient = service
         .get(user.id, &project_id, &recipient_id)
         .await?
-        .ok_or_else(|| {
-            crate::domain::auth::errors::AuthError::NotFound("recipient not found".into())
-        })?;
+        .ok_or_else(|| crate::domain::error::AppError::NotFound("recipient not found".into()))?;
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "recipient": RecipientDto::from(recipient) })),

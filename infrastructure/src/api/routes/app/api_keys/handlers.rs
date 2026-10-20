@@ -15,14 +15,14 @@ use super::dto::{
     AddIpRequest, ApiKeyDto, CreateApiKeyRequest, IpAllowEntryDto, UpdateApiKeyRequest,
 };
 use crate::domain::api_keys::ApiKeyService;
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 
 type MaybeApiKeyService = Option<Extension<Arc<ApiKeyService>>>;
 
 fn require_service(extension: MaybeApiKeyService) -> Result<Arc<ApiKeyService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 /// `POST /app/projects/:project_id/api-keys` — issue a key. The raw secret
@@ -39,7 +39,6 @@ pub async fn create_key(
             user.id,
             &project_id,
             &body.name,
-            &body.environment,
             &body.permissions,
             body.expires_at,
         )
@@ -85,7 +84,7 @@ pub async fn update_key(
     Json(body): Json<UpdateApiKeyRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     if body.name.is_none() && body.enabled.is_none() {
-        return Err(AuthError::Validation(
+        return Err(AppError::Validation(
             "nothing to update (expected name and/or enabled)".into(),
         )
         .into());

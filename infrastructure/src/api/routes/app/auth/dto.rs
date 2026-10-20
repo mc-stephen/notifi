@@ -1,6 +1,6 @@
 //! Request/response shapes for the auth API.
 //!
-//! Field names follow the dashboard contract (`app/user-dashboard/app/auth/
+//! Field names follow the dashboard contract (`app/dashboard/user/app/auth/
 //! API_CONTRACT.md`) — camelCase on the wire.
 
 use chrono::{DateTime, Utc};

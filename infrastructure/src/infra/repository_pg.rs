@@ -191,7 +191,7 @@ async fn insert_project(
     let row = sqlx::query_as::<_, ProjectRow>(
         "INSERT INTO platform_projects (id, name, slug, description, created_by)
          VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, name, slug, description, environment, require_2fa, created_at",
+         RETURNING id, name, slug, description, active, require_2fa, created_at",
     )
     .bind(&project_id)
     .bind(name)
@@ -726,7 +726,7 @@ struct ProjectRow {
     name: String,
     slug: String,
     description: Option<String>,
-    environment: String,
+    active: bool,
     require_2fa: bool,
     created_at: DateTime<Utc>,
 }
@@ -740,7 +740,7 @@ impl TryFrom<ProjectRow> for ProjectSummary {
             name: row.name,
             slug: row.slug,
             description: row.description,
-            environment: row.environment,
+            active: row.active,
             require_2fa: row.require_2fa,
             created_at: row.created_at,
         })
@@ -753,7 +753,7 @@ struct AdminProjectRow {
     name: String,
     slug: String,
     description: Option<String>,
-    environment: String,
+    active: bool,
     require_2fa: bool,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -774,7 +774,7 @@ impl TryFrom<AdminProjectRow> for crate::ports::projects_store::AdminProjectReco
                 name: row.name,
                 slug: row.slug,
                 description: row.description,
-                environment: row.environment,
+                active: row.active,
                 require_2fa: row.require_2fa,
                 created_at: row.created_at,
             },
@@ -795,7 +795,7 @@ impl ProjectsStore for PgAuthStore {
         let pool = self.pool.clone();
         Box::pin(async move {
             let rows = sqlx::query_as::<_, ProjectRow>(
-                "SELECT id, name, slug, description, environment, require_2fa, created_at
+                "SELECT id, name, slug, description, active, require_2fa, created_at
                  FROM platform_projects p
                  WHERE p.deleted_at IS NULL
                    AND (
@@ -839,19 +839,18 @@ impl ProjectsStore for PgAuthStore {
         })
     }
 
-    fn set_project_environment(
+    fn set_project_active(
         &self,
         user_id: UserId,
         project_id: &str,
-        environment: &str,
+        active: bool,
     ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>> {
         let pool = self.pool.clone();
         let project_id = project_id.to_string();
-        let environment = environment.to_string();
         Box::pin(async move {
             let row = sqlx::query_as::<_, ProjectRow>(
                 "UPDATE platform_projects p
-                 SET environment = $3, updated_at = now()
+                 SET active = $3, updated_at = now()
                  WHERE p.id = $2
                    AND p.deleted_at IS NULL
                    AND (
@@ -863,11 +862,11 @@ impl ProjectsStore for PgAuthStore {
                               AND pm.deleted_at IS NULL
                         )
                    )
-                  RETURNING id, name, slug, description, environment, require_2fa, created_at",
+                  RETURNING id, name, slug, description, active, require_2fa, created_at",
             )
             .bind(user_id.to_string())
             .bind(&project_id)
-            .bind(&environment)
+            .bind(active)
             .fetch_optional(&pool)
             .await
             .map_err(map_err)?;
@@ -891,14 +890,14 @@ impl ProjectsStore for PgAuthStore {
                 name: String,
                 slug: String,
                 description: Option<String>,
-                environment: String,
+                active: bool,
                 require_2fa: bool,
                 created_at: DateTime<Utc>,
                 created_by: Option<String>,
                 member_role: Option<String>,
             }
             let row: Option<AccessRow> = sqlx::query_as(
-                "SELECT p.id, p.name, p.slug, p.description, p.environment,
+                "SELECT p.id, p.name, p.slug, p.description, p.active,
                         p.require_2fa, p.created_at, p.created_by,
                         (SELECT pm.role FROM platform_project_members pm
                          WHERE pm.project_id = p.id AND pm.user_id = $1
@@ -921,7 +920,7 @@ impl ProjectsStore for PgAuthStore {
                     name: row.name,
                     slug: row.slug,
                     description: row.description,
-                    environment: row.environment,
+                    active: row.active,
                     require_2fa: row.require_2fa,
                     created_at: row.created_at,
                 })
@@ -1271,17 +1270,15 @@ impl ProjectsStore for PgAuthStore {
     fn list_all_projects(
         &self,
         search: Option<&str>,
-        environment: Option<&str>,
         limit: i64,
         offset: i64,
     ) -> BoxFut<'_, Result<(Vec<crate::ports::projects_store::AdminProjectRecord>, i64), StoreError>>
     {
         let pool = self.pool.clone();
         let search_owned = search.map(str::to_owned);
-        let environment_owned = environment.map(str::to_owned);
         Box::pin(async move {
             let rows = sqlx::query_as::<_, AdminProjectRow>(
-                "SELECT p.id, p.name, p.slug, p.description, p.environment,
+                "SELECT p.id, p.name, p.slug, p.description, p.active,
                         p.require_2fa, p.created_at, p.updated_at,
                         u.id AS owner_id, u.name AS owner_name, u.email AS owner_email,
                         (SELECT COUNT(*) FROM platform_project_members pm
@@ -1290,12 +1287,10 @@ impl ProjectsStore for PgAuthStore {
                  FROM platform_projects p
                  LEFT JOIN auth_users u ON u.id = p.created_by AND u.deleted_at IS NULL
                  WHERE p.deleted_at IS NULL
-                   AND ($1::text IS NULL OR p.environment = $1)
-                   AND ($2::text IS NULL OR p.name ILIKE '%' || $2 || '%' OR p.slug ILIKE '%' || $2 || '%')
+                   AND ($1::text IS NULL OR p.name ILIKE '%' || $1 || '%' OR p.slug ILIKE '%' || $1 || '%')
                  ORDER BY p.created_at DESC, p.id DESC
-                 LIMIT $3 OFFSET $4",
+                 LIMIT $2 OFFSET $3",
             )
-            .bind(&environment_owned)
             .bind(&search_owned)
             .bind(limit)
             .bind(offset)
@@ -1320,7 +1315,7 @@ impl ProjectsStore for PgAuthStore {
         let project_id_owned = project_id.to_string();
         Box::pin(async move {
             let row = sqlx::query_as::<_, AdminProjectRow>(
-                "SELECT p.id, p.name, p.slug, p.description, p.environment,
+                "SELECT p.id, p.name, p.slug, p.description, p.active,
                         p.require_2fa, p.created_at, p.updated_at,
                         u.id AS owner_id, u.name AS owner_name, u.email AS owner_email,
                         (SELECT COUNT(*) FROM platform_project_members pm

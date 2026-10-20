@@ -9,7 +9,7 @@ use super::super::handlers::{CurrentAdmin, pagination, total_pages};
 use super::dto::AdminLogDto;
 use crate::api::routes::app::auth::Problem;
 use crate::domain::audit::AuditService;
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::ports::audit_store::AdminAuditFilters;
 
 const DEFAULT_LIMIT: i64 = 50;
@@ -19,7 +19,7 @@ type MaybeAuditService = Option<Extension<Arc<AuditService>>>;
 fn require_audit_service(extension: MaybeAuditService) -> Result<Arc<AuditService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 /// `GET /admin/logs` — every audit entry (admin view), newest first.
@@ -34,7 +34,7 @@ pub async fn list_logs(
     if let Some(t) = query.get("actorType")
         && !matches!(t.trim(), "user" | "admin" | "system")
     {
-        return Err(AuthError::Validation(
+        return Err(AppError::Validation(
             "invalid actorType (expected user, admin, or system)".to_string(),
         )
         .into());

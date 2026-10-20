@@ -22,9 +22,9 @@ use super::dto::{
 use super::middleware::{CurrentUser, Problem, SESSION_COOKIE};
 use crate::domain::auth::AuthService;
 use crate::domain::auth::entities::User;
-use crate::domain::auth::errors::AuthError;
 use crate::domain::auth::value_objects::new_token;
-use crate::ports::oauth::{OAuthError, OAuthRuntime};
+use crate::domain::error::AppError;
+use crate::ports::oauth::{OAppError, OAuthRuntime};
 
 type MaybeService = Option<Extension<Arc<AuthService>>>;
 type MaybeOAuth = Option<Extension<Arc<OAuthRuntime>>>;
@@ -36,13 +36,13 @@ const OAUTH_TEMP_COOKIE_MAX_AGE_SECONDS: i64 = 600;
 fn require_service(extension: MaybeService) -> Result<Arc<AuthService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 fn require_oauth(extension: MaybeOAuth) -> Result<Arc<OAuthRuntime>, Problem> {
     extension
         .map(|Extension(runtime)| runtime)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 fn ok_json(body: Value) -> Response {
@@ -67,10 +67,10 @@ fn oauth_temp_cookie(provider: &str, kind: &str) -> String {
 }
 
 /// Maps port errors onto problem documents (unconfigured → 503).
-fn oauth_problem(err: OAuthError) -> Problem {
+fn oauth_problem(err: OAppError) -> Problem {
     match err {
-        OAuthError::NotConfigured(_) => AuthError::NotConfigured.into(),
-        OAuthError::Flow(m) => AuthError::Storage(m).into(),
+        OAppError::NotConfigured(_) => AppError::NotConfigured.into(),
+        OAppError::Flow(m) => AppError::Storage(m).into(),
     }
 }
 
@@ -116,7 +116,7 @@ pub async fn oauth_start(
 ) -> Result<Response, Problem> {
     if !valid_oauth_provider(&provider) {
         return Err(
-            AuthError::Validation(format!("unsupported OAuth provider '{provider}'")).into(),
+            AppError::Validation(format!("unsupported OAuth provider '{provider}'")).into(),
         );
     }
     let runtime = require_oauth(oauth)?;
@@ -199,7 +199,7 @@ pub async fn oauth_callback(
     let issued = match service.login_with_oauth(&provider, profile).await {
         // TOTP-enabled account: no session — the login page's OTP step
         // completes via POST /app/auth/totp/challenge.
-        Err(AuthError::TotpRequired) => {
+        Err(AppError::TotpRequired) => {
             let clear = |kind: &str| {
                 Cookie::build(oauth_temp_cookie(&provider, kind))
                     .path(format!("/app/auth/oauth/{provider}/callback"))
@@ -328,7 +328,7 @@ pub async fn login(
         )
         .await
     {
-        Err(AuthError::TotpRequired) => {
+        Err(AppError::TotpRequired) => {
             return Ok(Json(json!({ "requiresTotp": true })).into_response());
         }
         issued => issued.map_err(Problem::from)?,

@@ -7,8 +7,8 @@ use crate::domain::projects::{Project, ProjectInvite, ProjectMember};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UpdateEnvironmentRequest {
-    pub environment: String,
+pub struct UpdateActiveRequest {
+    pub active: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,7 +86,7 @@ pub struct ProjectDto {
     pub name: String,
     pub slug: String,
     pub description: Option<String>,
-    pub environment: String,
+    pub active: bool,
     pub require_2fa: bool,
     pub created_at: DateTime<Utc>,
 }
@@ -98,7 +98,7 @@ impl From<Project> for ProjectDto {
             name: project.name,
             slug: project.slug,
             description: project.description,
-            environment: project.environment,
+            active: project.active,
             require_2fa: project.require_2fa,
             created_at: project.created_at,
         }

@@ -3,7 +3,7 @@
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 
 /// Validated, normalized (lowercased) email address.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,10 +11,10 @@ pub struct Email(String);
 
 impl Email {
     /// Structural validation only (deliverability is unknowable).
-    pub fn parse(raw: &str) -> Result<Self, AuthError> {
+    pub fn parse(raw: &str) -> Result<Self, AppError> {
         let value = raw.trim().to_lowercase();
 
-        let invalid = || AuthError::Validation("email address is not valid".to_string());
+        let invalid = || AppError::Validation("email address is not valid".to_string());
 
         if value.len() > 254 || value.contains(char::is_whitespace) {
             return Err(invalid());
@@ -44,7 +44,7 @@ impl std::fmt::Display for Email {
 
 /// Enforces the dashboard password policy: min 8 chars with uppercase,
 /// lowercase, number and special character (`lib/auth-types.ts` contract).
-pub fn validate_password(password: &str) -> Result<(), AuthError> {
+pub fn validate_password(password: &str) -> Result<(), AppError> {
     let mut upper = false;
     let mut lower = false;
     let mut digit = false;
@@ -66,7 +66,7 @@ pub fn validate_password(password: &str) -> Result<(), AuthError> {
     if ok {
         Ok(())
     } else {
-        Err(AuthError::Validation(
+        Err(AppError::Validation(
             "password must be at least 8 characters and include an uppercase letter, \
              a lowercase letter, a number, and a special character"
                 .to_string(),

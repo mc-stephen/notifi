@@ -56,6 +56,7 @@ fn app_with_admin_projects() -> Router {
             notifications: None,
             billing: None,
             schedules: None,
+            webhooks: None,
             inbound: None,
             provider_tester: Arc::new(ConfigProviderTester::new())
                 as Arc<dyn ProviderTester + Send + Sync>,
@@ -198,21 +199,6 @@ async fn admin_lists_all_projects_with_owner_info() {
         1
     );
 
-    // Environment filter (all start as development).
-    let res = request_with_cookie(
-        app.clone(),
-        "GET",
-        "/admin/projects?environment=production",
-        None,
-        "admin_session",
-        &admin_cookie,
-    )
-    .await;
-    assert_eq!(
-        body_json(res).await["projects"].as_array().unwrap().len(),
-        0
-    );
-
     // Pagination.
     let res = request_with_cookie(
         app.clone(),
@@ -263,7 +249,7 @@ async fn admin_project_detail_and_auth() {
     let body = body_json(res).await;
     assert_eq!(body["project"]["name"], "Alice App");
     assert_eq!(body["project"]["ownerEmail"], "alice@x.dev");
-    assert_eq!(body["project"]["environment"], "development");
+    assert_eq!(body["project"]["active"], false);
 
     // Customer sessions are rejected; unknown ids 404.
     let res = request_with_cookie(

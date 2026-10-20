@@ -16,8 +16,8 @@ use totp_rs::{Rfc6238, Secret, TOTP};
 use crate::domain::audit::AuditService;
 use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::{AuthToken, Session, SessionId, TokenPurpose, User, UserId};
-use crate::domain::auth::errors::AuthError;
 use crate::domain::auth::value_objects::{Email, hash_token, new_token, validate_password};
+use crate::domain::error::AppError;
 use crate::domain::notifications::{NotificationService, NotificationType};
 use crate::ports::auth_store::{AuthStore, OnboardingInput};
 use crate::ports::oauth::OAuthProfile;
@@ -162,13 +162,13 @@ impl AuthService {
         name: &str,
         email: &str,
         password: &str,
-    ) -> Result<SignupOutcome, AuthError> {
+    ) -> Result<SignupOutcome, AppError> {
         let email = Email::parse(email)?;
         validate_password(password)?;
 
         let name = name.trim();
         if name.is_empty() || name.len() > 100 {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "name must be between 1 and 100 characters".to_string(),
             ));
         }
@@ -179,7 +179,7 @@ impl AuthService {
             .await?
             .is_some()
         {
-            return Err(AuthError::EmailAlreadyExists);
+            return Err(AppError::EmailAlreadyExists);
         }
 
         let now = Utc::now();
@@ -255,18 +255,18 @@ impl AuthService {
         password: &str,
         remember_me: bool,
         totp_code: Option<&str>,
-    ) -> Result<IssuedSession, AuthError> {
+    ) -> Result<IssuedSession, AppError> {
         // Parse failures map to invalid credentials: never reveal why.
-        let email = Email::parse(email).map_err(|_| AuthError::InvalidCredentials)?;
+        let email = Email::parse(email).map_err(|_| AppError::InvalidCredentials)?;
 
         let user = self
             .store
             .find_user_by_email(email.as_str())
             .await?
-            .ok_or(AuthError::InvalidCredentials)?;
+            .ok_or(AppError::InvalidCredentials)?;
 
         if !verify_password(password, &user.password_hash) {
-            return Err(AuthError::InvalidCredentials);
+            return Err(AppError::InvalidCredentials);
         }
 
         ensure_active(&user)?;
@@ -278,7 +278,7 @@ impl AuthService {
             let code = totp_code
                 .map(str::trim)
                 .filter(|c| !c.is_empty())
-                .ok_or(AuthError::TotpRequired)?;
+                .ok_or(AppError::TotpRequired)?;
             self.check_totp(&user, code)?;
         }
 
@@ -333,15 +333,15 @@ impl AuthService {
     /// Starts (or resumes) 2FA setup: stores a secret unless one is
     /// already enabled, and returns it with the authenticator URI.
     /// Refused while 2FA is enabled — disable first, then re-enroll.
-    pub async fn totp_setup(&self, user_id: UserId) -> Result<(String, String), AuthError> {
+    pub async fn totp_setup(&self, user_id: UserId) -> Result<(String, String), AppError> {
         let user = self
             .store
             .find_user_by_id(user_id)
             .await?
-            .ok_or(AuthError::Unauthorized)?;
+            .ok_or(AppError::Unauthorized)?;
         ensure_active(&user)?;
         if user.totp_enabled {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "two-factor authentication is already enabled".to_string(),
             ));
         }
@@ -358,15 +358,15 @@ impl AuthService {
     }
 
     /// Verifies a code against the pending secret and enables 2FA.
-    pub async fn totp_verify(&self, user_id: UserId, code: &str) -> Result<(), AuthError> {
+    pub async fn totp_verify(&self, user_id: UserId, code: &str) -> Result<(), AppError> {
         let user = self
             .store
             .find_user_by_id(user_id)
             .await?
-            .ok_or(AuthError::Unauthorized)?;
+            .ok_or(AppError::Unauthorized)?;
         ensure_active(&user)?;
         if user.totp_enabled {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "two-factor authentication is already enabled".to_string(),
             ));
         }
@@ -396,22 +396,22 @@ impl AuthService {
         user_id: UserId,
         password: Option<&str>,
         code: &str,
-    ) -> Result<(), AuthError> {
+    ) -> Result<(), AppError> {
         let user = self
             .store
             .find_user_by_id(user_id)
             .await?
-            .ok_or(AuthError::Unauthorized)?;
+            .ok_or(AppError::Unauthorized)?;
         ensure_active(&user)?;
         if !user.totp_enabled {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "two-factor authentication is not enabled".to_string(),
             ));
         }
         if !user.password_hash.is_empty() {
             let password = password.unwrap_or("");
             if !verify_password(password, &user.password_hash) {
-                return Err(AuthError::InvalidCredentials);
+                return Err(AppError::InvalidCredentials);
             }
         }
         self.check_totp(&user, code)?;
@@ -436,20 +436,16 @@ impl AuthService {
     /// Completes login for a TOTP-enabled account with email + code only
     /// (used after the OAuth detour, where no password exists to resend).
     /// Issues a short session on success.
-    pub async fn totp_challenge(
-        &self,
-        email: &str,
-        code: &str,
-    ) -> Result<IssuedSession, AuthError> {
-        let email = Email::parse(email).map_err(|_| AuthError::InvalidCredentials)?;
+    pub async fn totp_challenge(&self, email: &str, code: &str) -> Result<IssuedSession, AppError> {
+        let email = Email::parse(email).map_err(|_| AppError::InvalidCredentials)?;
         let user = self
             .store
             .find_user_by_email(email.as_str())
             .await?
-            .ok_or(AuthError::InvalidCredentials)?;
+            .ok_or(AppError::InvalidCredentials)?;
         ensure_active(&user)?;
         if !user.totp_enabled {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "two-factor authentication is not enabled for this account".to_string(),
             ));
         }
@@ -480,42 +476,42 @@ impl AuthService {
         })
     }
 
-    fn check_totp(&self, user: &User, code: &str) -> Result<(), AuthError> {
+    fn check_totp(&self, user: &User, code: &str) -> Result<(), AppError> {
         let secret = user
             .totp_secret
             .as_deref()
-            .ok_or_else(|| AuthError::Validation("TOTP has not been set up yet".to_string()))?;
+            .ok_or_else(|| AppError::Validation("TOTP has not been set up yet".to_string()))?;
         let totp = build_totp(secret)?;
         if !totp
             .check_current(code.trim())
-            .map_err(|e| AuthError::Storage(format!("TOTP verification failed: {e}")))?
+            .map_err(|e| AppError::Storage(format!("TOTP verification failed: {e}")))?
         {
-            return Err(AuthError::TotpInvalid);
+            return Err(AppError::TotpInvalid);
         }
         Ok(())
     }
 
     /// Resolves the owner of an active session cookie value.
-    pub async fn authenticate(&self, session_cookie: &str) -> Result<User, AuthError> {
+    pub async fn authenticate(&self, session_cookie: &str) -> Result<User, AppError> {
         let now = Utc::now();
         let session = self
             .store
             .find_session_by_hash(&hash_token(session_cookie))
             .await?
             .filter(|s| s.is_active(now))
-            .ok_or(AuthError::Unauthorized)?;
+            .ok_or(AppError::Unauthorized)?;
 
         let user = self
             .store
             .find_user_by_id(session.user_id)
             .await?
-            .ok_or(AuthError::Unauthorized)?;
+            .ok_or(AppError::Unauthorized)?;
         ensure_active(&user)?;
         Ok(user)
     }
 
     /// Revokes the session behind `session_cookie` (idempotent).
-    pub async fn logout(&self, session_cookie: &str) -> Result<(), AuthError> {
+    pub async fn logout(&self, session_cookie: &str) -> Result<(), AppError> {
         if let Some(session) = self
             .store
             .find_session_by_hash(&hash_token(session_cookie))
@@ -543,13 +539,13 @@ impl AuthService {
     // email verification
     // ------------------------------------------------------------------
 
-    pub async fn verify_email(&self, raw_token: &str) -> Result<(), AuthError> {
+    pub async fn verify_email(&self, raw_token: &str) -> Result<(), AppError> {
         let token = self
             .store
             .find_token_by_hash(&hash_token(raw_token), TokenPurpose::EmailVerification)
             .await?
             .ok_or_else(|| {
-                AuthError::TokenInvalid(
+                AppError::TokenInvalid(
                     "This verification link is invalid or has already been used.".to_string(),
                 )
             })?;
@@ -557,12 +553,12 @@ impl AuthService {
         let now = Utc::now();
         if !token.is_usable(now) {
             return if token.consumed_at.is_some() {
-                Err(AuthError::TokenInvalid(
+                Err(AppError::TokenInvalid(
                     "This verification link is invalid or has already been used.".to_string(),
                 ))
             } else {
                 // message wording is load-bearing: the dashboard checks for "expired"
-                Err(AuthError::TokenExpired(
+                Err(AppError::TokenExpired(
                     "This verification link has expired.".to_string(),
                 ))
             };
@@ -589,7 +585,7 @@ impl AuthService {
 
     /// Re-issues the verification email token (invalidating previous ones).
     /// Returns `None` for unknown emails — response stays 200 either way.
-    pub async fn resend_verification(&self, email: &str) -> Result<Option<String>, AuthError> {
+    pub async fn resend_verification(&self, email: &str) -> Result<Option<String>, AppError> {
         let email = match Email::parse(email) {
             Ok(email) => email,
             Err(_) => return Ok(None),
@@ -625,7 +621,7 @@ impl AuthService {
 
     /// Always succeeds from the caller's perspective (no enumeration):
     /// returns `Some(raw_token)` only when the account exists.
-    pub async fn forgot_password(&self, email: &str) -> Result<Option<String>, AuthError> {
+    pub async fn forgot_password(&self, email: &str) -> Result<Option<String>, AppError> {
         let email = match Email::parse(email) {
             Ok(email) => email,
             // malformed input behaves like an unknown address
@@ -660,7 +656,7 @@ impl AuthService {
         &self,
         raw_token: &str,
         new_password: &str,
-    ) -> Result<(), AuthError> {
+    ) -> Result<(), AppError> {
         validate_password(new_password)?;
 
         let token = self
@@ -668,9 +664,7 @@ impl AuthService {
             .find_token_by_hash(&hash_token(raw_token), TokenPurpose::PasswordReset)
             .await?
             .filter(|t| t.is_usable(Utc::now()))
-            .ok_or_else(|| {
-                AuthError::TokenInvalid("Invalid or expired reset token.".to_string())
-            })?;
+            .ok_or_else(|| AppError::TokenInvalid("Invalid or expired reset token.".to_string()))?;
 
         self.store.consume_token(token.id).await?;
         self.store
@@ -729,22 +723,20 @@ impl AuthService {
         &self,
         provider: &str,
         profile: OAuthProfile,
-    ) -> Result<IssuedSession, AuthError> {
+    ) -> Result<IssuedSession, AppError> {
         if !matches!(provider, "github" | "google") {
-            return Err(AuthError::Validation(format!(
+            return Err(AppError::Validation(format!(
                 "unsupported OAuth provider '{provider}'"
             )));
         }
         if !profile.email_verified {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "the provider did not verify this email address".to_string(),
             ));
         }
         let email = Email::parse(&profile.email)?;
         if profile.subject.trim().is_empty() {
-            return Err(AuthError::Validation(
-                "missing provider subject".to_string(),
-            ));
+            return Err(AppError::Validation("missing provider subject".to_string()));
         }
 
         let mut user = match self
@@ -807,7 +799,7 @@ impl AuthService {
         if user.totp_enabled {
             // Second step happens on the login page via totp_challenge —
             // no session is issued here.
-            return Err(AuthError::TotpRequired);
+            return Err(AppError::TotpRequired);
         }
         let (session, raw_token) = self.issue_session(user.id, SESSION_TTL_SHORT).await?;
 
@@ -852,21 +844,20 @@ impl AuthService {
     /// Whether the account can skip onboarding — true when the user already
     /// owns or belongs to at least one project (e.g. an invited member
     /// signing up for the first time).
-    pub async fn onboarding_completed(&self, user_id: UserId) -> Result<bool, AuthError> {
+    pub async fn onboarding_completed(&self, user_id: UserId) -> Result<bool, AppError> {
         Ok(self.store.has_project(user_id).await?)
     }
 
     /// Persists the first project collected by the dashboard onboarding
-    /// flow. New projects start in `development` mode (the project-level
-    /// environment gate, defaulted by the schema).
+    /// flow. New projects start active (schema default).
     pub async fn complete_onboarding(
         &self,
         user_id: UserId,
         input: OnboardingInput,
-    ) -> Result<(), AuthError> {
+    ) -> Result<(), AppError> {
         let project_name = input.project_name.trim();
         if project_name.is_empty() || project_name.len() > 100 {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "project name must be between 1 and 100 characters".to_string(),
             ));
         }
@@ -899,7 +890,7 @@ impl AuthService {
         &self,
         user_id: UserId,
         ttl: Duration,
-    ) -> Result<(Session, String), AuthError> {
+    ) -> Result<(Session, String), AppError> {
         let now = Utc::now();
         let (raw_token, token_hash) = new_token();
         let session = Session {
@@ -920,7 +911,7 @@ impl AuthService {
         &self,
         user_id: UserId,
         purpose: TokenPurpose,
-    ) -> Result<String, AuthError> {
+    ) -> Result<String, AppError> {
         self.store.consume_tokens_for_user(user_id, purpose).await?;
 
         let (raw, hash) = new_token();
@@ -943,20 +934,20 @@ impl AuthService {
 // password hashing (argon2id)
 // ----------------------------------------------------------------------
 
-fn hash_password(password: &str) -> Result<String, AuthError> {
+fn hash_password(password: &str) -> Result<String, AppError> {
     let mut salt_bytes = [0u8; 16];
     rand::rng().fill_bytes(&mut salt_bytes);
     let salt = SaltString::encode_b64(&salt_bytes)
-        .map_err(|e| AuthError::Storage(format!("salt generation failed: {e}")))?;
+        .map_err(|e| AppError::Storage(format!("salt generation failed: {e}")))?;
     Argon2::default()
         .hash_password(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
-        .map_err(|e| AuthError::Storage(format!("password hashing failed: {e}")))
+        .map_err(|e| AppError::Storage(format!("password hashing failed: {e}")))
 }
 
-fn ensure_active(user: &User) -> Result<(), AuthError> {
+fn ensure_active(user: &User) -> Result<(), AppError> {
     if user.status == crate::domain::auth::entities::UserStatus::Suspended {
-        return Err(AuthError::AccountSuspended);
+        return Err(AppError::AccountSuspended);
     }
     Ok(())
 }
@@ -972,28 +963,28 @@ fn verify_password(password: &str, phc_hash: &str) -> bool {
 }
 
 /// Generates a random TOTP secret, returned base32-encoded.
-fn generate_totp_secret() -> Result<String, AuthError> {
+fn generate_totp_secret() -> Result<String, AppError> {
     let mut bytes = vec![0u8; 20];
     rand::rng().fill_bytes(&mut bytes);
     Ok(Secret::Raw(bytes).to_encoded().to_string())
 }
 
 /// Builds a TOTP instance from a base32 secret string.
-fn build_totp(base32: &str) -> Result<TOTP, AuthError> {
+fn build_totp(base32: &str) -> Result<TOTP, AppError> {
     let secret = Secret::Encoded(base32.to_string());
     let secret_raw = secret
         .to_raw()
-        .map_err(|e| AuthError::Storage(format!("invalid TOTP secret: {e}")))?;
+        .map_err(|e| AppError::Storage(format!("invalid TOTP secret: {e}")))?;
     let rfc = Rfc6238::with_defaults(
         secret_raw
             .to_bytes()
-            .map_err(|e| AuthError::Storage(format!("TOTP secret conversion failed: {e}")))?,
+            .map_err(|e| AppError::Storage(format!("TOTP secret conversion failed: {e}")))?,
     )
-    .map_err(|e| AuthError::Storage(format!("TOTP config failed: {e}")))?;
-    TOTP::from_rfc6238(rfc).map_err(|e| AuthError::Storage(format!("TOTP creation failed: {e}")))
+    .map_err(|e| AppError::Storage(format!("TOTP config failed: {e}")))?;
+    TOTP::from_rfc6238(rfc).map_err(|e| AppError::Storage(format!("TOTP creation failed: {e}")))
 }
 
-fn totp_uri(secret_base32: &str, account_email: &str) -> Result<String, AuthError> {
+fn totp_uri(secret_base32: &str, account_email: &str) -> Result<String, AppError> {
     let mut totp = build_totp(secret_base32)?;
     totp.issuer = Some("Notifi".to_string());
     totp.account_name = account_email.to_string();

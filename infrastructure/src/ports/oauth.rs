@@ -30,7 +30,7 @@ pub struct AuthorizeStart {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum OAuthError {
+pub enum OAppError {
     #[error("provider '{0}' is not configured")]
     NotConfigured(String),
     #[error("oauth flow failed: {0}")]
@@ -47,8 +47,7 @@ pub struct OAuthRuntime {
 
 pub trait OAuthIdentityProvider: Send + Sync {
     /// Builds the consent redirect for `provider` (`github` | `google`).
-    fn authorize_url(&self, provider: &str, csrf_state: &str)
-    -> Result<AuthorizeStart, OAuthError>;
+    fn authorize_url(&self, provider: &str, csrf_state: &str) -> Result<AuthorizeStart, OAppError>;
 
     /// Exchanges an authorization code for the signer-in's profile.
     fn exchange_code(
@@ -56,5 +55,5 @@ pub trait OAuthIdentityProvider: Send + Sync {
         provider: &str,
         code: &str,
         pkce_verifier: &str,
-    ) -> BoxFut<'_, Result<OAuthProfile, OAuthError>>;
+    ) -> BoxFut<'_, Result<OAuthProfile, OAppError>>;
 }

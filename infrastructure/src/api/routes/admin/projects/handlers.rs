@@ -9,7 +9,7 @@ use super::super::handlers::CurrentAdmin;
 use super::dto::{AdminProjectDetailDto, AdminProjectDto};
 use crate::api::routes::app::auth::Problem;
 use crate::domain::admin::projects::AdminProjectsService;
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 
 const DEFAULT_LIMIT: i64 = 50;
 
@@ -20,7 +20,7 @@ fn require_projects_service(
 ) -> Result<Arc<AdminProjectsService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 /// `GET /admin/projects` — list all platform projects (newest first).
@@ -33,12 +33,7 @@ pub async fn list_projects(
     let (page, per_page, offset) = super::super::handlers::pagination(&query, DEFAULT_LIMIT);
 
     let (projects, total) = service
-        .list_projects(
-            query.get("search").map(String::as_str),
-            query.get("environment").map(String::as_str),
-            per_page,
-            offset,
-        )
+        .list_projects(query.get("search").map(String::as_str), per_page, offset)
         .await?;
 
     let dtos: Vec<AdminProjectDto> = projects.into_iter().map(AdminProjectDto::from).collect();
@@ -65,7 +60,7 @@ pub async fn get_project(
     let detail = service
         .get_project_detail(&project_id)
         .await?
-        .ok_or_else(|| AuthError::NotFound("project not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("project not found".into()))?;
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "project": AdminProjectDetailDto::from(detail) })),

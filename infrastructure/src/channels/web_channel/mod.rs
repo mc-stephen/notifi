@@ -7,9 +7,8 @@
 //! exclude it or the build fails.
 //!
 //! Fix checklist for whoever picks this up (M3 delivery milestone):
-//!   1. `cargo check -p web_channel` and migrate to the current web-push API.
-//!   2. Delete `--exclude web_channel` from AGENTS.md commands + CI.
-//!   3. Implement the `DeliveryProvider` port (see crates/domain-ports).
+//!   1. Verify against the current web-push API surface (`cargo check`).
+//!   2. Implement the `DeliveryProvider` port (see `src/ports/delivery.rs`).
 
 mod config;
 

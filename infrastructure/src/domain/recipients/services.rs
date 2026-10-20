@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use crate::domain::audit::AuditService;
 use crate::domain::audit::entities::{AuditAction, AuditEvent};
 use crate::domain::auth::entities::UserId;
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::recipients::entities::Recipient;
 use crate::ports::auth_store::StoreError;
 use crate::ports::recipients_store::RecipientsStore;
@@ -38,22 +38,22 @@ impl RecipientService {
         user_id: &str,
         name: &str,
         contacts: Value,
-    ) -> Result<Recipient, AuthError> {
+    ) -> Result<Recipient, AppError> {
         let name = name.trim();
         let user_id = user_id.trim();
 
         if name.is_empty() || name.len() > MAX_NAME {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "name is required (200 characters max)".to_string(),
             ));
         }
         if user_id.is_empty() || user_id.len() > MAX_USER_ID {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "user_id is required (200 characters max)".to_string(),
             ));
         }
         if !contacts.is_null() && !contacts.is_object() {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "contacts must be a JSON object".to_string(),
             ));
         }
@@ -96,7 +96,7 @@ impl RecipientService {
         search: Option<&str>,
         limit: i64,
         before: Option<&str>,
-    ) -> Result<Vec<Recipient>, AuthError> {
+    ) -> Result<Vec<Recipient>, AppError> {
         Ok(self
             .store
             .list(actor, project_id.as_ref(), search, limit, before)
@@ -113,7 +113,7 @@ impl RecipientService {
         actor: UserId,
         project_id: &str,
         recipient_id: &str,
-    ) -> Result<Option<Recipient>, AuthError> {
+    ) -> Result<Option<Recipient>, AppError> {
         Ok(self
             .store
             .get(actor, project_id, recipient_id)
@@ -134,19 +134,19 @@ impl RecipientService {
         recipient_id: &str,
         name: Option<&str>,
         contacts: Option<Value>,
-    ) -> Result<Recipient, AuthError> {
+    ) -> Result<Recipient, AppError> {
         let current = self
             .store
             .get(actor, project_id, recipient_id)
             .await
             .map_err(map_store_error)?
-            .ok_or_else(|| AuthError::NotFound("recipient not found".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("recipient not found".to_string()))?;
 
         let new_name = match name {
             Some(name) => {
                 let name = name.trim();
                 if name.is_empty() || name.len() > MAX_NAME {
-                    return Err(AuthError::Validation(
+                    return Err(AppError::Validation(
                         "name is required (200 characters max)".to_string(),
                     ));
                 }
@@ -158,7 +158,7 @@ impl RecipientService {
         let new_contacts = match contacts {
             Some(value) => {
                 if !value.is_null() && !value.is_object() {
-                    return Err(AuthError::Validation(
+                    return Err(AppError::Validation(
                         "contacts must be a JSON object".to_string(),
                     ));
                 }
@@ -172,7 +172,7 @@ impl RecipientService {
             .update(actor, project_id, recipient_id, &new_name, new_contacts)
             .await
             .map_err(map_store_error)?
-            .ok_or_else(|| AuthError::NotFound("recipient not found".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("recipient not found".to_string()))?;
 
         let recipient = Recipient::from(record);
 
@@ -199,7 +199,7 @@ impl RecipientService {
         actor: UserId,
         project_id: &str,
         recipient_id: &str,
-    ) -> Result<(), AuthError> {
+    ) -> Result<(), AppError> {
         let removed = self
             .store
             .remove(actor, project_id, recipient_id)
@@ -226,13 +226,13 @@ impl RecipientService {
     }
 }
 
-fn map_store_error(err: StoreError) -> AuthError {
+fn map_store_error(err: StoreError) -> AppError {
     match err {
         // Unlike the auth path, a conflict here is a duplicate brand user_id,
         // not a duplicate email.
-        StoreError::Conflict => AuthError::Conflict(
+        StoreError::Conflict => AppError::Conflict(
             "A recipient with this user_id already exists in this project.".to_string(),
         ),
-        StoreError::Storage(m) => AuthError::Storage(m),
+        StoreError::Storage(m) => AppError::Storage(m),
     }
 }

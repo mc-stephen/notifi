@@ -10,7 +10,7 @@ use axum::Json;
 use axum::extract::{Extension, Path, Query};
 use axum::http::StatusCode;
 
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::templates::TemplateService;
 use crate::ports::templates_store::AttachmentInput;
 
@@ -101,7 +101,7 @@ pub async fn get_template(
     let template = service
         .get(user.id, &project_id, &template_id)
         .await?
-        .ok_or_else(|| AuthError::NotFound("template not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("template not found".into()))?;
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "template": TemplateDto::from(template) })),

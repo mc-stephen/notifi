@@ -19,8 +19,9 @@ pub struct ProjectSummary {
     pub name: String,
     pub slug: String,
     pub description: Option<String>,
-    /// The project-level environment gate: `development` | `production`.
-    pub environment: String,
+    /// Project-level kill switch: `false` stops the project's delivery and
+    /// external traffic entirely.
+    pub active: bool,
     /// New members must have TOTP 2FA enabled when true.
     pub require_2fa: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -49,14 +50,14 @@ pub trait ProjectsStore: Send + Sync {
         description: Option<&str>,
     ) -> BoxFut<'_, Result<ProjectSummary, StoreError>>;
 
-    /// Updates the environment gate on a project the user owns or belongs
+    /// Flips the active switch on a project the user owns or belongs
     /// to; `None` when the project doesn't exist or isn't visible to them
     /// (indistinguishable on purpose — no resource enumeration).
-    fn set_project_environment(
+    fn set_project_active(
         &self,
         user_id: UserId,
         project_id: &str,
-        environment: &str,
+        active: bool,
     ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>>;
 
     /// The project plus the caller's access context; `None` when missing
@@ -139,7 +140,6 @@ pub trait ProjectsStore: Send + Sync {
     fn list_all_projects(
         &self,
         search: Option<&str>,
-        environment: Option<&str>,
         limit: i64,
         offset: i64,
     ) -> BoxFut<'_, Result<(Vec<AdminProjectRecord>, i64), StoreError>>;

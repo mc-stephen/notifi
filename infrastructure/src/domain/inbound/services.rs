@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::flows::{
     collect_http_steps, deliver_through_chain, fire_http_steps, provider_chain,
 };
@@ -52,10 +52,10 @@ impl InboundService {
         }
     }
 
-    fn map_store_error(e: StoreError) -> AuthError {
+    fn map_store_error(e: StoreError) -> AppError {
         match e {
-            StoreError::Conflict => AuthError::Conflict("conflicting trigger change".into()),
-            StoreError::Storage(m) => AuthError::Storage(m),
+            StoreError::Conflict => AppError::Conflict("conflicting trigger change".into()),
+            StoreError::Storage(m) => AppError::Storage(m),
         }
     }
 
@@ -88,15 +88,15 @@ impl InboundService {
     /// Fires the flow owning `token` with caller-wins/fallback resolution.
     /// Unknown tokens read as missing; delivery failures still return the
     /// recorded (failed) send, mirroring ad-hoc sends.
-    pub async fn fire(&self, token: &str, payload: InboundPayload) -> Result<Send, AuthError> {
+    pub async fn fire(&self, token: &str, payload: InboundPayload) -> Result<Send, AppError> {
         let record = self
             .tokens
             .lookup(token)
             .await
             .map_err(Self::map_store_error)?
-            .ok_or_else(|| AuthError::NotFound("unknown webhook trigger".into()))?;
+            .ok_or_else(|| AppError::NotFound("unknown webhook trigger".into()))?;
         let node = webhook_node_data(&record.flow_definition, &record.node_id)
-            .ok_or_else(|| AuthError::NotFound("webhook trigger no longer configured".into()))?;
+            .ok_or_else(|| AppError::NotFound("webhook trigger no longer configured".into()))?;
         let project_id = record.project_id.clone();
 
         // Template: caller pick wins, else the node's pick, then render.
@@ -109,11 +109,9 @@ impl InboundService {
                 .await
                 .map_err(Self::map_store_error)?
                 .filter(|t| t.project_id == project_id)
-                .ok_or_else(|| {
-                    AuthError::Validation("template not found in this project".into())
-                })?;
+                .ok_or_else(|| AppError::Validation("template not found in this project".into()))?;
             let content = render_template_content(&template.content).ok_or_else(|| {
-                AuthError::Validation("template covers no renderable channels".into())
+                AppError::Validation("template covers no renderable channels".into())
             })?;
             rendered = Some((content.channel, content.title, content.body));
         }
@@ -124,15 +122,15 @@ impl InboundService {
             .filter(|c| !c.is_empty())
             .or(node.channel)
             .or_else(|| rendered.as_ref().map(|r| r.0.clone()))
-            .ok_or_else(|| AuthError::Validation("channel is required".into()))?;
+            .ok_or_else(|| AppError::Validation("channel is required".into()))?;
         let recipients = payload.recipients.unwrap_or(node.recipients);
         if recipients.is_empty() {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "at least one recipient is required".into(),
             ));
         }
         if recipients.len() > MAX_RECIPIENTS {
-            return Err(AuthError::Validation(format!(
+            return Err(AppError::Validation(format!(
                 "at most {MAX_RECIPIENTS} recipients per request"
             )));
         }
@@ -141,7 +139,7 @@ impl InboundService {
             .map(|t| t.trim().to_string())
             .filter(|t| !t.is_empty())
             .or_else(|| rendered.as_ref().map(|r| r.1.clone()))
-            .ok_or_else(|| AuthError::Validation("title is required".into()))?;
+            .ok_or_else(|| AppError::Validation("title is required".into()))?;
         let body = payload.body.unwrap_or_default().trim().to_string();
         let body = if body.is_empty() {
             rendered.as_ref().map(|r| r.2.clone()).unwrap_or_default()

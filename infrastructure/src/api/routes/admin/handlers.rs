@@ -21,7 +21,7 @@ use super::dto::{
 use crate::api::routes::app::auth::middleware::{ADMIN_SESSION_COOKIE, Problem};
 use crate::domain::admin::AdminService;
 use crate::domain::admin::entities::{AdminUser, AdminUserId};
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 
 type MaybeAdminService = Option<Extension<Arc<AdminService>>>;
 
@@ -30,7 +30,7 @@ const DEFAULT_ADMIN_LIMIT: i64 = 50;
 fn require_admin_service(extension: MaybeAdminService) -> Result<Arc<AdminService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 /// Parses `?page=` / `?per_page=` (with legacy `?limit=` as the per-page
@@ -71,22 +71,20 @@ where
             .get::<Arc<AdminService>>()
             .cloned()
             .ok_or_else(|| {
-                crate::api::routes::app::auth::middleware::problem_response(
-                    AuthError::NotConfigured,
-                )
+                crate::api::routes::app::auth::middleware::problem_response(AppError::NotConfigured)
             })?;
 
         let jar = CookieJar::from_request_parts(parts, _state)
             .await
             .map_err(|_| {
-                crate::api::routes::app::auth::middleware::problem_response(AuthError::Unauthorized)
+                crate::api::routes::app::auth::middleware::problem_response(AppError::Unauthorized)
             })?;
 
         let raw_cookie = jar
             .get(ADMIN_SESSION_COOKIE)
             .map(|cookie| cookie.value().to_string())
             .ok_or_else(|| {
-                crate::api::routes::app::auth::middleware::problem_response(AuthError::Unauthorized)
+                crate::api::routes::app::auth::middleware::problem_response(AppError::Unauthorized)
             })?;
 
         let admin = service
@@ -99,7 +97,7 @@ where
 }
 
 /// Generates a random secret bytes and returns (secret_bytes, base32_string).
-fn generate_totp_secret() -> Result<(Vec<u8>, String), AuthError> {
+fn generate_totp_secret() -> Result<(Vec<u8>, String), AppError> {
     let mut bytes = vec![0u8; 20];
     use rand::RngCore;
     rand::rng().fill_bytes(&mut bytes);
@@ -110,18 +108,18 @@ fn generate_totp_secret() -> Result<(Vec<u8>, String), AuthError> {
 }
 
 /// Builds a TOTP instance from a base32 secret string.
-fn build_totp_from_base32(base32: &str) -> Result<TOTP, AuthError> {
+fn build_totp_from_base32(base32: &str) -> Result<TOTP, AppError> {
     let secret = Secret::Encoded(base32.to_string());
     let secret_raw = secret
         .to_raw()
-        .map_err(|e| AuthError::Storage(format!("invalid TOTP secret: {e}")))?;
+        .map_err(|e| AppError::Storage(format!("invalid TOTP secret: {e}")))?;
     let rfc = Rfc6238::with_defaults(
         secret_raw
             .to_bytes()
-            .map_err(|e| AuthError::Storage(format!("TOTP secret conversion failed: {e}")))?,
+            .map_err(|e| AppError::Storage(format!("TOTP secret conversion failed: {e}")))?,
     )
-    .map_err(|e| AuthError::Storage(format!("TOTP config failed: {e}")))?;
-    TOTP::from_rfc6238(rfc).map_err(|e| AuthError::Storage(format!("TOTP creation failed: {e}")))
+    .map_err(|e| AppError::Storage(format!("TOTP config failed: {e}")))?;
+    TOTP::from_rfc6238(rfc).map_err(|e| AppError::Storage(format!("TOTP creation failed: {e}")))
 }
 
 /// `GET /admin/status` — returns whether any admin user exists.
@@ -143,7 +141,7 @@ pub async fn bootstrap(
 
     // Ensure no admin already exists
     if service.admin_exists().await.map_err(Problem::from)? {
-        return Err(AuthError::Validation(
+        return Err(AppError::Validation(
             "An admin account already exists. Use the login flow instead.".to_string(),
         )
         .into());
@@ -251,17 +249,17 @@ pub async fn login(
         let totp_secret = admin
             .totp_secret
             .as_ref()
-            .ok_or_else(|| AuthError::Validation("TOTP has not been set up yet".to_string()))?;
+            .ok_or_else(|| AppError::Validation("TOTP has not been set up yet".to_string()))?;
         let totp = build_totp_from_base32(totp_secret)?;
         let code = request
             .totp_code
             .as_deref()
-            .ok_or_else(|| AuthError::Validation("TOTP code required".to_string()))?;
+            .ok_or_else(|| AppError::Validation("TOTP code required".to_string()))?;
         if !totp
             .check_current(code)
-            .map_err(|e| AuthError::Storage(format!("TOTP verification failed: {e}")))?
+            .map_err(|e| AppError::Storage(format!("TOTP verification failed: {e}")))?
         {
-            return Err(AuthError::TotpInvalid.into());
+            return Err(AppError::TotpInvalid.into());
         }
     }
 
@@ -339,15 +337,15 @@ pub async fn totp_verify(
     let totp_secret = admin
         .totp_secret
         .as_ref()
-        .ok_or_else(|| AuthError::Validation("TOTP has not been set up yet".to_string()))?;
+        .ok_or_else(|| AppError::Validation("TOTP has not been set up yet".to_string()))?;
 
     let totp = build_totp_from_base32(totp_secret)?;
 
     if !totp
         .check_current(&request.code)
-        .map_err(|e| AuthError::Storage(format!("TOTP verification failed: {e}")))?
+        .map_err(|e| AppError::Storage(format!("TOTP verification failed: {e}")))?
     {
-        return Err(AuthError::TotpInvalid.into());
+        return Err(AppError::TotpInvalid.into());
     }
 
     service.enable_totp(admin.id).await.map_err(Problem::from)?;
@@ -508,7 +506,7 @@ pub async fn set_admin_status(
         "suspended" => true,
         "active" => false,
         _ => {
-            return Err(AuthError::Validation(
+            return Err(AppError::Validation(
                 "invalid status (expected active or suspended)".to_string(),
             )
             .into());
@@ -524,7 +522,7 @@ pub async fn set_admin_status(
 fn parse_admin_id(raw: &str) -> Result<AdminUserId, Problem> {
     use std::str::FromStr;
     AdminUserId::from_str(raw)
-        .map_err(|_| AuthError::Validation("invalid admin id".to_string()).into())
+        .map_err(|_| AppError::Validation("invalid admin id".to_string()).into())
 }
 
 /// Login request body.

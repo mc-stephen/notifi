@@ -12,7 +12,7 @@ use axum::http::StatusCode;
 
 use super::dto::{InboundFireRequest, SendDto, SendRequest};
 use crate::api::routes::app::auth::{CurrentUser, Problem};
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::inbound::{InboundPayload, InboundService};
 use crate::domain::sends::{SendInput, SendService};
 
@@ -21,7 +21,7 @@ type MaybeSendService = Option<Extension<Arc<SendService>>>;
 fn require_service(extension: MaybeSendService) -> Result<Arc<SendService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 /// `POST /v1/notifications` — record the send, execute the default flow
@@ -56,7 +56,7 @@ type MaybeInboundService = Option<Extension<Arc<InboundService>>>;
 fn require_inbound(extension: MaybeInboundService) -> Result<Arc<InboundService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 /// `POST /v1/hooks/{token}` — inbound webhook fire. The token in the URL

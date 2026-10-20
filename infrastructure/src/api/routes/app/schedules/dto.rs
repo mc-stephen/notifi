@@ -27,6 +27,7 @@ pub struct ScheduleDto {
     pub body: String,
     pub recipients: Vec<String>,
     pub active: bool,
+    pub archived_at: Option<DateTime<Utc>>,
     pub next_run_at: Option<DateTime<Utc>>,
     pub last_run_at: Option<DateTime<Utc>>,
     pub last_status: Option<String>,
@@ -59,6 +60,7 @@ impl ScheduleDto {
             body: s.body,
             recipients: s.recipients,
             active: s.active,
+            archived_at: s.archived_at,
             next_run_at: s.next_run_at,
             last_run_at: s.last_run_at,
             last_status: s.last_status,
@@ -82,7 +84,6 @@ impl From<Schedule> for ScheduleDto {
 pub struct CreateScheduleRequest {
     pub project_id: String,
     pub name: String,
-    pub flow_id: String,
     pub kind: String,
     pub run_at: Option<DateTime<Utc>>,
     pub interval_secs: Option<i64>,
@@ -101,7 +102,6 @@ pub struct CreateScheduleRequest {
 pub struct UpdateScheduleRequest {
     pub project_id: String,
     pub name: Option<String>,
-    pub flow_id: Option<String>,
     pub kind: Option<String>,
     pub run_at: Option<Option<DateTime<Utc>>>,
     pub interval_secs: Option<Option<i64>>,
@@ -114,6 +114,8 @@ pub struct UpdateScheduleRequest {
     pub body: Option<String>,
     pub recipients: Option<Vec<String>>,
     pub active: Option<bool>,
+    /// `true` archives (keeps the flow, stops runs), `false` restores.
+    pub archived: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

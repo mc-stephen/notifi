@@ -9,7 +9,7 @@ use axum::http::StatusCode;
 
 use super::super::auth::{CurrentUser, Problem};
 use super::dto::SendHistoryDto;
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::sends::SendService;
 
 type MaybeSendService = Option<Extension<Arc<SendService>>>;
@@ -17,7 +17,7 @@ type MaybeSendService = Option<Extension<Arc<SendService>>>;
 fn require_service(extension: MaybeSendService) -> Result<Arc<SendService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 /// `GET /app/sends?project_id=&limit=` — newest-first sends (delivery
@@ -28,9 +28,9 @@ pub async fn list_sends(
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let service = require_service(service)?;
-    let project_id = query.get("project_id").ok_or_else(|| {
-        Problem::from(AuthError::Validation("project_id is required".to_string()))
-    })?;
+    let project_id = query
+        .get("project_id")
+        .ok_or_else(|| Problem::from(AppError::Validation("project_id is required".to_string())))?;
     let limit = query
         .get("limit")
         .and_then(|v| v.parse::<i64>().ok())

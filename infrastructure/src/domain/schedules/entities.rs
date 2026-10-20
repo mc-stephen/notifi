@@ -5,6 +5,12 @@
 //! of day). No cron — the three shapes cover "run this flow at X" without
 //! new interaction models. Weekly times are interpreted in the schedule's
 //! stored timezone (the creator's local zone).
+//!
+//! Ownership: a schedule creates its flow at birth (see
+//! [`seed_definition`]) and deletes it with itself; flows are never
+//! assigned to schedules from the outside. `archived_at` is the
+//! non-destructive alternative to deletion — archived schedules stop
+//! claiming runs but keep their flow bound and restorable.
 
 use std::str::FromStr;
 
@@ -76,6 +82,9 @@ pub struct Schedule {
     pub body: String,
     pub recipients: Vec<String>,
     pub active: bool,
+    /// Non-destructive retirement: `None` runs; `Some` parks the schedule
+    /// (no claiming) with the flow still bound and restorable.
+    pub archived_at: Option<DateTime<Utc>>,
     pub next_run_at: Option<DateTime<Utc>>,
     pub last_run_at: Option<DateTime<Utc>>,
     pub last_status: Option<String>,
@@ -88,11 +97,11 @@ pub struct Schedule {
 /// Input for creating a schedule. `run_at` is required for `once`,
 /// `interval_secs` for `recurring`, `days` + `run_time` for `weekly`.
 /// `template_id` selects a message template; without one the legacy
-/// payload fields apply.
+/// payload fields apply. The flow is created here — callers never assign
+/// an existing one.
 #[derive(Debug, Clone)]
 pub struct ScheduleInput {
     pub name: String,
-    pub flow_id: String,
     pub kind: ScheduleKind,
     pub run_at: Option<DateTime<Utc>>,
     pub interval_secs: Option<i64>,
@@ -104,6 +113,24 @@ pub struct ScheduleInput {
     pub title: String,
     pub body: String,
     pub recipients: Vec<String>,
+}
+
+/// The definition born with a schedule's flow: one locked schedule
+/// trigger node, nothing else. The builder wires steps onto it; the
+/// trigger itself is owned data (never deletable, not in the palette).
+pub fn seed_definition() -> serde_json::Value {
+    serde_json::json!({
+        "version": 1,
+        "nodes": [
+            {
+                "id": "trigger",
+                "type": "trigger",
+                "position": {"x": 0, "y": 0},
+                "data": {"kind": "schedule"}
+            }
+        ],
+        "edges": []
+    })
 }
 
 /// First fire time for a fresh schedule.
@@ -267,46 +294,71 @@ fn text_field(channel: &serde_json::Value, key: &str) -> String {
         .to_string()
 }
 
+/// (channel, title key, body key, body fallback key) — render preference
+/// order shared by the template render helpers.
+const RENDER_ORDER: [(&str, &str, &str, &str); 8] = [
+    ("email", "subject", "text", "html"),
+    ("sms", "", "sms", ""),
+    ("whatsapp", "", "text", ""),
+    ("telegram", "", "text", ""),
+    ("slack", "", "text", ""),
+    ("push", "title", "body", ""),
+    ("in_app", "title", "body", ""),
+    ("webhook", "", "payload", ""),
+];
+
 /// Renders a template's per-channel content map (`{channel: {fields}}`)
 /// into one sendable channel + title + body. Prefers email, then short
 /// message channels, then push/in-app, then webhook payloads. `None`
 /// when the template covers no channels.
 pub fn render_template_content(content: &serde_json::Value) -> Option<RenderedContent> {
-    let map = content.as_object()?;
-    // (channel, title key, body key, body fallback key)
-    const ORDER: [(&str, &str, &str, &str); 8] = [
-        ("email", "subject", "text", "html"),
-        ("sms", "", "sms", ""),
-        ("whatsapp", "", "text", ""),
-        ("telegram", "", "text", ""),
-        ("slack", "", "text", ""),
-        ("push", "title", "body", ""),
-        ("in_app", "title", "body", ""),
-        ("webhook", "", "payload", ""),
-    ];
-    for (channel, title_key, body_key, fallback_key) in ORDER {
-        let entry = map.get(channel)?;
-        let mut body = text_field(entry, body_key);
-        if body.is_empty() && !fallback_key.is_empty() {
-            body = text_field(entry, fallback_key);
+    for (channel, ..) in RENDER_ORDER {
+        if let Some(rendered) = render_channel_content(content, channel) {
+            return Some(rendered);
         }
-        // Skip channels with no body rather than failing the row: a
-        // half-filled channel must not shadow a complete one below it.
-        if body.is_empty() {
-            continue;
-        }
-        let title = if title_key.is_empty() {
-            String::new()
-        } else {
-            text_field(entry, title_key)
-        };
-        return Some(RenderedContent {
-            channel: channel.to_string(),
-            title,
-            body,
-        });
     }
     None
+}
+
+/// Renders ONE channel of a template's content map. `None` when the
+/// template has no usable content for that channel (absent, or no body).
+pub fn render_channel_content(
+    content: &serde_json::Value,
+    channel: &str,
+) -> Option<RenderedContent> {
+    let map = content.as_object()?;
+    let (_, title_key, body_key, fallback_key) =
+        *RENDER_ORDER.iter().find(|(c, ..)| *c == channel)?;
+    let entry = map.get(channel)?;
+    let mut body = text_field(entry, body_key);
+    if body.is_empty() && !fallback_key.is_empty() {
+        body = text_field(entry, fallback_key);
+    }
+    // A half-filled channel is not usable content.
+    if body.is_empty() {
+        return None;
+    }
+    let title = if title_key.is_empty() {
+        String::new()
+    } else {
+        text_field(entry, title_key)
+    };
+    Some(RenderedContent {
+        channel: channel.to_string(),
+        title,
+        body,
+    })
+}
+
+/// The channels a template has usable content for, in render preference
+/// order — the honest list a compose UI can offer.
+pub fn template_channels(content: &serde_json::Value) -> Vec<String> {
+    RENDER_ORDER
+        .iter()
+        .map(|(c, ..)| *c)
+        .filter(|c| render_channel_content(content, c).is_some())
+        .map(str::to_string)
+        .collect()
 }
 
 #[cfg(test)]

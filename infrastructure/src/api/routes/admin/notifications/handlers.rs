@@ -11,7 +11,7 @@ use super::dto::{AudienceRequest, BroadcastCreatedDto, BroadcastDto, BroadcastRe
 use crate::api::routes::app::auth::Problem;
 use crate::domain::admin::notifications::{AdminNotificationsService, Audience, BroadcastInput};
 use crate::domain::auth::entities::UserId;
-use crate::domain::auth::errors::AuthError;
+use crate::domain::error::AppError;
 use crate::domain::notifications::entities::NotificationType;
 use crate::ports::notifications_store::BroadcastStatus;
 
@@ -24,7 +24,7 @@ fn require_notifications_service(
 ) -> Result<Arc<AdminNotificationsService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 fn parse_audience(request: &AudienceRequest) -> Result<Audience, Problem> {
@@ -32,7 +32,7 @@ fn parse_audience(request: &AudienceRequest) -> Result<Audience, Problem> {
         "all" => Ok(Audience::All),
         "users" => {
             if request.user_ids.is_empty() {
-                return Err(AuthError::Validation(
+                return Err(AppError::Validation(
                     "audience.users requires at least one user id".to_string(),
                 )
                 .into());
@@ -42,7 +42,7 @@ fn parse_audience(request: &AudienceRequest) -> Result<Audience, Problem> {
                 .iter()
                 .map(|raw| {
                     UserId::from_str(raw).map_err(|_| {
-                        Problem::from(AuthError::Validation(format!("invalid user id '{raw}'")))
+                        Problem::from(AppError::Validation(format!("invalid user id '{raw}'")))
                     })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
@@ -50,14 +50,14 @@ fn parse_audience(request: &AudienceRequest) -> Result<Audience, Problem> {
         }
         "projects" => {
             if request.project_ids.is_empty() {
-                return Err(AuthError::Validation(
+                return Err(AppError::Validation(
                     "audience.projects requires at least one project id".to_string(),
                 )
                 .into());
             }
             Ok(Audience::Projects(request.project_ids.clone()))
         }
-        other => Err(AuthError::Validation(format!(
+        other => Err(AppError::Validation(format!(
             "invalid audience kind '{other}' (expected all, users, or projects)"
         ))
         .into()),
@@ -73,7 +73,7 @@ pub async fn broadcast(
     let service = require_notifications_service(service)?;
     let notification_type =
         NotificationType::from_str(body.notification_type.trim()).map_err(|_| {
-            Problem::from(AuthError::Validation(
+            Problem::from(AppError::Validation(
                 "invalid notification type".to_string(),
             ))
         })?;
@@ -109,7 +109,7 @@ pub async fn list_broadcasts(
         .get("status")
         .map(|s| {
             BroadcastStatus::from_str(s.trim()).map_err(|_| {
-                Problem::from(AuthError::Validation(
+                Problem::from(AppError::Validation(
                     "invalid status (expected scheduled, sending, sent, or cancelled)".to_string(),
                 ))
             })
@@ -130,7 +130,7 @@ pub async fn list_broadcasts(
         let (_, stats) = service
             .detail(&broadcast.id)
             .await?
-            .ok_or_else(|| AuthError::NotFound("broadcast not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("broadcast not found".into()))?;
         dtos.push(BroadcastDto::with_stats(broadcast, stats));
     }
 
@@ -156,7 +156,7 @@ pub async fn get_broadcast(
     let (broadcast, stats) = service
         .detail(&broadcast_id)
         .await?
-        .ok_or_else(|| AuthError::NotFound("broadcast not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("broadcast not found".into()))?;
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "broadcast": BroadcastDto::with_stats(broadcast, stats) })),

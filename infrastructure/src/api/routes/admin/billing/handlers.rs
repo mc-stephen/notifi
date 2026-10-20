@@ -8,15 +8,15 @@ use axum::http::StatusCode;
 use super::super::handlers::CurrentAdmin;
 use super::dto::{AdminPlanDto, CreatePlanRequest, PlanSubscriberDto, UpdatePlanRequest};
 use crate::api::routes::app::auth::Problem;
-use crate::domain::auth::errors::AuthError;
 use crate::domain::billing::BillingService;
+use crate::domain::error::AppError;
 
 type MaybeBillingService = Option<Extension<Arc<BillingService>>>;
 
 fn require_service(extension: MaybeBillingService) -> Result<Arc<BillingService>, Problem> {
     extension
         .map(|Extension(service)| service)
-        .ok_or_else(|| AuthError::NotConfigured.into())
+        .ok_or_else(|| AppError::NotConfigured.into())
 }
 
 /// `GET /admin/billing/plans` — every plan with live subscriber counts.
@@ -61,7 +61,7 @@ pub async fn update_plan(
     let stored = service
         .get_plan(&plan_id)
         .await?
-        .ok_or_else(|| AuthError::NotFound("plan not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("plan not found".into()))?;
     let plan = service
         .update_plan(&admin, &plan_id, body.apply_to(&stored))
         .await?;
