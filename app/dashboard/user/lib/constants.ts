@@ -1,0 +1,449 @@
+import type {
+  NotificationChannel,
+  NotificationStatus,
+  NotificationPriority,
+  Role,
+  Plan,
+  HealthStatus,
+  DevicePlatform,
+  InAppNotificationType,
+  NotificationSettingsCategory,
+} from "./types";
+import {
+  LayoutDashboard,
+  Bell,
+  Users,
+  FileText,
+  Megaphone,
+  Clock,
+  Workflow,
+  Webhook,
+  BarChart3,
+  KeyRound,
+  Package,
+  ScrollText,
+  UserCog,
+  CreditCard,
+  Link,
+  Settings,
+  HelpCircle,
+  type LucideIcon,
+} from "lucide-react";
+
+export type NavItem = {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  badge?: string;
+};
+
+export type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+export const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Core",
+    items: [
+      { label: "Dashboard", href: "/", icon: LayoutDashboard },
+      { label: "Deliveries", href: "/deliveries", icon: Bell },
+      { label: "Recipients", href: "/recipients", icon: Users },
+      { label: "Templates", href: "/templates", icon: FileText },
+    ],
+  },
+  {
+    label: "Campaigns",
+    items: [
+      { label: "Campaigns", href: "/campaigns", icon: Megaphone },
+      { label: "Schedules", href: "/schedules", icon: Clock },
+    ],
+  },
+  {
+    label: "Flows",
+    items: [
+      { label: "Flows", href: "/flows", icon: Workflow },
+      { label: "Webhooks", href: "/webhooks", icon: Webhook },
+      { label: "Providers", href: "/providers", icon: Link },
+    ],
+  },
+  {
+    label: "Insights",
+    items: [
+      { label: "Analytics", href: "/analytics", icon: BarChart3 },
+      { label: "Logs", href: "/logs", icon: ScrollText },
+    ],
+  },
+  {
+    label: "Connect",
+    items: [
+      { label: "API Keys", href: "/api-keys", icon: KeyRound },
+      { label: "SDKs", href: "/sdk", icon: Package },
+    ],
+  },
+  {
+    label: "Workspace",
+    items: [
+      { label: "Team", href: "/team", icon: UserCog },
+      { label: "Billing", href: "/billing", icon: CreditCard },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { label: "Settings", href: "/settings", icon: Settings },
+      { label: "Support", href: "/support", icon: HelpCircle },
+    ],
+  },
+];
+
+export const CHANNEL_LABELS: Record<NotificationChannel, string> = {
+  email: "Email",
+  sms: "SMS",
+  "push-android": "Android Push",
+  "push-ios": "Apple Push",
+  "web-push": "Web Push",
+  linux: "Linux",
+  macos: "macOS",
+  rcs: "RCS",
+  whatsapp: "WhatsApp",
+  slack: "Slack",
+  discord: "Discord",
+  teams: "Microsoft Teams",
+  telegram: "Telegram",
+  webhook: "Webhook",
+};
+
+export const CHANNEL_ICONS: Record<NotificationChannel, string> = {
+  email: "Mail",
+  sms: "MessageSquare",
+  "push-android": "Smartphone",
+  "push-ios": "Smartphone",
+  "web-push": "Globe",
+  linux: "Monitor",
+  macos: "Apple",
+  rcs: "MessageCircle",
+  whatsapp: "Phone",
+  slack: "Hash",
+  discord: "Gamepad2",
+  teams: "Users",
+  telegram: "Send",
+  webhook: "Webhook",
+};
+
+export const STATUS_LABELS: Record<NotificationStatus, string> = {
+  queued: "Queued",
+  processing: "Processing",
+  sent: "Sent",
+  delivered: "Delivered",
+  opened: "Opened",
+  clicked: "Clicked",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  retrying: "Retrying",
+};
+
+export const STATUS_COLORS: Record<NotificationStatus, string> = {
+  queued: "bg-info/15 text-info border-info/20",
+  processing: "bg-warning/15 text-warning border-warning/20",
+  sent: "bg-info/15 text-info border-info/20",
+  delivered: "bg-success/15 text-success border-success/20",
+  opened: "bg-success/15 text-success border-success/20",
+  clicked: "bg-success/15 text-success border-success/20",
+  failed: "bg-destructive/15 text-destructive border-destructive/20",
+  cancelled: "bg-muted text-muted-foreground border-border",
+  retrying: "bg-warning/15 text-warning border-warning/20",
+};
+
+export const PRIORITY_LABELS: Record<NotificationPriority, string> = {
+  low: "Low",
+  normal: "Normal",
+  high: "High",
+  urgent: "Urgent",
+};
+
+export const PRIORITY_COLORS: Record<NotificationPriority, string> = {
+  low: "bg-muted text-muted-foreground border-border",
+  normal: "bg-info/15 text-info border-info/20",
+  high: "bg-warning/15 text-warning border-warning/20",
+  urgent: "bg-destructive/15 text-destructive border-destructive/20",
+};
+
+export const ROLE_LABELS: Record<Role, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  developer: "Developer",
+  viewer: "Viewer",
+  billing: "Billing",
+};
+
+export const ROLE_COLORS: Record<Role, string> = {
+  owner: "bg-primary/15 text-primary border-primary/20",
+  admin: "bg-info/15 text-info border-info/20",
+  developer: "bg-success/15 text-success border-success/20",
+  viewer: "bg-muted text-muted-foreground border-border",
+  billing: "bg-warning/15 text-warning border-warning/20",
+};
+
+export const PLAN_LABELS: Record<Plan, string> = {
+  free: "Free",
+  starter: "Starter",
+  pro: "Pro",
+  enterprise: "Enterprise",
+};
+
+export const NOTIFICATION_SETTINGS: NotificationSettingsCategory[] = [
+  {
+    id: "team",
+    label: "Team",
+    description: "Changes to project membership and roles.",
+    settings: [
+      { key: "team_add", label: "Team member added", description: "When someone is added to this project.", email: true, inApp: true },
+      { key: "team_remove", label: "Team member removed", description: "When someone is removed from this project.", email: true, inApp: true },
+      { key: "team_role_change", label: "Role changed", description: "When a member's role is updated.", email: false, inApp: true },
+    ],
+  },
+  {
+    id: "integrations",
+    label: "Integrations",
+    description: "Channel providers and connections.",
+    settings: [
+      { key: "provider_add", label: "Provider added", description: "When a new channel provider is connected.", email: true, inApp: true },
+      { key: "provider_delete", label: "Provider removed", description: "When a channel provider is disconnected.", email: true, inApp: true },
+    ],
+  },
+  {
+    id: "security",
+    label: "Security",
+    description: "API keys and access changes.",
+    settings: [
+      { key: "api_key_created", label: "API key created", description: "When a new API key is generated.", email: true, inApp: true },
+      { key: "api_key_revoked", label: "API key revoked", description: "When an API key is revoked.", email: true, inApp: true },
+    ],
+  },
+  {
+    id: "projects",
+    label: "Projects",
+    description: "Project lifecycle events.",
+    settings: [
+      { key: "project_created", label: "Project created", description: "When a new project is created.", email: true, inApp: true },
+    ],
+  },
+  {
+    id: "billing",
+    label: "Billing",
+    description: "Invoices, payments, and plan changes.",
+    settings: [
+      { key: "billing_invoice_paid", label: "Invoice paid", description: "When an invoice is paid successfully.", email: true, inApp: true },
+      { key: "billing_payment_failed", label: "Payment failed", description: "When a payment fails.", email: true, inApp: true },
+      { key: "billing_plan_changed", label: "Plan changed", description: "When the workspace plan changes.", email: true, inApp: true },
+    ],
+  },
+];
+
+export const CURRENT_USER_ROLE: Role = "admin";
+
+export const HEALTH_LABELS: Record<HealthStatus, string> = {
+  healthy: "Healthy",
+  degraded: "Degraded",
+  down: "Down",
+  unknown: "Unknown",
+};
+
+export const HEALTH_COLORS: Record<HealthStatus, string> = {
+  healthy: "bg-success",
+  degraded: "bg-warning",
+  down: "bg-destructive",
+  unknown: "bg-muted-foreground",
+};
+
+export const DEVICE_PLATFORM_LABELS: Record<DevicePlatform, string> = {
+  android: "Android",
+  ios: "iOS",
+  ipados: "iPadOS",
+  macos: "macOS",
+  linux: "Linux",
+  windows: "Windows",
+  browser: "Browser",
+};
+
+export const NOTIFICATION_TYPE_LABELS: Record<InAppNotificationType, string> = {
+  team_add: "Team member added",
+  team_remove: "Team member removed",
+  role_change: "Role changed",
+  provider_add: "Provider connected",
+  provider_delete: "Provider disconnected",
+  api_key_created: "API key created",
+  api_key_revoked: "API key revoked",
+  project_created: "Project created",
+  billing_change: "Plan updated",
+  system: "System event",
+  new_login: "New sign-in",
+  marketing: "Marketing",
+  billing: "Billing",
+  welcome: "Welcome",
+  update: "Product update",
+};
+
+export const NOTIFICATION_TYPE_COLORS: Record<InAppNotificationType, string> = {
+  team_add: "bg-success/10 text-success",
+  team_remove: "bg-destructive/10 text-destructive",
+  role_change: "bg-info/10 text-info",
+  provider_add: "bg-primary/10 text-primary",
+  provider_delete: "bg-destructive/10 text-destructive",
+  api_key_created: "bg-warning/10 text-warning",
+  api_key_revoked: "bg-muted-foreground/10 text-muted-foreground",
+  project_created: "bg-info/10 text-info",
+  billing_change: "bg-warning/10 text-warning",
+  system: "bg-muted text-muted-foreground",
+  new_login: "bg-info/10 text-info",
+  marketing: "bg-primary/10 text-primary",
+  billing: "bg-warning/10 text-warning",
+  welcome: "bg-success/10 text-success",
+  update: "bg-info/10 text-info",
+};
+
+export const NOTIFICATION_TYPE_ICONS: Record<InAppNotificationType, string> = {
+  team_add: "UserPlus",
+  team_remove: "UserMinus",
+  role_change: "UserCog",
+  provider_add: "Link",
+  provider_delete: "Link2Off",
+  api_key_created: "KeyRound",
+  api_key_revoked: "KeyRound",
+  project_created: "FolderPlus",
+  billing_change: "CreditCard",
+  system: "Check",
+  new_login: "LogIn",
+  marketing: "Megaphone",
+  billing: "CreditCard",
+  welcome: "Sparkles",
+  update: "Rocket",
+};
+
+export const TABLE_PAGE_SIZES = [10, 20, 50, 100] as const;
+export const DEFAULT_PAGE_SIZE = 20;
+
+export type WebhookEventGroup = {
+  label: string;
+  events: { key: string; label: string }[];
+};
+export const WEBHOOK_EVENTS: WebhookEventGroup[] = [
+  {
+    label: "Notifications",
+    events: [
+      { key: "notification.sent", label: "Sent" },
+      { key: "notification.delivered", label: "Delivered" },
+      { key: "notification.opened", label: "Opened" },
+      { key: "notification.clicked", label: "Clicked" },
+      { key: "notification.failed", label: "Failed" },
+      { key: "notification.retried", label: "Retried" },
+    ],
+  },
+  {
+    label: "Campaigns",
+    events: [
+      { key: "campaign.started", label: "Started" },
+      { key: "campaign.paused", label: "Paused" },
+      { key: "campaign.completed", label: "Completed" },
+      { key: "campaign.cancelled", label: "Cancelled" },
+    ],
+  },
+  {
+    label: "Providers",
+    events: [
+      { key: "provider.connected", label: "Connected" },
+      { key: "provider.disconnected", label: "Disconnected" },
+    ],
+  },
+  {
+    label: "API Keys",
+    events: [
+      { key: "api_key.created", label: "Created" },
+      { key: "api_key.revoked", label: "Revoked" },
+      { key: "api_key.ip_allowed", label: "IP allowed" },
+      { key: "api_key.ip_removed", label: "IP removed" },
+    ],
+  },
+  {
+    label: "Teams",
+    events: [
+      { key: "team.member_added", label: "Member added" },
+      { key: "team.member_invited", label: "Member invited" },
+      { key: "team.member_removed", label: "Member removed" },
+      { key: "team.role_changed", label: "Role changed" },
+    ],
+  },
+  {
+    label: "Recipients",
+    events: [
+      { key: "recipient.created", label: "Created" },
+      { key: "recipient.updated", label: "Updated" },
+      { key: "recipient.deleted", label: "Deleted" },
+    ],
+  },
+  {
+    label: "Templates",
+    events: [
+      { key: "template.created", label: "Created" },
+      { key: "template.updated", label: "Updated" },
+      { key: "template.deleted", label: "Deleted" },
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Providers page: curated "Recommended" picks + one-line blurbs.
+// The backend registry carries no descriptions or recommended markers,
+// so both live here, keyed by `${channel_id}:${provider_id}`.
+// ---------------------------------------------------------------------------
+
+export type RecommendedProvider = {
+  channel_id: string;
+  provider_id: string;
+};
+
+export const RECOMMENDED_PROVIDERS: RecommendedProvider[] = [
+  { channel_id: "email", provider_id: "sendgrid" },
+  { channel_id: "sms", provider_id: "twilio" },
+  { channel_id: "push", provider_id: "fcm" },
+  { channel_id: "chat", provider_id: "whatsapp_business" },
+];
+
+export const PROVIDER_BLURBS: Record<string, string> = {
+  "email:smtp": "Send email through any SMTP server.",
+  "email:sendgrid": "Send transactional email at scale.",
+  "email:resend": "Simple email API for developers.",
+  "email:aws_ses": "Cost-effective bulk email sending.",
+  "email:postmark": "Fast, reliable transactional email.",
+  "email:mailgun": "Email delivery for developers.",
+  "email:brevo": "Email campaigns and transactional sends.",
+  "sms:twilio": "Send SMS to users worldwide.",
+  "sms:termii": "SMS and messaging for Africa.",
+  "sms:africas_talking": "SMS and voice across Africa.",
+  "sms:smslive247": "Bulk SMS delivery in Nigeria.",
+  "sms:ebulksms": "Bulk SMS gateway services.",
+  "sms:infobip": "Global omnichannel messaging.",
+  "sms:vonage": "SMS and voice communications.",
+  "sms:bird": "Global messaging platform.",
+  "push:fcm": "Push notifications for Android and web.",
+  "push:apns": "Push notifications for Apple devices.",
+  "push:onesignal": "Multi-channel engagement platform.",
+  "push:pushy": "Reliable push delivery at scale.",
+  "push:braze_airship": "Customer engagement messaging.",
+  "chat:slack": "Send alerts to Slack channels.",
+  "chat:telegram": "Message users via Telegram bot.",
+  "chat:whatsapp_business": "Reach users on WhatsApp.",
+  "chat:discord": "Post updates to Discord servers.",
+  "chat:ms_teams": "Notify Microsoft Teams channels.",
+};
+
+export function providerBlurb(
+  channelId: string,
+  providerId: string,
+  channelName: string,
+): string {
+  return (
+    PROVIDER_BLURBS[`${channelId}:${providerId}`] ?? `${channelName} provider.`
+  );
+}

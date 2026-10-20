@@ -6,15 +6,16 @@
 set -euo pipefail
 
 # ── Shared variables (source of truth) ─────────────────────────────────────
-# Format: NAME=VALUE
+# Format: NAME=VALUE (the parser splits on the first `=` — a `:` here would
+# silently append garbage lines to every env file; keep quoting `NAME=VALUE`).
 SHARED_VARS=(
   "API_URL=http://localhost:8080"
   "DOCS_URL=http://localhost:8000"
   "STATUS_URL=http://localhost:3001"
   "WEBSITE_URL=http://localhost:3001"
   "GITHUB_URL=https://github.com/notifi"
-  "USER_DASHBOARD_URL:https://localhost:3000"
-  "ADMIN_DASHBOARD_URL:https://localhost:4321"
+  "USER_DASHBOARD_URL=https://localhost:3000"
+  "ADMIN_DASHBOARD_URL=https://localhost:4321"
 )
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -77,7 +78,10 @@ upsert_env() {
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CHANGED=0
 
-for project_dir in "$SCRIPT_DIR"/*/; do
+# Walk both depths: app/<project> (landing, status, documentation) and
+# app/<group>/<project> (dashboard/admin, dashboard/user). The package.json
+# guard below skips group folders like app/dashboard itself.
+for project_dir in "$SCRIPT_DIR"/*/ "$SCRIPT_DIR"/*/*/; do
   [ -d "$project_dir" ] || continue
   project=$(basename "$project_dir")
 

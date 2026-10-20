@@ -6,21 +6,21 @@ Notification-platform-as-a-service monorepo: customer dashboard, internal admin 
 
 | Workspace | Directory | Tech Stack | Dev port |
 |-----------|-----------|------------|----------|
-| **Dashboard** | `app/user-dashboard/` | Next.js 16 (App Router), React 19, Tailwind v4, shadcn/v4 (Base UI) | 3000 |
-| **Admin** | `app/admin-dashboard/` | Astro (SSR) + React islands | 4321* |
+| **Dashboard** | `app/dashboard/user/` | Next.js 16 (App Router), React 19, Tailwind v4, shadcn/v4 (Base UI) | 3000 |
+| **Admin** | `app/dashboard/admin/` | Astro (SSR) + React islands | 4321* |
 | **Landing** | `app/landing/` | Astro (SSG) | 4321* |
 | **Docs** | `app/documentation/` | Next.js + Fumadocs | 3000* |
 | **Status** | `app/status/` | Astro (SSG), static-first | 4321* |
-| **Server** | `infrastructure/` | Rust (single `server` crate + channel plugin crates) | 8080 |
+| **Server** | `infrastructure/` | Rust (single `server` crate) | 8080 |
 | **SDKs / shared** | `sdks/`, `shared/` | Spec docs only (no code yet) / brand tokens | — |
 
 *\*Astro defaults to 4321, Next.js to 3000 — pass `--port` when running two of the same kind. Run commands from the workspace subdirectory.*
 
-Per-app details: `app/admin-dashboard/AGENTS.md`, `app/status/AGENTS.md`, `app/user-dashboard/AGENTS.md`.
+Per-app details: `app/dashboard/admin/AGENTS.md`, `app/status/AGENTS.md`, `app/dashboard/user/AGENTS.md`.
 
 ---
 
-## Dashboard (`app/user-dashboard/`)
+## Dashboard (`app/dashboard/user/`)
 
 ### Commands
 ```shell
@@ -37,7 +37,7 @@ npm run lint     # ESLint checks
 *Note: Route groups with parentheses (like `(auth)`) strip the folder name from the URL path. Regular folders without parentheses preserve the path segment. Do NOT place auth or onboarding in parenthesized route groups if URL path prefixes are required.*
 
 ### File Structure & Paths
-- **No `src/` directory**: All code lives directly under `app/user-dashboard/`.
+- **No `src/` directory**: All code lives directly under `app/dashboard/user/`.
   - Global CSS: `app/globals.css` (Tailwind v4 with `@theme inline`)
   - App Router: `app/(dashboard)/`, `app/auth/`, `app/onboarding/`, and `app/layout.tsx`
   - Components: `components/ui/` (shadcn/v4 Base UI) and `components/custom/`
@@ -61,7 +61,7 @@ npm run lint     # ESLint checks
 
 Astro apps expose `dev` / `build` / `check` / `preview`; docs exposes `dev` / `build` / `lint`. Run from the workspace subdirectory.
 
-- **Admin** (`app/admin-dashboard/`) — internal console, Astro SSR + React islands, talks to the Rust server via `PUBLIC_API_URL`. See `app/admin-dashboard/AGENTS.md` for data/modal/tab conventions.
+- **Admin** (`app/dashboard/admin/`) — internal console, Astro SSR + React islands, talks to the Rust server via `PUBLIC_API_URL`. See `app/dashboard/admin/AGENTS.md` for data/modal/tab conventions.
 - **Status** (`app/status/`) — public status page, Astro SSG, zero client JS (server-rendered SVG charts only). See `app/status/AGENTS.md`.
 - **Landing** (`app/landing/`) — marketing site, Astro SSG. Canonical design in `DESIGN.md`.
 - **Docs** (`app/documentation/`) — Next.js + Fumadocs, content in `content/`.
@@ -85,8 +85,8 @@ Brand source of truth for all of them: `shared/identity/` (colors, typography, l
 
 ## API Contract Docs
 
-- **Auth**: `app/user-dashboard/app/auth/API_CONTRACT.md` — expected request/response shapes for login, signup, OAuth, forgot/reset password, verify email.
-- **Onboarding**: `app/user-dashboard/app/onboarding/API_CONTRACT.md` — data collected per step and proposed endpoints (flow is currently client-side only).
+- **Auth**: `app/dashboard/user/app/auth/API_CONTRACT.md` — expected request/response shapes for login, signup, OAuth, forgot/reset password, verify email.
+- **Onboarding**: `app/dashboard/user/app/onboarding/API_CONTRACT.md` — data collected per step and proposed endpoints (flow is currently client-side only).
 
 **Rule for any AI model or developer**: these files document the frontend's expected API contract. If you change an auth or onboarding page's inputs/outputs, validation, redirects, or the matching backend implementation, you MUST update the relevant contract file in the same change. (Dashboard pages have no contract file yet.)
 
@@ -94,7 +94,7 @@ Brand source of truth for all of them: `shared/identity/` (colors, typography, l
 
 ## Backend Server (`infrastructure/`)
 
-The server is a **single crate** rooted at `infrastructure/` (`src/{api,channels,domain,ports,infra,testing}`). Channel plugins live as modules under `src/channels/` (email, sms, push, chat, web, webhook, android, ios, macos, linux, window, slack, telegram, whatsapp, discord). API layout (see root `Readme.md`): ops at `/`, external product API at `/v1/*` (empty until M2; API-key auth from M6), user dashboard backend at `/app/*`, administration at `/admin/*`.
+The server is a **single crate** rooted at `infrastructure/` (`src/{api,channels,domain,kernel,ports,infra}`; test fakes live under `tests/`). Channel plugins live as modules under `src/channels/` (email, sms, push, chat, web, webhook, android, ios, macos, linux, window, slack, telegram, whatsapp, discord). API layout (see root `Readme.md`): ops at `/`, external product API at `/v1/*` (empty until M2; API-key auth from M6), user dashboard backend at `/app/*`, administration at `/admin/*`.
 
 ### Commands
 
