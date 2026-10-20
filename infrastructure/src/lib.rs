@@ -291,6 +291,17 @@ fn run_inner() -> Result<(), String> {
             ))
         });
 
+        // Campaigns: flow-less message origins. Built after sends (rows
+        // deliver through default flows) and recipients/templates.
+        let campaigns = db.as_ref().map(|pool| {
+            std::sync::Arc::new(domain::campaigns::CampaignService::new(
+                std::sync::Arc::new(infra::PgCampaignStore::new(pool.clone())),
+                std::sync::Arc::new(infra::PgSendStore::new(pool.clone())),
+                sends.clone().expect("sends built with db"),
+                std::sync::Arc::new(infra::PgRecipientsStore::new(pool.clone())),
+                std::sync::Arc::new(infra::PgTemplatesStore::new(pool.clone())),
+            ))
+        });
         let admin_users = db.as_ref().map(|pool| {
             let auth_store = std::sync::Arc::new(infra::PgAuthStore::new(pool.clone()));
             std::sync::Arc::new(domain::admin::AdminUsersService::new(
@@ -411,6 +422,11 @@ fn run_inner() -> Result<(), String> {
                 "webhooks disabled (needs database); /app/webhooks routes will answer 503"
             );
         }
+        if campaigns.is_none() {
+            tracing::warn!(
+                "campaigns disabled (needs database); /app/campaigns routes will answer 503"
+            );
+        }
         if admin_users.is_none() {
             tracing::warn!(
                 "admin user management disabled (needs database); /admin/users routes will answer 503"
@@ -440,8 +456,9 @@ fn run_inner() -> Result<(), String> {
         // Cloned for the scheduled-broadcast worker below (AppState takes
         // ownership of the original).
         let admin_notifications_for_worker = admin_notifications.clone();
-        // Same for the flow-schedule worker.
+        // Same for the flow-schedule + campaign workers.
         let schedules_for_worker = schedules.clone();
+        let campaigns_for_worker = campaigns.clone();
 
         let app = api::build_router(
             api::AppState {
@@ -467,6 +484,7 @@ fn run_inner() -> Result<(), String> {
                 inbound,
                 schedules,
                 webhooks,
+                campaigns,
                 notifications,
                 provider_tester,
             },
@@ -508,6 +526,7 @@ fn run_inner() -> Result<(), String> {
         if let Some(hub) = rabbit {
             let admin = admin_notifications_for_worker.clone();
             let sched = schedules_for_worker.clone();
+            let camps = campaigns_for_worker.clone();
             tokio::spawn(async move {
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(
                     infra::rabbit::SWEEP_INTERVAL_SECS,
@@ -521,7 +540,7 @@ fn run_inner() -> Result<(), String> {
                                 error = %e,
                                 "sweep tick failed; running degraded local sweep"
                             );
-                            run_sweep_once(&admin, &sched).await;
+                            run_sweep_once(&admin, &sched, &camps).await;
                         }
                     }
                 }
@@ -530,14 +549,15 @@ fn run_inner() -> Result<(), String> {
             tracing::info!("sweeps embedded (no rabbitmq configured)");
             let admin = admin_notifications_for_worker.clone();
             let sched = schedules_for_worker.clone();
-            if admin.is_some() || sched.is_some() {
+            let camps = campaigns_for_worker.clone();
+            if admin.is_some() || sched.is_some() || camps.is_some() {
                 tokio::spawn(async move {
                     let mut interval = tokio::time::interval(std::time::Duration::from_secs(
                         infra::rabbit::SWEEP_INTERVAL_SECS,
                     ));
                     loop {
                         interval.tick().await;
-                        run_sweep_once(&admin, &sched).await;
+                        run_sweep_once(&admin, &sched, &camps).await;
                     }
                 });
             }
@@ -556,11 +576,12 @@ fn run_inner() -> Result<(), String> {
     Ok(())
 }
 
-/// Runs one sweep of due broadcasts + due schedules. Shared by the embedded
-/// loop and the degraded tick path above.
+/// Runs one sweep of due broadcasts + due schedules + campaigns. Shared by
+/// the embedded loop and the degraded tick path above.
 async fn run_sweep_once(
     admin_notifications: &Option<std::sync::Arc<domain::admin::AdminNotificationsService>>,
     schedules: &Option<std::sync::Arc<domain::schedules::ScheduleService>>,
+    campaigns: &Option<std::sync::Arc<domain::campaigns::CampaignService>>,
 ) {
     if let Some(notifications) = admin_notifications {
         match notifications.run_due_worker(chrono::Utc::now()).await {
@@ -574,6 +595,13 @@ async fn run_sweep_once(
             Ok(0) => {}
             Ok(n) => tracing::info!(ran = n, "schedule worker fired due schedules"),
             Err(e) => tracing::error!(error = %e, "schedule worker failed"),
+        }
+    }
+    if let Some(campaigns) = campaigns {
+        match campaigns.tick(chrono::Utc::now()).await {
+            Ok(0) => {}
+            Ok(n) => tracing::info!(ran = n, "campaign worker processed campaigns"),
+            Err(e) => tracing::error!(error = %e, "campaign worker failed"),
         }
     }
 }

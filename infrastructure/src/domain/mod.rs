@@ -5,6 +5,7 @@ pub mod api_keys;
 pub mod audit;
 pub mod auth;
 pub mod billing;
+pub mod campaigns;
 pub mod channels;
 pub mod error;
 pub mod flows;

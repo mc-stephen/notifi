@@ -5,6 +5,7 @@
 pub mod api_keys;
 pub mod auth;
 pub mod billing;
+pub mod campaigns;
 pub mod channel_configs;
 pub mod flows;
 pub mod invites;
@@ -159,6 +160,14 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
         webhook_routes = webhook_routes.layer(axum::Extension(service));
     }
 
+    let mut campaign_routes = campaigns::routes::router();
+    if let Some(auth_service) = state.auth.clone() {
+        campaign_routes = campaign_routes.layer(axum::Extension(auth_service));
+    }
+    if let Some(service) = state.campaigns.clone() {
+        campaign_routes = campaign_routes.layer(axum::Extension(service));
+    }
+
     let mut invite_routes = invites::routes::router();
     if let Some(auth_service) = state.auth.clone() {
         invite_routes = invite_routes.layer(axum::Extension(auth_service));
@@ -193,6 +202,7 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
         .nest("/sends", sends_routes)
         .nest("/schedules", schedules_routes)
         .nest("/webhooks", webhook_routes)
+        .nest("/campaigns", campaign_routes)
         .nest("/invites", invite_routes)
         .nest("/logs", log_routes)
 }

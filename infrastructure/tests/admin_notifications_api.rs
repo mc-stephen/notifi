@@ -67,6 +67,7 @@ fn app_with_admin_notifications() -> Router {
             billing: None,
             schedules: None,
             webhooks: None,
+            campaigns: None,
             inbound: None,
             provider_tester: Arc::new(ConfigProviderTester::new())
                 as Arc<dyn ProviderTester + Send + Sync>,

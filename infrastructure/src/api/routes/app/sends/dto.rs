@@ -16,6 +16,8 @@ pub struct SendHistoryDto {
     pub status: String,
     pub provider: Option<String>,
     pub last_error: Option<String>,
+    /// Present when the row was expanded from a campaign.
+    pub campaign_id: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -30,6 +32,7 @@ impl From<Send> for SendHistoryDto {
             status: s.status.as_str().to_string(),
             provider: s.provider,
             last_error: s.last_error,
+            campaign_id: s.campaign_id,
             created_at: s.created_at,
         }
     }

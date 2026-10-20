@@ -52,6 +52,7 @@ fn app_with_tickets() -> (Router, Arc<FakeTicketsStore>, Arc<FakeRecipientsStore
                 billing: None,
                 schedules: None,
                 webhooks: None,
+                campaigns: None,
                 inbound: None,
                 provider_tester: Arc::new(ConfigProviderTester::new())
                     as Arc<dyn ProviderTester + Send + Sync>,

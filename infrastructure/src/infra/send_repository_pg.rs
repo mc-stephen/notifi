@@ -40,6 +40,7 @@ struct SendRow {
     provider: Option<String>,
     external_id: Option<String>,
     last_error: Option<String>,
+    campaign_id: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -59,6 +60,7 @@ impl From<SendRow> for SendRecord {
             provider: r.provider,
             external_id: r.external_id,
             last_error: r.last_error,
+            campaign_id: r.campaign_id,
             created_at: r.created_at,
             updated_at: r.updated_at,
         }
@@ -66,7 +68,7 @@ impl From<SendRow> for SendRecord {
 }
 
 const COLUMNS: &str = "id, project_id, channel, recipients, title, body, send_at,
-    status, attempts, provider, external_id, last_error, created_at, updated_at";
+    status, attempts, provider, external_id, last_error, campaign_id, created_at, updated_at";
 
 impl SendStore for PgSendStore {
     fn project_visible(
@@ -206,6 +208,84 @@ impl SendStore for PgSendStore {
             .await
             .map_err(map_err)?;
             Ok(rows.into_iter().map(SendRecord::from).collect())
+        })
+    }
+
+    fn create_for_campaign(
+        &self,
+        project_id: &str,
+        campaign_id: &str,
+        channel: &str,
+        recipient: &str,
+        title: &str,
+        body: &str,
+    ) -> BoxFut<'_, Result<SendRecord, StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        let campaign_id = campaign_id.to_string();
+        let channel = channel.to_string();
+        let recipient = recipient.to_string();
+        let title = title.to_string();
+        let body = body.to_string();
+        Box::pin(async move {
+            let row: SendRow = sqlx::query_as(&format!(
+                "INSERT INTO notification_sends
+                     (id, project_id, campaign_id, channel, recipients, title, body,
+                      send_at, status)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+                 RETURNING {COLUMNS}"
+            ))
+            .bind(Ulid::new().to_string())
+            .bind(&project_id)
+            .bind(&campaign_id)
+            .bind(&channel)
+            .bind(serde_json::json!([recipient]))
+            .bind(&title)
+            .bind(&body)
+            .bind(Utc::now())
+            .fetch_one(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(SendRecord::from(row))
+        })
+    }
+
+    fn list_by_campaign(
+        &self,
+        campaign_id: &str,
+    ) -> BoxFut<'_, Result<Vec<SendRecord>, StoreError>> {
+        let pool = self.pool.clone();
+        let campaign_id = campaign_id.to_string();
+        Box::pin(async move {
+            let rows: Vec<SendRow> = sqlx::query_as(&format!(
+                "SELECT {COLUMNS} FROM notification_sends
+                 WHERE campaign_id = $1
+                 ORDER BY created_at ASC, id ASC"
+            ))
+            .bind(&campaign_id)
+            .fetch_all(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(rows.into_iter().map(SendRecord::from).collect())
+        })
+    }
+
+    fn delete_pending_by_campaign(&self, campaign_id: &str) -> BoxFut<'_, Result<i64, StoreError>> {
+        let pool = self.pool.clone();
+        let campaign_id = campaign_id.to_string();
+        Box::pin(async move {
+            let deleted: i64 = sqlx::query_scalar::<_, i64>(
+                "WITH removed AS (
+                     DELETE FROM notification_sends
+                     WHERE campaign_id = $1 AND status = 'pending'
+                     RETURNING 1
+                 ) SELECT count(*)::i64 FROM removed",
+            )
+            .bind(&campaign_id)
+            .fetch_one(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(deleted)
         })
     }
 }

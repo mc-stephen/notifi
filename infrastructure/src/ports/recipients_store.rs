@@ -48,6 +48,16 @@ pub trait RecipientsStore: Send + Sync {
         before: Option<&str>,
     ) -> BoxFut<'_, Result<Vec<RecipientRecord>, StoreError>>;
 
+    /// Recipients in a project without a caller check — worker/system
+    /// contexts only (campaign audience expansion at fire time). Callers
+    /// must already have established authorization; never route this to
+    /// HTTP handlers.
+    fn list_by_project(
+        &self,
+        project_id: &str,
+        limit: i64,
+    ) -> BoxFut<'_, Result<Vec<RecipientRecord>, StoreError>>;
+
     /// A single visible recipient; `None` when not found or not visible.
     fn get(
         &self,

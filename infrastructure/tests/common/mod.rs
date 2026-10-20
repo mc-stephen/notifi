@@ -3850,6 +3850,7 @@ impl server::ports::send_store::SendStore for FakeSendStore {
             provider: None,
             external_id: None,
             last_error: None,
+            campaign_id: None,
             created_at: now,
             updated_at: now,
         };
@@ -3908,6 +3909,66 @@ impl server::ports::send_store::SendStore for FakeSendStore {
         Box::pin(async move { Ok(rows) })
     }
 
+    fn create_for_campaign(
+        &self,
+        project_id: &str,
+        campaign_id: &str,
+        channel: &str,
+        recipient: &str,
+        title: &str,
+        body: &str,
+    ) -> BoxFut<'_, Result<server::ports::send_store::SendRecord, StoreError>> {
+        use server::ports::send_store::SendRecord;
+        let now = chrono::Utc::now();
+        let record = SendRecord {
+            id: Ulid::new().to_string(),
+            project_id: project_id.to_string(),
+            channel: channel.to_string(),
+            recipients: serde_json::json!([recipient]),
+            title: title.to_string(),
+            body: body.to_string(),
+            send_at: now,
+            status: "pending".to_string(),
+            attempts: 0,
+            provider: None,
+            external_id: None,
+            last_error: None,
+            campaign_id: Some(campaign_id.to_string()),
+            created_at: now,
+            updated_at: now,
+        };
+        self.sends.write().unwrap().push(record.clone());
+        Box::pin(async move { Ok(record) })
+    }
+
+    fn list_by_campaign(
+        &self,
+        campaign_id: &str,
+    ) -> BoxFut<'_, Result<Vec<server::ports::send_store::SendRecord>, StoreError>> {
+        let mut rows: Vec<_> = self
+            .sends
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|s| s.campaign_id == Some(campaign_id.to_string()))
+            .cloned()
+            .collect();
+        rows.sort_by_key(|e| (e.created_at, e.id.clone()));
+        Box::pin(async move { Ok(rows) })
+    }
+
+    fn delete_pending_by_campaign(&self, campaign_id: &str) -> BoxFut<'_, Result<i64, StoreError>> {
+        let removed;
+        {
+            let mut sends = self.sends.write().unwrap();
+            let before = sends.len();
+            sends.retain(|s| {
+                !(s.campaign_id.as_deref() == Some(campaign_id) && s.status == "pending")
+            });
+            removed = (before - sends.len()) as i64;
+        }
+        Box::pin(async move { Ok(removed) })
+    }
 }
 
 /// Thread-safe in-memory channel provider config store.
@@ -4520,3 +4581,321 @@ impl server::ports::webhook_store::WebhookStore for FakeWebhookStore {
     }
 }
 
+/// In-memory campaigns store: plain CRUD + lifecycle transitions +
+/// claim-due mechanics, mirroring the Postgres semantics.
+#[derive(Default)]
+pub struct FakeCampaignStore {
+    campaigns: RwLock<Vec<server::ports::campaigns_store::CampaignRecord>>,
+    visible: RwLock<Vec<(String, String)>>,
+}
+
+impl FakeCampaignStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Grants `user_id` access to `project_id`.
+    pub fn seed_visible(&self, user_id: &str, project_id: &str) {
+        self.visible
+            .write()
+            .unwrap()
+            .push((user_id.to_string(), project_id.to_string()));
+    }
+
+    /// The full contents (for assertions).
+    pub fn all(&self) -> Vec<server::ports::campaigns_store::CampaignRecord> {
+        let mut all = self.campaigns.read().unwrap().clone();
+        all.sort_by_key(|c| c.created_at);
+        all
+    }
+}
+
+impl server::ports::campaigns_store::CampaignStore for FakeCampaignStore {
+    fn project_visible(
+        &self,
+        actor: server::domain::auth::entities::UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let visible = self
+            .visible
+            .read()
+            .unwrap()
+            .iter()
+            .any(|(u, p)| u.as_str() == actor.to_string().as_str() && p.as_str() == project_id);
+        Box::pin(async move { Ok(visible) })
+    }
+
+    fn list_by_project(
+        &self,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Vec<server::ports::campaigns_store::CampaignRecord>, StoreError>> {
+        let mut rows: Vec<_> = self
+            .campaigns
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|c| c.project_id == project_id)
+            .cloned()
+            .collect();
+        rows.sort_by_key(|c| (c.created_at, c.id.clone()));
+        Box::pin(async move { Ok(rows) })
+    }
+
+    fn get(
+        &self,
+        id: &str,
+    ) -> BoxFut<'_, Result<Option<server::ports::campaigns_store::CampaignRecord>, StoreError>>
+    {
+        let row = self
+            .campaigns
+            .read()
+            .unwrap()
+            .iter()
+            .find(|c| c.id == id)
+            .cloned();
+        Box::pin(async move { Ok(row) })
+    }
+
+    fn create(
+        &self,
+        draft: &server::ports::campaigns_store::NewCampaign,
+    ) -> BoxFut<'_, Result<server::ports::campaigns_store::CampaignRecord, StoreError>> {
+        use server::ports::campaigns_store::CampaignRecord;
+        let now = chrono::Utc::now();
+        let record = CampaignRecord {
+            id: Ulid::new().to_string(),
+            project_id: draft.project_id.clone(),
+            name: draft.name.clone(),
+            description: draft.description.clone(),
+            created_by: draft.created_by.clone(),
+            channel: draft.channel.clone(),
+            template_id: draft.template_id.clone(),
+            title: draft.title.clone(),
+            body: draft.body.clone(),
+            audience_mode: draft.audience_mode.clone(),
+            selected_user_ids: draft.selected_user_ids.clone(),
+            provider_id: draft.provider_id.clone(),
+            status: draft.status.clone(),
+            send_at: draft.send_at,
+            started_at: None,
+            completed_at: None,
+            last_error: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.campaigns.write().unwrap().push(record.clone());
+        Box::pin(async move { Ok(record) })
+    }
+
+    fn update(
+        &self,
+        id: &str,
+        patch: &server::ports::campaigns_store::CampaignUpdate,
+    ) -> BoxFut<'_, Result<Option<server::ports::campaigns_store::CampaignRecord>, StoreError>>
+    {
+        let mut campaigns = self.campaigns.write().unwrap();
+        let updated = campaigns.iter_mut().find(|c| c.id == id).map(|c| {
+            c.name = patch.name.clone();
+            c.description = patch.description.clone();
+            c.channel = patch.channel.clone();
+            c.template_id = patch.template_id.clone();
+            c.title = patch.title.clone();
+            c.body = patch.body.clone();
+            c.audience_mode = patch.audience_mode.clone();
+            c.selected_user_ids = patch.selected_user_ids.clone();
+            c.provider_id = patch.provider_id.clone();
+            c.send_at = patch.send_at;
+            c.updated_at = chrono::Utc::now();
+            c.clone()
+        });
+        drop(campaigns);
+        Box::pin(async move { Ok(updated) })
+    }
+
+    fn delete(&self, id: &str) -> BoxFut<'_, Result<bool, StoreError>> {
+        let mut campaigns = self.campaigns.write().unwrap();
+        let before = campaigns.len();
+        campaigns.retain(|c| c.id != id);
+        let deleted = campaigns.len() < before;
+        drop(campaigns);
+        Box::pin(async move { Ok(deleted) })
+    }
+
+    fn claim_due(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> BoxFut<'_, Result<Vec<server::ports::campaigns_store::CampaignRecord>, StoreError>> {
+        let mut campaigns = self.campaigns.write().unwrap();
+        let mut due: Vec<usize> = campaigns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.status == "scheduled" && c.send_at.is_some_and(|ts| ts <= now))
+            .map(|(i, _)| i)
+            .collect();
+        due.sort_by(|&a, &b| {
+            let key = |c: &server::ports::campaigns_store::CampaignRecord| {
+                (
+                    c.send_at
+                        .unwrap_or(chrono::DateTime::<chrono::Utc>::MAX_UTC),
+                    c.id.clone(),
+                )
+            };
+            key(&campaigns[a]).cmp(&key(&campaigns[b]))
+        });
+        due.truncate(limit.max(0) as usize);
+        let claimed: Vec<_> = due
+            .into_iter()
+            .map(|i| {
+                let c = &mut campaigns[i];
+                c.status = "running".to_string();
+                c.started_at = Some(now);
+                c.updated_at = now;
+                c.clone()
+            })
+            .collect();
+        drop(campaigns);
+        Box::pin(async move { Ok(claimed) })
+    }
+
+    fn list_running(
+        &self,
+        limit: i64,
+    ) -> BoxFut<'_, Result<Vec<server::ports::campaigns_store::CampaignRecord>, StoreError>> {
+        let mut rows: Vec<_> = self
+            .campaigns
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|c| c.status == "running")
+            .cloned()
+            .collect();
+        rows.sort_by_key(|c| (c.created_at, c.id.clone()));
+        rows.truncate(limit.max(0) as usize);
+        Box::pin(async move { Ok(rows) })
+    }
+
+    fn transition(
+        &self,
+        id: &str,
+        status: &str,
+        started_at: Option<chrono::DateTime<chrono::Utc>>,
+        completed_at: Option<chrono::DateTime<chrono::Utc>>,
+        last_error: Option<&str>,
+    ) -> BoxFut<'_, Result<Option<server::ports::campaigns_store::CampaignRecord>, StoreError>>
+    {
+        let mut campaigns = self.campaigns.write().unwrap();
+        let updated = campaigns.iter_mut().find(|c| c.id == id).map(|c| {
+            c.status = status.to_string();
+            if let Some(ts) = started_at {
+                c.started_at = Some(ts);
+            }
+            if let Some(ts) = completed_at {
+                c.completed_at = Some(ts);
+            }
+            c.last_error = last_error.map(str::to_string);
+            c.updated_at = chrono::Utc::now();
+            c.clone()
+        });
+        drop(campaigns);
+        Box::pin(async move { Ok(updated) })
+    }
+}
+
+/// Recording HTTP requester for flow HTTP step tests.
+#[derive(Default)]
+pub struct FakeHttpRequester {
+    calls: RwLock<Vec<server::ports::http_requester::HttpCall>>,
+    fail: RwLock<bool>,
+}
+
+impl FakeHttpRequester {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Recorded outbound calls, in order.
+    pub fn calls(&self) -> Vec<server::ports::http_requester::HttpCall> {
+        self.calls.read().unwrap().clone()
+    }
+
+    /// When true, every call fails (to exercise log-only semantics).
+    pub fn set_fail(&self, fail: bool) {
+        *self.fail.write().unwrap() = fail;
+    }
+}
+
+impl server::ports::http_requester::HttpRequester for FakeHttpRequester {
+    fn request(
+        &self,
+        call: &server::ports::http_requester::HttpCall,
+    ) -> server::ports::http_requester::BoxHttpFut<
+        '_,
+        Result<server::ports::http_requester::HttpResult, String>,
+    > {
+        self.calls.write().unwrap().push(call.clone());
+        let fail = *self.fail.read().unwrap();
+        Box::pin(async move {
+            if fail {
+                Err("fake http failure".to_string())
+            } else {
+                Ok(server::ports::http_requester::HttpResult {
+                    status: 200,
+                    ok: true,
+                })
+            }
+        })
+    }
+}
+
+/// In-memory trigger token store for inbound webhook tests.
+#[derive(Default)]
+pub struct FakeTriggerTokenStore {
+    tokens: RwLock<Vec<server::ports::trigger_token_store::TriggerTokenRecord>>,
+}
+
+impl FakeTriggerTokenStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl server::ports::trigger_token_store::TriggerTokenStore for FakeTriggerTokenStore {
+    fn replace_flow_tokens(
+        &self,
+        flow_id: &str,
+        project_id: &str,
+        definition: &serde_json::Value,
+        pairs: &[(String, String)],
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let mut tokens = self.tokens.write().unwrap();
+        tokens.retain(|t| t.flow_id != flow_id);
+        for (token, node_id) in pairs {
+            tokens.push(server::ports::trigger_token_store::TriggerTokenRecord {
+                token: token.clone(),
+                flow_id: flow_id.to_string(),
+                node_id: node_id.clone(),
+                project_id: project_id.to_string(),
+                flow_definition: definition.clone(),
+            });
+        }
+        Box::pin(async move { Ok(()) })
+    }
+
+    fn lookup(
+        &self,
+        token: &str,
+    ) -> BoxFut<
+        '_,
+        Result<Option<server::ports::trigger_token_store::TriggerTokenRecord>, StoreError>,
+    > {
+        let row = self
+            .tokens
+            .read()
+            .unwrap()
+            .iter()
+            .find(|t| t.token == token)
+            .cloned();
+        Box::pin(async move { Ok(row) })
+    }
+}

@@ -9,6 +9,7 @@ pub mod api_keys_store;
 pub mod audit_store;
 pub mod auth_store;
 pub mod billing_store;
+pub mod campaigns_store;
 pub mod channel;
 pub mod channel_provider_store;
 pub mod delivery;

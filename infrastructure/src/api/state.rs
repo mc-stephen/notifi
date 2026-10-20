@@ -53,6 +53,8 @@ pub struct AppState {
     pub schedules: Option<Arc<crate::domain::schedules::ScheduleService>>,
 
     pub webhooks: Option<Arc<crate::domain::webhooks::WebhookService>>,
+    /// Campaigns (flow-less message origins) — wired alongside auth/db.
+    pub campaigns: Option<Arc<crate::domain::campaigns::CampaignService>>,
     /// In-app notifications (personal, per-user) — wired alongside auth/db.
     pub notifications: Option<Arc<crate::domain::notifications::NotificationService>>,
     /// Provider connection tester — always available.

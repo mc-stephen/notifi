@@ -49,6 +49,8 @@ pub struct Send {
     pub provider: Option<String>,
     pub external_id: Option<String>,
     pub last_error: Option<String>,
+    /// Set when this row was expanded from a campaign.
+    pub campaign_id: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }

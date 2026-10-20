@@ -1,7 +1,8 @@
 //! The persistence port for product notification sends.
 //!
-//! One row per `POST /v1/notifications` call. Instant sends execute inline
-//! and land completed/failed; scheduled rows wait for the Phase B worker.
+//! One row per `POST /v1/notifications` call, or per campaign-expanded
+//! recipient. Instant sends execute inline and land completed/failed;
+//! scheduled rows and campaign rows wait for the workers.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -27,6 +28,9 @@ pub struct SendRecord {
     pub provider: Option<String>,
     pub external_id: Option<String>,
     pub last_error: Option<String>,
+    /// Set when this row was expanded from a campaign (one row per
+    /// recipient). Null for direct API sends and schedule runs.
+    pub campaign_id: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -72,4 +76,29 @@ pub trait SendStore: Send + Sync {
         project_id: &str,
         limit: i64,
     ) -> BoxFut<'_, Result<Vec<SendRecord>, StoreError>>;
+
+    /// Inserts one `pending` row for a campaign expansion — a single
+    /// recipient per row so per-recipient status can be derived by the
+    /// campaign's stats. Created here; executed by the campaign worker.
+    fn create_for_campaign(
+        &self,
+        project_id: &str,
+        campaign_id: &str,
+        channel: &str,
+        recipient: &str,
+        title: &str,
+        body: &str,
+    ) -> BoxFut<'_, Result<SendRecord, StoreError>>;
+
+    /// All sends expanded from a campaign, oldest first (stats derive
+    /// from these rows — nothing is ever double-stored).
+    fn list_by_campaign(
+        &self,
+        campaign_id: &str,
+    ) -> BoxFut<'_, Result<Vec<SendRecord>, StoreError>>;
+
+    /// Deletes a campaign's not-yet-fired rows (`pending` only) — the
+    /// cancel action. Delivered/failed rows stay as delivery history.
+    /// Returns how many rows were removed.
+    fn delete_pending_by_campaign(&self, campaign_id: &str) -> BoxFut<'_, Result<i64, StoreError>>;
 }

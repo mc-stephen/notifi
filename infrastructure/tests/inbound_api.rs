@@ -146,6 +146,7 @@ fn app_with_inbound() -> (Router, Fakes) {
             sends: Some(sends),
             schedules: None,
             webhooks: None,
+            campaigns: None,
             inbound: Some(inbound),
             notifications: None,
             provider_tester: Arc::new(ConfigProviderTester::new())

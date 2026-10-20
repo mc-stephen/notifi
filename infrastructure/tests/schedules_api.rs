@@ -165,6 +165,7 @@ fn app_with_schedules() -> (Router, Fakes) {
             sends: Some(sends),
             schedules: Some(schedules),
             webhooks: None,
+            campaigns: None,
             notifications: None,
             inbound: None,
             provider_tester: Arc::new(ConfigProviderTester::new())

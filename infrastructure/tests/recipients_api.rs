@@ -59,6 +59,7 @@ fn app_with_recipients() -> (Router, Arc<FakeRecipientsStore>) {
                 billing: None,
                 schedules: None,
                 webhooks: None,
+                campaigns: None,
                 inbound: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
                     as std::sync::Arc<dyn ProviderTester + Send + Sync>,

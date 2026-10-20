@@ -68,6 +68,7 @@ fn app() -> (Router, Arc<FakeAuthStore>, Arc<FakeMailer>) {
                 billing: None,
                 schedules: None,
                 webhooks: None,
+                campaigns: None,
                 inbound: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
                     as std::sync::Arc<dyn ProviderTester + Send + Sync>,
