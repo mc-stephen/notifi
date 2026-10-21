@@ -37,21 +37,23 @@
 ```
 notifi/                         # repo root
 ├── app/dashboard/user/          # Next.js 16 + React 19 frontend
-├── infrastructure/             # Rust server (single crate)
-│   ├── src/                    # server crate source
-│   │   ├── api/                # HTTP presentation (axum handlers + routes)
-│   │   │   ├── routes/         # Audience route surfaces (app, admin, external)
-│   │   │   ├── middleware/     # Cross-cutting middleware (cors, request_id)
-│   │   │   └── catalog.rs      # GET /routes — route registry
-│   │   ├── domain/             # Framework-free business logic
-│   │   ├── ports/              # Trait contracts (AuthStore, DeliveryProvider, QueuePublisher, …)
-│   │   ├── kernel/             # Shared kernel: errors, ULID, events, outbox, config resolver
-│   │   ├── channels/           # Channel delivery modules (email, sms, push, …)
-│   │   ├── infra/              # Concrete drivers (sqlx, reqwest, config, telemetry)
-│   │   └── testing/            # Test utilities
-│   └── assets/                 # Migrations, docs, configs
-│       ├── docs/               # Architecture, commands, contracts
-│       └── migrations/         # SQL migrations (0001_initial_schema.sql)
+├── infrastructure/             # Rust workspace (server + worker crates)
+│   ├── server/                 # server crate — API binary + shared library
+│   │   ├── src/                # server crate source
+│   │   │   ├── api/                # HTTP presentation (axum handlers + routes)
+│   │   │   │   ├── routes/         # Audience route surfaces (app, admin, external)
+│   │   │   │   ├── middleware/     # Cross-cutting middleware (cors, request_id)
+│   │   │   │   └── catalog.rs      # GET /routes — route registry
+│   │   │   ├── domain/             # Framework-free business logic
+│   │   │   ├── ports/              # Trait contracts (AuthStore, DeliveryProvider, QueuePublisher, …)
+│   │   │   ├── kernel/             # Shared kernel: errors, ULID, events, outbox, config resolver
+│   │   │   ├── channels/           # Channel delivery modules (email, sms, push, …)
+│   │   │   ├── infra/              # Concrete drivers (sqlx, reqwest, config, telemetry)
+│   │   │   └── testing/            # Test utilities
+│   │   └── assets/                 # Migrations, docs, configs
+│   │       ├── docs/               # Architecture, commands, contracts
+│   │       └── migrations/         # SQL migrations (0001_initial_schema.sql)
+│   └── worker/                 # worker crate — background sweeps + queue reader
 └── packages/                   # Shared tooling
 ```
 
@@ -59,7 +61,7 @@ notifi/                         # repo root
 
 | Crate | Path | Purpose |
 |-------|------|---------|
-| `server` | `infrastructure/` | Main binary + lib — API, domain, infra, kernel, ports, channels |
+| `server` | `infrastructure/server/` | Main binary + lib — API, domain, infra, kernel, ports, channels |
 | `worker` | `infrastructure/worker/` | Background binary — self-timed sweeps, opportunistic RabbitMQ ticks |
 
 ## 3. Module boundaries (single crate)

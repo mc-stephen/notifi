@@ -1,6 +1,6 @@
 # Auth API Contract
 
-The contract between the dashboard auth pages and the Rust API (`infrastructure/src/api/user/auth`, mounted under `/app/auth` in `infrastructure/src/api/user/mod.rs`). **Implemented on both sides** — keep this file updated when either side changes (see root `AGENTS.md`).
+The contract between the dashboard auth pages and the Rust API (`infrastructure/server/src/api/user/auth`, mounted under `/app/auth` in `infrastructure/server/src/api/user/mod.rs`). **Implemented on both sides** — keep this file updated when either side changes (see root `AGENTS.md`).
 
 Sources: `app/auth/`, `hooks/use-auth.ts`, `store/auth-store.ts`, `lib/auth-types.ts`, `lib/api.ts`; backend: `domains/auth/src/presentation/{routes,handlers,dto}.rs`.
 

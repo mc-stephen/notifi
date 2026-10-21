@@ -12,6 +12,6 @@ path = "src/main.rs"
 chrono = { workspace = true }
 dotenvy = { workspace = true }
 lapin = { workspace = true }
-server = { path = ".." }
+server = { path = "../server" }
 tokio = { workspace = true }
 tracing = { workspace = true }

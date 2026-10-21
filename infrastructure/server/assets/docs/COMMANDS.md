@@ -51,14 +51,14 @@ cargo test --test auth_api healthz
 ## 5. Run the API
 
 ```shell
-cargo run
+cargo run -p server
 ```
 
 Boots on `127.0.0.1:8080` by default. Without RabbitMQ the sweeps
 (schedules + scheduled broadcasts) run embedded on a 30s loop. Override with env vars:
 
 ```shell
-NOTIFI_HOST=0.0.0.0 NOTIFI_PORT=9000 NOTIFI_LOG=debug cargo run
+NOTIFI_HOST=0.0.0.0 NOTIFI_PORT=9000 NOTIFI_LOG=debug cargo run -p server
 ```
 
 Optional external services (without them the API still boots; `/readyz` → 503):
@@ -66,13 +66,13 @@ Optional external services (without them the API still boots; `/readyz` → 503)
 ```shell
 NOTIFI_DATABASE_URL=postgres://user:pass@localhost:5432/notifi \
 NOTIFI_REDIS_URL=redis://:password@localhost:6379 \
-cargo run
+cargo run -p server
 ```
 
-> Migrations in `assets/migrations/` apply automatically at boot when the database
+> Migrations in `server/assets/migrations/` apply automatically at boot when the database
 > connection succeeds.
 
-## 5b. Run the worker (separate sweeps via RabbitMQ)
+## 5b. Run the worker (self-timed sweeps; RabbitMQ ticks are extra)
 
 ```shell
 cargo run -p worker
@@ -153,15 +153,15 @@ requests finish, logs say `api shutdown complete`.
 | `/readyz` → 503 | set `NOTIFI_DATABASE_URL` / `NOTIFI_REDIS_URL` (or a gitignored `.env`) |
 | `received fatal alert: HandshakeFailure` | server's TLS rejected the handshake — try `sslmode=disable` in the URL and fix the server's TLS config (traffic is then unencrypted!) |
 | migration warnings about checksums | migrations already applied — normal |
-| bind error on port | something else uses 8080 → `NOTIFI_PORT=XXXX cargo run` |
+| bind error on port | something else uses 8080 → `NOTIFI_PORT=XXXX cargo run -p server` |
 
 ## 10. Database reset
 
 Nuke the database and re-apply migrations from scratch:
 
 ```shell
-cargo run -- --reset-db    # drops public schema, re-applies 0001_initial_schema.sql, exits
-cargo run                  # normal server start
+cargo run -p server -p server -- --reset-db    # drops public schema, re-applies 0001_initial_schema.sql, exits
+cargo run -p server                  # normal server start
 ```
 
 > Use this when migration history is stale (e.g., after deleting migration files)
@@ -171,6 +171,6 @@ cargo run                  # normal server start
 
 | Scenario | Command |
 |---|---|
-| Fresh dev start, no data to keep | `cargo run -- --reset-db` |
-| Migration history mismatch | `cargo run -- --reset-db` |
-| Want to wipe Docker volumes too | `docker compose down -v && cargo run -- --reset-db` |
+| Fresh dev start, no data to keep | `cargo run -p server -p server -- --reset-db` |
+| Migration history mismatch | `cargo run -p server -p server -- --reset-db` |
+| Want to wipe Docker volumes too | `docker compose down -v && cargo run -p server -p server -- --reset-db` |
