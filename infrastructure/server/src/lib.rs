@@ -20,6 +20,11 @@ pub mod infra;
 pub mod kernel;
 pub mod ports;
 
+/// Test-only support utilities (local HTTP stub for provider controller
+/// tests). Not part of any runtime binary — gated away outside test builds.
+#[cfg(test)]
+pub mod testing;
+
 use crate::infra::config::AppConfig;
 
 /// Process entry point: config → database → redis → router → serve.
