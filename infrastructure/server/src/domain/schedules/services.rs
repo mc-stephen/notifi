@@ -622,15 +622,19 @@ impl ScheduleService {
         };
 
         let (channel, title, body) = match (&schedule.template_id, &schedule.template_content) {
-            (Some(_), Some(content)) => match render_template_content(content) {
-                Some(rendered) => (rendered.channel, rendered.title, rendered.body),
-                None => {
-                    return settle(
-                        "failed",
-                        Some("template covers no renderable channels".to_string()),
-                    );
+            (Some(_), Some(content)) => {
+                // No run-level personalization yet; the values map lands
+                // per-recipient data the day schedules carry it.
+                match render_template_content(content, &std::collections::HashMap::new()) {
+                    Some(rendered) => (rendered.channel, rendered.title, rendered.body),
+                    None => {
+                        return settle(
+                            "failed",
+                            Some("template covers no renderable channels".to_string()),
+                        );
+                    }
                 }
-            },
+            }
             (Some(_), None) => {
                 return settle(
                     "failed",

@@ -47,12 +47,10 @@ impl FileSystemTemplates {
     }
 }
 
+/// Substitutes `{{key}}` placeholders via the shared kernel engine (one
+/// fill implementation for system mail and channel templates alike).
 fn substitute(template: &str, vars: &HashMap<String, String>) -> String {
-    let mut out = template.to_string();
-    for (key, value) in vars {
-        out = out.replace(&format!("{{{{{key}}}}}"), value);
-    }
-    out
+    crate::kernel::templating::fill(template, vars)
 }
 
 fn fallback(name: &str) -> Option<RenderedTemplate> {

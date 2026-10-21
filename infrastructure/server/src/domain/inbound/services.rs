@@ -110,9 +110,13 @@ impl InboundService {
                 .map_err(Self::map_store_error)?
                 .filter(|t| t.project_id == project_id)
                 .ok_or_else(|| AppError::Validation("template not found in this project".into()))?;
-            let content = render_template_content(&template.content).ok_or_else(|| {
-                AppError::Validation("template covers no renderable channels".into())
-            })?;
+            // No webhook-event personalization yet; the values map lands
+            // on the trigger's data the day inbound carries it.
+            let content =
+                render_template_content(&template.content, &std::collections::HashMap::new())
+                    .ok_or_else(|| {
+                        AppError::Validation("template covers no renderable channels".into())
+                    })?;
             rendered = Some((content.channel, content.title, content.body));
         }
 

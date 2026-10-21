@@ -256,8 +256,14 @@ impl CampaignService {
             ));
         };
         let rendered =
-            crate::domain::schedules::entities::render_channel_content(&record.content, channel)
-                .ok_or_else(|| {
+            // Per-recipient personalization lands the day campaigns carry it;
+            // today's campaigns compose a fixed body per launch.
+            crate::domain::schedules::entities::render_channel_content(
+                &record.content,
+                channel,
+                &std::collections::HashMap::new(),
+            )
+            .ok_or_else(|| {
                     AppError::Validation(format!(
                         "template has no content for {channel} — pick one it covers"
                     ))

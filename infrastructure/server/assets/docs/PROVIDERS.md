@@ -259,3 +259,36 @@ All errors follow RFC 9457 Problem Details:
   "instance": "/app/projects/xxx/channel-configs"
 }
 ```
+
+---
+
+## Adding a New Provider
+
+Adding a provider touches exactly three places — the compiler holds the
+checklist for you:
+
+1. **Config shape** — add the variant to the channel's config enum in
+   `server/src/channels/<channel>/config.rs`. The fields are what the
+   provider's API needs; the dashboard renders them automatically (see
+   "Config Field Types" above).
+2. **Controller file** — create
+   `server/src/channels/<channel>/providers/<provider>.rs`: one struct
+   holding its own config + HTTP client, implementing the channel's
+   sender trait. It must know nothing about other providers — content
+   and config arrive as parameters (the "standalone but not really" rule).
+3. **Dispatch arm** — the channel module's match in
+   `server/src/channels/<channel>/mod.rs`. The match is exhaustive: Rust
+   refuses to compile until every config variant has an arm.
+
+Template content arrives through the shared render helpers with `{{key}}`
+placeholders already substituted (engine: `server/src/kernel/templating.rs`)
+— a controller never renders templates itself; a completed body is its
+input contract. Unknown placeholders stay visibly intact, so a broken
+mapping shows up in the provider dashboard instead of silently sending
+raw `{{}}`.
+
+**Testing**: unit tests live in `#[cfg(test)]` next to the controller
+(request payload shape + error mapping, against a local HTTP stub), and a
+live-connection test gated behind environment credentials —
+`#[ignore]`-tagged, run explicitly with `cargo test <name> -- --ignored`,
+never in CI. `tests/ethereal_live.rs` is the pattern for SMTP.

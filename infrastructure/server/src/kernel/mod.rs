@@ -11,12 +11,15 @@
 //! * [`event`] — domain event trait and envelope.
 //! * [`id`] — ULID-backed typed identifiers.
 //! * [`outbox`] — transactional outbox data model.
+//! * [`templating`] — shared `{{var}}` substitution for every rendered
+//!   message (system mail + channel template content).
 
 pub mod config;
 pub mod error;
 pub mod event;
 pub mod id;
 pub mod outbox;
+pub mod templating;
 
 pub use error::{ApiError, IntoApiError};
 pub use event::{DomainEvent, EventEnvelope};

@@ -12,9 +12,12 @@
 //! non-destructive alternative to deletion — archived schedules stop
 //! claiming runs but keep their flow bound and restorable.
 
+use std::collections::HashMap;
 use std::str::FromStr;
 
 use chrono::{DateTime, Datelike, Utc};
+
+use crate::kernel::templating;
 
 /// Minimum cadence: one minute (bounds worker wake-ups per schedule).
 pub const MIN_INTERVAL_SECS: i64 = 60;
@@ -310,10 +313,16 @@ const RENDER_ORDER: [(&str, &str, &str, &str); 8] = [
 /// Renders a template's per-channel content map (`{channel: {fields}}`)
 /// into one sendable channel + title + body. Prefers email, then short
 /// message channels, then push/in-app, then webhook payloads. `None`
-/// when the template covers no channels.
-pub fn render_template_content(content: &serde_json::Value) -> Option<RenderedContent> {
+/// when the template covers no channels. `values` substitutes `{{key}}`
+/// placeholders via the shared engine after content selection — pass an
+/// empty map when the caller has no personalization yet; unknown
+/// placeholders stay visible.
+pub fn render_template_content(
+    content: &serde_json::Value,
+    values: &HashMap<String, String>,
+) -> Option<RenderedContent> {
     for (channel, ..) in RENDER_ORDER {
-        if let Some(rendered) = render_channel_content(content, channel) {
+        if let Some(rendered) = render_channel_content(content, channel, values) {
             return Some(rendered);
         }
     }
@@ -325,6 +334,7 @@ pub fn render_template_content(content: &serde_json::Value) -> Option<RenderedCo
 pub fn render_channel_content(
     content: &serde_json::Value,
     channel: &str,
+    values: &HashMap<String, String>,
 ) -> Option<RenderedContent> {
     let map = content.as_object()?;
     let (_, title_key, body_key, fallback_key) =
@@ -343,10 +353,12 @@ pub fn render_channel_content(
     } else {
         text_field(entry, title_key)
     };
+    // Values substitute last: a completed body is what reaches a provider,
+    // never a raw `{{placeholder}}`.
     Some(RenderedContent {
         channel: channel.to_string(),
-        title,
-        body,
+        title: templating::fill(&title, values),
+        body: templating::fill(&body, values),
     })
 }
 
@@ -356,7 +368,7 @@ pub fn template_channels(content: &serde_json::Value) -> Vec<String> {
     RENDER_ORDER
         .iter()
         .map(|(c, ..)| *c)
-        .filter(|c| render_channel_content(content, c).is_some())
+        .filter(|c| render_channel_content(content, c, &HashMap::new()).is_some())
         .map(str::to_string)
         .collect()
 }
@@ -469,7 +481,7 @@ mod schedule_tests {
             "sms": {"sms": "Short"},
         });
         assert_eq!(
-            render_template_content(&email),
+            render_template_content(&email, &HashMap::new()),
             Some(RenderedContent {
                 channel: "email".to_string(),
                 title: "Hi".to_string(),
@@ -479,9 +491,26 @@ mod schedule_tests {
         // Empty-body channels don't shadow complete ones below.
         let sms_only = serde_json::json!({ "email": {"subject": "Hi"}, "sms": {"sms": "Short"} });
         assert_eq!(
-            render_template_content(&sms_only).map(|r| r.channel),
+            render_template_content(&sms_only, &HashMap::new()).map(|r| r.channel),
             Some("sms".to_string())
         );
-        assert!(render_template_content(&serde_json::json!({})).is_none());
+        assert!(render_template_content(&serde_json::json!({}), &HashMap::new()).is_none());
+    }
+
+    #[test]
+    fn channel_render_substitutes_values() {
+        // Values fill after selection: a completed body reaches providers.
+        let sms = serde_json::json!({
+            "sms": {"sms": "Hi {{name}}, your code is {{code}} and {{missing}} stays"},
+        });
+        let values: HashMap<String, String> = [("name", "Emeka"), ("code", "4420")]
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let out = render_channel_content(&sms, "sms", &values).unwrap();
+        assert_eq!(
+            out.body,
+            "Hi Emeka, your code is 4420 and {{missing}} stays"
+        );
     }
 }
