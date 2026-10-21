@@ -213,11 +213,17 @@ its three sweep services from the same graph — new services wire once.
 
 ## 16. Channel modules
 
-Each channel module:
-- Lives in `src/channels/{name}_channel/`
-- Defines provider config structs
-- Has a provider enum in `providers/mod.rs`
-- Implements the channel's delivery trait
+Channel modules group by channel family; the provider lives inside its
+family, never as its own `{name}_channel`:
+- Lives in `src/channels/{family}_channel/` (email, sms, push, chat,
+  device, webhook) — e.g. `chat_channel/providers/slack.rs`, and one
+  `device_channel/providers/` tree holds android, ios, macos, linux,
+  window, and web as provider flavors
+- Defines provider config structs in the provider file
+- Has a provider enum in `providers/mod.rs` (the family's source of
+  truth); providers whose flows permit it also carry controller structs
+  implementing the family trait plus tests (stub requests + env-gated
+  live sends)
 
 ## 17. Configuration
 
@@ -248,7 +254,7 @@ file per provider. Each file defines a config struct. The channel's
 ### Architecture
 
 ```
-src/channels/email_channel/src/
+src/channels/email_channel/
 ├── providers/
 │   ├── mod.rs           # EmailProvider enum + EmailChannel definition
 │   ├── smtp.rs          # SmtpConfig struct
@@ -258,7 +264,7 @@ src/channels/email_channel/src/
 │   ├── postmark.rs      # PostmarkConfig struct
 │   ├── mailgun.rs       # MailgunConfig struct
 │   └── brevo.rs         # BrevoConfig struct
-└── lib.rs               # Channel implementation
+└── mod.rs               # Channel implementation
 ```
 
 ### Adding a new provider

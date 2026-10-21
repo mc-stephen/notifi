@@ -94,7 +94,7 @@ Brand source of truth for all of them: `shared/identity/` (colors, typography, l
 
 ## Backend Server (`infrastructure/`)
 
-The server is a **single crate** rooted at `infrastructure/` (`src/{api,channels,domain,kernel,ports,infra}`; test fakes live under `tests/`). Channel plugins live as modules under `src/channels/` (email, sms, push, chat, web, webhook, android, ios, macos, linux, window, slack, telegram, whatsapp, discord). API layout (see root `Readme.md`): ops at `/`, external product API at `/v1/*` (empty until M2; API-key auth from M6), user dashboard backend at `/app/*`, administration at `/admin/*`.
+The server is a **single crate** rooted at `infrastructure/` (`src/{api,channels,domain,kernel,ports,infra}`; test fakes live under `tests/`). Channel plugins live as modules under `src/channels/` grouped by channel family — `email/`, `sms/`, `push/`, `chat/` (slack, telegram, whatsapp, discord, ms-teams as providers), and `device/` (android, ios, macos, linux, window, and web as device flavors sharing one destination class) — plus `webhook/`. API layout (see root `Readme.md`): ops at `/`, external product API at `/v1/*` (empty until M2; API-key auth from M6), user dashboard backend at `/app/*`, administration at `/admin/*`.
 
 ### Commands
 

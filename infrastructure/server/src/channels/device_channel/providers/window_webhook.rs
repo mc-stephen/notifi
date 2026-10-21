@@ -3,6 +3,8 @@ use futures::future::BoxFuture;
 use reqwest::Client;
 use serde::Serialize;
 
+/// Window webhook flavor: POSTs a `{title, body}` JSON to the target
+/// URL (the machine's self-hosted registration endpoint).
 pub struct WebhookProvider {
     client: Client,
 }
@@ -42,15 +44,18 @@ impl WindowSender for WebhookProvider {
         let client = self.client.clone();
 
         Box::pin(async move {
-            client
+            let response = client
                 .post(url)
                 .json(&payload)
                 .send()
                 .await
-                .map_err(|e| format!("Webhook request failed: {e}"))?
-                .error_for_status()
-                .map_err(|e| format!("Webhook error: {e}"))?;
-            Ok(())
+                .map_err(|e| format!("Webhook request failed: {e}"))?;
+            if response.status().is_success() {
+                Ok(())
+            } else {
+                let err = response.text().await.unwrap_or_default();
+                Err(format!("Webhook error: {err}"))
+            }
         })
     }
 }
