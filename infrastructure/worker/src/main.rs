@@ -1,31 +1,26 @@
-//! Notifi worker — executes due flow schedules and due admin broadcasts.
+//! Notifi worker — executes due flow schedules, due admin broadcasts, and
+//! due campaign drains.
 //!
-//! Transport: sweep ticks from RabbitMQ (`notifi.sweep`). When RabbitMQ is
-//! unset or unreachable the worker sweeps on a local 30s interval instead,
-//! so it is useful with plain `cargo run -p worker` and no extra services.
+//! Triggering: the worker owns its own clock — a local sweep every 30s —
+//! plus, when RabbitMQ is configured, ticks from the durable `notifi.sweep`
+//! queue trigger extra sweeps between intervals. Ticks are disposable
+//! triggers; the database stays the source of truth through atomic claims
+//! (`claim_due`), so local sweeps, tick sweeps, the API's degraded sweeps,
+//! and extra worker processes can all overlap without ever double-running
+//! a job.
 //!
-//! Safe to run alongside the API: claims are atomic (`claim_due`), so a
-//! second sweeper simply finds nothing due. A failed sweep is acked, not
-//! requeued — the next tick retries within one interval, while a nack would
-//! hot-loop on a down database.
+//! Useful with plain `cargo run -p worker` and no extra services: RabbitMQ
+//! being unset, down, or never published-to changes nothing — the local
+//! interval keeps sweeping.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use lapin::options::BasicAckOptions;
 
-use server::domain::admin::AdminNotificationsService;
-use server::domain::campaigns::CampaignService;
-use server::domain::flows::FlowService;
-use server::domain::schedules::ScheduleService;
-use server::domain::sends::SendService;
+use server::compose::ServiceGraph;
+use server::infra::config::AppConfig;
 use server::infra::rabbit::{self, RabbitHub};
-
-/// What a consume round ended with.
-enum Round {
-    Shutdown,
-    Disconnected,
-}
 
 fn main() {
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -38,65 +33,6 @@ fn main() {
             std::process::exit(code);
         }
     });
-}
-
-/// Runs one sweep of due broadcasts, due schedules, and campaigns.
-async fn sweep_once(
-    admin_notifications: &Arc<AdminNotificationsService>,
-    schedules: &Arc<ScheduleService>,
-    campaigns: &Arc<CampaignService>,
-) {
-    match admin_notifications.run_due_worker(chrono::Utc::now()).await {
-        Ok(0) => {}
-        Ok(n) => tracing::info!(sent = n, "scheduled notification worker sent broadcasts"),
-        Err(e) => tracing::error!(error = %e, "scheduled notification worker failed"),
-    }
-    match schedules.run_due(chrono::Utc::now()).await {
-        Ok(0) => {}
-        Ok(n) => tracing::info!(ran = n, "schedule worker fired due schedules"),
-        Err(e) => tracing::error!(error = %e, "schedule worker failed"),
-    }
-    match campaigns.tick(chrono::Utc::now()).await {
-        Ok(0) => {}
-        Ok(n) => tracing::info!(ran = n, "campaign worker processed campaigns"),
-        Err(e) => tracing::error!(error = %e, "campaign worker failed"),
-    }
-}
-
-/// Consumes ticks until shutdown or a transport error.
-async fn consume_round(
-    hub: &RabbitHub,
-    admin_notifications: &Arc<AdminNotificationsService>,
-    schedules: &Arc<ScheduleService>,
-    campaigns: &Arc<CampaignService>,
-) -> Round {
-    let channel = match hub.declare().await {
-        Ok(channel) => channel,
-        Err(e) => {
-            tracing::warn!(error = %e, "worker: rabbitmq declare failed");
-            return Round::Disconnected;
-        }
-    };
-    loop {
-        tokio::select! {
-            _ = shutdown_signal() => return Round::Shutdown,
-            _ = tokio::time::sleep(Duration::from_secs(1)) => {}
-        }
-        match RabbitHub::poll_tick(&channel).await {
-            Err(e) => {
-                tracing::warn!(error = %e, "worker: rabbitmq poll failed");
-                return Round::Disconnected;
-            }
-            Ok(None) => {}
-            Ok(Some(tick)) => {
-                sweep_once(admin_notifications, schedules, campaigns).await;
-                if let Err(e) = tick.delivery.ack(BasicAckOptions::default()).await {
-                    tracing::warn!(error = %e, "worker: tick ack failed");
-                    return Round::Disconnected;
-                }
-            }
-        }
-    }
 }
 
 async fn run() -> i32 {
@@ -126,83 +62,111 @@ async fn run() -> i32 {
         }
     };
 
-    // Same wiring as the API composition root (`server::run`) — the worker
-    // shares the brain, only the trigger differs (ticks vs embedded loops).
-    let audit = Arc::new(server::domain::audit::AuditService::new(Arc::new(
-        server::infra::audit_repository_pg::PgAuditStore::new(pool.clone()),
-    )));
-    let auth_store = Arc::new(server::infra::PgAuthStore::new(pool.clone()));
-    let admin_notifications = Arc::new(AdminNotificationsService::new(
-        auth_store.clone(),
-        auth_store,
-        Arc::new(server::infra::PgNotificationsStore::new(pool.clone())),
-        audit.clone(),
-    ));
-    let channel_providers: Arc<dyn server::ports::ChannelProviderStore> =
-        Arc::new(server::infra::PgChannelProviderStore::new(pool.clone()));
-    let flow_store: Arc<dyn server::ports::flow_store::FlowStore> =
-        Arc::new(server::infra::PgFlowStore::new(pool.clone()));
-    let flows = Arc::new(FlowService::new(flow_store.clone()));
-    let send_store = Arc::new(server::infra::PgSendStore::new(pool.clone()));
-    let sends = Arc::new(SendService::new(
-        send_store.clone(),
-        flows.clone(),
-        channel_providers,
-        Arc::new(server::infra::delivery_adapters::DefaultAdapterFactory),
-        Arc::new(server::infra::ReqwestHttpRequester::new()),
-    ));
-    let schedules = Arc::new(ScheduleService::new(
-        Arc::new(server::infra::PgScheduleStore::new(pool.clone())),
-        flow_store,
-        send_store.clone(),
-        Arc::new(server::infra::PgTemplatesStore::new(pool.clone())),
-        Arc::new(server::infra::PgChannelProviderStore::new(pool.clone())),
-        Arc::new(server::infra::delivery_adapters::DefaultAdapterFactory),
-        Arc::new(server::infra::ReqwestHttpRequester::new()),
-    ));
-    let campaigns = Arc::new(CampaignService::new(
-        Arc::new(server::infra::PgCampaignStore::new(pool.clone())),
-        send_store.clone(),
-        sends.clone(),
-        Arc::new(server::infra::PgRecipientsStore::new(pool.clone())),
-        Arc::new(server::infra::PgTemplatesStore::new(pool.clone())),
-    ));
+    // One composition root with the API (`server::compose::compose`) — the
+    // worker shares the brain, only the trigger differs. Mail/system
+    // templates stay `None`: no sweep service consumes them.
+    let graph = Arc::new(server::compose::compose(pool, &config, None, None));
 
     tracing::info!("worker started");
 
     // Immediate sweep at boot so work never waits a full interval.
-    sweep_once(&admin_notifications, &schedules, &campaigns).await;
+    sweep_once(&graph).await;
 
+    // RabbitMQ (optional): a tick consumer runs alongside the local clock.
+    // The first connect decides whether the task spawns at all — a worker
+    // without a broker logs nothing about rabbit afterwards.
+    if let Some(hub) = tokio::time::timeout(Duration::from_secs(10), rabbit::connect(&config))
+        .await
+        .ok()
+        .flatten()
+    {
+        tracing::info!("worker: consuming sweep ticks from rabbitmq alongside the local interval");
+        tokio::spawn(tick_consumer(Some(hub), graph.clone(), config.clone()));
+    }
+
+    // The worker's own clock: never depends on a configured queue.
     loop {
-        // Reconnect each round: instant `None` when unconfigured, 10s cap
-        // when RabbitMQ is down — then the local interval covers for it.
-        let hub = tokio::time::timeout(Duration::from_secs(10), rabbit::connect(&config))
-            .await
-            .ok()
-            .flatten();
-        match hub {
-            Some(hub) => {
-                tracing::info!("worker: consuming sweep ticks");
-                match consume_round(&hub, &admin_notifications, &schedules, &campaigns).await {
-                    Round::Shutdown => break,
-                    Round::Disconnected => {
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                    }
-                }
-            }
-            None => {
-                tracing::warn!("worker: no rabbitmq; sweeping on a local interval");
-                sweep_once(&admin_notifications, &schedules, &campaigns).await;
-                tokio::select! {
-                    _ = shutdown_signal() => break,
-                    _ = tokio::time::sleep(Duration::from_secs(rabbit::SWEEP_INTERVAL_SECS)) => {}
-                }
+        tokio::select! {
+            _ = shutdown_signal() => break,
+            _ = tokio::time::sleep(Duration::from_secs(rabbit::SWEEP_INTERVAL_SECS)) => {
+                sweep_once(&graph).await;
             }
         }
     }
 
     tracing::info!("worker shutdown complete");
     0
+}
+
+/// Runs one sweep of due broadcasts, due schedules, and campaign drains.
+async fn sweep_once(graph: &ServiceGraph) {
+    match graph
+        .admin_notifications
+        .run_due_worker(chrono::Utc::now())
+        .await
+    {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(sent = n, "scheduled notification worker sent broadcasts"),
+        Err(e) => tracing::error!(error = %e, "scheduled notification worker failed"),
+    }
+    match graph.schedules.run_due(chrono::Utc::now()).await {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(ran = n, "schedule worker fired due schedules"),
+        Err(e) => tracing::error!(error = %e, "schedule worker failed"),
+    }
+    match graph.campaigns.tick(chrono::Utc::now()).await {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(ran = n, "campaign worker processed campaigns"),
+        Err(e) => tracing::error!(error = %e, "campaign worker failed"),
+    }
+}
+
+/// Consumes sweep ticks forever, reconnecting after transport failures with
+/// a 5s backoff and a 10s connect cap. Each tick triggers an extra sweep;
+/// an unacked tick from a crashed worker is redelivered, and the atomic
+/// claim makes that a harmless repeat.
+///
+/// Spawned only when the first connect succeeds, so unset RabbitMQ logs
+/// nothing here.
+async fn tick_consumer(mut hub: Option<RabbitHub>, graph: Arc<ServiceGraph>, config: AppConfig) {
+    loop {
+        if hub.is_none() {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            hub = tokio::time::timeout(Duration::from_secs(10), rabbit::connect(&config))
+                .await
+                .ok()
+                .flatten();
+            if hub.is_none() {
+                // Still unset or unreachable — the local clock covers for
+                // it; try again after the next backoff.
+                continue;
+            }
+        }
+        let channel = match hub.as_ref().expect("hub present").declare().await {
+            Ok(channel) => channel,
+            Err(e) => {
+                tracing::warn!(error = %e, "worker: rabbitmq declare failed");
+                hub = None;
+                continue;
+            }
+        };
+        match RabbitHub::poll_tick(&channel).await {
+            Err(e) => {
+                tracing::warn!(error = %e, "worker: rabbitmq poll failed");
+                hub = None;
+            }
+            Ok(None) => {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            Ok(Some(tick)) => {
+                sweep_once(&graph).await;
+                if let Err(e) = tick.delivery.ack(BasicAckOptions::default()).await {
+                    tracing::warn!(error = %e, "worker: tick ack failed");
+                    hub = None;
+                }
+            }
+        }
+    }
 }
 
 /// Resolves on SIGINT (Ctrl-C) or SIGTERM; triggers graceful shutdown.

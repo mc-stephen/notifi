@@ -2,7 +2,7 @@
 name = "worker"
 version.workspace = true
 edition.workspace = true
-description = "Notifi background worker — sweep ticks from RabbitMQ, local interval fallback"
+description = "Notifi background worker — self-timed sweeps, opportunistic RabbitMQ ticks"
 
 [[bin]]
 name = "worker"

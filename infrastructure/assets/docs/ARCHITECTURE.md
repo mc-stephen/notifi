@@ -60,7 +60,7 @@ notifi/                         # repo root
 | Crate | Path | Purpose |
 |-------|------|---------|
 | `server` | `infrastructure/` | Main binary + lib — API, domain, infra, kernel, ports, channels |
-| `worker` | `infrastructure/worker/` | Background binary — sweep ticks from RabbitMQ, local interval fallback |
+| `worker` | `infrastructure/worker/` | Background binary — self-timed sweeps, opportunistic RabbitMQ ticks |
 
 ## 3. Module boundaries (single crate)
 
@@ -190,14 +190,19 @@ Session-cookie based. See `src/api/routes/app/auth/` and `src/ports/auth_store.r
 
 Outbox pattern for reliable event publishing. See `domain/` and `infra/`.
 
-Sweeps (due flow schedules + due admin broadcasts) run embedded in the API
-on a 30s interval until `NOTIFI_RABBITMQ_URL` is set — then the API publishes
-a tick per interval to the durable `notifi.sweep` queue and the `worker`
-binary (`infrastructure/worker/`) consumes them (`src/infra/rabbit.rs`).
-Ticks are disposable triggers; atomic `claim_due` in Postgres stays the
-source of truth, so a lost tick or a second sweeper can never double-send.
-A failed tick publish degrades to a local sweep, and the worker falls back
-to a local interval when RabbitMQ is unreachable.
+Sweeps (due flow schedules, due admin broadcasts, due campaign drains):
+while `NOTIFI_RABBITMQ_URL` is unset the API runs them embedded on a 30s
+interval; once it is set, the API publishes a tick per interval to the
+durable `notifi.sweep` queue (`src/infra/rabbit.rs`) — with a degraded local
+sweep only when a publish fails. The `worker` binary (`infrastructure/worker/`)
+always sweeps on its own 30s local interval and, when connected, consumes
+those ticks for extra sweeps in between. Ticks are disposable triggers;
+atomic `claim_due` in Postgres stays the source of truth, so a lost tick,
+overlapping sweeps, or a second sweeper can never double-send.
+
+Both processes build their services from one composition root
+(`src/compose.rs`): the API maps the graph into AppState, the worker takes
+its three sweep services from the same graph — new services wire once.
 
 ## 15. Shared kernel
 
