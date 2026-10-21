@@ -29,6 +29,14 @@ impl SmsSender2 {
                 let sender = providers::local_nigeria::LocalNigeriaProvider::new(c);
                 sender.send(&msg.to, &msg.text).await
             }
+            providers::SmsProvider::Termii(c) => {
+                let sender = providers::termii::TermiiProvider::new(c);
+                sender.send(&msg.to, &msg.text).await
+            }
+            providers::SmsProvider::AfricasTalking(c) => {
+                let sender = providers::africas_talking::AfricasTalkingProvider::new(c);
+                sender.send(&msg.to, &msg.text).await
+            }
             _ => Err(format!(
                 "SMS provider not yet implemented: {}",
                 provider.provider_name()
