@@ -4,6 +4,18 @@ pub mod slack;
 pub mod telegram;
 pub mod whatsapp_business;
 
+use futures::future::BoxFuture;
+
+use crate::channels::chat_channel::ChatMessage;
+
+/// One chat provider controller: config + client in, one HTTP flow out.
+/// Controllers know nothing about each other; `ChatMessage` (text plus an
+/// optional per-message destination) is the input contract. Error strings
+/// surface the provider's own response body — never swallow it.
+pub trait ChatSender: Send + Sync {
+    fn send(&self, msg: &ChatMessage) -> BoxFuture<'static, Result<(), String>>;
+}
+
 /// All supported chat providers. THIS IS THE SOURCE OF TRUTH.
 #[derive(Debug, Clone)]
 pub enum ChatProvider {
