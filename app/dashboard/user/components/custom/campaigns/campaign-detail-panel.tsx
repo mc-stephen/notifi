@@ -194,7 +194,6 @@ export function CampaignDetailPanel({
           </p>
         </div>
       }
-      className="w-[min(30rem,94%)]"
     >
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-4 px-5 py-4">
