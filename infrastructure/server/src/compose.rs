@@ -99,7 +99,7 @@ pub fn compose(
     let admin = Arc::new(admin);
 
     // Projects slice: same store backing, separate service instance.
-    // Brand storage rides in so creation seeds the bucket folder, the
+    // Project storage rides in so creation seeds the bucket folder, the
     // deletion purge wipes it, and exports can list the files. The same
     // (cache-wrapped on the API side) instance is shared by the export
     // service so every read/write sees one storage view.
@@ -131,7 +131,7 @@ pub fn compose(
     };
     let project_members = Arc::new(project_members);
 
-    // Recipients slice: brand end-users, scoped to a project the caller
+    // Recipients slice: project end-users, scoped to a project the caller
     // belongs to. Shares the audit service for create/delete events.
     let recipients = Arc::new(domain::recipients::RecipientService::new(
         Arc::new(infra::PgRecipientsStore::new(pool.clone())),

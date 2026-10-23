@@ -34,7 +34,7 @@ pub struct AppState {
     pub project_members: Option<Arc<crate::domain::projects::ProjectMembersService>>,
     /// Audit log listener + query surface — wired alongside auth/db.
     pub audit: Option<Arc<crate::domain::audit::AuditService>>,
-    /// Recipient (brand end-user) management — wired alongside auth/db.
+    /// Recipient (project end-user) management — wired alongside auth/db.
     pub recipients: Option<Arc<crate::domain::recipients::RecipientService>>,
     /// Project API keys + per-key IP allowlists — wired alongside auth/db.
     pub api_keys: Option<Arc<crate::domain::api_keys::ApiKeyService>>,
@@ -62,7 +62,7 @@ pub struct AppState {
     pub notifications: Option<Arc<crate::domain::notifications::NotificationService>>,
     /// Provider connection tester — always available.
     pub provider_tester: Arc<dyn crate::ports::ProviderTester + Send + Sync>,
-    /// Tenant brand config storage (channel configs + template assets) —
+    /// Tenant project config storage (channel configs + template assets) —
     /// file-backed locally, object-store-backed when `NOTIFI_R2_*` is set.
     /// Always available; see [`crate::ports::ConfigStore`].
     pub config_store: Arc<dyn crate::ports::ConfigStore + Send + Sync>,

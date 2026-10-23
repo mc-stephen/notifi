@@ -178,6 +178,12 @@ impl ConfigStore for CachedConfigStore {
         self.backend.invalidate(key).await;
         Ok(())
     }
+
+    async fn ensure_root_folders(&self) -> Result<(), String> {
+        // An infra ensure, not data: straight to the wrapped store, no
+        // cache traffic in either direction.
+        self.inner.ensure_root_folders().await
+    }
 }
 
 #[cfg(test)]
@@ -226,6 +232,10 @@ mod config_cache_tests {
         async fn list_keys(&self, _prefix: &str) -> Result<Vec<String>, String> {
             Ok(Vec::new())
         }
+
+        async fn ensure_root_folders(&self) -> Result<(), String> {
+            Ok(())
+        }
     }
 
     #[tokio::test]
@@ -237,11 +247,11 @@ mod config_cache_tests {
         );
 
         let first = cached
-            .load_raw("brands/acme/templates/welcome/email.html")
+            .load_raw("projects/acme/templates/welcome/email.html")
             .await
             .unwrap();
         let second = cached
-            .load_raw("brands/acme/templates/welcome/email.html")
+            .load_raw("projects/acme/templates/welcome/email.html")
             .await
             .unwrap();
         assert_eq!(first, second);
@@ -255,7 +265,7 @@ mod config_cache_tests {
             inner.clone(),
             Arc::new(MemoryCacheBackend::new(Duration::from_secs(60))),
         );
-        let key = "brands/acme/config/email/config.json";
+        let key = "projects/acme/config/email/config.json";
 
         cached.load_raw(key).await.unwrap();
         assert_eq!(inner.loads(), 1);
@@ -273,7 +283,7 @@ mod config_cache_tests {
             inner.clone(),
             Arc::new(MemoryCacheBackend::new(Duration::from_secs(60))),
         );
-        let key = "brands/acme/templates/welcome/sms.txt";
+        let key = "projects/acme/templates/welcome/sms.txt";
 
         cached.load_raw(key).await.unwrap();
         cached.load_raw(key).await.unwrap();
@@ -293,8 +303,8 @@ mod config_cache_tests {
             Arc::new(MemoryCacheBackend::new(Duration::from_secs(60))),
         );
 
-        cached.list_keys("brands/acme").await.unwrap();
-        cached.list_keys("brands/acme").await.unwrap();
+        cached.list_keys("projects/acme").await.unwrap();
+        cached.list_keys("projects/acme").await.unwrap();
         assert_eq!(inner.loads(), 0, "list must not warm the cache");
     }
 
@@ -305,7 +315,7 @@ mod config_cache_tests {
             inner.clone(),
             Arc::new(MemoryCacheBackend::new(Duration::from_millis(25))),
         );
-        let key = "brands/acme/templates/welcome/sms.txt";
+        let key = "projects/acme/templates/welcome/sms.txt";
 
         cached.load_raw(key).await.unwrap();
         tokio::time::sleep(Duration::from_millis(40)).await;
@@ -316,8 +326,8 @@ mod config_cache_tests {
     #[test]
     fn cache_key_prefix_isolates_the_namespace() {
         assert_eq!(
-            cache_key!("brands/acme/config/email/config.json"),
-            "cfg:brands/acme/config/email/config.json"
+            cache_key!("projects/acme/config/email/config.json"),
+            "cfg:projects/acme/config/email/config.json"
         );
     }
 }

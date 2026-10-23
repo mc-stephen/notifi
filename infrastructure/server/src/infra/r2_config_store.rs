@@ -1,9 +1,17 @@
-//! Cloudflare R2 config store — the object-store driver for tenant brand
+//! Cloudflare R2 config store — the object-store driver for tenant project
 //! config, S3-compatible and backed by Cloudflare's zero-egress R2.
 //!
-//! The bucket IS the convention root: key `brands/_default/config/...`
-//! maps 1:1 to bucket object `brands/_default/config/...`, so nothing
+//! The bucket IS the convention root: key `projects/acme/config/...`
+//! maps 1:1 to bucket object `projects/acme/config/...`, so nothing
 //! special-cases the folder scheme and the file driver's keys work as-is.
+//!
+//! Object stores have no folder entities — a "folder" is just a key
+//! prefix. [`ConfigStore::ensure_root_folders`] materializes each
+//! top-level prefix (`projects/`, `backup/`) with a tiny empty marker
+//! object *inside* it (`{prefix}.keep`): the bucket visually "has" the
+//! folders on any dashboard from boot, before any real key arrives. The
+//! markers list under their prefix, so per-slug flows (purge, export)
+//! never see them, and `--reset-config` recreates them after wiping.
 //!
 //! Endpoint derives from the account id (`R2Config::endpoint`) rather than
 //! accepting a pasted URL — hand-copied R2 endpoints often end in a glued
@@ -139,6 +147,18 @@ impl ConfigStore for R2ConfigStore {
         Ok(keys)
     }
 
+    async fn ensure_root_folders(&self) -> Result<(), String> {
+        // Top-level prefixes the bucket should show from boot. `backup/`
+        // rides the same bucket (the worker's dumps land there), so
+        // marking it is safe from any process. Zero-byte objects inside
+        // each prefix make dashboards display the folder.
+        for prefix in ["projects/", "backup/"] {
+            let marker = format!("{prefix}.keep");
+            self.put_raw(&marker, Vec::new()).await?;
+        }
+        Ok(())
+    }
+
     async fn delete_raw(&self, key: &str) -> Result<(), String> {
         let path = self.object_path(key)?;
         self.client.delete(&path).await.map_err(|e| {
@@ -187,7 +207,7 @@ mod r2_config_store_tests {
     #[test]
     fn invalid_keys_rejected_before_any_wire_call() {
         let store = R2ConfigStore::from_config(&config()).expect("builds");
-        let result = futures::executor::block_on(store.load_raw("/brands/absolute/path.json"));
+        let result = futures::executor::block_on(store.load_raw("/projects/absolute/path.json"));
         match result {
             Ok(_) => panic!("absolute keys must not pass"),
             Err(e) => assert!(e.contains("invalid config key"), "got: {e}"),

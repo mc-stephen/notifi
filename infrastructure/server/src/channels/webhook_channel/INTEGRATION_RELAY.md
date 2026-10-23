@@ -18,7 +18,7 @@ The Relay mode acts as a flexible HTTP forwarder, allowing you to trigger custom
     "Content-Type": "application/json",
     "X-Notifi-Signature": "your-secret-key"
   },
-  "payload_template": "{\"title\": \"{{title}}\", \"message\": \"{{body}}\", \"source\": \"{{brand}}\"}"
+  "payload_template": "{\"title\": \"{{title}}\", \"message\": \"{{body}}\", \"source\": \"{{project}}\"}"
 }
 ```
-Available placeholders: `{{title}}`, `{{body}}`, `{{brand}}`, `{{timestamp}}`.
+Available placeholders: `{{title}}`, `{{body}}`, `{{project}}`, `{{timestamp}}`.

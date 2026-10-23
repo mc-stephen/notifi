@@ -28,7 +28,7 @@ pub enum AppError {
     Forbidden(String),
     /// A requested resource does not exist (or is not visible to the caller).
     NotFound(String),
-    /// A unique constraint was violated (e.g. duplicate brand user_id).
+    /// A unique constraint was violated (e.g. duplicate recipient user_id).
     Conflict(String),
     /// The caller hit a documented rate limit (e.g. project export
     /// downloads per day) and must wait.

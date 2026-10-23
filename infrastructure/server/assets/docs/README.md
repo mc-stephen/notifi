@@ -37,7 +37,7 @@ src/
 ├── infra/            # concrete drivers: Postgres repos, OAuth client, config, telemetry
 └── testing.rs        # in-memory fakes shared with integration tests
 assets/               # server-owned data & docs
-├── brands/           # tenant channel configs + templates (NOTIFI_CONFIG_ROOT)
+├── projects/         # tenant channel configs + templates (NOTIFI_CONFIG_ROOT)
 ├── docs/             # ARCHITECTURE.md, SERVER.md, this README, COMMANDS.md
 └── migrations/       # sqlx migrations (0001_initial_schema.sql)
 worker/               # background binary — RabbitMQ sweep-tick consumer
@@ -117,21 +117,21 @@ configs API contract.
   next to `Cargo.toml` (`NOTIFI_DATABASE_URL=...`) — loaded automatically at
   boot; real environment variables still win over file values.
 - Telemetry filter: `NOTIFI_LOG` (falls back to `RUST_LOG`, then `info`).
-- **Brand assets** (tenant channel configs + templates) live in the
+- **Project assets** (tenant channel configs + templates) live in the
   config store, not in the repo. Keys under the convention root
   (relative to `infrastructure/`):
 
   ```text
-  brands/{brand}/config/{channel}/...      channel configs
-  brands/{brand}/templates/{name}/...      brand-scoped templates
+  projects/{slug}/config/{channel}/...     channel configs
+  projects/{slug}/templates/{name}/...     project-scoped templates
   ```
 
-  The default layout is code (`kernel::config::DefaultBrandLayout`) — a
-  project materializes its own `brands/{slug}/**` tree at creation. The
+  The default layout is code (`kernel::config::DefaultProjectLayout`) — a
+  project materializes its own `projects/{slug}/**` tree at creation. The
   root is overridable via `NOTIFI_CONFIG_ROOT` (`.cargo/config.toml`
   points dev at `./assets`), and all four `NOTIFI_R2_*` values switch to
   the Cloudflare R2 bucket, which then *is* the root. `--reset-config`
-  wipes `brands/` back to empty; `--reset-db` chains it after the DB
+  wipes `projects/` back to only its folder markers; `--reset-db` chains it after the DB
   reset.
 
 ## Database reset

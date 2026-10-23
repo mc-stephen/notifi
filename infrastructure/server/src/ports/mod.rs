@@ -10,7 +10,6 @@ pub mod audit_store;
 pub mod auth_store;
 pub mod billing_store;
 pub mod campaigns_store;
-pub mod channel;
 pub mod channel_provider_store;
 pub mod config_store;
 pub mod delivery;
@@ -33,7 +32,6 @@ pub mod webhook_store;
 
 pub use audit_store::{AdminAuditFilters, AuditFilters, AuditStore};
 pub use auth_store::{AuthStore, BoxFut, OnboardingInput, StoreError};
-pub use channel::ChannelConfigLoader;
 pub use channel_provider_store::ChannelProviderStore;
 pub use config_store::ConfigStore;
 pub use delivery::{

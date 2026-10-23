@@ -11,7 +11,7 @@ use crate::infra::config::AppConfig;
 use crate::infra::{FileConfigStore, R2ConfigStore};
 use crate::ports::config_store::ConfigStore;
 
-/// Builds the store the runtime addresses brands through:
+/// Builds the store the runtime addresses projects through:
 /// * R2 object store when all four `NOTIFI_R2_*` values are set — the
 ///   bucket is the convention root;
 /// * the file driver otherwise (`NOTIFI_CONFIG_ROOT`, dev points it at
@@ -29,18 +29,40 @@ pub fn build(config: &AppConfig) -> Result<Arc<dyn ConfigStore + Send + Sync>, S
     }
 }
 
-/// Deletes every brand's config from the active store — the dev twin of
+/// Builds the store AND makes its top-level folders exist (`projects/`)
+/// — every boot flows through here, so the storage layout is visible in
+/// a fresh bucket or root before the first project arrives.
+pub async fn build_ensured(
+    config: &AppConfig,
+) -> Result<Arc<dyn ConfigStore + Send + Sync>, String> {
+    let store = build(config)?;
+    store
+        .ensure_root_folders()
+        .await
+        .map_err(|e| format!("root folders could not be ensured: {e}"))?;
+    Ok(store)
+}
+
+/// Deletes every project's config from the active store — the dev twin of
 /// a database reset. Defaults are code (`kernel::config
-/// ::DefaultBrandLayout`), so nothing is preserved and nothing needs
-/// re-seeding: the store ends without any `brands/` keys, and each future
-/// project materializes its own tree on creation. Delete idempotency
-/// (missing = success) lets a wiped-already store reset to a clean no-op.
+/// ::DefaultProjectLayout`), so nothing is preserved and nothing needs
+/// re-seeding: the store ends without any `projects/{slug}/` keys, and
+/// each future project materializes its own tree on creation. Delete
+/// idempotency (missing = success) lets a wiped-already store reset to a
+/// clean no-op. The top-level folder markers are rebuilt afterwards, so
+/// an empty bucket still shows its layout.
 pub async fn reset(config: &AppConfig) -> Result<usize, String> {
     let store = build(config)?;
-    let keys = store.list_keys("brands/").await?;
+    // The wipe takes the whole top-level prefix, the `.keep` marker
+    // included — `ensure_root_folders` below puts it straight back.
+    let keys = store.list_keys("projects/").await?;
     for key in &keys {
         store.delete_raw(key).await?;
     }
+    store
+        .ensure_root_folders()
+        .await
+        .map_err(|e| format!("root folders could not be re-ensured after reset: {e}"))?;
     Ok(keys.len())
 }
 

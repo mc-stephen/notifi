@@ -128,7 +128,7 @@ pub async fn cancel_deletion(
 }
 
 /// `GET /app/projects/{id}/export` — one data-export download: rows as
-/// JSON plus brand files, as a ZIP. Any member; limited to
+/// JSON plus project files, as a ZIP. Any member; limited to
 /// [`EXPORTS_PER_DAY`] downloads per project per rolling 24h (the guard
 /// runs before the bytes are assembled, so spam never reaches the store).
 pub async fn export_zip(

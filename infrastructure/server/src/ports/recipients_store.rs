@@ -17,7 +17,7 @@ pub type BoxFut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub struct RecipientRecord {
     pub id: String,
     pub project_id: String,
-    /// The brand's in-house targeting key, unique within `project_id`.
+    /// The project's in-house targeting key, unique within `project_id`.
     pub user_id: String,
     pub name: String,
     /// Flexible contact blob (email, phone, device/push ids, ...).

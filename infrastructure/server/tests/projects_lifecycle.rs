@@ -1,9 +1,9 @@
 //! Project deletion lifecycle + data exports — service-level flows vs. the
 //! auth-store fake and a real-on-disk file config store:
-//! creation seeds the brand folder (and rolls back on failure), deletion
+//! creation seeds the project folder (and rolls back on failure), deletion
 //! freezes instantly while staying downloadable + cancellable, the sweep
 //! purge wipes bucket-folder-first then rows, and the export zip carries
-//! the rows plus brand files at their real paths with the key secret out.
+//! the rows plus project files at their real paths with the key secret out.
 
 mod common;
 
@@ -75,7 +75,7 @@ async fn export_service(
 // -- creation -------------------------------------------------------------
 
 #[tokio::test]
-async fn create_materializes_the_brand_folder() {
+async fn create_materializes_the_project_folder() {
     let store = Arc::new(FakeAuthStore::new());
     let root = temp_root("materialize");
     let config_store = Arc::new(FileConfigStore::new(&root));
@@ -89,9 +89,9 @@ async fn create_materializes_the_brand_folder() {
     // The slugified folder exists with the code-owned default layout,
     // keyed by the project's stored slug (the bucket convention).
     let keys = config_store
-        .list_keys(&format!("brands/{}/", project.slug))
+        .list_keys(&format!("projects/{}/", project.slug))
         .await
-        .expect("brand folder listed");
+        .expect("project folder listed");
     assert!(!keys.is_empty(), "default files must be present");
 
     std::fs::remove_dir_all(&root).ok();
@@ -225,7 +225,7 @@ async fn purge_wipes_bucket_folder_first_then_rows() {
 
     let owner = UserId::new();
     let project = service.create(owner, "Purge Target", None).await.unwrap();
-    let prefix = format!("brands/{}/", project.slug);
+    let prefix = format!("projects/{}/", project.slug);
     config_store
         .put_raw(&format!("{prefix}config/email/config.json"), b"{}".to_vec())
         .await
@@ -276,7 +276,7 @@ async fn purge_wipes_bucket_folder_first_then_rows() {
 // -- exports --------------------------------------------------------------
 
 #[tokio::test]
-async fn export_zip_carries_sections_and_brand_files() {
+async fn export_zip_carries_sections_and_project_files() {
     let store = Arc::new(FakeAuthStore::new());
     let root = temp_root("export");
     let config_store = Arc::new(FileConfigStore::new(&root));
@@ -287,10 +287,10 @@ async fn export_zip_carries_sections_and_brand_files() {
     let member = UserId::new();
     store.seed_member(&project.id, &member.to_string(), "developer");
 
-    // A brand file at a real path joins the zip byte-for-byte.
-    let brand_key = format!("brands/{}/markets/summer-banner.png", project.slug);
+    // A project file at a real path joins the zip byte-for-byte.
+    let project_key = format!("projects/{}/markets/summer-banner.png", project.slug);
     config_store
-        .put_raw(&brand_key, b"PNGDATA".to_vec())
+        .put_raw(&project_key, b"PNGDATA".to_vec())
         .await
         .unwrap();
 
@@ -310,7 +310,7 @@ async fn export_zip_carries_sections_and_brand_files() {
         "recipients.json",
         "webhooks.json",
         "flows.json",
-        brand_key.as_str(),
+        project_key.as_str(),
     ] {
         assert!(names.iter().any(|n| n == expected), "missing {expected}");
     }
@@ -323,16 +323,16 @@ async fn export_zip_carries_sections_and_brand_files() {
     };
     assert_eq!(manifest["project"]["id"], project.id);
     assert_eq!(manifest["project"]["slug"], project.slug);
-    // The brand section counts the project's whole folder (the creation
+    // The projectFiles section counts the project's whole folder (the creation
     // materialized the default layout, plus the banner staged above).
-    let counted = manifest["sections"]["brandFiles"]["count"]
+    let counted = manifest["sections"]["projectFiles"]["count"]
         .as_u64()
         .unwrap();
     assert!(counted >= 1, "at least the staged file");
-    let paths = manifest["sections"]["brandFiles"]["paths"]
+    let paths = manifest["sections"]["projectFiles"]["paths"]
         .as_array()
         .unwrap();
-    assert!(paths.iter().any(|p| p == &brand_key), "banner listed");
+    assert!(paths.iter().any(|p| p == &project_key), "banner listed");
 
     // Key secrets never export: the section is empty here AND the mapper
     // simply has no field for `key_hash`.

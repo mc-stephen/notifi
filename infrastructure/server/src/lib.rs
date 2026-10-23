@@ -100,9 +100,11 @@ fn run_inner() -> Result<(), String> {
             }
         }
 
-        // Tenant brand config storage: the factory picks the driver and
+        // Tenant project config storage: the factory picks the driver and
         // logs the choice (R2 when NOTIFI_R2_* is all set, filesystem
         // otherwise), so ops flags and boot can never pick differently.
+        // Boot also lays the top-level folders down (`projects/`) so the
+        // storage layout exists before the first project arrives.
         // Read-through config cache when Redis is reachable: warm keys
         // answer at Redis speed and the store behind sees nothing, so
         // R2 request counts (and per-delivery latency) stay near zero.
@@ -111,7 +113,9 @@ fn run_inner() -> Result<(), String> {
         // deletion purge) shares this exact instance — cache invalidation
         // only works if every writer goes through the same wrapper.
         let config_store: std::sync::Arc<dyn ports::ConfigStore + Send + Sync> =
-            infra::config_store_factory::build(&config).expect("config store builds");
+            infra::config_store_factory::build_ensured(&config)
+                .await
+                .expect("config store builds");
         let config_store: std::sync::Arc<dyn ports::ConfigStore + Send + Sync> =
             match &redis_conn {
                 Some(client) => match client.clone().get_connection_manager().await {

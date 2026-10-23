@@ -5,22 +5,22 @@ use thiserror::Error;
 /// Errors that can occur when loading a tenant channel configuration.
 #[derive(Error, Debug)]
 pub enum ConfigError {
-    #[error("config directory not found for brand '{brand}' channel '{channel}' at {path}")]
+    #[error("config directory not found for project '{project}' channel '{channel}' at {path}")]
     DirectoryNotFound {
-        brand: String,
+        project: String,
         channel: String,
         path: PathBuf,
     },
-    #[error("I/O error reading config for brand '{brand}' channel '{channel}': {source}")]
+    #[error("I/O error reading config for project '{project}' channel '{channel}': {source}")]
     Io {
-        brand: String,
+        project: String,
         channel: String,
         #[source]
         source: std::io::Error,
     },
-    #[error("failed to parse config for brand '{brand}' channel '{channel}': {message}")]
+    #[error("failed to parse config for project '{project}' channel '{channel}': {message}")]
     Parse {
-        brand: String,
+        project: String,
         channel: String,
         message: String,
     },
@@ -32,15 +32,16 @@ pub enum ConfigError {
 /// `configs`):
 ///
 /// ```text
-/// {root}/brands/{brand}/config/{channel_name}/...      channel configs
-/// {root}/brands/{brand}/templates/{template_name}/... brand-scoped templates
+/// {root}/projects/{slug}/config/{channel_name}/...      channel configs
+/// {root}/projects/{slug}/templates/{template_name}/...   project-scoped templates
 /// ```
 ///
-/// The root is the assets root: `brands/` sits directly under it.
+/// The root is the assets root: `projects/` sits directly under it; the
+/// `{slug}` segment is the project's stored slug.
 pub struct ConfigResolver;
 
 impl ConfigResolver {
-    /// Returns the root directory under which all brand dirs live.
+    /// Returns the root directory under which all project dirs live.
     /// Override with the `NOTIFI_CONFIG_ROOT` env var (defaults to `configs`).
     ///
     /// `infra` config-store drivers resolve their base from here too, so
@@ -51,56 +52,64 @@ impl ConfigResolver {
             .unwrap_or_else(|_| PathBuf::from("configs"))
     }
 
-    /// Builds the channel config path: `{root}/brands/{brand}/config/{channel_name}/`.
-    pub fn channel_dir(brand: &str, channel_name: &str) -> PathBuf {
+    /// Storage-key convention root for one project:
+    /// `projects/{slug}/` — the single home of the folder convention,
+    /// reused by emulation (purge, export) and tests so the prefix is
+    /// never hand-built twice.
+    pub fn project_prefix(slug: &str) -> String {
+        format!("projects/{slug}/")
+    }
+
+    /// Builds the channel config path: `{root}/projects/{slug}/config/{channel_name}/`.
+    pub fn channel_dir(slug: &str, channel_name: &str) -> PathBuf {
         Self::root()
-            .join("brands")
-            .join(brand)
+            .join("projects")
+            .join(slug)
             .join("config")
             .join(channel_name)
     }
 
-    /// Builds the template path: `{root}/brands/{brand}/templates/{template_name}/`.
-    pub fn template_dir(brand: &str, template_name: &str) -> PathBuf {
+    /// Builds the template path: `{root}/projects/{slug}/templates/{template_name}/`.
+    pub fn template_dir(slug: &str, template_name: &str) -> PathBuf {
         Self::root()
-            .join("brands")
-            .join(brand)
+            .join("projects")
+            .join(slug)
             .join("templates")
             .join(template_name)
     }
 
     /// Storage key for a channel config file:
-    /// `brands/{brand}/config/{channel_name}/{file_name}`.
+    /// `projects/{slug}/config/{channel_name}/{file_name}`.
     ///
     /// Relative to whichever [`crate::ports::ConfigStore`] is active (the
     /// file driver prepends the same root these path helpers use), so the
     /// same key addresses disk, Redis-cached copies, and R2 buckets alike.
-    pub fn channel_key(brand: &str, channel_name: &str, file_name: &str) -> String {
-        format!("brands/{brand}/config/{channel_name}/{file_name}")
+    pub fn channel_key(slug: &str, channel_name: &str, file_name: &str) -> String {
+        format!("projects/{slug}/config/{channel_name}/{file_name}")
     }
 
-    /// Storage key for a brand template file:
-    /// `brands/{brand}/templates/{template_name}/{file_name}`.
-    pub fn template_key(brand: &str, template_name: &str, file_name: &str) -> String {
-        format!("brands/{brand}/templates/{template_name}/{file_name}")
+    /// Storage key for a project template file:
+    /// `projects/{slug}/templates/{template_name}/{file_name}`.
+    pub fn template_key(slug: &str, template_name: &str, file_name: &str) -> String {
+        format!("projects/{slug}/templates/{template_name}/{file_name}")
     }
 
     /// Reads and parses a JSON config file for a tenant channel.
     ///
-    /// Path: `{root}/brands/{brand}/config/{channel_name}/{file_name}`.
+    /// Path: `{root}/projects/{slug}/config/{channel_name}/{file_name}`.
     ///
     /// Returns [`ConfigError::DirectoryNotFound`] when the directory does not
     /// exist, which lets channels distinguish "no config installed for this
     /// tenant" from a broken config.
     pub fn load_json<T: DeserializeOwned>(
-        brand: &str,
+        slug: &str,
         channel_name: &str,
         file_name: &str,
     ) -> Result<T, ConfigError> {
-        let dir = Self::channel_dir(brand, channel_name);
+        let dir = Self::channel_dir(slug, channel_name);
         if !dir.is_dir() {
             return Err(ConfigError::DirectoryNotFound {
-                brand: brand.to_string(),
+                project: slug.to_string(),
                 channel: channel_name.to_string(),
                 path: dir,
             });
@@ -108,60 +117,22 @@ impl ConfigResolver {
 
         let path = dir.join(file_name);
         let bytes = fs::read(&path).map_err(|source| ConfigError::Io {
-            brand: brand.to_string(),
+            project: slug.to_string(),
             channel: channel_name.to_string(),
             source,
         })?;
 
         serde_json::from_slice(&bytes).map_err(|e| ConfigError::Parse {
-            brand: brand.to_string(),
+            project: slug.to_string(),
             channel: channel_name.to_string(),
             message: e.to_string(),
         })
     }
 }
 
-/// Iterates runs of characters that are not `[a-z0-9]` as one separator.
-fn slug_separators(name_bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(name_bytes.len());
-    let mut in_separator = false;
-    for &b in name_bytes {
-        if b.is_ascii_lowercase() || b.is_ascii_digit() {
-            in_separator = false;
-            out.push(b as char);
-        } else if b.is_ascii_uppercase() {
-            in_separator = false;
-            out.push((b + 32) as char);
-        } else if !in_separator {
-            in_separator = true;
-            out.push('_');
-        }
-    }
-    let trimmed = out.trim_matches('_');
-    trimmed.to_string()
-}
-
-/// Slugifies a human project name into a brand id safe for storage keys
-/// and bucket/folder names: `"Notifi"` → `"notifi"`, `"The Team"` →
-/// `"the_team"`. Lowercase `[a-z0-9]` plus underscores, runs of any other
-/// character collapse to one underscore, edges strip. Reserves no
-/// built-in brand names — storage treats every brand id the same.
+/// The single source of truth for "project name → storage slug".
 ///
-/// Empty after cleaning (e.g. a name of `"   "`) is an error; project
-/// creation surfaces it to the caller.
-pub fn brand_slug(name: &str) -> Result<String, String> {
-    let slug = slug_separators(name.as_bytes());
-    if slug.is_empty() {
-        return Err(format!(
-            "project name '{name}' produces an empty brand slug"
-        ));
-    }
-    Ok(slug)
-}
-
-/// The single source of truth for "project name → store slug".
-///
-/// Runtime brand-folder keys (`brands/{slug}/…`) are keyed by the
+/// Runtime project-folder keys (`projects/{slug}/…`) are keyed by the
 /// project's stored slug; the database assigns it from this function at
 /// creation and keeps it stable. Storage slugs thus stay unique and
 /// rename-proof, unlike a name-derived key. Mirrors the historical
@@ -185,9 +156,9 @@ pub fn project_slug(name: &str) -> String {
     }
 }
 
-/// A single default file materialized into a fresh brand's namespace.
+/// A single default file materialized into a fresh project's namespace.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DefaultBrandFile {
+pub struct DefaultProjectFile {
     /// Convention key (see [`ConfigResolver::channel_key`] /
     /// [`ConfigResolver::template_key`]).
     pub key: String,
@@ -205,33 +176,33 @@ const DEFAULT_EMAIL_CONFIG: &str = r#"{
 }
 "#;
 
-/// The default brand layout — owned by code, not by a folder.
+/// The default project layout — owned by code, not by a folder.
 ///
-/// The old `assets/brands/_default` reference folder used to carry the
-/// structure; it now lives here so re-arranging the shape is a code
-/// change every future project inherits (edit this struct, done), and
-/// storage holds no ghost copy of it (a reset leaves nothing under
-/// `brands/`, projects materialize on creation).
+/// The old reference folder used to carry the structure; it now lives
+/// here so re-arranging the shape is a code change every future project
+/// inherits (edit this struct, done), and storage holds no ghost copy of
+/// it (a reset leaves nothing under `projects/`, projects materialize
+/// on creation).
 ///
 /// `config/` gathers each notification channel's config files;
 /// `templates/` gathers template files per template name. Contents are
 /// transplanted byte-for-byte from the folder this replaced.
-pub struct DefaultBrandLayout;
+pub struct DefaultProjectLayout;
 
-impl DefaultBrandLayout {
-    /// Every default file a fresh brand gets, in stable order.
-    pub fn files(brand: &str) -> Vec<DefaultBrandFile> {
+impl DefaultProjectLayout {
+    /// Every default file a fresh project gets, in stable order.
+    pub fn files(slug: &str) -> Vec<DefaultProjectFile> {
         vec![
-            DefaultBrandFile {
-                key: ConfigResolver::channel_key(brand, "email", "config.json"),
+            DefaultProjectFile {
+                key: ConfigResolver::channel_key(slug, "email", "config.json"),
                 contents: DEFAULT_EMAIL_CONFIG.as_bytes().to_vec(),
             },
-            DefaultBrandFile {
-                key: ConfigResolver::template_key(brand, "welcome", "email.html"),
+            DefaultProjectFile {
+                key: ConfigResolver::template_key(slug, "welcome", "email.html"),
                 contents: DEFAULT_WELCOME_EMAIL_HTML.as_bytes().to_vec(),
             },
-            DefaultBrandFile {
-                key: ConfigResolver::template_key(brand, "welcome", "sms.txt"),
+            DefaultProjectFile {
+                key: ConfigResolver::template_key(slug, "welcome", "sms.txt"),
                 contents: DEFAULT_WELCOME_SMS_TEXT.as_bytes().to_vec(),
             },
         ]
@@ -312,7 +283,7 @@ mod tests {
     fn channel_key_matches_path_convention() {
         assert_eq!(
             ConfigResolver::channel_key("acme", "email", "config.json"),
-            "brands/acme/config/email/config.json"
+            "projects/acme/config/email/config.json"
         );
     }
 
@@ -320,27 +291,31 @@ mod tests {
     fn template_key_matches_path_convention() {
         assert_eq!(
             ConfigResolver::template_key("acme", "welcome", "email.html"),
-            "brands/acme/templates/welcome/email.html"
+            "projects/acme/templates/welcome/email.html"
         );
     }
 
     #[test]
-    fn slugs_follow_the_project_name_examples() {
-        assert_eq!(brand_slug("Notifi").unwrap(), "notifi");
-        assert_eq!(brand_slug("The Team").unwrap(), "the_team");
+    fn project_prefix_is_the_single_convention_root() {
+        assert_eq!(ConfigResolver::project_prefix("acme"), "projects/acme/");
+        // The key builders have to stay prefix-consistent with it.
+        assert!(
+            ConfigResolver::channel_key("acme", "email", "config.json")
+                .starts_with(ConfigResolver::project_prefix("acme").as_str())
+        );
     }
 
     #[test]
-    fn slug_collapses_separator_runs_and_strips_edges() {
-        assert_eq!(brand_slug("  A  Corp  ").unwrap(), "a_corp");
-        assert_eq!(brand_slug("team!! now").unwrap(), "team_now");
-        assert_eq!(brand_slug("O'Reilly Inc.").unwrap(), "o_reilly_inc");
-        assert!(brand_slug("   ").is_err(), "blank names slugify to nothing");
+    fn project_slug_examples() {
+        assert_eq!(project_slug("Notifi"), "notifi");
+        assert_eq!(project_slug("  A  Corp  "), "a-corp");
+        assert_eq!(project_slug("team!! now"), "team-now");
+        assert_eq!(project_slug("   "), "project");
     }
 
     #[test]
     fn layout_files_cover_config_and_templates_per_convention() {
-        let files = DefaultBrandLayout::files("acme");
+        let files = DefaultProjectLayout::files("acme");
         let keys: Vec<&str> = files.iter().map(|f| f.key.as_str()).collect();
         assert!(
             keys.contains(&ConfigResolver::channel_key("acme", "email", "config.json").as_str())
@@ -360,7 +335,7 @@ mod tests {
         let dir = ConfigResolver::channel_dir("acme", "email");
         assert_eq!(
             dir,
-            PathBuf::from("/tmp/notifi-configs/brands/acme/config/email")
+            PathBuf::from("/tmp/notifi-configs/projects/acme/config/email")
         );
         clear_env("NOTIFI_CONFIG_ROOT");
     }
@@ -372,7 +347,7 @@ mod tests {
         let dir = ConfigResolver::template_dir("acme", "welcome");
         assert_eq!(
             dir,
-            PathBuf::from("/tmp/notifi-configs/brands/acme/templates/welcome")
+            PathBuf::from("/tmp/notifi-configs/projects/acme/templates/welcome")
         );
         clear_env("NOTIFI_CONFIG_ROOT");
     }
@@ -393,7 +368,7 @@ mod tests {
         let root = std::env::temp_dir().join("notifi-test-root");
         set_env("NOTIFI_CONFIG_ROOT", root.to_str().unwrap());
         let dir = root
-            .join("brands")
+            .join("projects")
             .join("acme")
             .join("config")
             .join("email");

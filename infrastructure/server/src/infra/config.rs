@@ -58,7 +58,7 @@ pub struct RedisConfig {
     pub url: Option<String>,
 }
 
-/// Cloudflare R2 (S3-compatible) object storage for tenant brand config —
+/// Cloudflare R2 (S3-compatible) object storage for tenant project config —
 /// where the file driver reads `NOTIFI_CONFIG_ROOT` in dev, deployed
 /// instances read this bucket. Active for the config store when all four
 /// values are set; otherwise the file driver stays in charge.

@@ -46,7 +46,7 @@ async fn channel_config_roundtrip_with_kernel_keys() {
 }
 
 #[tokio::test]
-async fn brand_template_assets_roundtrip() {
+async fn template_assets_roundtrip() {
     let root = temp_root("templates");
     let store = FileConfigStore::new(&root);
     let html_key = ConfigResolver::template_key("acme", "welcome", "email.html");
@@ -62,14 +62,14 @@ async fn brand_template_assets_roundtrip() {
         .expect("put txt");
 
     let keys = store
-        .list_keys("brands/acme/templates")
+        .list_keys("projects/acme/templates")
         .await
         .expect("list");
     assert_eq!(
         keys,
         vec![
-            "brands/acme/templates/welcome/email.html".to_string(),
-            "brands/acme/templates/welcome/sms.txt".to_string(),
+            "projects/acme/templates/welcome/email.html".to_string(),
+            "projects/acme/templates/welcome/sms.txt".to_string(),
         ]
     );
 
@@ -77,13 +77,16 @@ async fn brand_template_assets_roundtrip() {
 }
 
 #[tokio::test]
-async fn materialize_brand_seeds_the_default_layout() {
+async fn materialize_project_seeds_the_default_layout() {
     let root = temp_root("materialize");
     let store = FileConfigStore::new(&root);
-    store.materialize_brand("acme").await.expect("materialize");
+    store
+        .materialize_project("acme")
+        .await
+        .expect("materialize");
 
     // Every layout file lands at its convention key with its contents.
-    for file in server::kernel::config::DefaultBrandLayout::files("acme") {
+    for file in server::kernel::config::DefaultProjectLayout::files("acme") {
         let got = store.load_raw(&file.key).await.expect("load materialized");
         assert_eq!(
             got, file.contents,
@@ -93,10 +96,10 @@ async fn materialize_brand_seeds_the_default_layout() {
     }
 
     // And nothing else materializes — the layout is the whole contract.
-    let keys = store.list_keys("brands/acme").await.expect("list");
+    let keys = store.list_keys("projects/acme").await.expect("list");
     assert_eq!(
         keys.len(),
-        server::kernel::config::DefaultBrandLayout::files("acme").len()
+        server::kernel::config::DefaultProjectLayout::files("acme").len()
     );
     std::fs::remove_dir_all(&root).ok();
 }
@@ -106,7 +109,7 @@ async fn missing_key_is_an_explicit_error_not_a_panic() {
     let root = temp_root("missing");
     let store = FileConfigStore::new(&root);
     let err = store
-        .load_raw("brands/acme/config/sms/config.json")
+        .load_raw("projects/acme/config/sms/config.json")
         .await
         .expect_err("missing key");
     assert!(err.contains("not found"), "got: {err}");
@@ -114,18 +117,19 @@ async fn missing_key_is_an_explicit_error_not_a_panic() {
 }
 
 #[tokio::test]
-async fn brands_write_like_any_other_brand() {
-    // Brand ids are just keys: nothing anywhere in the port special-cases
-    // one (the struct-owned layout decides defaults; storage is neutral).
+async fn slugs_write_like_any_other_key() {
+    // Project slugs are just keys: nothing anywhere in the port
+    // special-cases one (the struct-owned layout decides defaults;
+    // storage is neutral).
     let root = temp_root("default");
     let store = FileConfigStore::new(&root);
-    let key = ConfigResolver::channel_key("the_team", "sms", "config.json");
+    let key = ConfigResolver::channel_key("the-team", "sms", "config.json");
     store
         .put_raw(&key, b"{}".to_vec())
         .await
-        .expect("put brand key");
+        .expect("put project key");
     assert!(
-        root.join("brands/the_team/config/sms/config.json")
+        root.join("projects/the-team/config/sms/config.json")
             .is_file()
     );
     std::fs::remove_dir_all(&root).ok();

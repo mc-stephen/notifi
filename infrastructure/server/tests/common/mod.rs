@@ -991,7 +991,7 @@ impl ProjectsStore for FakeAuthStore {
         Box::pin(async move {
             let mut projects = projects.write().map_err(lock_err)?;
             // Same slug rule as the PG store (kernel is the single source
-            // of truth), matching how brand-folder keys get derived.
+            // of truth), matching how project-folder keys get derived.
             let slug = server::kernel::config::project_slug(&name);
             let slug = if projects.iter().any(|(_, p)| p.slug == slug) {
                 format!("{slug}-{}", projects.len() + 1)

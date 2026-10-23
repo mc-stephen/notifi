@@ -1,7 +1,7 @@
 //! Project data export: the user's "download my project data" — available
 //! anytime from project settings, capped per day, and the same lifeline
 //! during the deletion countdown. Builds an in-memory ZIP: one JSON file
-//! per data section plus the project's brand files at their real storage
+//! per data section plus the project's files at their real storage
 //! paths.
 //!
 //! Layer: domain — this module owns small port records and turns them into
@@ -59,7 +59,7 @@ pub struct ProjectExportService {
     recipients: Arc<dyn RecipientsStore>,
     webhooks: Arc<dyn WebhookStore>,
     flows: Arc<dyn FlowStore>,
-    /// Brand storage: `Some` in the composed app; `None` in unit tests
+    /// Project storage: `Some` in the composed app; `None` in unit tests
     /// exercising only the DB rows.
     config_store: Option<Arc<dyn ConfigStore>>,
 }
@@ -101,7 +101,7 @@ impl ProjectExportService {
         }
     }
 
-    /// Wires brand storage so the zip also carries the project's files.
+    /// Wires project storage so the zip also carries the project's files.
     pub fn with_config_store(mut self, config_store: Arc<dyn ConfigStore>) -> Self {
         self.config_store = Some(config_store);
         self
@@ -189,19 +189,19 @@ impl ProjectExportService {
             .map(Self::flow_json)
             .collect::<Vec<_>>();
 
-        // Brand files: every object under brands/{slug}/ joins the zip at
-        // its original storage path (byte-for-byte).
-        let mut brand_files: Vec<(String, Vec<u8>)> = Vec::new();
+        // Project files: every object under projects/{slug}/ joins the
+        // zip at its original storage path (byte-for-byte).
+        let mut project_files: Vec<(String, Vec<u8>)> = Vec::new();
         if let Some(config_store) = &self.config_store {
-            let prefix = format!("brands/{}/", summary.slug);
+            let prefix = crate::kernel::config::ConfigResolver::project_prefix(&summary.slug);
             let keys = config_store.list_keys(&prefix).await.map_err(|e| {
-                AppError::Storage(format!("brand files could not be listed: {}", e))
+                AppError::Storage(format!("project files could not be listed: {}", e))
             })?;
             for key in keys {
                 let bytes = config_store.load_raw(&key).await.map_err(|e| {
-                    AppError::Storage(format!("brand file could not be read: {}", e))
+                    AppError::Storage(format!("project file could not be read: {}", e))
                 })?;
-                brand_files.push((key, bytes));
+                project_files.push((key, bytes));
             }
         }
 
@@ -226,16 +226,16 @@ impl ProjectExportService {
                 "recipients": Self::section(&recipients, "recipients"),
                 "webhooks": Self::section(&webhooks, "webhooks"),
                 "flows": Self::section(&flows, "flows"),
-                "brandFiles": {
-                    "count": brand_files.len(),
-                    "paths": brand_files.iter().map(|(k, _)| k.clone()).collect::<Vec<_>>(),
+                "projectFiles": {
+                    "count": project_files.len(),
+                    "paths": project_files.iter().map(|(k, _)| k.clone()).collect::<Vec<_>>(),
                 },
             },
         });
 
         // Section order in the zip: manifest first (added by the
-        // assembler), then the data sections, then brand files at their
-        // real storage paths.
+        // assembler), then the data sections, then project files at
+        // their real storage paths.
         let section_bytes = |name: &str, rows: &Value| {
             serde_json::to_vec_pretty(rows)
                 .map(|bytes| (name.to_string(), bytes))
@@ -249,7 +249,7 @@ impl ProjectExportService {
         entries.push(section_bytes("recipients.json", &json!(recipients))?);
         entries.push(section_bytes("webhooks.json", &json!(webhooks))?);
         entries.push(section_bytes("flows.json", &json!(flows))?);
-        entries.extend(brand_files);
+        entries.extend(project_files);
 
         Ok(ExportBundle {
             filename: format!(
@@ -281,7 +281,7 @@ impl ProjectExportService {
             .map_err(|e| AppError::Storage(format!("export manifest could not be encoded: {e}")))?;
 
         // Section order in the zip: manifest first, then the data
-        // sections, then brand files at their real storage paths.
+        // sections, then project files at their real storage paths.
         for (name, bytes) in
             std::iter::once(("manifest.json".to_string(), manifest_bytes)).chain(entries)
         {

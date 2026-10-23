@@ -11,11 +11,11 @@ pub struct WebhookMessage {
 
 pub struct WebhookProvider {
     sender: Box<dyn WebhookSender>,
-    brand: String,
+    project: String,
 }
 
 impl WebhookProvider {
-    pub fn new(config: WebhookConfig, brand: String) -> Self {
+    pub fn new(config: WebhookConfig, project: String) -> Self {
         let sender: Box<dyn WebhookSender> = match config {
             WebhookConfig::Relay {
                 target_url,
@@ -30,10 +30,10 @@ impl WebhookProvider {
             )),
             WebhookConfig::Function { function_id } => Box::new(FunctionProvider::new(function_id)),
         };
-        Self { sender, brand }
+        Self { sender, project }
     }
 
     pub async fn send_notification(&self, msg: &WebhookMessage) -> Result<(), String> {
-        self.sender.send(&msg.title, &msg.body, &self.brand).await
+        self.sender.send(&msg.title, &msg.body, &self.project).await
     }
 }

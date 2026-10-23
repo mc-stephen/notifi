@@ -43,7 +43,7 @@ pub struct ProjectAccess {
 }
 
 /// A project due for hard purge, projected onto what deletion needs:
-/// the row id and the bucket folder's brand slug. No visibility checks —
+/// the row id and the bucket folder's project slug. No visibility checks —
 /// the worker's system job, not a user call.
 #[derive(Debug, Clone)]
 pub struct PurgeDueProject {

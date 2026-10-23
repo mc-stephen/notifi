@@ -35,7 +35,12 @@ impl RelayProvider {
 }
 
 impl WebhookSender for RelayProvider {
-    fn send(&self, title: &str, body: &str, brand: &str) -> BoxFuture<'static, Result<(), String>> {
+    fn send(
+        &self,
+        title: &str,
+        body: &str,
+        project: &str,
+    ) -> BoxFuture<'static, Result<(), String>> {
         let url = self.target_url.clone();
         let method = self.method.clone();
         let headers = self.headers.clone();
@@ -46,7 +51,7 @@ impl WebhookSender for RelayProvider {
         let mut data = HashMap::new();
         data.insert("title", title.to_string());
         data.insert("body", body.to_string());
-        data.insert("brand", brand.to_string());
+        data.insert("project", project.to_string());
         data.insert("timestamp", Utc::now().to_rfc3339());
 
         Box::pin(async move {

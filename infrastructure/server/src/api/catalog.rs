@@ -236,7 +236,7 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         path: "/app/projects/{id}/recipients",
         surface: Surface::App,
         feature: "recipients",
-        description: "create a recipient (brand end-user) in a project",
+        description: "create a recipient (project end-user) in a project",
     },
     RouteInfo {
         method: "GET",

@@ -76,12 +76,17 @@ async fn run() -> i32 {
 
     // One composition root with the API (`server::compose::compose`) — the
     // worker shares the brain, only the trigger differs. Mail/system
-    // templates stay `None`: no sweep service consumes them. Brand
+    // templates stay `None`: no sweep service consumes them. Project
     // storage rides in via the same factory (the project purge wipes
     // folders through it); cacheless is fine — this process never reads
     // tenant configs for delivery, so there is nothing to keep warm.
+    // `build_ensured` also lays the bucket's top-level folders down
+    // (`projects/`, `backup/`) so the layout exists even before the
+    // server ever starts.
     let config_store: std::sync::Arc<dyn server::ports::ConfigStore + Send + Sync> =
-        server::infra::config_store_factory::build(&config).expect("config store builds");
+        server::infra::config_store_factory::build_ensured(&config)
+            .await
+            .expect("config store builds");
     let graph = Arc::new(server::compose::compose(
         pool,
         &config,
@@ -151,7 +156,7 @@ async fn sweep_once(graph: &ServiceGraph) {
         Ok(n) => tracing::info!(ran = n, "campaign worker processed campaigns"),
         Err(e) => tracing::error!(error = %e, "campaign worker failed"),
     }
-    // Project deletion purge: expired tombstones lose their brand folder
+    // Project deletion purge: expired tombstones lose their project folder
     // first (retry-able), then the row (cascades wipe the children).
     match graph.projects.purge_due(chrono::Utc::now()).await {
         Ok(0) => {}

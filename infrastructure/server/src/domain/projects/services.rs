@@ -14,7 +14,7 @@ use crate::ports::projects_store::ProjectsStore;
 pub struct ProjectService {
     store: Arc<dyn ProjectsStore>,
     audit: Arc<AuditService>,
-    /// Brand storage: `Some` in the composed app (driver built at boot);
+    /// Project storage: `Some` in the composed app (driver built at boot);
     /// `None` in unit tests that only exercise DB semantics.
     config_store: Option<Arc<dyn ConfigStore>>,
 }
@@ -28,7 +28,7 @@ impl ProjectService {
         }
     }
 
-    /// Wires brand storage for lifecycle actions (creation seeding,
+    /// Wires project storage for lifecycle actions (creation seeding,
     /// deletion wipe, export file collection).
     pub fn with_config_store(mut self, config_store: Arc<dyn ConfigStore>) -> Self {
         self.config_store = Some(config_store);
@@ -69,15 +69,15 @@ impl ProjectService {
 
         let project = Project::from(record);
 
-        // The brand folder springs into existence WITH the project: the
-        // code-owned default layout lands under brands/{slug}/ before the
-        // user ever sees the project. A failed copy fails the creation —
-        // best-effort row cleanup keeps "no folder" from becoming a
-        // mutilated project nobody can finish configuring.
+        // The project folder springs into existence WITH the project: the
+        // code-owned default layout lands under projects/{slug}/ before
+        // the user ever sees the project. A failed copy fails the
+        // creation — best-effort row cleanup keeps "no folder" from
+        // becoming a mutilated project nobody can finish configuring.
         if let Some(config_store) = &self.config_store
-            && let Err(e) = config_store.materialize_brand(&project.slug).await
+            && let Err(e) = config_store.materialize_project(&project.slug).await
         {
-            tracing::error!(error = %e, slug = %project.slug, "brand materialization failed; rolling the project row back");
+            tracing::error!(error = %e, slug = %project.slug, "project materialization failed; rolling the project row back");
             self.store.delete_project(&project.id).await.ok();
             return Err(AppError::Storage(format!(
                 "project storage could not be prepared: {e}"
@@ -249,7 +249,7 @@ impl ProjectService {
     }
 
     /// The worker's hard-purge: every project whose countdown expired
-    /// loses its brand folder first (retry-able on storage failure — the
+    /// loses its project folder first (retry-able on storage failure — the
     /// row survives to the next sweep), then its row (cascades take every
     /// child table with it). Returns how many projects were erased.
     pub async fn purge_due(&self, now: chrono::DateTime<chrono::Utc>) -> Result<usize, AppError> {
@@ -265,7 +265,7 @@ impl ProjectService {
             // sweep instead of becoming an orphan folder nobody can
             // reach again.
             if let Some(config_store) = &self.config_store {
-                let prefix = format!("brands/{}/", project.slug);
+                let prefix = crate::kernel::config::ConfigResolver::project_prefix(&project.slug);
                 match config_store.list_keys(&prefix).await {
                     Ok(keys) => {
                         let mut wipes = true;

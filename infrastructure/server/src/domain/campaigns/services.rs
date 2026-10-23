@@ -53,7 +53,7 @@ fn contact_key(channel: &str) -> &str {
 
 /// The contact value a recipient can be reached at on `channel` — the
 /// actual address/token (e.g. `"ada@example.com"`), since send rows and
-/// provider chains speak addresses, not the brand's targeting keys.
+/// provider chains speak addresses, not the project's targeting keys.
 fn contact_value<'a>(channel: &str, contacts: &'a serde_json::Value) -> Option<&'a str> {
     contacts
         .get(contact_key(channel))

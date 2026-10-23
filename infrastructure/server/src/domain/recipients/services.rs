@@ -126,7 +126,7 @@ impl RecipientService {
     ///
     /// `name` and `contacts` are optional: `None` keeps the current value.
     /// When supplied, `contacts` **replaces** the whole contact blob. `user_id`
-    /// is immutable (the brand's targeting key).
+    /// is immutable (the project's targeting key).
     pub async fn update(
         &self,
         actor: UserId,
@@ -228,7 +228,7 @@ impl RecipientService {
 
 fn map_store_error(err: StoreError) -> AppError {
     match err {
-        // Unlike the auth path, a conflict here is a duplicate brand user_id,
+        // Unlike the auth path, a conflict here is a duplicate recipient user_id,
         // not a duplicate email.
         StoreError::Conflict => AppError::Conflict(
             "A recipient with this user_id already exists in this project.".to_string(),

@@ -8,7 +8,7 @@ use crate::domain::recipients::Recipient;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRecipientRequest {
-    /// The brand's in-house targeting key, unique within the project.
+    /// The project's in-house targeting key, unique within the project.
     pub user_id: String,
     pub name: String,
     /// Optional flexible contact blob (email, phone, device/push ids, ...).

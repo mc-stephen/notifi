@@ -2,12 +2,12 @@
 
 use serde_json::Value;
 
-/// A recipient (a brand's end-user) owned by a project.
+/// A recipient (a project's end-user) owned by a project.
 #[derive(Debug, Clone)]
 pub struct Recipient {
     pub id: String,
     pub project_id: String,
-    /// The brand's in-house targeting key, unique within `project_id`.
+    /// The project's in-house targeting key, unique within `project_id`.
     pub user_id: String,
     pub name: String,
     /// Flexible contact blob (email, phone, device/push ids, ...).

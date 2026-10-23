@@ -5,13 +5,16 @@
 //! the only path. `NOTIFI_CONFIG_ROOT` selects the root (defaults to
 //! `configs`); `infrastructure/.cargo/config.toml` points dev bootstraps
 //! at `server/assets`.
+//!
+//! `ensure_root_folders` creates the real directories (`projects/`) —
+//! disk is honest about folders, so no marker files are involved.
 
 use std::path::PathBuf;
 
 use crate::ports::config_store::ConfigStore;
 
-/// Root-relative semantics: key `brands/_default/config/email/config.json`
-/// maps to `{root}/brands/_default/config/email/config.json`.
+/// Root-relative semantics: key `projects/acme/config/email/config.json`
+/// maps to `{root}/projects/acme/config/email/config.json`.
 pub struct FileConfigStore {
     root: PathBuf,
 }
@@ -86,6 +89,14 @@ impl ConfigStore for FileConfigStore {
         Ok(keys)
     }
 
+    async fn ensure_root_folders(&self) -> Result<(), String> {
+        // Disk folders are the real thing, so "ensuring" means
+        // `create_dir_all` — no marker files involved.
+        let dir = self.root.join("projects");
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("config root folder create failed for projects: {e}"))
+    }
+
     async fn delete_raw(&self, key: &str) -> Result<(), String> {
         crate::ports::config_store::validate_key(key)?;
         let path = self.path_for(key);
@@ -113,7 +124,7 @@ mod file_config_store_tests {
     async fn loads_missing_key_as_error() {
         let store = FileConfigStore::new(temp_root("notifi-fcs-missing"));
         let err = store
-            .load_raw("brands/_default/config/email/config.json")
+            .load_raw("projects/acme/config/email/config.json")
             .await
             .expect_err("missing key is an error");
         assert!(err.contains("not found"), "got: {err}");
@@ -123,7 +134,7 @@ mod file_config_store_tests {
     async fn delete_then_recreate_roundtrips() {
         let root = temp_root("delete");
         let store = FileConfigStore::new(&root);
-        let key = "brands/acme/config/email/config.json";
+        let key = "projects/acme/config/email/config.json";
         store.put_raw(key, b"{}".to_vec()).await.expect("put");
         store.delete_raw(key).await.expect("delete");
         assert!(!root.join(key).is_file(), "file must be gone");
@@ -150,18 +161,21 @@ mod file_config_store_tests {
         let store = FileConfigStore::new(&root);
         store
             .put_raw(
-                "brands/acme/config/email/config.json",
+                "projects/acme/config/email/config.json",
                 br#"{"host":"smtp.x"}"#.to_vec(),
             )
             .await
             .expect("put");
 
         let raw = store
-            .load_raw("brands/acme/config/email/config.json")
+            .load_raw("projects/acme/config/email/config.json")
             .await
             .expect("load");
         assert_eq!(raw, br#"{"host":"smtp.x"}"#.to_vec());
-        assert!(root.join("brands/acme/config/email/config.json").is_file());
+        assert!(
+            root.join("projects/acme/config/email/config.json")
+                .is_file()
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -170,29 +184,48 @@ mod file_config_store_tests {
         let root = temp_root("notifi-fcs-list");
         let store = FileConfigStore::new(&root);
         store
-            .put_raw("brands/acme/config/email/config.json", b"{}".to_vec())
+            .put_raw("projects/acme/config/email/config.json", b"{}".to_vec())
             .await
             .unwrap();
         store
             .put_raw(
-                "brands/acme/templates/welcome/email.html",
+                "projects/acme/templates/welcome/email.html",
                 b"<p>hi</p>".to_vec(),
             )
             .await
             .unwrap();
         store
-            .put_raw("brands/_default/config/sms/other.json", b"{}".to_vec())
+            .put_raw("projects/other/config/sms/other.json", b"{}".to_vec())
             .await
             .unwrap();
 
-        let keys = store.list_keys("brands/acme").await.expect("list");
+        let keys = store.list_keys("projects/acme").await.expect("list");
         assert_eq!(
             keys,
             vec![
-                "brands/acme/config/email/config.json".to_string(),
-                "brands/acme/templates/welcome/email.html".to_string(),
+                "projects/acme/config/email/config.json".to_string(),
+                "projects/acme/templates/welcome/email.html".to_string(),
             ]
         );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[tokio::test]
+    async fn ensure_root_folders_creates_the_layout() {
+        let root = temp_root("ensure");
+        let store = FileConfigStore::new(&root);
+        assert!(!root.join("projects").exists(), "starts absent");
+
+        store.ensure_root_folders().await.expect("ensure");
+        assert!(root.join("projects").is_dir(), "projects/ now exists");
+        assert_eq!(
+            store.list_keys("projects/").await.expect("list"),
+            Vec::<String>::new(),
+            "ensuring creates the folder, never files"
+        );
+
+        // Idempotent: calling twice stays a success.
+        store.ensure_root_folders().await.expect("ensure again");
         std::fs::remove_dir_all(&root).ok();
     }
 }

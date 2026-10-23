@@ -16,7 +16,7 @@ impl WebhookSender for FunctionProvider {
         &self,
         _title: &str,
         _body: &str,
-        _brand: &str,
+        _project: &str,
     ) -> BoxFuture<'static, Result<(), String>> {
         let fid = self.function_id.clone();
         Box::pin(async move {
