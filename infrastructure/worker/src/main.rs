@@ -63,7 +63,7 @@ async fn run() -> i32 {
 
     // One-shot backup: dump + upload + exit, no sweeps, no queue.
     if std::env::args().any(|a| a == "--backup-now") {
-        return backup::one_shot().await;
+        return backup::one_shot(&config).await;
     }
 
     let pool = match server::infra::db::connect(&config).await {
@@ -85,12 +85,12 @@ async fn run() -> i32 {
     sweep_once(&graph).await;
 
     // Database backups: the self-contained block on its own clock. Off
-    // unless NOTIFI_BACKUP_R2_BUCKET is set — `from_env` itself logs why
+    // unless NOTIFI_BACKUP_ENABLED is on — `from_env` itself logs why
     // when the pieces it got were incomplete.
-    if let Some(settings) = backup::BackupSettings::from_env() {
+    if let Some(settings) = backup::BackupSettings::from_env(&config) {
         tokio::spawn(backup::schedule(settings));
     } else if !std::env::args().any(|a| a == "--backup-now") {
-        tracing::info!("worker: database backups off (NOTIFI_BACKUP_R2_BUCKET unset)");
+        tracing::info!("worker: database backups off (NOTIFI_BACKUP_ENABLED not on)");
     }
 
     // RabbitMQ (optional): a tick consumer runs alongside the local clock.

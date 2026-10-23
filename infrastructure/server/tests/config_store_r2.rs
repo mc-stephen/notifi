@@ -108,3 +108,21 @@ async fn report_brands_tree() {
         }
     }
 }
+
+/// Same look for the backup folder — the worker's daily `.sql` file
+/// history (keys only; the bucket holds no sizes in a flat listing).
+/// Run any time.
+#[tokio::test]
+#[ignore = "live R2 report — needs the NOTIFI_R2_* quartet"]
+async fn report_backup_tree() {
+    let store = r2_from_env();
+    let keys = store.list_keys("backup/").await.expect("bucket lists");
+    if keys.is_empty() {
+        println!("backup/ — (empty; no backup has been run yet)");
+    } else {
+        println!("backup/ tree ({} files):", keys.len());
+        for key in keys {
+            println!("  {key}");
+        }
+    }
+}

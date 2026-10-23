@@ -1,33 +1,39 @@
 //! Database backups — the self-contained ops block in the worker.
 //!
 //! Once a day the worker exports the Postgres database as ONE plain-text
-//! SQL file (`pg_dump`), uploads it to an object-storage bucket (same R2
-//! account as the config store, but a dedicated bucket), and deletes the
-//! local temp file. That file is a full logical backup: every table and
-//! every row as SQL, restorable into an empty database with `psql -f`.
-//! No second database, no replication — just a file in a bucket.
+//! SQL file (`pg_dump`), uploads it into the SAME object-storage bucket
+//! the config store already uses — under its own top-level `backup/`
+//! folder — and deletes the local temp file. That file is a full logical
+//! backup: every table and every row as SQL, restorable into an empty
+//! database with `psql -f`. No second database, no replication — just a
+//! file in a bucket, inside a folder nothing else writes to.
 //!
 //! Deliberate boundaries:
 //! * Never the queue or outbox. A queued job needs something to enqueue
 //!   it forever; a clock is simpler and honest — same philosophy as the
 //!   sweep's local interval.
-//! * Own storage client at its own bucket, built by
-//!   [`server::infra::r2_config_store::raw_object_client`] — a config-store
-//!   operation can never list, read, or eat a backup.
-//! * Nothing in the backup bucket is EVER deleted automatically. The
-//!   bucket only grows; retention is a human decision, made later.
-//! * Where the backup runs runs the clock (`NOTIFI_BACKUP_AT`, default
-//!   03:00 server-local). At boot it dumps immediately if today's backup
-//!   is missing, so restarts never lose a day. Two workers starting at
-//!   the exact same second race into two same-day files (different
+//! * Isolation is key-prefix discipline: this block only ever reads and
+//!   writes keys under `backup/`, and every destructive flow in the
+//!   codebase (config reset, future project deletion) only operates on
+//!   its own prefixes, never `backup/`. The list probe here looks at
+//!   `backup/` alone. A separate bucket is the harder-isolation upgrade;
+//!   switching to it later is one env change.
+//! * Nothing in the backup folder is EVER deleted automatically. Files
+//!   only accumulate; retention is a human decision, made later.
+//! * When the backup runs: daily at `NOTIFI_BACKUP_AT` (default 03:00,
+//!   server-local). At boot it dumps immediately if today's backup is
+//!   missing, so restarts never lose a day. Two workers starting at the
+//!   exact same second race into two same-day files (different
 //!   timestamps) — a prod footnote, not engineered away here.
 //!
-//! Off unless `NOTIFI_BACKUP_R2_BUCKET` is set (then it is on — no
-//! separate enable flag; enabling the bucket IS enabling backups).
-//! Dump binary: `NOTIFI_BACKUP_PG_DUMP` (default `pg_dump`); the host
-//! needs the Postgres client tools.
+//! Off unless explicitly switched on with `NOTIFI_BACKUP_ENABLED=true`.
+//! R2 access rides the same `NOTIFI_R2_*` quartet the whole app uses —
+//! no separate credentials, no separate bucket. Dump binary:
+//! `NOTIFI_BACKUP_PG_DUMP` (default `pg_dump`); the host needs the
+//! Postgres client tools.
 //!
-//! One-shot, no waiting for the slot:
+//! One-shot, no waiting for the slot (works whether or not the switch
+//! is on — explicit intent wins):
 //! `cargo run -p worker -- --backup-now`
 //!
 //! Upload shape: the temp file streams into a multipart upload in fixed
@@ -43,16 +49,17 @@ use futures::StreamExt;
 use object_store::path::Path as ObjectPath;
 use object_store::{ObjectStore, ObjectStoreExt, PutPayload};
 
-use server::infra::config::R2Config;
+use server::infra::config::AppConfig;
 use server::infra::r2_config_store::raw_object_client;
 
 /// Fixed part size: R2 wants all-but-last parts ≥5 MiB and equal-sized,
 /// so one constant satisfies both and files up to 80 GiB stay legal.
 const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
 
-/// Prefix every backup object shares (flat layout: one level, dates in
-/// the filename, so a prefix list sees the whole history at once).
-const KEY_PREFIX: &str = "backups";
+/// Top-level folder every backup object shares inside the shared bucket
+/// (flat layout within it: dates in the filename, so a prefix list sees
+/// the whole history at once). Nothing else in the codebase writes here.
+const KEY_PREFIX: &str = "backup";
 
 pub(crate) struct BackupSettings {
     client: Arc<dyn ObjectStore>,
@@ -69,23 +76,32 @@ pub(crate) struct BackupSettings {
 
 impl BackupSettings {
     /// Parses the environment into settings. Returns `None` when backups
-    /// are off (bucket unset); hard errors R2 creds / db URL are logged
-    /// and still leave the worker backup-less rather than broken.
-    pub(crate) fn from_env() -> Option<Self> {
-        let bucket = std::env::var("NOTIFI_BACKUP_R2_BUCKET")
-            .ok()
-            .filter(|b| !b.trim().is_empty())?;
+    /// are off (the switch is not on); hard errors on R2 creds / db URL
+    /// are logged and still leave the worker backup-less rather than
+    /// broken. Storage is the same R2 setting everything else reads
+    /// (`NOTIFI_R2_*` quartet, the shared bucket) — the `backup/` folder
+    /// of that bucket is where this module's keys live.
+    /// Scheduler entry: respects the `NOTIFI_BACKUP_ENABLED` switch.
+    pub(crate) fn from_env(app: &AppConfig) -> Option<Self> {
+        if !backup_switch_on() {
+            return None;
+        }
+        Self::build(app)
+    }
 
-        let r2 = R2Config {
-            account_id: std::env::var("NOTIFI_R2_ACCOUNT_ID").ok(),
-            access_key_id: std::env::var("NOTIFI_R2_ACCESS_KEY_ID").ok(),
-            secret_access_key: std::env::var("NOTIFI_R2_SECRET_ACCESS_KEY").ok(),
-            bucket: Some(bucket),
-        };
-        let (client, bucket) = match raw_object_client(&r2) {
+    /// `--backup-now` entry: explicit user intent wins over the switch —
+    /// this runs whether or not `NOTIFI_BACKUP_ENABLED` is on.
+    pub(crate) fn for_one_shot(app: &AppConfig) -> Option<Self> {
+        Self::build(app)
+    }
+
+    /// The only difference between the two entries is the switch gate —
+    /// storage, slot, binary and URL parsing are identical.
+    fn build(app: &AppConfig) -> Option<Self> {
+        let (client, bucket) = match raw_object_client(&app.r2) {
             Ok(pair) => pair,
             Err(e) => {
-                tracing::error!("database backups disabled: {e}");
+                tracing::error!("database backups disabled ({e})");
                 return None;
             }
         };
@@ -303,13 +319,15 @@ pub(crate) async fn schedule(settings: BackupSettings) {
     }
 }
 
-/// One-shot used by `--backup-now`: builds settings, dumps, uploads,
+/// One-shot used by `--backup-now`: builds settings (ignoring the
+/// enabled switch — the flag itself is the intent), dumps, uploads,
 /// returns the process exit code.
-pub(crate) async fn one_shot() -> i32 {
-    let Some(settings) = BackupSettings::from_env() else {
+pub(crate) async fn one_shot(app: &AppConfig) -> i32 {
+    let Some(settings) = BackupSettings::for_one_shot(app) else {
         eprintln!(
-            "--backup-now: backups not configured; set NOTIFI_BACKUP_R2_BUCKET \
-             (+ NOTIFI_R2_* credentials and a database URL) first"
+            "--backup-now: storage not configured needs the NOTIFI_R2_* \
+             quartet and a database URL (NOTIFI_BACKUP_DB_URL or \
+             NOTIFI_DATABASE_URL)"
         );
         return 1;
     };
@@ -323,6 +341,18 @@ pub(crate) async fn one_shot() -> i32 {
             1
         }
     }
+}
+
+/// `NOTIFI_BACKUP_ENABLED` truthy check — accepts true / 1 / yes / on
+/// (case-insensitive). Anything else, including absence, is off.
+fn backup_switch_on() -> bool {
+    let value = std::env::var("NOTIFI_BACKUP_ENABLED")
+        .ok()
+        .unwrap_or_default();
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "true" | "1" | "yes" | "on"
+    )
 }
 
 /// "HH:MM" (24h) → `(hour, minute)`. Accepts zero-padded or not; rejects
