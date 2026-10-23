@@ -231,21 +231,25 @@ Env vars with `NOTIFI_` prefix. See `src/infra/config.rs`.
 
 ## 18. Runtime configuration
 
-Brand channel configs and template assets load through the [`ports::ConfigStore`] port (§6). Keys are relative to the convention root; kernel key-builders (`ConfigResolver::channel_key` / `template_key`) share one home with the path helpers, so keys and paths stay one convention:
+Brand channel configs and template assets address through the [`ports::ConfigStore`] port (§6). Keys are relative to the convention root; kernel key-builders (`ConfigResolver::channel_key` / `template_key`) share one home with the path helpers, so keys and paths stay one convention:
 
 ```text
 brands/{brand}/config/{channel_name}/{file_name}
 brands/{brand}/templates/{template_name}/{file_name}
 ```
 
-Driver selection at boot (`AppState.config_store`, always available):
+The layout itself is **owned by code, not storage**: `kernel::config::DefaultBrandLayout` (beside the resolver) defines the default file set — per-channel config plus starter templates — and `ConfigResolver::brand_slug` slugifies project names into brand ids (`"The Team"` → `the_team`). Storage holds no defaults: a fresh brand materializes only when project creation calls the port's `materialize_brand()` provided method, which puts every layout file under the brand's namespace via `put_raw`. Rearranging the shape or its contents is a code change in one struct — nothing to migrate.
+
+Verb set: `load_raw` (missing key errors), `put_raw`, `delete_raw` (idempotent, S3 semantics — delete what you listed; no prefix deletion), `list_keys` (direct children of a prefix), `materialize_brand` (layout seeding).
+
+Driver selection lives in `infra/config_store_factory.rs` — one home for both boot (`AppState.config_store`) and ops (`--reset-db` / `--reset-config`), so they can never disagree:
 
 * `infra/file_config_store.rs` — baseline; reads `{NOTIFI_CONFIG_ROOT}` (dev points it at `server/assets` via `.cargo/config.toml`).
-* `infra/r2_config_store.rs` — Cloudflare R2 (S3-compatible, zero egress); active when all four `NOTIFI_R2_ACCOUNT_ID / _ACCESS_KEY_ID / _SECRET_ACCESS_KEY / _BUCKET` are set. The bucket **is** the root: the same key addresses either driver, so the folder scheme never becomes a special case.
+* `infra/r2_config_store.rs` — Cloudflare R2 (S3-compatible, zero egress); active when all four `NOTIFI_R2_ACCOUNT_ID / _ACCESS_KEY_ID / _SECRET_ACCESS_KEY / _BUCKET` are set. The bucket **is** the root: the same key addresses either driver, so no folder scheme becomes a special case.
 
-`server/tests/config_store_r2.rs` seeds the local `assets/brands/**` tree into the bucket and probes the live roundtrip (`--ignored`); `config_store_file.rs` covers the file driver against kernel-derived keys.
+Reset (`--reset-config`, and chained after a successful `--reset-db`): `infra::config_store_factory::reset` lists `brands/` and `delete_raw`s each key through the active driver — defaults are code, so nothing is preserved or re-seeded and the namespace ends empty. `server/tests/config_store_r2.rs` runs the live reset and the `report_brands_tree` look-book (`--ignored`); `config_store_file.rs` covers the file driver, materialize round-trip included.
 
-Caching: `infra/config_cache.rs` wraps the active store in a Redis read-through (`infra::RedisCacheBackend` behind the same `NOTIFI_REDIS_URL`; `cfg:` key namespace, 10 min TTL, invalidate-on-write). When Redis is unset the store passes through unchanged — caching is composition, never a port concern. `server/tests/config_cache_redis.rs` covers the live roundtrips (gated on `NOTIFI_TEST_REDIS_URL`).
+Caching: `infra/config_cache.rs` wraps the active store in a Redis read-through (`infra::RedisCacheBackend` behind the same `NOTIFI_REDIS_URL`; `cfg:` key namespace, 10 min TTL, invalidate-on-write, delete also invalidates). When Redis is unset the store passes through unchanged — caching is composition, never a port concern. `server/tests/config_cache_redis.rs` covers the live roundtrips (gated on `NOTIFI_TEST_REDIS_URL`).
 
 ## 19. Migration Strategy
 

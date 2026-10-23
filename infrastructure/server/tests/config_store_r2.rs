@@ -1,9 +1,10 @@
 //! Live R2 config-store checks against the real bucket.
 //!
 //! Gated on the full `NOTIFI_R2_*` quartet (see `infra::config::R2Config`).
-//! The seeder mirrors the local `server/assets/brands/**` tree into the
-//! bucket byte-for-byte, `_default` included — the structural reference
-//! for dev/AI must exist in the cloud exactly as it does locally.
+//! The bucket carries no defaults by design: `DefaultBrandLayout` in code
+//! owns the arrangement and every project materializes its
+//! `brands/{slug}/**` tree at creation, so these tests verify real ops
+//! (reset-to-empty, tree report) rather than mirroring a local folder.
 //!
 //! ```shell
 //! cargo test -p server --test config_store_r2 -- --ignored
@@ -21,66 +22,6 @@ fn r2_from_env() -> R2ConfigStore {
         bucket: std::env::var("NOTIFI_R2_BUCKET").ok(),
     };
     R2ConfigStore::from_config(&config).expect("r2 store builds from NOTIFI_R2_* env")
-}
-
-/// Walks a directory recursively, returning (relative key, bytes) pairs
-/// with `/` separators in sorted order (determinism for the seed diff).
-fn collect_files(dir: &std::path::Path) -> Vec<(String, Vec<u8>)> {
-    let mut out = Vec::new();
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(current) = stack.pop() {
-        for entry in std::fs::read_dir(&current).expect("walk brands root") {
-            let entry = entry.expect("walk entry");
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else {
-                let bytes = std::fs::read(&path).expect("read file");
-                let rel = path
-                    .strip_prefix(dir)
-                    .expect("inside brands root")
-                    .to_string_lossy()
-                    .to_string();
-                out.push((rel, bytes));
-            }
-        }
-    }
-    out.sort();
-    out
-}
-
-/// One-shot seeding of `server/assets/brands/**` into the bucket. Keys are
-/// `brands/...` exactly, mirroring the local folder layout 1:1 — the
-/// `_default` structural reference included. Idempotent: re-running just
-/// rewrites the same objects.
-#[tokio::test]
-#[ignore = "live R2 seeding — needs NOTIFI_R2_ACCOUNT_ID, NOTIFI_R2_ACCESS_KEY_ID, \
-            NOTIFI_R2_SECRET_ACCESS_KEY, NOTIFI_R2_BUCKET"]
-async fn seed_brands_tree_to_r2() {
-    let store = r2_from_env();
-
-    let brands_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/brands");
-    let files = collect_files(&brands_root);
-    assert!(!files.is_empty(), "assets/brands must exist locally");
-
-    for (relative, bytes) in &files {
-        let key = format!("brands/{relative}");
-        store
-            .put_raw(&key, bytes.clone())
-            .await
-            .expect("seed upload");
-    }
-    println!("seeded {} files from assets/brands/**", files.len());
-
-    // Verify: every local file lands under its identical bucket key.
-    let keys = store.list_keys("brands/").await.expect("list bucket");
-    for (relative, _) in &files {
-        let key = format!("brands/{relative}");
-        assert!(
-            keys.iter().any(|k| k == &key),
-            "bucket missing {key}; listed: {keys:?}"
-        );
-    }
 }
 
 /// Contract check on the live bucket: put → load → list behave for a

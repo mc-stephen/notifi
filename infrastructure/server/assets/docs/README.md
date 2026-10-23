@@ -109,17 +109,22 @@ configs API contract.
   next to `Cargo.toml` (`NOTIFI_DATABASE_URL=...`) — loaded automatically at
   boot; real environment variables still win over file values.
 - Telemetry filter: `NOTIFI_LOG` (falls back to `RUST_LOG`, then `info`).
-- **Brand assets** (tenant channel configs + templates) live at
-  `assets/brands/{brand}/` (relative to `infrastructure/`):
+- **Brand assets** (tenant channel configs + templates) live in the
+  config store, not in the repo. Keys under the convention root
+  (relative to `infrastructure/`):
 
   ```text
-  assets/brands/{brand}/config/{channel}/...      channel configs
-  assets/brands/{brand}/templates/{name}/...      brand-scoped templates
+  brands/{brand}/config/{channel}/...      channel configs
+  brands/{brand}/templates/{name}/...      brand-scoped templates
   ```
 
-  The config root is overridable via `NOTIFI_CONFIG_ROOT`.
-  `infrastructure/.cargo/config.toml` sets it to `./assets` for local
-  development, so `cargo run`/`cargo test` work without flags.
+  The default layout is code (`kernel::config::DefaultBrandLayout`) — a
+  project materializes its own `brands/{slug}/**` tree at creation. The
+  root is overridable via `NOTIFI_CONFIG_ROOT` (`.cargo/config.toml`
+  points dev at `./assets`), and all four `NOTIFI_R2_*` values switch to
+  the Cloudflare R2 bucket, which then *is* the root. `--reset-config`
+  wipes `brands/` back to empty; `--reset-db` chains it after the DB
+  reset.
 
 ## Database reset
 

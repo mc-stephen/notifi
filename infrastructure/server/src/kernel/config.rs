@@ -386,25 +386,3 @@ mod tests {
         clear_env("NOTIFI_CONFIG_ROOT");
     }
 }
-
-#[cfg(test)]
-mod transplant_fidelity_tests {
-    // TEMPORARY: proves the constants are byte-identical to the folder
-    // they replace. Deleted together with the folder itself (commit F).
-    #[test]
-    fn constants_are_byte_identical_to_folder_files() {
-        let base = format!("{}/assets/brands/_default", env!("CARGO_MANIFEST_DIR"));
-        assert_eq!(
-            super::DEFAULT_EMAIL_CONFIG,
-            std::fs::read_to_string(format!("{base}/config/email/config.json")).unwrap()
-        );
-        assert_eq!(
-            super::DEFAULT_WELCOME_EMAIL_HTML,
-            std::fs::read_to_string(format!("{base}/templates/welcome/email.html")).unwrap()
-        );
-        assert_eq!(
-            super::DEFAULT_WELCOME_SMS_TEXT,
-            std::fs::read_to_string(format!("{base}/templates/welcome/sms.txt")).unwrap()
-        );
-    }
-}

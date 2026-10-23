@@ -1,1 +1,0 @@
-Welcome, {{name}}! {{body}} {{#if action_url}}{{action_url}}{{/if}} Reply STOP to opt out.
