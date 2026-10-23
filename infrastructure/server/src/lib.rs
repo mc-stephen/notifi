@@ -118,25 +118,11 @@ fn run_inner() -> Result<(), String> {
         let provider_tester: std::sync::Arc<dyn ports::ProviderTester + Send + Sync> =
             std::sync::Arc::new(infra::ConfigProviderTester::new());
 
-        // Tenant brand config storage: always available. NOTIFI_R2_* (all
-        // four values) switches the file driver for the R2 object store —
-        // the bucket then IS the convention root, keys unchanged from the
-        // file layout. Otherwise files under NOTIFI_CONFIG_ROOT stay in
-        // charge (dev points it at server/assets via .cargo/config.toml).
+        // Tenant brand config storage: the factory picks the driver and
+        // logs the choice (R2 when NOTIFI_R2_* is all set, filesystem
+        // otherwise), so ops flags and boot can never pick differently.
         let config_store: std::sync::Arc<dyn ports::ConfigStore + Send + Sync> =
-            if config.r2.configured() {
-                tracing::info!(
-                    bucket = %config.r2.bucket.clone().expect("configured() checked"),
-                    "config store: R2 object storage"
-                );
-                std::sync::Arc::new(
-                    infra::R2ConfigStore::from_config(&config.r2)
-                        .expect("r2 config store built from configured values"),
-                )
-            } else {
-                tracing::info!("config store: filesystem (NOTIFI_CONFIG_ROOT)");
-                std::sync::Arc::new(infra::FileConfigStore::from_root_env())
-            };
+            infra::config_store_factory::build(&config).expect("config store builds");
 
         // Read-through config cache when Redis is reachable: warm keys
         // answer at Redis speed and the store behind sees nothing, so

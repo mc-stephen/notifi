@@ -77,6 +77,31 @@ async fn brand_template_assets_roundtrip() {
 }
 
 #[tokio::test]
+async fn materialize_brand_seeds_the_default_layout() {
+    let root = temp_root("materialize");
+    let store = FileConfigStore::new(&root);
+    store.materialize_brand("acme").await.expect("materialize");
+
+    // Every layout file lands at its convention key with its contents.
+    for file in server::kernel::config::DefaultBrandLayout::files("acme") {
+        let got = store.load_raw(&file.key).await.expect("load materialized");
+        assert_eq!(
+            got, file.contents,
+            "contents must round-trip for {}",
+            file.key
+        );
+    }
+
+    // And nothing else materializes — the layout is the whole contract.
+    let keys = store.list_keys("brands/acme").await.expect("list");
+    assert_eq!(
+        keys.len(),
+        server::kernel::config::DefaultBrandLayout::files("acme").len()
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[tokio::test]
 async fn missing_key_is_an_explicit_error_not_a_panic() {
     let root = temp_root("missing");
     let store = FileConfigStore::new(&root);

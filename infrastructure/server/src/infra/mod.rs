@@ -9,6 +9,7 @@ pub mod campaign_repository_pg;
 pub mod channel_provider_repository_pg;
 pub mod config;
 pub mod config_cache;
+pub mod config_store_factory;
 pub mod db;
 pub mod delivery_adapters;
 pub mod file_config_store;

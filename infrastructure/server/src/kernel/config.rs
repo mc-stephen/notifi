@@ -2,7 +2,6 @@ use serde::de::DeserializeOwned;
 use std::fs;
 use std::path::PathBuf;
 use thiserror::Error;
-
 /// Errors that can occur when loading a tenant channel configuration.
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -122,6 +121,144 @@ impl ConfigResolver {
     }
 }
 
+/// Iterates runs of characters that are not `[a-z0-9]` as one separator.
+fn slug_separators(name_bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(name_bytes.len());
+    let mut in_separator = false;
+    for &b in name_bytes {
+        if b.is_ascii_lowercase() || b.is_ascii_digit() {
+            in_separator = false;
+            out.push(b as char);
+        } else if b.is_ascii_uppercase() {
+            in_separator = false;
+            out.push((b + 32) as char);
+        } else if !in_separator {
+            in_separator = true;
+            out.push('_');
+        }
+    }
+    let trimmed = out.trim_matches('_');
+    trimmed.to_string()
+}
+
+/// Slugifies a human project name into a brand id safe for storage keys
+/// and bucket/folder names: `"Notifi"` → `"notifi"`, `"The Team"` →
+/// `"the_team"`. Lowercase `[a-z0-9]` plus underscores, runs of any other
+/// character collapse to one underscore, edges strip. Reserves no
+/// built-in brand names — storage treats every brand id the same.
+///
+/// Empty after cleaning (e.g. a name of `"   "`) is an error; project
+/// creation surfaces it to the caller.
+pub fn brand_slug(name: &str) -> Result<String, String> {
+    let slug = slug_separators(name.as_bytes());
+    if slug.is_empty() {
+        return Err(format!(
+            "project name '{name}' produces an empty brand slug"
+        ));
+    }
+    Ok(slug)
+}
+
+/// A single default file materialized into a fresh brand's namespace.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DefaultBrandFile {
+    /// Convention key (see [`ConfigResolver::channel_key`] /
+    /// [`ConfigResolver::template_key`]).
+    pub key: String,
+    pub contents: Vec<u8>,
+}
+
+/// Default email channel config — SMTP-over-SendGrid placeholder values
+/// that the dashboard provider flow replaces tenant-side.
+const DEFAULT_EMAIL_CONFIG: &str = r#"{
+  "host": "smtp.sendgrid.net",
+  "port": 587,
+  "username": "apikey",
+  "password": "SG.example123",
+  "from_address": "noreply@acme.com"
+}
+"#;
+
+/// The default brand layout — owned by code, not by a folder.
+///
+/// The old `assets/brands/_default` reference folder used to carry the
+/// structure; it now lives here so re-arranging the shape is a code
+/// change every future project inherits (edit this struct, done), and
+/// storage holds no ghost copy of it (a reset leaves nothing under
+/// `brands/`, projects materialize on creation).
+///
+/// `config/` gathers each notification channel's config files;
+/// `templates/` gathers template files per template name. Contents are
+/// transplanted byte-for-byte from the folder this replaced.
+pub struct DefaultBrandLayout;
+
+impl DefaultBrandLayout {
+    /// Every default file a fresh brand gets, in stable order.
+    pub fn files(brand: &str) -> Vec<DefaultBrandFile> {
+        vec![
+            DefaultBrandFile {
+                key: ConfigResolver::channel_key(brand, "email", "config.json"),
+                contents: DEFAULT_EMAIL_CONFIG.as_bytes().to_vec(),
+            },
+            DefaultBrandFile {
+                key: ConfigResolver::template_key(brand, "welcome", "email.html"),
+                contents: DEFAULT_WELCOME_EMAIL_HTML.as_bytes().to_vec(),
+            },
+            DefaultBrandFile {
+                key: ConfigResolver::template_key(brand, "welcome", "sms.txt"),
+                contents: DEFAULT_WELCOME_SMS_TEXT.as_bytes().to_vec(),
+            },
+        ]
+    }
+}
+
+/// Starter welcome email — the `{{var}}` placeholders and `{{#if}}`
+/// blocks ride the shared templating engine at send time.
+const DEFAULT_WELCOME_EMAIL_HTML: &str = r##"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to Notifi</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td align="center" style="padding:40px 16px">
+        <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden">
+          <tr>
+            <td style="padding:32px 32px 0">
+              <h1 style="margin:0;font-size:24px;color:#18181b">Welcome, {{name}}!</h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.6;color:#52525b">{{body}}</p>
+            </td>
+          </tr>
+          {{#if action_url}}
+          <tr>
+            <td align="center" style="padding:24px 32px">
+              <a href="{{action_url}}" style="display:inline-block;padding:12px 28px;background:#18181b;color:#ffffff;border-radius:8px;text-decoration:none;font-size:15px;font-weight:600">Get Started</a>
+            </td>
+          </tr>
+          {{/if}}
+          <tr>
+            <td style="padding:24px 32px 32px;border-top:1px solid #e4e4e7">
+              <p style="margin:0;font-size:13px;color:#a1a1aa">
+                Sent from Notifi &mdash; <a href="{{unsubscribe_url}}" style="color:#a1a1aa">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"##;
+
+/// Starter welcome SMS — compact on purpose; the `{{#if action_url}}`
+/// block renders only when an action link exists.
+const DEFAULT_WELCOME_SMS_TEXT: &str =
+    "Welcome, {{name}}! {{body}} {{#if action_url}}{{action_url}}{{/if}} Reply STOP to opt out.";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,6 +295,35 @@ mod tests {
         assert_eq!(
             ConfigResolver::template_key("acme", "welcome", "email.html"),
             "brands/acme/templates/welcome/email.html"
+        );
+    }
+
+    #[test]
+    fn slugs_follow_the_project_name_examples() {
+        assert_eq!(brand_slug("Notifi").unwrap(), "notifi");
+        assert_eq!(brand_slug("The Team").unwrap(), "the_team");
+    }
+
+    #[test]
+    fn slug_collapses_separator_runs_and_strips_edges() {
+        assert_eq!(brand_slug("  A  Corp  ").unwrap(), "a_corp");
+        assert_eq!(brand_slug("team!! now").unwrap(), "team_now");
+        assert_eq!(brand_slug("O'Reilly Inc.").unwrap(), "o_reilly_inc");
+        assert!(brand_slug("   ").is_err(), "blank names slugify to nothing");
+    }
+
+    #[test]
+    fn layout_files_cover_config_and_templates_per_convention() {
+        let files = DefaultBrandLayout::files("acme");
+        let keys: Vec<&str> = files.iter().map(|f| f.key.as_str()).collect();
+        assert!(
+            keys.contains(&ConfigResolver::channel_key("acme", "email", "config.json").as_str())
+        );
+        assert!(
+            keys.contains(&ConfigResolver::template_key("acme", "welcome", "email.html").as_str())
+        );
+        assert!(
+            keys.contains(&ConfigResolver::template_key("acme", "welcome", "sms.txt").as_str())
         );
     }
 
@@ -218,5 +384,27 @@ mod tests {
 
         std::fs::remove_dir_all(&root).unwrap();
         clear_env("NOTIFI_CONFIG_ROOT");
+    }
+}
+
+#[cfg(test)]
+mod transplant_fidelity_tests {
+    // TEMPORARY: proves the constants are byte-identical to the folder
+    // they replace. Deleted together with the folder itself (commit F).
+    #[test]
+    fn constants_are_byte_identical_to_folder_files() {
+        let base = format!("{}/assets/brands/_default", env!("CARGO_MANIFEST_DIR"));
+        assert_eq!(
+            super::DEFAULT_EMAIL_CONFIG,
+            std::fs::read_to_string(format!("{base}/config/email/config.json")).unwrap()
+        );
+        assert_eq!(
+            super::DEFAULT_WELCOME_EMAIL_HTML,
+            std::fs::read_to_string(format!("{base}/templates/welcome/email.html")).unwrap()
+        );
+        assert_eq!(
+            super::DEFAULT_WELCOME_SMS_TEXT,
+            std::fs::read_to_string(format!("{base}/templates/welcome/sms.txt")).unwrap()
+        );
     }
 }

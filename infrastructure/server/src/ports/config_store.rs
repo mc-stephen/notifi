@@ -57,4 +57,16 @@ pub trait ConfigStore: Send + Sync {
     /// Lists the keys directly under `prefix` in ascending order. The
     /// prefix itself is relative, like every key here.
     async fn list_keys(&self, prefix: &str) -> Result<Vec<String>, String>;
+
+    /// Materializes a fresh brand's default files into this store — the
+    /// [`crate::kernel::config::DefaultBrandLayout`] set (per-channel
+    /// config + starter templates). Wholesale, not a merge: every file in
+    /// the layout is written with its default contents. Project creation
+    /// calls this once per new brand.
+    async fn materialize_brand(&self, brand: &str) -> Result<(), String> {
+        for file in crate::kernel::config::DefaultBrandLayout::files(brand) {
+            self.put_raw(&file.key, file.contents).await?;
+        }
+        Ok(())
+    }
 }
