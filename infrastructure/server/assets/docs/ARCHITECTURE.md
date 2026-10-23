@@ -404,3 +404,12 @@ fn build_email_channel() -> ChannelDefinition {
 > **Schedules shipped (flow scheduler v1):** `schedules` table + `ScheduleService` (once/recurring-interval timing, no cron) with a 30s claim-and-run worker mirroring the broadcast worker. A schedule assigns one flow plus its own execution payload; assigned flows hide from `GET /app/flows` (managed via Schedules, builder still reachable by id); runs record send rows so deliveries show them. API at `/app/schedules` (CRUD, run-now); dashboard page rebuilt on it.
 
 > **Triggers v1 + HTTP steps + inbound webhooks:** trigger nodes carry a type (`event` webhook-inbound chooser in the builder); `HTTP Request` action nodes fire once per run (log-only failures, `http.status` condition field for If-branching); `POST /v1/hooks/{token}` fires a flow with caller-wins/fallback resolution, backed by the `flow_trigger_tokens` lookup synced on flow saves.
+
+## 23. Database backups
+
+The worker houses a self-contained backup block (`worker/src/backup.rs`) on its own clock, never the queue. Once a day (server-local `NOTIFI_BACKUP_AT`, default `03:00`) it runs `pg_dump --format=plain` into a temp file, streams that file into object storage in fixed 8 MiB multipart parts (R2 rule: ≥5 MiB equal parts), and deletes the temp file — memory never holds the whole dump. The object is one plain-text SQL file (`backups/postgres-{db}-{yyyyMMdd-HHmmss}.sql`): full schema + data, restorable into an empty database via `psql -f`. No second database, no replication.
+
+* **On/off:** the block exists only when `NOTIFI_BACKUP_R2_BUCKET` is set (the bucket knob IS the switch); R2 credentials ride the same `NOTIFI_R2_ACCOUNT_ID/_ACCESS_KEY_ID/_SECRET_ACCESS_KEY` trio, and `NOTIFI_BACKUP_DB_URL` (else `NOTIFI_DATABASE_URL`) picks what is dumped. Dump binary via `NOTIFI_BACKUP_PG_DUMP` (default `pg_dump`).
+* **Safety:** backups live in a dedicated bucket built through `infra::r2_config_store::raw_object_client` — a config-store operation cannot list, read, or eat them. **Nothing in the backup bucket is ever deleted automatically** (no retention code exists); the bucket only grows.
+* **Restart-safe:** at boot the block dumps immediately when today's backup is missing; two simultaneous boots race into two same-day files (different timestamps) — accepted, not engineered away.
+* **Ops:** `cargo run -p worker -- --backup-now` runs one dump-and-upload and exits (exit 1 with a reason when unconfigured or `pg_dump` is missing). Failures log and retry at the next slot; the worker never dies from a backup.

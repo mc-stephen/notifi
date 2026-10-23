@@ -9,6 +9,11 @@
 //! and extra worker processes can all overlap without ever double-running
 //! a job.
 //!
+//! Also living here: the self-contained [`backup`] block — a daily
+//! database dump-and-upload on its own clock (never the queue). Off
+//! unless `NOTIFI_BACKUP_R2_BUCKET` is set; `cargo run -p worker --
+//! --backup-now` runs one dump immediately.
+//!
 //! Useful with plain `cargo run -p worker` and no extra services: RabbitMQ
 //! being unset, down, or never published-to changes nothing — the local
 //! interval keeps sweeping.
@@ -17,6 +22,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use lapin::options::BasicAckOptions;
+
+mod backup;
 
 use server::compose::ServiceGraph;
 use server::infra::config::AppConfig;
@@ -54,6 +61,11 @@ async fn run() -> i32 {
         }
     };
 
+    // One-shot backup: dump + upload + exit, no sweeps, no queue.
+    if std::env::args().any(|a| a == "--backup-now") {
+        return backup::one_shot().await;
+    }
+
     let pool = match server::infra::db::connect(&config).await {
         Some(pool) => pool,
         None => {
@@ -71,6 +83,15 @@ async fn run() -> i32 {
 
     // Immediate sweep at boot so work never waits a full interval.
     sweep_once(&graph).await;
+
+    // Database backups: the self-contained block on its own clock. Off
+    // unless NOTIFI_BACKUP_R2_BUCKET is set — `from_env` itself logs why
+    // when the pieces it got were incomplete.
+    if let Some(settings) = backup::BackupSettings::from_env() {
+        tokio::spawn(backup::schedule(settings));
+    } else if !std::env::args().any(|a| a == "--backup-now") {
+        tracing::info!("worker: database backups off (NOTIFI_BACKUP_R2_BUCKET unset)");
+    }
 
     // RabbitMQ (optional): a tick consumer runs alongside the local clock.
     // The first connect decides whether the task spawns at all — a worker

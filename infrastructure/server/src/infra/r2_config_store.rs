@@ -41,22 +41,7 @@ impl R2ConfigStore {
             );
         }
 
-        let secret = config
-            .secret_access_key
-            .as_ref()
-            .expect("configured() checked");
-        let key_id = config.access_key_id.as_ref().expect("configured() checked");
-        let bucket = config.bucket.clone().expect("configured() checked");
-
-        let built = AmazonS3Builder::new()
-            .with_endpoint(config.endpoint())
-            .with_bucket_name(bucket.clone())
-            .with_access_key_id(key_id.clone())
-            .with_secret_access_key(secret.clone())
-            .with_region("auto") // R2 has exactly one value; omitting fails SigV4
-            .build()
-            .map_err(|e| format!("r2 client build failed: {e}"))?;
-        let client: Arc<dyn ObjectStore> = Arc::new(built);
+        let (client, bucket) = raw_object_client(config).expect("configured() gate above");
 
         Ok(Self { client, bucket })
     }
@@ -65,6 +50,40 @@ impl R2ConfigStore {
         crate::ports::config_store::validate_key(key)?;
         ObjectPath::parse(key).map_err(|e| format!("invalid config key '{key}': {e}"))
     }
+}
+
+/// Builds the raw S3-compatible client for `[R2Config]`'s bucket: the
+/// generic escape hatch for ops-shaped consumers that share the R2
+/// account but are not tenant config — the worker's database backups sit
+/// behind their own bucket through this, unseen by the ConfigStore port.
+///
+/// Requires the full [`R2Config::configured`] quartet (bucket included);
+/// fails with an otherwise-directional message when incomplete.
+pub fn raw_object_client(config: &R2Config) -> Result<(Arc<dyn ObjectStore>, String), String> {
+    if !config.configured() {
+        return Err("this needs NOTIFI_R2_ACCOUNT_ID, NOTIFI_R2_ACCESS_KEY_ID, \
+             NOTIFI_R2_SECRET_ACCESS_KEY, and a bucket"
+            .to_string());
+    }
+
+    let secret = config
+        .secret_access_key
+        .as_ref()
+        .expect("configured() checked");
+    let key_id = config.access_key_id.as_ref().expect("configured() checked");
+    let bucket = config.bucket.clone().expect("configured() checked");
+
+    let built = AmazonS3Builder::new()
+        .with_endpoint(config.endpoint())
+        .with_bucket_name(bucket.clone())
+        .with_access_key_id(key_id.clone())
+        .with_secret_access_key(secret.clone())
+        .with_region("auto") // R2 has exactly one value; omitting fails SigV4
+        .build()
+        .map_err(|e| format!("r2 client build failed: {e}"))?;
+    let client: Arc<dyn ObjectStore> = Arc::new(built);
+
+    Ok((client, bucket))
 }
 
 #[async_trait::async_trait]

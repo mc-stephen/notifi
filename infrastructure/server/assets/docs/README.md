@@ -102,6 +102,13 @@ configs API contract.
 - Auth: `NOTIFI_EXPOSE_DEV_TOKENS=true|false` — puts raw one-time tokens in
   auth responses (local dev until email delivery lands; the checked-in
   `.cargo/config.toml` enables it for `cargo run`/`cargo test`).
+- Backups (worker): `NOTIFI_BACKUP_R2_BUCKET` turns on the daily database
+  dump — one plain `.sql` file per day (schema + data) streamed into that
+  bucket. Reuses `NOTIFI_R2_ACCOUNT_ID/_ACCESS_KEY_ID/_SECRET_ACCESS_KEY`;
+  slot via `NOTIFI_BACKUP_AT` (default `03:00`), dump binary via
+  `NOTIFI_BACKUP_PG_DUMP`, target via `NOTIFI_BACKUP_DB_URL` (defaults to
+  `NOTIFI_DATABASE_URL`). Nothing is ever auto-deleted. One-shot test:
+  `cargo run -p worker -- --backup-now`. Full story: ARCHITECTURE §23.
 - Database and Redis are **optional**: without them the API still boots and
   serves `/healthz`; `/readyz` reports 503. `docker-compose.yml` provides both
   locally (edit the `CHANGE_ME` values first, then `docker compose up -d`).

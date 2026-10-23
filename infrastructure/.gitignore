@@ -2,3 +2,5 @@
 /server/target
 configs/
 .env
+.DS_Store
+.DS_Store
