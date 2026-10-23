@@ -43,6 +43,28 @@ pub fn handles_event(definition: &serde_json::Value, event: &str) -> bool {
         })
 }
 
+/// The template id carried by the flow's `template` node, if any — the
+/// execution-time content source (rendered fresh on every fire).
+pub fn template_node_id(definition: &serde_json::Value) -> Option<String> {
+    definition
+        .get("nodes")
+        .and_then(|n| n.as_array())
+        .and_then(|nodes| {
+            nodes.iter().find_map(|n| {
+                let is_template = n.get("type").and_then(|t| t.as_str()) == Some("template");
+                is_template
+                    .then(|| {
+                        n.get("data")
+                            .and_then(|d| d.get("templateId"))
+                            .and_then(|t| t.as_str())
+                            .filter(|t| !t.is_empty())
+                            .map(str::to_string)
+                    })
+                    .flatten()
+            })
+        })
+}
+
 /// Collects provider steps for one channel, ordered by priority ascending.
 /// Malformed nodes are skipped (the UI validator flags them separately).
 pub fn provider_chain(definition: &serde_json::Value, channel: &str) -> Vec<ProviderStep> {
@@ -141,5 +163,24 @@ mod flow_tests {
         let def = serde_json::json!({ "nodes": [{ "type": "provider", "data": {} }] });
         assert!(provider_chain(&def, "email").is_empty());
         assert!(provider_chain(&serde_json::json!({}), "email").is_empty());
+    }
+
+    #[test]
+    fn template_node_id_reads_the_first_template_node() {
+        let def = serde_json::json!({
+            "nodes": [
+                {"id": "t", "type": "trigger", "data": {"kind": "schedule"}},
+                {"id": "n1", "type": "template", "data": {"templateId": "tpl_1"}},
+                {"id": "n2", "type": "template", "data": {"templateId": "tpl_2"}}
+            ]
+        });
+        assert_eq!(template_node_id(&def).as_deref(), Some("tpl_1"));
+
+        // Absent, empty, and malformed data all read as "none".
+        let def = serde_json::json!({ "nodes": [{"type": "template", "data": {}}] });
+        assert!(template_node_id(&def).is_none());
+        let def = serde_json::json!({ "nodes": [{"id": "t", "type": "trigger", "data": {}}] });
+        assert!(template_node_id(&def).is_none());
+        assert!(template_node_id(&serde_json::json!({})).is_none());
     }
 }

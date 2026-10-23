@@ -258,6 +258,21 @@ fn email_flow_definition(provider: &str) -> Value {
     })
 }
 
+/// The schedule's flow with content wired in: a template node between the
+/// trigger and the provider route (the builder's template-node save).
+fn email_flow_with_template_node(template: &str) -> Value {
+    json!({
+        "version": 1,
+        "nodes": [
+            {"id": "t", "type": "trigger", "position": {"x": 0, "y": 0}, "data": {"kind": "schedule"}},
+            {"id": "n1", "type": "template", "position": {"x": 0, "y": 0}, "data": {"templateId": template}},
+            {"id": "p1", "type": "provider", "position": {"x": 0, "y": 0}, "data": {"channelId": "email", "providerId": "smtp", "priority": 1}},
+            {"id": "s", "type": "stop", "position": {"x": 0, "y": 0}, "data": {"reason": ""}}
+        ],
+        "edges": []
+    })
+}
+
 async fn setup_project(app: Router, fakes: &Fakes, email: &str, name: &str) -> (String, String) {
     let (token, user_id) = signup(app.clone(), email).await;
     let project = create_project(app.clone(), &token, name).await;
@@ -444,9 +459,10 @@ async fn schedule_validation_edges() {
     let res = request_with_cookie(app.clone(), "POST", "/app/schedules", Some(bad), &token).await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 
-    // Empty recipients.
+    // More recipients than the cap (empty is legal — content counts).
     let mut bad = recurring_body(&project);
-    bad["recipients"] = json!([]);
+    let many = vec!["u".to_string(); 26];
+    bad["recipients"] = json!(many);
     let res = request_with_cookie(app.clone(), "POST", "/app/schedules", Some(bad), &token).await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 
@@ -619,7 +635,7 @@ async fn schedules_are_project_scoped() {
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
 
-async fn create_template(app: Router, fakes: &Fakes, token: &str, project: &str) -> String {
+async fn create_template(app: Router, token: &str, project: &str) -> String {
     let res = request_with_cookie(
         app.clone(),
         "POST",
@@ -633,17 +649,10 @@ async fn create_template(app: Router, fakes: &Fakes, token: &str, project: &str)
     )
     .await;
     assert_eq!(res.status(), StatusCode::CREATED);
-    let template_id = body_json(res).await["template"]["id"]
+    body_json(res).await["template"]["id"]
         .as_str()
         .unwrap()
-        .to_string();
-    // Mirror the Postgres template JOIN in schedule reads.
-    fakes.schedules.seed_template(
-        &template_id,
-        "Morning edition",
-        json!({"email": {"subject": "Good morning", "text": "Digest body"}}),
-    );
-    template_id
+        .to_string()
 }
 
 #[tokio::test]
@@ -685,18 +694,19 @@ async fn weekly_schedule_round_trip() {
 }
 
 #[tokio::test]
-async fn template_schedule_runs_rendered_content() {
+async fn template_node_executes_rendered_content() {
     let (app, fakes) = app_with_schedules();
     let (token, project) = setup_project(app.clone(), &fakes, "j@x.com", "P").await;
-    let template = create_template(app.clone(), &fakes, &token, &project).await;
+    let template = create_template(app.clone(), &token, &project).await;
 
+    // Content is optional at create: no channel/title/template discussed.
     let res = request_with_cookie(
         app.clone(),
         "POST",
         "/app/schedules",
         Some(json!({
             "projectId": project, "name": "templated",
-            "kind": "recurring", "intervalSecs": 3600, "templateId": template,
+            "kind": "recurring", "intervalSecs": 3600,
             "recipients": ["user-9"],
         })),
         &token,
@@ -704,18 +714,218 @@ async fn template_schedule_runs_rendered_content() {
     .await;
     assert_eq!(res.status(), StatusCode::CREATED);
     let created = body_json(res).await["schedule"].clone();
-    assert_eq!(created["templateId"], template);
-    assert_eq!(created["templateName"], "Morning edition");
+    // The row carries no template — the flow owns content now.
+    assert!(created["templateId"].is_null());
     let id = created["id"].as_str().unwrap().to_string();
     let flow = created["flowId"].as_str().unwrap().to_string();
 
-    // Wire an email provider route onto the owned flow.
+    // Wire a template node + email provider route onto the owned flow.
     put_flow_definition(
         app.clone(),
         &token,
         &project,
         &flow,
         "templated",
+        email_flow_with_template_node(&template),
+    )
+    .await;
+
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        &format!("/app/schedules/{id}/run-now"),
+        Some(json!({"projectId": project})),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let ran = body_json(res).await["schedule"].clone();
+    assert_eq!(ran["lastStatus"], "completed");
+
+    // The render came off the template node — the row held no title.
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        &format!("/app/sends?project_id={project}"),
+        None,
+        &token,
+    )
+    .await;
+    let sends = body_json(res).await["sends"].clone();
+    assert_eq!(sends.as_array().unwrap().len(), 1);
+    assert_eq!(sends[0]["title"], "Good morning");
+    assert_eq!(sends[0]["channel"], "email");
+}
+
+#[tokio::test]
+async fn template_schedule_without_recipients_fails_closed() {
+    let (app, fakes) = app_with_schedules();
+    let (token, project) = setup_project(app.clone(), &fakes, "k@x.com", "P").await;
+    let template = create_template(app.clone(), &token, &project).await;
+
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        "/app/schedules",
+        Some(json!({
+            "projectId": project, "name": "no-audience",
+            "kind": "recurring", "intervalSecs": 3600,
+            "recipients": [],
+        })),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let created = body_json(res).await["schedule"].clone();
+    let id = created["id"].as_str().unwrap().to_string();
+    let flow = created["flowId"].as_str().unwrap().to_string();
+
+    // Content resolves (template node), the audience is the missing leg.
+    put_flow_definition(
+        app.clone(),
+        &token,
+        &project,
+        &flow,
+        "no-audience",
+        email_flow_with_template_node(&template),
+    )
+    .await;
+
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        &format!("/app/schedules/{id}/run-now"),
+        Some(json!({"projectId": project})),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let ran = body_json(res).await["schedule"].clone();
+    assert_eq!(ran["lastStatus"], "failed");
+    assert!(ran["lastError"].as_str().unwrap().contains("recipients"));
+}
+
+#[tokio::test]
+async fn bare_schedules_fail_closed_with_a_directive() {
+    let (app, fakes) = app_with_schedules();
+    let (token, project) = setup_project(app.clone(), &fakes, "b@x.com", "P").await;
+
+    // Nothing but name + timing — content arrives as a template node later.
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        "/app/schedules",
+        Some(json!({
+            "projectId": project, "name": "wiring in progress",
+            "kind": "recurring", "intervalSecs": 3600,
+        })),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let id = body_json(res).await["schedule"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        &format!("/app/schedules/{id}/run-now"),
+        Some(json!({"projectId": project})),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let ran = body_json(res).await["schedule"].clone();
+    assert_eq!(ran["lastStatus"], "failed");
+    assert!(ran["lastError"].as_str().unwrap().contains("template node"));
+}
+
+#[tokio::test]
+async fn run_now_template_node_deleted_fails() {
+    let (app, fakes) = app_with_schedules();
+    let (token, project) = setup_project(app.clone(), &fakes, "d2@x.com", "P").await;
+
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        "/app/schedules",
+        Some(json!({
+            "projectId": project, "name": "dangling node",
+            "kind": "recurring", "intervalSecs": 3600,
+            "recipients": ["user-9"],
+        })),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let created = body_json(res).await["schedule"].clone();
+    let id = created["id"].as_str().unwrap().to_string();
+    let flow = created["flowId"].as_str().unwrap().to_string();
+
+    put_flow_definition(
+        app.clone(),
+        &token,
+        &project,
+        &flow,
+        "dangling node",
+        email_flow_with_template_node("tpl_nope"),
+    )
+    .await;
+
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        &format!("/app/schedules/{id}/run-now"),
+        Some(json!({"projectId": project})),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let ran = body_json(res).await["schedule"].clone();
+    assert_eq!(ran["lastStatus"], "failed");
+    assert!(ran["lastError"].as_str().unwrap().contains("deleted"));
+}
+
+#[tokio::test]
+async fn legacy_template_rows_still_render_snapshot() {
+    let (app, fakes) = app_with_schedules();
+    let (token, project) = setup_project(app.clone(), &fakes, "l@x.com", "P").await;
+    let template = create_template(app.clone(), &token, &project).await;
+
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        "/app/schedules",
+        Some(json!({
+            "projectId": project, "name": "legacy",
+            "kind": "recurring", "intervalSecs": 3600,
+            "recipients": ["user-9"],
+        })),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let created = body_json(res).await["schedule"].clone();
+    let id = created["id"].as_str().unwrap().to_string();
+    let flow = created["flowId"].as_str().unwrap().to_string();
+
+    // A row born in the old world: the assignment sat on the schedule row.
+    fakes.schedules.seed_template(
+        &template,
+        "Morning edition",
+        json!({"email": {"subject": "Good morning", "text": "Digest body"}}),
+    );
+    fakes.schedules.seed_legacy_template(&id, &template);
+
+    // Provider route wired, no template node — tier two serves the snapshot.
+    put_flow_definition(
+        app.clone(),
+        &token,
+        &project,
+        &flow,
+        "legacy",
         email_flow_definition("smtp"),
     )
     .await;
@@ -744,64 +954,6 @@ async fn template_schedule_runs_rendered_content() {
     assert_eq!(sends.as_array().unwrap().len(), 1);
     assert_eq!(sends[0]["title"], "Good morning");
     assert_eq!(sends[0]["channel"], "email");
-}
-
-#[tokio::test]
-async fn template_schedule_without_recipients_fails_closed() {
-    let (app, fakes) = app_with_schedules();
-    let (token, project) = setup_project(app.clone(), &fakes, "k@x.com", "P").await;
-    let template = create_template(app.clone(), &fakes, &token, &project).await;
-
-    let res = request_with_cookie(
-        app.clone(),
-        "POST",
-        "/app/schedules",
-        Some(json!({
-            "projectId": project, "name": "no-audience",
-            "kind": "recurring", "intervalSecs": 3600, "templateId": template,
-            "recipients": [],
-        })),
-        &token,
-    )
-    .await;
-    assert_eq!(res.status(), StatusCode::CREATED);
-    let id = body_json(res).await["schedule"]["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    let res = request_with_cookie(
-        app.clone(),
-        "POST",
-        &format!("/app/schedules/{id}/run-now"),
-        Some(json!({"projectId": project})),
-        &token,
-    )
-    .await;
-    assert_eq!(res.status(), StatusCode::OK);
-    let ran = body_json(res).await["schedule"].clone();
-    assert_eq!(ran["lastStatus"], "failed");
-    assert!(ran["lastError"].as_str().unwrap().contains("recipients"));
-}
-
-#[tokio::test]
-async fn unknown_template_rejected() {
-    let (app, fakes) = app_with_schedules();
-    let (token, project) = setup_project(app.clone(), &fakes, "l@x.com", "P").await;
-
-    let res = request_with_cookie(
-        app.clone(),
-        "POST",
-        "/app/schedules",
-        Some(json!({
-            "projectId": project, "name": "bad-tpl",
-            "kind": "recurring", "intervalSecs": 3600, "templateId": "tpl_nope",
-            "recipients": [],
-        })),
-        &token,
-    )
-    .await;
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

@@ -90,11 +90,10 @@ pub struct CreateScheduleRequest {
     pub days: Option<Vec<i64>>,
     pub run_time: Option<String>,
     pub timezone: Option<String>,
-    pub template_id: Option<String>,
     pub channel: Option<String>,
     pub title: Option<String>,
     pub body: Option<String>,
-    pub recipients: Vec<String>,
+    pub recipients: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,7 +107,6 @@ pub struct UpdateScheduleRequest {
     pub days: Option<Vec<i64>>,
     pub run_time: Option<Option<String>>,
     pub timezone: Option<String>,
-    pub template_id: Option<Option<String>>,
     pub channel: Option<String>,
     pub title: Option<String>,
     pub body: Option<String>,

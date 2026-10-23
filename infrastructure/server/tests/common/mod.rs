@@ -4298,6 +4298,24 @@ impl FakeScheduleStore {
             .insert(template_id.to_string(), (name.to_string(), content));
     }
 
+    /// Backfills a schedule row as a legacy template assignment — rows
+    /// born before content moved into the flow's template node. The
+    /// mirror must already hold the template snapshot (see `seed_template`).
+    pub fn seed_legacy_template(&self, schedule_id: &str, template_id: &str) {
+        let snapshot = self.templates.read().unwrap().get(template_id).cloned();
+        let Some((name, content)) = snapshot else {
+            return;
+        };
+        let mut schedules = self.schedules.write().unwrap();
+        for s in schedules.iter_mut() {
+            if s.id == schedule_id {
+                s.template_id = Some(template_id.to_string());
+                s.template_name = Some(name.clone());
+                s.template_content = Some(content.clone());
+            }
+        }
+    }
+
     fn is_visible(&self, user_id: &str, project_id: &str) -> bool {
         self.visible
             .read()

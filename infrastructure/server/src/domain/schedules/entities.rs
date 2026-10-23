@@ -99,8 +99,9 @@ pub struct Schedule {
 
 /// Input for creating a schedule. `run_at` is required for `once`,
 /// `interval_secs` for `recurring`, `days` + `run_time` for `weekly`.
-/// `template_id` selects a message template; without one the legacy
-/// payload fields apply. The flow is created here — callers never assign
+/// Content is optional — the flow's template node (or the legacy
+/// `channel`/`title`/`body` trio) owns the message; bare rows fail
+/// closed at execute. The flow is created here — callers never assign
 /// an existing one.
 #[derive(Debug, Clone)]
 pub struct ScheduleInput {
@@ -111,7 +112,6 @@ pub struct ScheduleInput {
     pub days: Vec<i64>,
     pub run_time: Option<String>,
     pub timezone: String,
-    pub template_id: Option<String>,
     pub channel: String,
     pub title: String,
     pub body: String,

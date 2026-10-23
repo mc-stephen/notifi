@@ -90,11 +90,10 @@ pub async fn create_schedule(
                 days: body.days.unwrap_or_default(),
                 run_time: body.run_time,
                 timezone: body.timezone.unwrap_or_else(|| "UTC".to_string()),
-                template_id: body.template_id,
                 channel: body.channel.unwrap_or_default(),
                 title: body.title.unwrap_or_default(),
                 body: body.body.unwrap_or_default(),
-                recipients: body.recipients,
+                recipients: body.recipients.unwrap_or_default(),
             },
         )
         .await?;
@@ -128,7 +127,6 @@ pub async fn update_schedule(
                 days: body.days,
                 run_time: body.run_time,
                 timezone: body.timezone,
-                template_id: body.template_id,
                 channel: body.channel,
                 title: body.title,
                 body: body.body,

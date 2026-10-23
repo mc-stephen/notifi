@@ -12,13 +12,23 @@
 //!
 //! Renames sync: renaming a schedule renames its flow (the owner owns the
 //! flow's identity).
+//!
+//! Content doctrine: the message lives in the flow — a `template` node
+//! resolves and renders at every fire (tier one, picked fresh off the
+//! templates store); rows born before the node existed fall back to
+//! their stored template snapshot (tier two), then to the legacy
+//! title/body fields (tier three). New schedules carry neither fallback:
+//! content is optional at create, and bare rows fail closed at execute
+//! (proven by `template_node_executes_rendered_content`,
+//! `legacy_template_rows_still_render_snapshot`, and
+//! `bare_schedules_fail_closed_with_a_directive` in `schedules_api.rs`).
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::domain::auth::entities::UserId;
 use crate::domain::error::AppError;
-use crate::domain::flows::provider_chain;
+use crate::domain::flows::{provider_chain, template_node_id};
 use crate::domain::schedules::entities::{
     MAX_INTERVAL_SECS, MAX_RECIPIENTS, MIN_INTERVAL_SECS, Schedule, ScheduleInput, ScheduleKind,
     advance_next_run, describe_timing, initial_next_run, next_weekly_run, normalize_days,
@@ -45,7 +55,6 @@ pub struct SchedulePatch {
     pub days: Option<Vec<i64>>,
     pub run_time: Option<Option<String>>,
     pub timezone: Option<String>,
-    pub template_id: Option<Option<String>>,
     pub channel: Option<String>,
     pub title: Option<String>,
     pub body: Option<String>,
@@ -200,44 +209,13 @@ impl ScheduleService {
         Ok(())
     }
 
-    /// Legacy payload rules (template schedules skip these — the template
-    /// owns channel/title, and recipients arrive with flow targeting).
-    fn check_payload(channel: &str, title: &str, recipients: &[String]) -> Result<(), AppError> {
-        if channel.trim().is_empty() {
-            return Err(AppError::Validation("channel is required".into()));
-        }
-        if title.trim().is_empty() {
-            return Err(AppError::Validation("title is required".into()));
-        }
-        if recipients.is_empty() {
-            return Err(AppError::Validation(
-                "at least one recipient is required".into(),
-            ));
-        }
+    /// Recipients are capped but may be empty — targeting arrives with
+    /// flow targeting; empty rows fail closed at execute.
+    fn check_recipients(recipients: &[String]) -> Result<(), AppError> {
         if recipients.len() > MAX_RECIPIENTS {
             return Err(AppError::Validation(format!(
                 "at most {MAX_RECIPIENTS} recipients per schedule"
             )));
-        }
-        Ok(())
-    }
-
-    /// The assigned template must exist in the same project.
-    async fn check_template(
-        &self,
-        actor: UserId,
-        project_id: &str,
-        template_id: &str,
-    ) -> Result<(), AppError> {
-        let template = self
-            .templates
-            .get(actor, project_id, template_id)
-            .await
-            .map_err(Self::map_store_error)?;
-        if template.is_none() {
-            return Err(AppError::Validation(
-                "template not found in this project".into(),
-            ));
         }
         Ok(())
     }
@@ -301,9 +279,9 @@ impl ScheduleService {
     /// named after the schedule with a locked schedule trigger node
     /// (see [`seed_definition`]), so clients never pick or assign one.
     /// First fire is `run_at` (once), now + interval (recurring), or the
-    /// next selected weekday (weekly). Template schedules skip payload
-    /// validation — the template owns the message and recipients arrive
-    /// with flow targeting.
+    /// next selected weekday (weekly). Content is optional at create —
+    /// the flow's template node or the legacy payload fields own the
+    /// message, and bare rows fail closed at execute (see [`ScheduleService::execute`]).
     pub async fn create(
         &self,
         actor: UserId,
@@ -320,11 +298,7 @@ impl ScheduleService {
             input.run_time.as_deref(),
             &input.timezone,
         )?;
-        if let Some(tid) = input.template_id.as_deref() {
-            self.check_template(actor, project_id, tid).await?;
-        } else {
-            Self::check_payload(&input.channel, &input.title, &input.recipients)?;
-        }
+        Self::check_recipients(&input.recipients)?;
         // The flow is owned data: created here, deleted with the schedule.
         let flow = self
             .flows
@@ -354,7 +328,7 @@ impl ScheduleService {
             days,
             run_time: input.run_time,
             timezone: timezone.to_string(),
-            template_id: input.template_id,
+            template_id: None,
             channel: input.channel.trim().to_string(),
             title: input.title.trim().to_string(),
             body: input.body,
@@ -425,10 +399,6 @@ impl ScheduleService {
             run_time.as_deref(),
             &timezone,
         )?;
-        let template_id = patch.template_id.unwrap_or(current.template_id.clone());
-        if let Some(tid) = template_id.as_deref() {
-            self.check_template(actor, project_id, tid).await?;
-        }
         let channel = patch.channel.unwrap_or(current.channel.clone());
         let title = patch.title.unwrap_or(current.title.clone());
         let body = patch.body.unwrap_or(current.body.clone());
@@ -444,9 +414,7 @@ impl ScheduleService {
                 })
                 .unwrap_or_default(),
         };
-        if template_id.is_none() {
-            Self::check_payload(&channel, &title, &recipients)?;
-        }
+        Self::check_recipients(&recipients)?;
         let active = patch.active.unwrap_or(current.active);
         let now = chrono::Utc::now();
         // Archive is a stamp, not a state machine: true stamps now (once),
@@ -484,7 +452,7 @@ impl ScheduleService {
             days: normalize_days(&days).unwrap_or_default(),
             run_time,
             timezone,
-            template_id,
+            template_id: current.template_id.clone(),
             channel: channel.trim().to_string(),
             title: title.trim().to_string(),
             body,
@@ -591,11 +559,12 @@ impl ScheduleService {
         Ok(processed)
     }
 
-    /// Runs one schedule's assigned flow and records the send. Template
-    /// schedules render their template at fire time; legacy rows use the
-    /// stored payload. Recipient targeting still lives outside schedules,
-    /// so template runs fail closed without recipients (see module docs).
-    /// Returns (status, error, next_run_at, active).
+    /// Runs one schedule's assigned flow and records the send. Content
+    /// resolves in three tiers — the flow's template node first (rendered
+    /// fresh at fire time), then legacy rows' stored template snapshot,
+    /// then the legacy title/body fields. Recipient targeting still lives
+    /// outside schedules, so runs fail closed without recipients (see
+    /// module docs). Returns (status, error, next_run_at, active).
     async fn execute(
         &self,
         schedule: &Schedule,
@@ -621,11 +590,26 @@ impl ScheduleService {
             (status.to_string(), error, next, active)
         };
 
-        let (channel, title, body) = match (&schedule.template_id, &schedule.template_content) {
-            (Some(_), Some(content)) => {
-                // No run-level personalization yet; the values map lands
-                // per-recipient data the day schedules carry it.
-                match render_template_content(content, &std::collections::HashMap::new()) {
+        // Content resolves in three tiers (see module doc + execute docs):
+        // the flow's template node wins, then the row snapshot, then the
+        // legacy payload fields.
+        let (channel, title, body) = match template_node_id(&schedule.flow_definition) {
+            Some(node_template_id) => {
+                let template = match self.templates.get_by_id(&node_template_id).await {
+                    Ok(t) => t.filter(|t| t.project_id == schedule.project_id),
+                    Err(e) => return settle("failed", Some(format!("template read failed: {e}"))),
+                };
+                let Some(template) = template else {
+                    return settle(
+                        "failed",
+                        Some(
+                            "the template node's template was deleted — pick another one"
+                                .to_string(),
+                        ),
+                    );
+                };
+                match render_template_content(&template.content, &std::collections::HashMap::new())
+                {
                     Some(rendered) => (rendered.channel, rendered.title, rendered.body),
                     None => {
                         return settle(
@@ -635,17 +619,43 @@ impl ScheduleService {
                     }
                 }
             }
-            (Some(_), None) => {
-                return settle(
-                    "failed",
-                    Some("the assigned template was deleted — pick another one".to_string()),
-                );
-            }
-            (None, _) => (
-                schedule.channel.clone(),
-                schedule.title.clone(),
-                schedule.body.clone(),
-            ),
+            None => match (&schedule.template_id, &schedule.template_content) {
+                (Some(_), Some(content)) => {
+                    // No run-level personalization yet; the values map lands
+                    // per-recipient data the day schedules carry it.
+                    match render_template_content(content, &std::collections::HashMap::new()) {
+                        Some(rendered) => (rendered.channel, rendered.title, rendered.body),
+                        None => {
+                            return settle(
+                                "failed",
+                                Some("template covers no renderable channels".to_string()),
+                            );
+                        }
+                    }
+                }
+                (Some(_), None) => {
+                    return settle(
+                        "failed",
+                        Some("the assigned template was deleted — pick another one".to_string()),
+                    );
+                }
+                (None, _) => {
+                    if schedule.title.is_empty() && schedule.body.is_empty() {
+                        return settle(
+                            "failed",
+                            Some(
+                                "the schedule has no message yet — add a template node to its flow"
+                                    .to_string(),
+                            ),
+                        );
+                    }
+                    (
+                        schedule.channel.clone(),
+                        schedule.title.clone(),
+                        schedule.body.clone(),
+                    )
+                }
+            },
         };
         if schedule.recipients.is_empty() {
             return settle("failed", Some("schedule has no recipients yet".to_string()));
@@ -793,10 +803,11 @@ mod schedule_service_tests {
     }
 
     #[test]
-    fn payload_validation_bounds_recipients() {
+    fn recipient_validation_bounds_the_count() {
         let many = vec!["r".to_string(); MAX_RECIPIENTS + 1];
-        assert!(ScheduleService::check_payload("email", "t", &many).is_err());
-        assert!(ScheduleService::check_payload("", "t", &["r".to_string()]).is_err());
-        assert!(ScheduleService::check_payload("email", "t", &["r".to_string()]).is_ok());
+        assert!(ScheduleService::check_recipients(&many).is_err());
+        assert!(ScheduleService::check_recipients(&["r".to_string()]).is_ok());
+        // Empty is legal — bare schedules fail closed at execute, not here.
+        assert!(ScheduleService::check_recipients(&[]).is_ok());
     }
 }
