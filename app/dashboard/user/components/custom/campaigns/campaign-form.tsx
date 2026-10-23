@@ -330,7 +330,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 space-y-1.5">
       <label className="text-xs font-medium text-foreground">{label}</label>
       {children}
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
@@ -677,7 +677,7 @@ export function CampaignFormFields({
         </div>
       </Field>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid min-w-0 gap-3 sm:grid-cols-2">
         <Field
           label="Channel"
           hint={`Sends as ${
@@ -689,7 +689,7 @@ export function CampaignFormFields({
             onValueChange={(v) => v !== null && set({ channel: v, provider: "" })}
             disabled={covered.length === 0}
           >
-            <SelectTrigger className="h-9 text-sm">
+            <SelectTrigger className="h-9 w-full min-w-0 text-sm">
               <SelectValue
                 placeholder={
                   selectedTemplate
@@ -723,7 +723,7 @@ export function CampaignFormFields({
               connectedProvidersFor(configs, value.channel).length === 0
             }
           >
-            <SelectTrigger className="h-9 text-sm">
+            <SelectTrigger className="h-9 w-full min-w-0 text-sm">
               <SelectValue
                 placeholder={
                   !value.channel
