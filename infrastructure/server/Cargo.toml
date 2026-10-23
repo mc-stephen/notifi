@@ -44,4 +44,4 @@ yup-oauth2 = { workspace = true }
 zip = { workspace = true }
 
 [dev-dependencies]
-http-body-util = "0.1"
+http-body-util = { workspace = true }
