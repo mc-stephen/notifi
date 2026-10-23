@@ -34,6 +34,21 @@ type ProblemDocument = {
   correlation_id?: string | null;
 };
 
+/** One RFC 9457 problem-parse + throw, shared by both clients below. */
+async function throw_problem(res: Response): Promise<never> {
+  let problem: ProblemDocument = {};
+  try {
+    problem = await res.json();
+  } catch {
+    // non-JSON error body — fall back to status text
+  }
+  throw new ApiError(
+    res.status,
+    problem.detail ?? problem.title ?? res.statusText,
+    problem.correlation_id ?? undefined
+  );
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${env.apiBase}${path}`, {
     credentials: "include",
@@ -41,21 +56,29 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "content-type": "application/json", ...init?.headers },
   });
 
-  if (!res.ok) {
-    let problem: ProblemDocument = {};
-    try {
-      problem = await res.json();
-    } catch {
-      // non-JSON error body — fall back to status text
-    }
-    throw new ApiError(
-      res.status,
-      problem.detail ?? problem.title ?? res.statusText,
-      problem.correlation_id ?? undefined
-    );
-  }
+  if (!res.ok) await throw_problem(res);
 
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as T);
+}
+
+/**
+ * Downloads a binary file (e.g. a project data export ZIP) with the same
+ * session cookie + problem-document error handling as `api`, and pulls
+ * the save name out of Content-Disposition. Callers turn the blob into a
+ * download with URL.createObjectURL.
+ */
+export async function apiDownload(path: string): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch(`${env.apiBase}${path}`, {
+    credentials: "include",
+  });
+  if (!res.ok) await throw_problem(res);
+
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition);
+  const filename = match
+    ? decodeURIComponent(match[1].replace(/['"]/g, ""))
+    : "download";
+  return { blob: await res.blob(), filename };
 }

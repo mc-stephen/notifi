@@ -13,10 +13,11 @@ import {
   Trash2,
   Monitor,
   Check,
+  Download,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { api, ApiError } from "@/lib/api";
+import { api, apiDownload, ApiError } from "@/lib/api";
 import { useProjectStore } from "@/store/project-store";
 import type { Project } from "@/lib/types";
 import { toast } from "sonner";
@@ -39,8 +40,38 @@ export default function SettingsPage() {
   const [orgEmail, setOrgEmail] = useState("hello@acme-corp.com");
   const [switching, setSwitching] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const { currentProject, updateProject } = useProjectStore();
+
+  const handleExport = async () => {
+    if (!currentProject || exporting) return;
+    setExporting(true);
+    try {
+      const { blob, filename } = await apiDownload(
+        `/app/projects/${currentProject.id}/export`,
+      );
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Export ready — check your downloads");
+    } catch (e) {
+      toast.error(
+        e instanceof ApiError
+          ? e.status === 429
+            ? "Export limit reached — 3 downloads per project per day."
+            : e.message
+          : "Couldn't download project data",
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const setProjectActive = async (active: boolean) => {
     if (!currentProject || switching || currentProject.active === active) return;
@@ -163,6 +194,26 @@ export default function SettingsPage() {
                     })}
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Download className="size-4 text-muted-foreground" />
+                  Project data
+                </CardTitle>
+                <CardDescription>
+                  Download everything this project holds in one ZIP — members, templates,
+                  API keys, sends, recipients, webhooks, flows, and the project&apos;s
+                  files. Limited to 3 downloads per project per day.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" size="sm" className="gap-1.5" disabled={!currentProject || exporting} onClick={() => void handleExport()}>
+                  <Download className="size-3.5" />
+                  {exporting ? "Preparing download…" : "Download project data"}
+                </Button>
               </CardContent>
             </Card>
 
