@@ -90,6 +90,8 @@ Brand source of truth for all of them: `shared/identity/` (colors, typography, l
 
 **Rule for any AI model or developer**: these files document the frontend's expected API contract. If you change an auth or onboarding page's inputs/outputs, validation, redirects, or the matching backend implementation, you MUST update the relevant contract file in the same change. (Dashboard pages have no contract file yet.)
 
+**Env-name contract**: `infrastructure/.env.example` is the checked-in inventory of every `NOTIFI_*` variable any consumer reads (server boot config, worker backup settings, provider live-probe tests, gated suites). Add or rename an env name → update `.env.example` and the consumer in the same change; the `env_template_parity` suite fails CI on drift. Secrets belong only in gitignored `infrastructure/.env` / your provider's env UI — never in the template or git.
+
 ---
 
 ## Backend Server (`infrastructure/`)

@@ -11,7 +11,7 @@
 //!
 //! Also living here: the self-contained [`backup`] block — a daily
 //! database dump-and-upload on its own clock (never the queue). Off
-//! unless `NOTIFI_BACKUP_R2_BUCKET` is set; `cargo run -p worker --
+//! unless `NOTIFI_BACKUP_ENABLED` is switched on; `cargo run -p worker --
 //! --backup-now` runs one dump immediately.
 //!
 //! Useful with plain `cargo run -p worker` and no extra services: RabbitMQ
