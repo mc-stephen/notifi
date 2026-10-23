@@ -10,13 +10,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// iOS (APNs) configuration.
 ///
 /// `p8_key_path` points at the Apple signing key; the JWT `iss` claim is
-/// the team id and the `apns-topic` header the bundle id.
+/// the team id and the `apns-topic` header the bundle id. `sandbox`
+/// selects Apple's sandbox gateway for dev builds; it defaults to
+/// production, since an omitted flag silently-sandboxing real sends
+/// would be the worse surprise.
 #[derive(Debug, Clone, Deserialize)]
 pub struct IosConfig {
     pub key_id: String,
     pub team_id: String,
     pub bundle_id: String,
     pub p8_key_path: PathBuf,
+    #[serde(default)]
+    pub sandbox: bool,
 }
 
 /// macOS (APNs) configuration — the same APNs signing flow as iOS.
@@ -26,6 +31,8 @@ pub struct MacosConfig {
     pub team_id: String,
     pub bundle_id: String,
     pub p8_key_path: PathBuf,
+    #[serde(default)]
+    pub sandbox: bool,
 }
 
 /// Apple device destination: the APNs device token.
@@ -48,6 +55,7 @@ pub struct ApnsProvider {
     team_id: String,
     bundle_id: String,
     p8_key_path: PathBuf,
+    sandbox: bool,
     client: Client,
     /// APNs base (scheme + host) override for tests; production never
     /// sets it.
@@ -62,6 +70,7 @@ impl ApnsProvider {
             team_id: config.team_id,
             bundle_id: config.bundle_id,
             p8_key_path: config.p8_key_path,
+            sandbox: config.sandbox,
             client: Client::builder()
                 .build()
                 .map_err(|e| format!("Failed to build APNs HTTP client: {e}"))?,
@@ -76,6 +85,7 @@ impl ApnsProvider {
             team_id: config.team_id,
             bundle_id: config.bundle_id,
             p8_key_path: config.p8_key_path,
+            sandbox: config.sandbox,
         })
     }
 
@@ -85,6 +95,16 @@ impl ApnsProvider {
             #[cfg(test)]
             apns_base: Some(base),
             ..Self::new(config).expect("test config builds")
+        }
+    }
+
+    /// The production default honors the sandbox flag: dev builds sign
+    /// against Apple's sandbox gateway.
+    fn default_base(&self) -> &'static str {
+        if self.sandbox {
+            "https://api.sandbox.push.apple.com"
+        } else {
+            "https://api.push.apple.com"
         }
     }
 
@@ -115,12 +135,12 @@ impl ApnsProvider {
             {
                 match &self.apns_base {
                     Some(base) => format!("{base}/3/device/{}", msg.device_token),
-                    None => format!("https://api.push.apple.com/3/device/{}", msg.device_token),
+                    None => format!("{}/3/device/{}", self.default_base(), msg.device_token),
                 }
             }
             #[cfg(not(test))]
             {
-                format!("https://api.push.apple.com/3/device/{}", msg.device_token)
+                format!("{}/3/device/{}", self.default_base(), msg.device_token)
             }
         };
         let payload = json!({
@@ -163,6 +183,7 @@ mod apns_tests {
             team_id: "TEAMID9".to_string(),
             bundle_id: "app.notifi.test".to_string(),
             p8_key_path: PathBuf::from("/nonexistent/authkey.p8"),
+            sandbox: false,
         }
     }
 
@@ -181,6 +202,7 @@ mod apns_tests {
             team_id: "T".to_string(),
             bundle_id: "b.1".to_string(),
             p8_key_path: PathBuf::from("/x/key.p8"),
+            sandbox: false,
         })
         .expect("builds");
         assert_eq!(provider.team_id, "T");
@@ -194,10 +216,23 @@ mod apns_tests {
         )
         .expect("ios parses");
         assert_eq!(ios.team_id, "t");
+        assert!(!ios.sandbox, "omitted flag defaults to production");
         let _: MacosConfig = serde_json::from_str(
             r#"{"key_id":"k","team_id":"t","bundle_id":"b","p8_key_path":"/k.p8"}"#,
         )
         .expect("macos parses");
+    }
+
+    #[test]
+    fn sandbox_flag_picks_the_gateway() {
+        let prod = ApnsProvider::new(ios_config()).expect("builds");
+        assert_eq!(prod.default_base(), "https://api.push.apple.com");
+        let sandbox = ApnsProvider::new(IosConfig {
+            sandbox: true,
+            ..ios_config()
+        })
+        .expect("builds");
+        assert_eq!(sandbox.default_base(), "https://api.sandbox.push.apple.com");
     }
 
     #[tokio::test]
@@ -248,6 +283,9 @@ mod apns_tests {
             p8_key_path: PathBuf::from(
                 std::env::var("NOTIFI_APNS_P8_PATH").expect("NOTIFI_APNS_P8_PATH not set"),
             ),
+            sandbox: std::env::var("NOTIFI_APNS_SANDBOX")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
         };
         let device_token =
             std::env::var("NOTIFI_APNS_DEVICE_TOKEN").expect("NOTIFI_APNS_DEVICE_TOKEN not set");

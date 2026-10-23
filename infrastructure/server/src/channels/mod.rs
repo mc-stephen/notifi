@@ -9,6 +9,5 @@
 pub mod chat_channel;
 pub mod device_channel;
 pub mod email_channel;
-pub mod push_channel;
 pub mod sms_channel;
 pub mod webhook_channel;

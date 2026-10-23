@@ -975,39 +975,6 @@ fn build_push_channel() -> ChannelDefinition {
                 ],
                 smtp_fallback: None,
             },
-            ProviderDefinition {
-                provider_id: "braze_airship".to_string(),
-                name: "Braze (Airship)".to_string(),
-                scope: ProviderScope::Global,
-                primary_regions: vec![],
-                platforms: vec!["android".to_string(), "ios".to_string(), "web".to_string()],
-                icon_url: Some(
-                    "https://cdn.brandfetch.io/braze.com/w/512/h/512/theme/dark/icon.jpeg"
-                        .to_string(),
-                ),
-                docs_url: Some("https://www.braze.com/docs/".to_string()),
-                config_fields: vec![
-                    ConfigField {
-                        key: "api_key".to_string(),
-                        label: "API Key".to_string(),
-                        field_type: ConfigFieldType::Password,
-                        required: true,
-                    },
-                    ConfigField {
-                        key: "app_id".to_string(),
-                        label: "App ID".to_string(),
-                        field_type: ConfigFieldType::Text,
-                        required: true,
-                    },
-                    ConfigField {
-                        key: "base_url".to_string(),
-                        label: "Base URL".to_string(),
-                        field_type: ConfigFieldType::Text,
-                        required: true,
-                    },
-                ],
-                smtp_fallback: None,
-            },
         ],
     }
 }

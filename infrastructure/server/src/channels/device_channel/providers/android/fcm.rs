@@ -1,24 +1,18 @@
+use super::AndroidMessage;
 use reqwest::Client;
 use serde::Deserialize;
 use serde::Serialize;
 use std::path::PathBuf;
 use yup_oauth2::ServiceAccountAuthenticator;
 
-/// Android (FCM) configuration.
+/// FCM configuration for the Android destination.
 ///
 /// `service_account_path` points at the Google service account JSON whose
 /// `project_id` names the FCM project; both the OAuth token and the
 /// project id are read from that one file.
 #[derive(Debug, Clone, Deserialize)]
-pub struct AndroidConfig {
+pub struct FcmConfig {
     pub service_account_path: PathBuf,
-}
-
-/// Android push destination: the FCM registration token.
-pub struct AndroidMessage {
-    pub token: String,
-    pub title: String,
-    pub body: String,
 }
 
 #[derive(Serialize)]
@@ -39,16 +33,16 @@ struct Notification {
 }
 
 /// Android (FCM) device provider controller.
-pub struct AndroidProvider {
-    config: AndroidConfig,
+pub struct FcmProvider {
+    config: FcmConfig,
     client: Client,
     /// FCM root override for tests; production never sets it.
     #[cfg(test)]
     fcm_base: Option<String>,
 }
 
-impl AndroidProvider {
-    pub fn new(config: AndroidConfig) -> Self {
+impl FcmProvider {
+    pub fn new(config: FcmConfig) -> Self {
         Self {
             config,
             client: Client::new(),
@@ -58,7 +52,7 @@ impl AndroidProvider {
     }
 
     #[cfg(test)]
-    pub(crate) fn new_with_fcm_base(config: AndroidConfig, fcm_base: String) -> Self {
+    pub(crate) fn new_with_fcm_base(config: FcmConfig, fcm_base: String) -> Self {
         Self {
             #[cfg(test)]
             fcm_base: Some(fcm_base),
@@ -158,15 +152,15 @@ impl AndroidProvider {
 mod android_tests {
     use super::*;
 
-    fn config() -> AndroidConfig {
-        AndroidConfig {
+    fn config() -> FcmConfig {
+        FcmConfig {
             service_account_path: std::path::PathBuf::from("/nonexistent/sa.json"),
         }
     }
 
     #[test]
     fn config_parses_service_account_path() {
-        let c: AndroidConfig =
+        let c: FcmConfig =
             serde_json::from_str(r#"{"service_account_path":"/keys/fcm.json"}"#).expect("parses");
         assert_eq!(c.service_account_path.to_str(), Some("/keys/fcm.json"));
     }
@@ -175,7 +169,7 @@ mod android_tests {
     async fn posts_fcm_payload_with_bearer() {
         let stub = crate::testing::http_stub::start(200, "OK", r#"{"name":"m1"}"#).await;
         let provider =
-            AndroidProvider::new_with_fcm_base(config(), format!("http://127.0.0.1:{}", stub.port));
+            FcmProvider::new_with_fcm_base(config(), format!("http://127.0.0.1:{}", stub.port));
         provider
             .post_fcm(
                 "fake-oauth-token",
@@ -211,7 +205,7 @@ mod android_tests {
         )
         .await;
         let provider =
-            AndroidProvider::new_with_fcm_base(config(), format!("http://127.0.0.1:{}", stub.port));
+            FcmProvider::new_with_fcm_base(config(), format!("http://127.0.0.1:{}", stub.port));
         let err = provider
             .post_fcm(
                 "t",
@@ -238,7 +232,7 @@ mod android_tests {
             .expect("NOTIFI_ANDROID_SERVICE_ACCOUNT not set");
         let device_token = std::env::var("NOTIFI_ANDROID_DEVICE_TOKEN")
             .expect("NOTIFI_ANDROID_DEVICE_TOKEN not set");
-        AndroidProvider::new(AndroidConfig {
+        FcmProvider::new(FcmConfig {
             service_account_path: std::path::PathBuf::from(path),
         })
         .send_notification(&AndroidMessage {
