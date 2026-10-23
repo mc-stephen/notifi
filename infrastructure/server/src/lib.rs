@@ -118,6 +118,13 @@ fn run_inner() -> Result<(), String> {
         let provider_tester: std::sync::Arc<dyn ports::ProviderTester + Send + Sync> =
             std::sync::Arc::new(infra::ConfigProviderTester::new());
 
+        // Tenant brand config storage: always available. The file driver
+        // reads the NOTIFI_CONFIG_ROOT root (dev points it at server/assets
+        // via .cargo/config.toml); the object-store driver arrives with
+        // NOTIFI_R2_* (see infra::config R2Config wiring).
+        let config_store: std::sync::Arc<dyn ports::ConfigStore + Send + Sync> =
+            std::sync::Arc::new(infra::FileConfigStore::from_root_env());
+
         // OAuth sign-in is wired when at least one provider has credentials.
         let github = match (
             config.oauth.github_client_id.clone(),
@@ -193,6 +200,7 @@ fn run_inner() -> Result<(), String> {
                 campaigns: services.map(|s| s.campaigns.clone()),
                 notifications: services.map(|s| s.notifications.clone()),
                 provider_tester,
+                config_store,
             },
             &config,
         );

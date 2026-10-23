@@ -59,4 +59,8 @@ pub struct AppState {
     pub notifications: Option<Arc<crate::domain::notifications::NotificationService>>,
     /// Provider connection tester — always available.
     pub provider_tester: Arc<dyn crate::ports::ProviderTester + Send + Sync>,
+    /// Tenant brand config storage (channel configs + template assets) —
+    /// file-backed locally, object-store-backed when `NOTIFI_R2_*` is set.
+    /// Always available; see [`crate::ports::ConfigStore`].
+    pub config_store: Arc<dyn crate::ports::ConfigStore + Send + Sync>,
 }

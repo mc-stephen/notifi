@@ -43,7 +43,10 @@ pub struct ConfigResolver;
 impl ConfigResolver {
     /// Returns the root directory under which all brand dirs live.
     /// Override with the `NOTIFI_CONFIG_ROOT` env var (defaults to `configs`).
-    fn root() -> PathBuf {
+    ///
+    /// `infra` config-store drivers resolve their base from here too, so
+    /// the file driver and the kernel paths can never drift apart.
+    pub fn root() -> PathBuf {
         std::env::var("NOTIFI_CONFIG_ROOT")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("configs"))
@@ -65,6 +68,22 @@ impl ConfigResolver {
             .join(brand)
             .join("templates")
             .join(template_name)
+    }
+
+    /// Storage key for a channel config file:
+    /// `brands/{brand}/config/{channel_name}/{file_name}`.
+    ///
+    /// Relative to whichever [`crate::ports::ConfigStore`] is active (the
+    /// file driver prepends the same root these path helpers use), so the
+    /// same key addresses disk, Redis-cached copies, and R2 buckets alike.
+    pub fn channel_key(brand: &str, channel_name: &str, file_name: &str) -> String {
+        format!("brands/{brand}/config/{channel_name}/{file_name}")
+    }
+
+    /// Storage key for a brand template file:
+    /// `brands/{brand}/templates/{template_name}/{file_name}`.
+    pub fn template_key(brand: &str, template_name: &str, file_name: &str) -> String {
+        format!("brands/{brand}/templates/{template_name}/{file_name}")
     }
 
     /// Reads and parses a JSON config file for a tenant channel.
@@ -124,6 +143,22 @@ mod tests {
     struct StubConfig {
         port: u16,
         host: String,
+    }
+
+    #[test]
+    fn channel_key_matches_path_convention() {
+        assert_eq!(
+            ConfigResolver::channel_key("acme", "email", "config.json"),
+            "brands/acme/config/email/config.json"
+        );
+    }
+
+    #[test]
+    fn template_key_matches_path_convention() {
+        assert_eq!(
+            ConfigResolver::template_key("acme", "welcome", "email.html"),
+            "brands/acme/templates/welcome/email.html"
+        );
     }
 
     #[test]

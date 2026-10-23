@@ -67,6 +67,7 @@ mod tests {
                 inbound: None,
                 provider_tester: std::sync::Arc::new(crate::infra::ConfigProviderTester::new())
                     as std::sync::Arc<dyn crate::ports::ProviderTester + Send + Sync>,
+                config_store: std::sync::Arc::new(crate::infra::FileConfigStore::new("configs")),
                 flows: None,
                 sends: None,
                 schedules: None,

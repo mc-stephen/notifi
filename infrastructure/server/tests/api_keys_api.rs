@@ -61,6 +61,7 @@ fn app_with_api_keys() -> (Router, Arc<FakeApiKeysStore>) {
                 inbound: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
                     as std::sync::Arc<dyn ProviderTester + Send + Sync>,
+                config_store: std::sync::Arc::new(server::infra::FileConfigStore::new("configs")),
                 flows: None,
                 sends: None,
             },

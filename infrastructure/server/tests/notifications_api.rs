@@ -53,6 +53,7 @@ fn app_with_notifications() -> (Router, Arc<FakeNotificationsStore>) {
                 inbound: None,
                 provider_tester: Arc::new(ConfigProviderTester::new())
                     as Arc<dyn ProviderTester + Send + Sync>,
+                config_store: std::sync::Arc::new(server::infra::FileConfigStore::new("configs")),
                 flows: None,
                 sends: None,
             },
