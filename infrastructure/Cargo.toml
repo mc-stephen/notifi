@@ -31,7 +31,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # TLS note: this deployment's TLS terminators (Coolify) reject rustls
 # handshakes and use a private CA, so we use native-tls; rediss:// URLs with
 # a #insecure fragment then accept self-signed certs (dev-only compromise).
-redis = { version = "0.28", features = ["tokio-comp", "tokio-native-tls-comp", "tls-native-tls"] }
+redis = { version = "0.28", features = ["tokio-comp", "tokio-native-tls-comp", "tls-native-tls", "connection-manager"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

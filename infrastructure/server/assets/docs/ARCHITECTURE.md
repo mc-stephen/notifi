@@ -245,6 +245,8 @@ Driver selection at boot (`AppState.config_store`, always available):
 
 `server/tests/config_store_r2.rs` seeds the local `assets/brands/**` tree into the bucket and probes the live roundtrip (`--ignored`); `config_store_file.rs` covers the file driver against kernel-derived keys.
 
+Caching: `infra/config_cache.rs` wraps the active store in a Redis read-through (`infra::RedisCacheBackend` behind the same `NOTIFI_REDIS_URL`; `cfg:` key namespace, 10 min TTL, invalidate-on-write). When Redis is unset the store passes through unchanged — caching is composition, never a port concern. `server/tests/config_cache_redis.rs` covers the live roundtrips (gated on `NOTIFI_TEST_REDIS_URL`).
+
 ## 19. Migration Strategy
 
 - Single `assets/migrations/` set, numbered `0001_xxx.sql`, run at startup and via CLI

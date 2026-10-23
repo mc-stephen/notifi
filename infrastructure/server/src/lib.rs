@@ -138,6 +138,34 @@ fn run_inner() -> Result<(), String> {
                 std::sync::Arc::new(infra::FileConfigStore::from_root_env())
             };
 
+        // Read-through config cache when Redis is reachable: warm keys
+        // answer at Redis speed and the store behind sees nothing, so
+        // R2 request counts (and per-delivery latency) stay near zero.
+        // Writes invalidate through the wrapper, never fail the send path.
+        let config_store: std::sync::Arc<dyn ports::ConfigStore + Send + Sync> =
+            match &redis_conn {
+                Some(client) => match client.clone().get_connection_manager().await {
+                    Ok(conn) => {
+                        tracing::info!(
+                            ttl_secs = infra::config_cache::CONFIG_CACHE_TTL.as_secs(),
+                            "config cache: redis"
+                        );
+                        std::sync::Arc::new(infra::CachedConfigStore::new(
+                            config_store,
+                            std::sync::Arc::new(infra::RedisCacheBackend::new(conn)),
+                        ))
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "config cache unavailable; reads hit the store directly");
+                        config_store
+                    }
+                },
+                None => {
+                    tracing::info!("config cache: none (redis unset); reads hit the store directly");
+                    config_store
+                }
+            };
+
         // OAuth sign-in is wired when at least one provider has credentials.
         let github = match (
             config.oauth.github_client_id.clone(),
