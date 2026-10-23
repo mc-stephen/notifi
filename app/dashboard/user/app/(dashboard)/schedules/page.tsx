@@ -207,7 +207,6 @@ export default function SchedulesPage() {
         days: form.kind === "weekly" ? form.days : [],
         runTime: form.kind === "weekly" ? form.runTime : null,
         timezone: localTimezone(),
-        templateId: form.templateId || null,
         recipients: [],
       });
       setCreateOpen(false);

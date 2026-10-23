@@ -3,6 +3,7 @@ import type { Edge, Node } from "@xyflow/react";
 export type FlowNodeKind =
   | "trigger"
   | "provider"
+  | "template"
   | "http-request"
   | "condition"
   | "ai-transform"
@@ -78,9 +79,17 @@ export type StopData = {
   reason: string;
 };
 
+/** Render a saved template's content — message content lives in the flow. */
+export type TemplateData = {
+  templateId: string;
+  /** Name snapshot for the node + panel labels. */
+  templateName?: string;
+};
+
 export type FlowNodeData =
   | TriggerData
   | ProviderData
+  | TemplateData
   | HttpRequestData
   | ConditionData
   | AiTransformData

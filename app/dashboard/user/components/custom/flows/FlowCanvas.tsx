@@ -59,6 +59,8 @@ function defaultDataFor(
         priority: 1,
         preset: providerChannel,
       };
+    case "template":
+      return { templateId: "" };
     case "http-request":
       return { url: "", method: "POST", headers: [], body: "" };
     case "condition":

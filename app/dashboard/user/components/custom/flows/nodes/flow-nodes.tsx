@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Globe, OctagonX, Send, Sparkles, Split, Webhook, Zap } from "lucide-react";
+import { FileText, Globe, OctagonX, Send, Sparkles, Split, Webhook, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HANDLE, type FlowNode, type FlowNodeKind } from "../flow-types";
 
@@ -161,6 +161,27 @@ export function AiTransformNode({ data }: NodeComponentProps) {
   );
 }
 
+export function TemplateNode({ data, selected }: NodeComponentProps) {
+  const templateId = "templateId" in data && typeof data.templateId === "string" ? data.templateId : "";
+  const templateName = "templateName" in data && typeof data.templateName === "string" ? data.templateName : "";
+  const picked = templateId !== "";
+  return (
+    <Shell selected={selected} icon={<FileText className="size-3.5" />} title="Template" subtitle={picked ? "Content source" : "Message content"}>
+      <div className="space-y-1 px-3 py-2">
+        <p className="truncate text-[12px] font-medium text-foreground dark:text-zinc-100">
+          {picked ? templateName || templateId : "Select a template"}
+        </p>
+        <p className="text-[11px] text-muted-foreground dark:text-zinc-400">Rendered fresh at every fire</p>
+      </div>
+      <Port type="target" position={Position.Left} id={HANDLE.in} label="in" color="#a78bfa" />
+      <span className="pointer-events-none absolute top-1/2 right-0 flex translate-x-1/2 items-center gap-1">
+        <span className="text-[10px] text-emerald-600 dark:text-emerald-300/80">out</span>
+      </span>
+      <Port type="source" position={Position.Right} id={HANDLE.out} label="out" color="#34d399" top="50%" />
+    </Shell>
+  );
+}
+
 export function HttpRequestNode({ data, selected }: NodeComponentProps) {
   const url = "url" in data && typeof data.url === "string" ? data.url : "";
   const method = "method" in data && typeof data.method === "string" ? data.method : "POST";
@@ -202,6 +223,7 @@ export function StopNode({ data }: NodeComponentProps) {  const reason = "reason
 export const FLOW_NODE_TYPES: Record<FlowNodeKind, React.ComponentType<NodeComponentProps>> = {
   trigger: TriggerNode,
   provider: ProviderNode,
+  template: TemplateNode,
   "http-request": HttpRequestNode,
   condition: ConditionNode,
   "ai-transform": AiTransformNode,

@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -12,7 +10,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { useTemplates } from "@/hooks/use-templates";
 import type { ServerSchedule } from "@/hooks/use-schedules";
 
 export type IntervalUnit = "minutes" | "hours" | "days";
@@ -26,7 +23,9 @@ export const UNIT_SECS: Record<IntervalUnit, number> = {
 /** Day chips, Sunday-first to match the stored day numbers. */
 export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/** Editable form state shared by the create panel and the detail editor. */
+/** Editable form state shared by the create panel and the detail editor.
+ * Content is not collected here — the schedule's flow owns the message
+ * (a template node on the canvas). */
 export type ScheduleFormValue = {
   name: string;
   kind: "once" | "recurring" | "weekly";
@@ -38,7 +37,6 @@ export type ScheduleFormValue = {
   days: number[];
   /** Weekly fire time ("HH:mm", browser-local). */
   runTime: string;
-  templateId: string;
 };
 
 /** The creator's local IANA zone, cached per session. */
@@ -90,7 +88,6 @@ export function blankScheduleForm(): ScheduleFormValue {
     intervalUnit: "hours",
     days: [1],
     runTime: "09:00",
-    templateId: "",
   };
 }
 
@@ -104,7 +101,6 @@ export function scheduleToForm(s: ServerSchedule): ScheduleFormValue {
     intervalUnit: unit,
     days: [...s.days].sort((a, b) => a - b),
     runTime: s.runTime ?? "09:00",
-    templateId: s.templateId ?? "",
   };
 }
 
@@ -117,6 +113,69 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+const KIND_CARDS = [
+  { id: "once", label: "Once", blurb: "a single run" },
+  { id: "recurring", label: "Repeats", blurb: "every N" },
+  { id: "weekly", label: "Weekly", blurb: "days + a time" },
+] as const;
+
+/** Clicked (never rendered) quick stamps for one-shot schedules. */
+const ONCE_CHIPS: { label: string; apply: (d: Date) => Date }[] = [
+  { label: "In 1 hour", apply: (d) => new Date(d.getTime() + 3_600_000) },
+  {
+    label: "Tomorrow 9:00",
+    apply: (d) => {
+      d.setDate(d.getDate() + 1);
+      d.setHours(9, 0, 0, 0);
+      return d;
+    },
+  },
+  {
+    label: "Next Monday 9:00",
+    apply: (d) => {
+      do {
+        d.setDate(d.getDate() + 1);
+      } while (d.getDay() !== 1);
+      d.setHours(9, 0, 0, 0);
+      return d;
+    },
+  },
+];
+
+const REPEAT_PRESETS = [
+  { label: "15 min", secs: 900 },
+  { label: "1 hour", secs: 3600 },
+  { label: "6 hours", secs: 21_600 },
+  { label: "1 day", secs: 86_400 },
+];
+
+/** One plain-English sentence for the current timing state. */
+export function describeTiming(v: ScheduleFormValue): string {
+  if (v.kind === "once") {
+    const iso = fromLocalInput(v.runAt);
+    if (!iso) return "Runs once — pick a date and time";
+    const local = new Date(iso);
+    return `Runs once on ${local.toLocaleDateString(undefined, { month: "short", day: "numeric" })} at ${local.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  }
+  if (v.kind === "recurring") {
+    if (v.intervalAmount === 1) {
+      const unit =
+        v.intervalUnit === "minutes" ? "minute" : v.intervalUnit === "hours" ? "hour" : "day";
+      return `Runs every ${unit}`;
+    }
+    return `Runs every ${v.intervalAmount} ${v.intervalUnit}`;
+  }
+  const dayNames = [...v.days].sort((a, b) => a - b).map((d) => WEEKDAYS[d]);
+  const joined =
+    dayNames.length === 5 &&
+    ["Mon", "Tue", "Wed", "Thu", "Fri"].every((d) => dayNames.includes(d))
+      ? "weekdays"
+      : dayNames.length === 7
+        ? "every day"
+        : dayNames.join(", ");
+  return `Runs ${joined} at ${v.runTime}`;
+}
+
 export function ScheduleFormFields({
   value,
   onChange,
@@ -124,8 +183,6 @@ export function ScheduleFormFields({
   value: ScheduleFormValue;
   onChange: (next: ScheduleFormValue) => void;
 }) {
-  const { templates, loading: templatesLoading } = useTemplates();
-  const [templateQuery, setTemplateQuery] = useState("");
   const set = (patch: Partial<ScheduleFormValue>) => onChange({ ...value, ...patch });
   const toggleDay = (day: number) =>
     set({
@@ -133,10 +190,14 @@ export function ScheduleFormFields({
         ? value.days.filter((d) => d !== day)
         : [...value.days, day].sort((a, b) => a - b),
     });
-
-  const visibleTemplates = templates.filter((t) =>
-    t.name.toLowerCase().includes(templateQuery.trim().toLowerCase()),
-  );
+  const applyPreset = (secs: number) =>
+    set(
+      secs % 86400 === 0
+        ? { intervalAmount: secs / 86400, intervalUnit: "days" }
+        : secs % 3600 === 0
+          ? { intervalAmount: secs / 3600, intervalUnit: "hours" }
+          : { intervalAmount: secs / 60, intervalUnit: "minutes" },
+    );
 
   return (
     <div className="space-y-4">
@@ -148,90 +209,45 @@ export function ScheduleFormFields({
           className="h-9 text-sm"
         />
         <p className="text-xs text-muted-foreground">
-          The schedule gets its own flow with this name — edit it from the
-          Schedules page or the builder.
-        </p>
-      </Field>
-
-      <Field label="Template">
-        <div className="space-y-2">
-          <div className="relative">
-            <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={templateQuery}
-              onChange={(e) => setTemplateQuery(e.target.value)}
-              placeholder="Search templates..."
-              aria-label="Search templates"
-              className="h-8 pl-8 text-sm"
-            />
-          </div>
-          <div
-            role="radiogroup"
-            aria-label="Assign a template"
-            className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-border p-1"
-          >
-            {templatesLoading ? (
-              <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-                Loading templates…
-              </p>
-            ) : visibleTemplates.length === 0 ? (
-              <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-                {templates.length === 0
-                  ? "No templates yet — create one to get started."
-                  : "No templates match."}
-              </p>
-            ) : (
-              visibleTemplates.map((t) => {
-                const selected = value.templateId === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => set({ templateId: t.id })}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted",
-                      selected && "bg-muted",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                        selected
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border text-transparent",
-                      )}
-                    >
-                      <Check className="size-3" />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate font-medium">{t.name}</span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Create the template on the Templates page first — the schedule
-          renders it on every run.
+          The schedule gets its own flow with this name — wire a template node
+          into it in the builder; that flow owns the message.
         </p>
       </Field>
 
       <Field label="Timing">
-        <Select
-          value={value.kind}
-          onValueChange={(v) => v && set({ kind: v as ScheduleFormValue["kind"] })}
+        <div
+          className="grid grid-cols-3 gap-1.5"
+          role="group"
+          aria-label="Timing cadence"
         >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="once">Run once</SelectItem>
-            <SelectItem value="recurring">Repeat</SelectItem>
-            <SelectItem value="weekly">Weekly</SelectItem>
-          </SelectContent>
-        </Select>
+          {KIND_CARDS.map((card) => {
+            const selected = value.kind === card.id;
+            return (
+              <button
+                key={card.id}
+                type="button"
+                onClick={() => set({ kind: card.id })}
+                aria-pressed={selected}
+                className={cn(
+                  "rounded-lg border px-2 py-2 text-left transition-colors",
+                  selected
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <span className="block text-xs font-semibold">{card.label}</span>
+                <span
+                  className={cn(
+                    "block text-[10px]",
+                    selected ? "text-primary-foreground/80" : "text-muted-foreground/70",
+                  )}
+                >
+                  {card.blurb}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </Field>
 
       {value.kind === "once" ? (
@@ -242,6 +258,18 @@ export function ScheduleFormFields({
             onChange={(e) => set({ runAt: e.target.value })}
             className="h-9 text-sm"
           />
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {ONCE_CHIPS.map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                onClick={() => set({ runAt: toLocalInput(chip.apply(new Date()).toISOString()) })}
+                className="h-7 rounded-md border px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
         </Field>
       ) : value.kind === "recurring" ? (
         <Field label="Repeat every">
@@ -270,6 +298,23 @@ export function ScheduleFormFields({
                 <SelectItem value="days">Days</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {REPEAT_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => applyPreset(preset.secs)}
+                className={cn(
+                  "h-7 rounded-md border px-2 text-xs font-medium transition-colors",
+                  value.intervalAmount * UNIT_SECS[value.intervalUnit] === preset.secs
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                {preset.label}
+              </button>
+            ))}
           </div>
           <p className="text-xs text-muted-foreground">Minimum interval is 1 minute.</p>
         </Field>
@@ -308,8 +353,8 @@ export function ScheduleFormFields({
         </Field>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        Times use your local timezone ({localTimezone()}).
+      <p className="rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        {describeTiming(value)} · your local timezone ({localTimezone()})
       </p>
     </div>
   );

@@ -44,7 +44,6 @@ export type ScheduleCreateInput = {
   days?: number[];
   runTime?: string | null;
   timezone?: string;
-  templateId?: string | null;
   channel?: string;
   title?: string;
   body?: string;
@@ -60,7 +59,6 @@ export type SchedulePatchInput = {
   days?: number[];
   runTime?: string | null;
   timezone?: string;
-  templateId?: string | null;
   channel?: string;
   title?: string;
   body?: string;

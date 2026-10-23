@@ -69,9 +69,8 @@ export function ScheduleDetailPanel({
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Legacy (pre-template) schedules keep their stored message unless
-      // a template is picked — payload fields are simply omitted then.
-      const useTemplate = !!form.templateId;
+      // The form edits name + timing only; the stored message fields
+      // round-trip unchanged (content lives in the flow's template node).
       const updated = await patchSchedule(projectId, schedule.id, {
         name: form.name,
         kind: form.kind,
@@ -83,15 +82,10 @@ export function ScheduleDetailPanel({
         days: form.kind === "weekly" ? form.days : [],
         runTime: form.kind === "weekly" ? form.runTime : null,
         timezone: localTimezone(),
-        templateId: form.templateId || null,
-        ...(useTemplate
-          ? {}
-          : {
-              channel: schedule.channel,
-              title: schedule.title,
-              body: schedule.body,
-              recipients: schedule.recipients,
-            }),
+        channel: schedule.channel,
+        title: schedule.title,
+        body: schedule.body,
+        recipients: schedule.recipients,
       });
       toast.success("Schedule updated.");
       onChanged(updated);
@@ -205,9 +199,7 @@ export function ScheduleDetailPanel({
               <dt className="text-xs text-muted-foreground">Template</dt>
               <dd className="mt-0.5 font-medium">
                 {schedule.templateName ?? (
-                  <span className="font-normal text-muted-foreground">
-                    Stored message (pre-template)
-                  </span>
+                  <span className="font-normal text-muted-foreground">—</span>
                 )}
               </dd>
             </div>

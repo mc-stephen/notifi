@@ -114,6 +114,14 @@ export function validateFlow(nodes: FlowNode[], edges: Edge[]): FlowIssue[] {
         need(HANDLE.success, "Success output");
         break;
       }
+      case "template": {
+        const data = n.data as { templateId?: unknown };
+        if (typeof data.templateId !== "string" || data.templateId === "") {
+          issues.push({ severity: "error", nodeId: n.id, message: "Pick a template for this node." });
+        }
+        need(HANDLE.out, "Template output");
+        break;
+      }
       case "http-request": {
         if (!isHttpRequestData(n.data) || !isHttpUrl(n.data.url)) {
           issues.push({ severity: "error", nodeId: n.id, message: "HTTP Request needs a valid http(s) URL." });

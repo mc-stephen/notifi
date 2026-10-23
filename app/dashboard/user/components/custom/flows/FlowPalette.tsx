@@ -39,6 +39,7 @@ const GROUP_ICONS: Record<string, typeof Zap> = {
 };
 
 const ITEMS: { kind: FlowNodeKind; title: string; blurb: string; icon: typeof Zap }[] = [
+  { kind: "template", title: "Template", blurb: "Render a saved template's content", icon: FileText },
   { kind: "http-request", title: "HTTP Request", blurb: "Call any URL mid-flow", icon: Globe },
   { kind: "condition", title: "Condition", blurb: "Branch on recipient or message rules", icon: Split },
   { kind: "ai-transform", title: "AI transform", blurb: "Rewrite content with a model", icon: Sparkles },

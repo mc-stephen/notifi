@@ -34,6 +34,7 @@ import {
   type HttpRequestData,
   type ProviderData,
   type StopData,
+  type TemplateData,
   type TriggerData,
   type TriggerKind,
 } from "./flow-types";
@@ -561,7 +562,49 @@ function HttpRequestForm({ data, onChange }: { data: HttpRequestData; onChange: 
   );
 }
 
-function ConditionForm({ data, onChange }: { data: ConditionData; onChange: (d: ConditionData) => void }) {  return (
+function TemplateForm({ data, onChange }: { data: TemplateData; onChange: (d: TemplateData) => void }) {
+  const { templates, loading } = useTemplates();
+  const picked = templates.find((t) => t.id === data.templateId);
+  return (
+    <>
+      <Field label="Template">
+        <Select
+          value={data.templateId || undefined}
+          onValueChange={(v) => {
+            if (!v) return;
+            const chosen = templates.find((t) => t.id === v);
+            onChange({ ...data, templateId: v, templateName: chosen?.name ?? data.templateName });
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={loading ? "Loading templates…" : picked?.name ?? "Select a template"} />
+          </SelectTrigger>
+          <SelectContent>
+            {templates.length === 0 && !loading ? (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                No templates yet — create one on the Templates page first.
+              </div>
+            ) : (
+              templates.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
+      </Field>
+      <p className="text-xs text-muted-foreground">
+        The template&apos;s content renders fresh at every fire — rename it on
+        the Templates page and the next run picks that up. The send chain
+        below chooses what delivers it.
+      </p>
+    </>
+  );
+}
+
+function ConditionForm({ data, onChange }: { data: ConditionData; onChange: (d: ConditionData) => void }) {
+  return (
     <>
       <Field label="Field">
         <Select value={data.field || undefined} onValueChange={(v) => v && onChange({ ...data, field: v })}>
@@ -658,6 +701,7 @@ function StopForm({ data, onChange }: { data: StopData; onChange: (d: StopData) 
 const TITLES: Record<string, string> = {
   trigger: "Trigger",
   provider: "Send via provider",
+  template: "Template",
   "http-request": "HTTP Request",
   condition: "Condition",
   "ai-transform": "AI transform",
@@ -692,6 +736,9 @@ export function NodeConfigPanel({ node, onChange, onClose, lockedTrigger }: Node
           )}
           {node.type === "provider" && (
             <ProviderForm data={node.data as ProviderData} onChange={onChange} />
+          )}
+          {node.type === "template" && (
+            <TemplateForm data={node.data as TemplateData} onChange={onChange} />
           )}
           {node.type === "http-request" && (
             <HttpRequestForm data={node.data as HttpRequestData} onChange={onChange} />
