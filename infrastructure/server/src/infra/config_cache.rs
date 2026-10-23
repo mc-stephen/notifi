@@ -172,6 +172,12 @@ impl ConfigStore for CachedConfigStore {
     async fn list_keys(&self, prefix: &str) -> Result<Vec<String>, String> {
         self.inner.list_keys(prefix).await
     }
+
+    async fn delete_raw(&self, key: &str) -> Result<(), String> {
+        self.inner.delete_raw(key).await?;
+        self.backend.invalidate(key).await;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -210,6 +216,10 @@ mod config_cache_tests {
 
         async fn put_raw(&self, key: &str, _bytes: Vec<u8>) -> Result<(), String> {
             self.puts.lock().expect("put lock").push(key.to_string());
+            Ok(())
+        }
+
+        async fn delete_raw(&self, _key: &str) -> Result<(), String> {
             Ok(())
         }
 
@@ -254,6 +264,25 @@ mod config_cache_tests {
 
         cached.load_raw(key).await.unwrap();
         assert_eq!(inner.loads(), 2, "invalidation must force a store read");
+    }
+
+    #[tokio::test]
+    async fn delete_invalidates_so_reads_reach_the_store() {
+        let inner = Arc::new(CountingStore::new());
+        let cached = CachedConfigStore::new(
+            inner.clone(),
+            Arc::new(MemoryCacheBackend::new(Duration::from_secs(60))),
+        );
+        let key = "brands/acme/templates/welcome/sms.txt";
+
+        cached.load_raw(key).await.unwrap();
+        cached.load_raw(key).await.unwrap();
+        assert_eq!(inner.loads(), 1, "second read warmed");
+
+        cached.delete_raw(key).await.expect("delete");
+
+        cached.load_raw(key).await.unwrap();
+        assert_eq!(inner.loads(), 2, "delete must evict the warm entry");
     }
 
     #[tokio::test]

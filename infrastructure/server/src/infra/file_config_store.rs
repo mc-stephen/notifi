@@ -62,7 +62,6 @@ impl ConfigStore for FileConfigStore {
         if !base.is_dir() {
             return Ok(Vec::new());
         }
-
         let mut keys = Vec::new();
         let mut stack = vec![base.clone()];
         while let Some(dir) = stack.pop() {
@@ -86,6 +85,17 @@ impl ConfigStore for FileConfigStore {
         keys.sort();
         Ok(keys)
     }
+
+    async fn delete_raw(&self, key: &str) -> Result<(), String> {
+        crate::ports::config_store::validate_key(key)?;
+        let path = self.path_for(key);
+        if !path.is_file() {
+            // Idempotent like the object-store driver: unlinking a
+            // missing key is already the intended end state.
+            return Ok(());
+        }
+        std::fs::remove_file(&path).map_err(|e| format!("config delete failed for {key}: {e}"))
+    }
 }
 
 #[cfg(test)]
@@ -107,6 +117,19 @@ mod file_config_store_tests {
             .await
             .expect_err("missing key is an error");
         assert!(err.contains("not found"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn delete_then_recreate_roundtrips() {
+        let root = temp_root("delete");
+        let store = FileConfigStore::new(&root);
+        let key = "brands/acme/config/email/config.json";
+        store.put_raw(key, b"{}".to_vec()).await.expect("put");
+        store.delete_raw(key).await.expect("delete");
+        assert!(!root.join(key).is_file(), "file must be gone");
+        // Idempotent: deleting a missing key stays a success.
+        store.delete_raw(key).await.expect("delete again ok");
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[tokio::test]

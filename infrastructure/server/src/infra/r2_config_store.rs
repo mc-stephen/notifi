@@ -119,6 +119,17 @@ impl ConfigStore for R2ConfigStore {
         keys.sort();
         Ok(keys)
     }
+
+    async fn delete_raw(&self, key: &str) -> Result<(), String> {
+        let path = self.object_path(key)?;
+        self.client.delete(&path).await.map_err(|e| {
+            format!(
+                "config delete failed for {key} (bucket {}): {e}",
+                self.bucket
+            )
+        })?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

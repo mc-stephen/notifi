@@ -89,18 +89,18 @@ async fn missing_key_is_an_explicit_error_not_a_panic() {
 }
 
 #[tokio::test]
-async fn default_brand_placeholder_writes_like_any_other_brand() {
-    // The _default folder is the structural reference for dev/AI; the store
-    // must treat it as an ordinary brand (no special casing anywhere).
+async fn brands_write_like_any_other_brand() {
+    // Brand ids are just keys: nothing anywhere in the port special-cases
+    // one (the struct-owned layout decides defaults; storage is neutral).
     let root = temp_root("default");
     let store = FileConfigStore::new(&root);
-    let key = ConfigResolver::channel_key("_default", "sms", "config.json");
+    let key = ConfigResolver::channel_key("the_team", "sms", "config.json");
     store
         .put_raw(&key, b"{}".to_vec())
         .await
-        .expect("put default");
+        .expect("put brand key");
     assert!(
-        root.join("brands/_default/config/sms/config.json")
+        root.join("brands/the_team/config/sms/config.json")
             .is_file()
     );
     std::fs::remove_dir_all(&root).ok();

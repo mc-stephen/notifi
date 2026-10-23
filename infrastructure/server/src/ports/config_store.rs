@@ -49,6 +49,11 @@ pub trait ConfigStore: Send + Sync {
     /// Writes raw bytes at `key`, creating any parent structure needed.
     async fn put_raw(&self, key: &str, bytes: Vec<u8>) -> Result<(), String>;
 
+    /// Removes `key`. Idempotent like S3 semantics: a missing key is a
+    /// success, so callers can wipe without checking first. Only files
+    /// are removed — no prefix deletion; delete what you listed.
+    async fn delete_raw(&self, key: &str) -> Result<(), String>;
+
     /// Lists the keys directly under `prefix` in ascending order. The
     /// prefix itself is relative, like every key here.
     async fn list_keys(&self, prefix: &str) -> Result<Vec<String>, String>;
