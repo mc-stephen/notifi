@@ -92,6 +92,8 @@ Brand source of truth for all of them: `shared/identity/` (colors, typography, l
 
 **Env-name contract**: `infrastructure/.env.example` is the checked-in inventory of every `NOTIFI_*` variable any consumer reads (server boot config, worker backup settings, provider live-probe tests, gated suites). Add or rename an env name → update `.env.example` and the consumer in the same change; the `env_template_parity` suite fails CI on drift. Secrets belong only in gitignored `infrastructure/.env` / your provider's env UI — never in the template or git.
 
+**Flow-doc contract**: the README's "The flows, one page each" walkthroughs and each module's opening `//!` story block are the review map — they tell a future reviewer what exists and where. Any behavior change to a documented flow updates its walkthrough line, its module doc, and the test names that prove it in the same change. Doc-comment claims point at module paths and test names so drift stays greppable.
+
 ---
 
 ## Backend Server (`infrastructure/`)

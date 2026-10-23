@@ -1,3 +1,20 @@
+//! The shared config convention — slugs, keys, and the code-owned default
+//! layout (§18 of ARCHITECTURE).
+//!
+//! * [`project_slug`] — the ONE slug: DB-assigned at creation, unique,
+//!   rename-proof; every storage key under `projects/{slug}/…` uses it.
+//! * [`ConfigResolver`] — the home of the key/path convention:
+//!   `project_prefix` (the folder convention itself, reused by purge,
+//!   export, and tests), `channel_key`/`template_key` (storage keys),
+//!   `channel_dir`/`template_dir` (their disk equivalents), `load_json`.
+//! * [`DefaultProjectLayout`] — the default file set a fresh project
+//!   materializes on creation; storage holds no defaults, so reshaping
+//!   the layout is purely a code change here.
+//!
+//! Proven by the unit tests below and the file-driver roundtrip in
+//! `server/tests/config_store_file.rs` (store keys must equal kernel
+//! paths).
+
 use serde::de::DeserializeOwned;
 use std::fs;
 use std::path::PathBuf;

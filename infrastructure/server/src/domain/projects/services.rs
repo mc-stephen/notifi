@@ -1,4 +1,23 @@
-//! Project use cases: listing and the active switch.
+//! Project use cases — the lifecycle's brain (§24 of ARCHITECTURE).
+//!
+//! Flows and where they land:
+//! * **create** — row first, then storage: `materialize_project` seeds
+//!   `projects/{slug}/` with the code-owned defaults and a storage failure
+//!   rolls the row back. The folder is listening on the exact slug the DB
+//!   is listening on (`kernel::config::project_prefix`).
+//! * **soft-delete** — tombstones (`deleted_at`, `purge_after` 14 days):
+//!   traffic freezes, listing stays visible to members for cancel/export.
+//! * **cancel** — full undo; **purge** — the worker's hard-erase: bucket
+//!   folder keys deleted before the row (a storage failure leaves the row
+//!   due for the next sweep instead of orphaning files), guarded by the
+//!   owner/admin SQL gate on delete and cancel.
+//! * **export guard** — `guard_export` owns the 3-per-day rolling window
+//!   (`project_exports` rows which double as an audit trail).
+//!
+//! Config storage is wired via `with_config_store` by composition; unit
+//! tests pass `None` and exercise pure DB semantics. The storage flows are
+//! proven by `server/tests/projects_lifecycle.rs` (seed, rollback, freeze/
+//! cancel, role gates, purge order, ZIP contents, rate limit).
 
 use std::sync::Arc;
 

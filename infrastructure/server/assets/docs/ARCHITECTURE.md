@@ -21,14 +21,16 @@
 12. [Testing strategy](#12-testing-strategy)
 13. [Observability](#13-observability)
 14. [Event-driven patterns](#14-event-driven-patterns)
-15. [Shared kernel crates](#15-shared-kernel-crates)
-16. [Channel plugin crates](#16-channel-plugin-crates)
+15. [Shared kernel](#15-shared-kernel)
+16. [Channel modules](#16-channel-modules)
 17. [Configuration](#17-configuration)
 18. [Runtime configuration](#18-runtime-configuration)
 19. [Migration Strategy](#19-migration-strategy)
 20. [Evolving Into Microservices](#20-evolving-into-microservices)
 21. [Provider Registry](#21-provider-registry)
 22. [Milestone Roadmap](#22-milestone-roadmap)
+23. [Database backups](#23-database-backups)
+24. [Project lifecycle (deletion window, data exports)](#24-project-lifecycle-deletion-window-data-exports)
 
 ---
 

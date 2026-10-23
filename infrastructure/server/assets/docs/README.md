@@ -21,6 +21,86 @@ Quick references: [`OAUTH_SETUP.md`](./OAUTH_SETUP.md) for GitHub/Google
 app registration, [`COMMANDS.md`](./COMMANDS.md) for the full command list,
 [`PROVIDERS.md`](./PROVIDERS.md) for provider registry & channel configs API.
 
+Two reading habits make this codebase reviewable on sight:
+
+- **Test names read as sentences.** Every behavioral claim below is proven
+  by a test whose name says the behavior — `create_materializes_the_project_folder`,
+  `purge_wipes_bucket_folder_first_then_rows`… jump from any claim here to
+  the test and the code it exercises.
+- **Story lives at the file top.** Every load-bearing module opens with a
+  `//!` block: role, invariants, who calls it, which tests prove it. The same
+  words render as browsable HTML too: `cargo doc --open -p server`.
+
+## The flows, one page each
+
+*Deep detail lives in the ARCHITECTURE sections pointed at; each walkthrough
+is the route a reviewer walks when they open an unfamiliar file mid-flow.*
+
+### The life of a project (§24)
+
+1. **Create** — `POST /app/projects` → `ProjectService::create`
+   (`domain/projects/services.rs`): the `projects` row lands with a unique
+   stored slug (`kernel::config::project_slug`), then storage seeds
+   `projects/{slug}/` with the code-owned defaults
+   (`DefaultProjectLayout` through `materialize_project`, §18). Storage
+   failure rolls the row back — a project never exists without its folder.
+2. **Live** — the project serves whatever its `active` switch and its
+   tombstone state allow (`get_project_access` freezes traffic on deletion).
+3. **Soft-delete** — `DELETE /app/projects/{id}` tombstones the row
+   (`deleted_at` + `purge_after`, 14 days); frozen for traffic, still
+   visible to members so they can cancel or download.
+4. **Cancel** — `POST /app/projects/{id}/deletion/cancel` fully undoes it.
+5. **Export** — `GET /app/projects/{id}/export`, anytime, any member: one
+   ZIP (manifest + data sections + the project files at real storage
+   paths), capped to 3/day per project, API keys exported **without**
+   `key_hash` (`domain/projects/export.rs`).
+6. **Purge** — the worker sweep (`worker`, `ProjectService::purge_due`):
+   folder keys under `projects/{slug}/` deleted **first**, then the row
+   (15 FK cascades wipe every child table). Retry-safe on storage failure.
+
+Routes/handlers: `api/routes/app/projects/`; SQL + fake stores:
+`ports/projects_store.rs` (trait), `infra` (Postgres), `tests/common`
+(fakes). Proven by `server/tests/projects_lifecycle.rs` end to end.
+
+### The life of a backup (§23)
+
+Self-contained block in `worker/src/backup.rs` on its **own clock** (never
+the queue): daily `pg_dump --format=plain` streamed in 8 MiB parts into
+the **same bucket as the config store**, under `backup/`, as one
+restorable `.sql` object. Temp file deleted. **Nothing is ever
+auto-deleted.** `NOTIFI_BACKUP_ENABLED=true` switches it on;
+`cargo run -p worker -- --backup-now` runs one immediately.
+
+### The life of a notification (§14, §16)
+
+An external send arrives at `/v1/*` (empty until M2) or a dashboard flow
+fires; the domain turns it into a `SendRecord`, delivery goes through
+`ports::DeliveryProvider` → the channel module for that medium
+(`channels/{email,sms,push,chat,webhook}/…`), each channel resolving its
+per-project config through the same `ConfigStore` the lifecycle uses. The
+worker keeps sweeps ticking from its own clock (`worker::sweep_once`,
+optionally RabbitMQ-driven). Provider identities, keys and the registry:
+§21 + `channels/*/AUTHENTICATION.md`.
+
+### Where tenant storage lives (§18)
+
+Project channel configs + templates live under `projects/{slug}/…` in a
+`ConfigStore` driver: the file system (root `NOTIFI_CONFIG_ROOT`) or the
+R2 bucket when `NOTIFI_R2_*` is set (bucket = root, same keys). One
+convention everywhere, cache (`cfg:` prefix, Redis) in between. Every
+boot lays the top-level folders down (`projects/`, `backup/`) via
+`build_ensured`; `--reset-config` wipes back to only those markers.
+
+### What boot does (§17, lib.rs)
+
+Config layering (defaults → optional `NOTIFI_CONFIG_FILE` → env
+overrides) → telemetry → pool → optional Redis (sessions + config cache)
+→ optional RabbitMQ → the config store driver pick (`build_ensured`) →
+`compose()` wires the service graph → routers mount on three API
+surfaces (`/`, `/app`, `/admin`; `/v1` when M2 arrives). Missing pieces
+degrade explicitly rather than crash: no DB = auth answers 503, no mail
+= auth flows ride dev tokens, no Redis = direct store reads.
+
 ## Layout
 
 ```
@@ -47,7 +127,7 @@ Other root files: `Cargo.toml` (package + workspace index), `rust-toolchain.toml
 (pinned toolchain), `.cargo/config.toml` (dev env: `NOTIFI_CONFIG_ROOT → ./assets`),
 `target/` (build output, gitignored).
 
-### API surfaces (see root `note.md`)
+### API surfaces (see [`note.md`](./note.md))
 
 | Surface | Base path | Auth | Purpose |
 |---|---|---|---|
