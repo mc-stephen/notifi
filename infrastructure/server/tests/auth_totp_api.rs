@@ -35,6 +35,7 @@ fn app() -> Router {
             admin_projects: None,
             admin_notifications: None,
             projects: None,
+            project_exports: None,
             project_members: None,
             audit: Some(audit),
             recipients: None,

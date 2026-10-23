@@ -57,6 +57,7 @@ fn app() -> (Router, Arc<FakeAuthStore>, Arc<FakeMailer>) {
                 admin_projects: None,
                 admin_notifications: None,
                 projects: Some(projects),
+                project_exports: None,
                 project_members: Some(members),
                 audit: Some(audit),
                 recipients: None,

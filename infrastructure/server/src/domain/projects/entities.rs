@@ -12,6 +12,9 @@ pub struct Project {
     pub active: bool,
     pub require_2fa: bool,
     pub created_at: DateTime<Utc>,
+    /// Deletion lifecycle markers (see [`ProjectSummary`]).
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub purge_after: Option<DateTime<Utc>>,
 }
 
 impl From<crate::ports::projects_store::ProjectSummary> for Project {
@@ -24,6 +27,8 @@ impl From<crate::ports::projects_store::ProjectSummary> for Project {
             active: summary.active,
             require_2fa: summary.require_2fa,
             created_at: summary.created_at,
+            deleted_at: summary.deleted_at,
+            purge_after: summary.purge_after,
         }
     }
 }

@@ -54,6 +54,7 @@ fn app_with_admin_users() -> Router {
             admin_projects: None,
             admin_notifications: None,
             projects: Some(projects),
+            project_exports: None,
             project_members: None,
             audit: Some(audit),
             recipients: None,

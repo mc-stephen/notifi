@@ -52,6 +52,9 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
     if let Some(service) = state.projects.clone() {
         project_routes = project_routes.layer(axum::Extension(service));
     }
+    if let Some(service) = state.project_exports.clone() {
+        project_routes = project_routes.layer(axum::Extension(service));
+    }
     if let Some(service) = state.project_members.clone() {
         project_routes = project_routes.layer(axum::Extension(service));
     }

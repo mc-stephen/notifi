@@ -26,6 +26,9 @@ pub struct AppState {
     pub admin_notifications: Option<Arc<crate::domain::admin::AdminNotificationsService>>,
     /// Project listing and the active switch — wired alongside auth.
     pub projects: Option<Arc<crate::domain::projects::ProjectService>>,
+
+    /// Project data exports (the project-settings download).
+    pub project_exports: Option<Arc<crate::domain::projects::ProjectExportService>>,
     /// Project team management (2FA gate flag + member invites) — wired
     /// alongside auth/db.
     pub project_members: Option<Arc<crate::domain::projects::ProjectMembersService>>,

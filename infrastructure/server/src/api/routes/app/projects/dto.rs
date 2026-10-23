@@ -89,6 +89,13 @@ pub struct ProjectDto {
     pub active: bool,
     pub require_2fa: bool,
     pub created_at: DateTime<Utc>,
+    /// Deletion lifecycle: `Some` once a deletion is requested (the
+    /// project is frozen but stays downloadable + cancellable), with
+    /// `purge_after` as the hard-erase deadline.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub purge_after: Option<DateTime<Utc>>,
 }
 
 impl From<Project> for ProjectDto {
@@ -101,6 +108,8 @@ impl From<Project> for ProjectDto {
             active: project.active,
             require_2fa: project.require_2fa,
             created_at: project.created_at,
+            deleted_at: project.deleted_at,
+            purge_after: project.purge_after,
         }
     }
 }

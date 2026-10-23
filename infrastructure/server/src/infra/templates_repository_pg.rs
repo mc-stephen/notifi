@@ -39,6 +39,8 @@ fn map_err(err: sqlx::Error) -> StoreError {
 
 /// Project-scoped visibility predicate: the caller owns the project or is an
 /// active member. Reused across all template queries.
+/// STRICT: mutations must not touch a deletion-frozen project (the
+/// tombstone hides it), so writes go through this predicate.
 const VISIBLE_PROJECT: &str = r#"
     EXISTS (
         SELECT 1 FROM platform_projects p
@@ -48,6 +50,25 @@ const VISIBLE_PROJECT: &str = r#"
                p.created_by = $1
                OR EXISTS (
                    SELECT 1 FROM platform_project_members pm
+                   WHERE pm.project_id = p.id
+                     AND pm.user_id = $1
+                     AND pm.deleted_at IS NULL
+               )
+          )
+    )
+"#;
+
+/// READ-tolerant variant: same membership shape, but the deletion
+/// tombstone does not hide rows — members can still view/export their
+/// templates inside the countdown window (writes stay strict above).
+const VISIBLE_PROJECT_READ: &str = r#"
+    EXISTS (
+        SELECT 1 FROM platform_projects p
+        WHERE p.id = platform_templates.project_id
+          AND (
+               p.created_by = $1
+               OR EXISTS (
+                   SELECT 1 from platform_project_members pm
                    WHERE pm.project_id = p.id
                      AND pm.user_id = $1
                      AND pm.deleted_at IS NULL
@@ -244,7 +265,7 @@ impl TemplatesStore for PgTemplatesStore {
                      FROM platform_templates
                      WHERE project_id = $2
                        AND deleted_at IS NULL
-                       AND {VISIBLE_PROJECT}
+                       AND {VISIBLE_PROJECT_READ}
                        AND ($3::text IS NULL OR name ILIKE '%' || $3 || '%')
                        AND ($4::text IS NULL OR id < $4)
                      ORDER BY created_at DESC, id DESC
@@ -289,7 +310,7 @@ impl TemplatesStore for PgTemplatesStore {
                      WHERE id = $2
                        AND project_id = $3
                        AND deleted_at IS NULL
-                       AND {VISIBLE_PROJECT}"
+                       AND {VISIBLE_PROJECT_READ}"
                 ),
             )
             .bind(&actor)

@@ -30,6 +30,9 @@ pub enum AppError {
     NotFound(String),
     /// A unique constraint was violated (e.g. duplicate brand user_id).
     Conflict(String),
+    /// The caller hit a documented rate limit (e.g. project export
+    /// downloads per day) and must wait.
+    RateLimited(String),
     /// The plan is retired: no new purchases or renewals onto it.
     PlanRetired(String),
     /// Auth routes are mounted but the service is unavailable (no database).
@@ -57,6 +60,7 @@ impl std::fmt::Display for AppError {
             Self::Forbidden(m) => write!(f, "forbidden: {m}"),
             Self::NotFound(m) => write!(f, "not found: {m}"),
             Self::Conflict(m) => write!(f, "conflict: {m}"),
+            Self::RateLimited(m) => write!(f, "rate limited: {m}"),
             Self::PlanRetired(m) => write!(f, "plan retired: {m}"),
             Self::NotConfigured => write!(f, "auth service not configured"),
             Self::NotImplemented(m) => write!(f, "not implemented: {m}"),
@@ -114,6 +118,9 @@ impl IntoApiError for AppError {
             Self::Conflict(detail) => ApiError::new(409, "about:blank", "Conflict", detail.clone()),
             Self::PlanRetired(detail) => {
                 ApiError::new(422, "about:blank", "Unprocessable Entity", detail.clone())
+            }
+            Self::RateLimited(detail) => {
+                ApiError::new(429, "about:blank", "Too Many Requests", detail.clone())
             }
             Self::NotImplemented(detail) => {
                 ApiError::new(501, "about:blank", "Not Implemented", detail.clone())

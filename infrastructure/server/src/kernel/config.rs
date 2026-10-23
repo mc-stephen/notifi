@@ -159,6 +159,32 @@ pub fn brand_slug(name: &str) -> Result<String, String> {
     Ok(slug)
 }
 
+/// The single source of truth for "project name → store slug".
+///
+/// Runtime brand-folder keys (`brands/{slug}/…`) are keyed by the
+/// project's stored slug; the database assigns it from this function at
+/// creation and keeps it stable. Storage slugs thus stay unique and
+/// rename-proof, unlike a name-derived key. Mirrors the historical
+/// PostgreSQL slugifier: lowercase ASCII alphanumerics kept, separators
+/// collapsed and trimmed to dashes, `project` as an unsalvageable
+/// fallback.
+pub fn project_slug(name: &str) -> String {
+    let mut slug = String::new();
+    for ch in name.trim().chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+        } else if matches!(ch, ' ' | '-' | '_' | '.' | '/') && !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    let trimmed = slug.trim_matches('-').to_string();
+    if trimmed.is_empty() {
+        "project".to_string()
+    } else {
+        trimmed
+    }
+}
+
 /// A single default file materialized into a fresh brand's namespace.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefaultBrandFile {

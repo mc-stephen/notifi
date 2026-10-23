@@ -29,6 +29,7 @@ pub struct ServiceGraph {
     pub admin_projects: Arc<domain::admin::AdminProjectsService>,
     pub admin_notifications: Arc<domain::admin::AdminNotificationsService>,
     pub projects: Arc<domain::projects::ProjectService>,
+    pub project_exports: Arc<domain::projects::ProjectExportService>,
     pub project_members: Arc<domain::projects::ProjectMembersService>,
     pub recipients: Arc<domain::recipients::RecipientService>,
     pub templates: Arc<domain::templates::TemplateService>,
@@ -48,12 +49,17 @@ pub struct ServiceGraph {
 ///
 /// `mailer` / `system_templates` are built by the entry point (the API
 /// verifies SMTP at boot before calling this; the worker passes `None` —
-/// none of its sweep services consume mail).
+/// none of its sweep services consume mail). `config_store` likewise
+/// arrives pre-built so both processes agree on one storage decision:
+/// the API passes its count-wrapped store (writes invalidate the cache),
+/// the worker a plain driver — its purge path needs no cache coherence
+/// (a stale key only lives out its TTL, and creation re-invalidates).
 pub fn compose(
     pool: PgPool,
     config: &AppConfig,
     mailer: Option<Arc<dyn ports::SmtpMailer>>,
     system_templates: Option<Arc<dyn ports::SystemTemplates>>,
+    config_store: Arc<dyn ports::ConfigStore + Send + Sync>,
 ) -> ServiceGraph {
     // Audit log listener: built from the same DB, shared by auth/projects
     // (they emit actions) and the /app/logs query surface.
@@ -93,10 +99,18 @@ pub fn compose(
     let admin = Arc::new(admin);
 
     // Projects slice: same store backing, separate service instance.
-    let projects = Arc::new(domain::projects::ProjectService::new(
-        Arc::new(infra::PgAuthStore::new(pool.clone())),
-        audit.clone(),
-    ));
+    // Brand storage rides in so creation seeds the bucket folder, the
+    // deletion purge wipes it, and exports can list the files. The same
+    // (cache-wrapped on the API side) instance is shared by the export
+    // service so every read/write sees one storage view.
+    let export_config_store = Arc::clone(&config_store);
+    let projects = Arc::new(
+        domain::projects::ProjectService::new(
+            Arc::new(infra::PgAuthStore::new(pool.clone())),
+            audit.clone(),
+        )
+        .with_config_store(config_store),
+    );
 
     // Project team management: 2FA gate flag + member invites. Needs user
     // lookup (TOTP status), so it holds both stores.
@@ -201,6 +215,22 @@ pub fn compose(
         inbound.clone(),
     ));
 
+    // Data exports: the project-download service. Stores only — reads are
+    // already tombstone-tolerant where needed; rate limiting and the audit
+    // stay with ProjectService::guard_export.
+    let project_exports = Arc::new(
+        domain::projects::ProjectExportService::new(
+            Arc::new(infra::PgAuthStore::new(pool.clone())),
+            Arc::new(infra::PgTemplatesStore::new(pool.clone())),
+            Arc::new(infra::PgApiKeysStore::new(pool.clone())),
+            Arc::new(infra::PgSendStore::new(pool.clone())),
+            Arc::new(infra::PgRecipientsStore::new(pool.clone())),
+            Arc::new(infra::PgWebhookStore::new(pool.clone())),
+            Arc::new(infra::PgFlowStore::new(pool.clone())),
+        )
+        .with_config_store(export_config_store),
+    );
+
     // Campaigns: flow-less message origins. Built after sends (rows deliver
     // through default flows) and recipients/templates.
     let campaigns = Arc::new(domain::campaigns::CampaignService::new(
@@ -246,6 +276,7 @@ pub fn compose(
         admin_projects,
         admin_notifications,
         projects,
+        project_exports,
         project_members,
         recipients,
         templates,

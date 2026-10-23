@@ -25,6 +25,11 @@ pub struct ProjectSummary {
     /// New members must have TOTP 2FA enabled when true.
     pub require_2fa: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Deletion lifecycle: `Some` marks the project deleted-pending (it
+    /// frozen for traffic and remains visible to its members so they can
+    /// download data and cancel); `purge_after` is the hard-erase deadline.
+    pub deleted_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub purge_after: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// A project plus the caller's access context for member management.
@@ -35,6 +40,15 @@ pub struct ProjectAccess {
     pub created_by: Option<String>,
     /// Caller's membership role, if any (creator need not be a member row).
     pub member_role: Option<String>,
+}
+
+/// A project due for hard purge, projected onto what deletion needs:
+/// the row id and the bucket folder's brand slug. No visibility checks —
+/// the worker's system job, not a user call.
+#[derive(Debug, Clone)]
+pub struct PurgeDueProject {
+    pub id: String,
+    pub slug: String,
 }
 
 pub trait ProjectsStore: Send + Sync {
@@ -59,6 +73,54 @@ pub trait ProjectsStore: Send + Sync {
         project_id: &str,
         active: bool,
     ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>>;
+
+    /// Marks a visible project deleted-pending: `deleted_at = now()`,
+    /// `purge_after = deadline`. `None` when missing/invisible/already
+    /// deleted. The countdown starts at the caller — the service passes
+    /// the policy deadline, storage stays policy-free.
+    fn request_project_deletion(
+        &self,
+        user_id: UserId,
+        project_id: &str,
+        purge_after: chrono::DateTime<chrono::Utc>,
+    ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>>;
+
+    /// Cancels a pending deletion (`deleted_at`/`purge_after` nulled).
+    /// `None` when missing, invisible, or not deleted.
+    fn cancel_project_deletion(
+        &self,
+        user_id: UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>>;
+
+    /// All projects whose purge deadline has passed, oldest first. The
+    /// worker claims them for the hard delete (bucket folder, then rows).
+    fn list_projects_due_for_purge(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> BoxFut<'_, Result<Vec<PurgeDueProject>, StoreError>>;
+
+    /// Hard-deletes one project row (children cascade via foreign keys).
+    /// `false` when the row is already gone. The caller takes care of the
+    /// project's storage folder before invoking this.
+    fn delete_project(&self, project_id: &str) -> BoxFut<'_, Result<bool, StoreError>>;
+
+    /// Records one data-export download. The row is the rate-limit count
+    /// AND the natural audit trail (who exported what, when).
+    fn record_project_export(
+        &self,
+        project_id: &str,
+        requested_by: &UserId,
+    ) -> BoxFut<'_, Result<(), StoreError>>;
+
+    /// How many export downloads the project has had since `since` —
+    /// the per-project daily rate limit's counter.
+    fn count_project_export(
+        &self,
+        project_id: &str,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> BoxFut<'_, Result<i64, StoreError>>;
 
     /// The project plus the caller's access context; `None` when missing
     /// or invisible (indistinguishable on purpose).

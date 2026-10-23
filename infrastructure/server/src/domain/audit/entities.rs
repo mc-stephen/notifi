@@ -49,6 +49,10 @@ pub enum AuditAction {
     SupportTicketStatusChanged,
     SupportTicketPriorityChanged,
     ProjectCreated,
+    ProjectDeletionRequested,
+    ProjectDeletionCancelled,
+    ProjectPurged,
+    ProjectExported,
     SubscriptionChanged,
     SubscriptionCancelled,
     PlanCreated,
@@ -104,6 +108,10 @@ impl AuditAction {
             Self::NotificationScheduled => "notification.scheduled",
             Self::NotificationCancelled => "notification.cancelled",
             Self::ProjectCreated => "project.created",
+            Self::ProjectDeletionRequested => "project.deletion_requested",
+            Self::ProjectDeletionCancelled => "project.deletion_cancelled",
+            Self::ProjectPurged => "project.purged",
+            Self::ProjectExported => "project.exported",
         }
     }
 }

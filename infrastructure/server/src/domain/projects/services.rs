@@ -8,16 +8,31 @@ use crate::domain::auth::entities::UserId;
 use crate::domain::error::AppError;
 use crate::domain::projects::entities::Project;
 use crate::ports::auth_store::StoreError;
+use crate::ports::config_store::ConfigStore;
 use crate::ports::projects_store::ProjectsStore;
 
 pub struct ProjectService {
     store: Arc<dyn ProjectsStore>,
     audit: Arc<AuditService>,
+    /// Brand storage: `Some` in the composed app (driver built at boot);
+    /// `None` in unit tests that only exercise DB semantics.
+    config_store: Option<Arc<dyn ConfigStore>>,
 }
 
 impl ProjectService {
     pub fn new(store: Arc<dyn ProjectsStore>, audit: Arc<AuditService>) -> Self {
-        Self { store, audit }
+        Self {
+            store,
+            audit,
+            config_store: None,
+        }
+    }
+
+    /// Wires brand storage for lifecycle actions (creation seeding,
+    /// deletion wipe, export file collection).
+    pub fn with_config_store(mut self, config_store: Arc<dyn ConfigStore>) -> Self {
+        self.config_store = Some(config_store);
+        self
     }
 
     /// Projects the user owns or belongs to, oldest first.
@@ -53,6 +68,21 @@ impl ProjectService {
             })?;
 
         let project = Project::from(record);
+
+        // The brand folder springs into existence WITH the project: the
+        // code-owned default layout lands under brands/{slug}/ before the
+        // user ever sees the project. A failed copy fails the creation —
+        // best-effort row cleanup keeps "no folder" from becoming a
+        // mutilated project nobody can finish configuring.
+        if let Some(config_store) = &self.config_store
+            && let Err(e) = config_store.materialize_brand(&project.slug).await
+        {
+            tracing::error!(error = %e, slug = %project.slug, "brand materialization failed; rolling the project row back");
+            self.store.delete_project(&project.id).await.ok();
+            return Err(AppError::Storage(format!(
+                "project storage could not be prepared: {e}"
+            )));
+        }
 
         self.audit
             .record(
@@ -105,7 +135,198 @@ impl ProjectService {
 
         Ok(project)
     }
+
+    /// Requests deletion: the project turns into a tombstone that stays
+    /// visible to its members (so they can download data or change their
+    /// mind), stops all delivery immediately, and gets hard-purged by the
+    /// worker after [`PURGE_GRACE`]. Owner or admin only (the store's SQL
+    /// gate mirrors the members table the same way membership reads do).
+    pub async fn request_deletion(
+        &self,
+        actor: UserId,
+        project_id: &str,
+    ) -> Result<Project, AppError> {
+        let project = self
+            .store
+            .request_project_deletion(actor, project_id, chrono::Utc::now() + PURGE_GRACE)
+            .await?
+            .map(Project::from)
+            .ok_or_else(|| AppError::NotFound("project not found".to_string()))?;
+
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::ProjectDeletionRequested,
+                    Some(&actor.to_string()),
+                    None,
+                    Some(project_id),
+                    format!(
+                        "project '{}' deletion requested; data erases around {}",
+                        project.name,
+                        project
+                            .purge_after
+                            .map(|t| t.to_rfc3339())
+                            .unwrap_or_else(|| "unknown".into())
+                    ),
+                    None,
+                ),
+            )
+            .await;
+
+        Ok(project)
+    }
+
+    /// Cancels a pending deletion inside the countdown — a full undo,
+    /// since nothing was destroyed. Owner or admin only.
+    pub async fn cancel_deletion(
+        &self,
+        actor: UserId,
+        project_id: &str,
+    ) -> Result<Project, AppError> {
+        let project = self
+            .store
+            .cancel_project_deletion(actor, project_id)
+            .await?
+            .map(Project::from)
+            .ok_or_else(|| {
+                AppError::NotFound("no pending deletion for this project".to_string())
+            })?;
+
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::ProjectDeletionCancelled,
+                    Some(&actor.to_string()),
+                    None,
+                    Some(project_id),
+                    format!("project '{}' deletion cancelled", project.name),
+                    None,
+                ),
+            )
+            .await;
+
+        Ok(project)
+    }
+
+    /// Rate-guard + record for one data-export download: any member of
+    /// the project may export, `[EXPORTS_PER_DAY]` downloads per rolling
+    /// 24h across the whole project pool. The inserted row doubles as
+    /// the export audit trail.
+    pub async fn guard_export(&self, actor: UserId, project_id: &str) -> Result<(), AppError> {
+        let since = chrono::Utc::now() - chrono::Duration::hours(24);
+        let used = self
+            .store
+            .count_project_export(project_id, since)
+            .await
+            .map_err(AppError::from)?;
+        if used >= EXPORTS_PER_DAY {
+            return Err(AppError::RateLimited(format!(
+                "project export limit ({EXPORTS_PER_DAY} per day) reached; try again later"
+            )));
+        }
+        self.store
+            .record_project_export(project_id, &actor)
+            .await
+            .map_err(AppError::from)?;
+
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::ProjectExported,
+                    Some(&actor.to_string()),
+                    None,
+                    Some(project_id),
+                    "project data exported".to_string(),
+                    None,
+                ),
+            )
+            .await;
+
+        Ok(())
+    }
+
+    /// The worker's hard-purge: every project whose countdown expired
+    /// loses its brand folder first (retry-able on storage failure — the
+    /// row survives to the next sweep), then its row (cascades take every
+    /// child table with it). Returns how many projects were erased.
+    pub async fn purge_due(&self, now: chrono::DateTime<chrono::Utc>) -> Result<usize, AppError> {
+        let due = self
+            .store
+            .list_projects_due_for_purge(now, 20)
+            .await
+            .map_err(AppError::from)?;
+
+        let mut erased = 0usize;
+        for project in due {
+            // Storage first: on failure the row stays due for a later
+            // sweep instead of becoming an orphan folder nobody can
+            // reach again.
+            if let Some(config_store) = &self.config_store {
+                let prefix = format!("brands/{}/", project.slug);
+                match config_store.list_keys(&prefix).await {
+                    Ok(keys) => {
+                        let mut wipes = true;
+                        for key in keys {
+                            if let Err(e) = config_store.delete_raw(&key).await {
+                                tracing::error!(error = %e, key = %key, project_id = %project.id, "purge: storage delete failed; retrying project on the next sweep");
+                                wipes = false;
+                                break;
+                            }
+                        }
+                        if !wipes {
+                            continue;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, project_id = %project.id, "purge: storage list failed; retrying project on the next sweep");
+                        continue;
+                    }
+                }
+            }
+
+            match self.store.delete_project(&project.id).await {
+                Ok(true) => {
+                    erased += 1;
+                    tracing::info!(project_id = %project.id, slug = %project.slug, "project purged (storage folder + row + cascades)");
+                    self.audit
+                        .record(
+                            chrono::Utc::now(),
+                            &AuditEvent::new(
+                                AuditAction::ProjectPurged,
+                                None,
+                                None,
+                                Some(&project.id),
+                                format!(
+                                    "project '{}' fully erased after the deletion window",
+                                    project.slug
+                                ),
+                                None,
+                            ),
+                        )
+                        .await;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::error!(error = %e, project_id = %project.id, "purge: row delete failed; leaving for the next sweep");
+                }
+            }
+        }
+        Ok(erased)
+    }
 }
+
+/// The deletion grace period: how long a requested deletion waits before
+/// the worker erases the folder + rows. Members can download data and
+/// cancel inside it.
+pub const PURGE_GRACE: chrono::Duration = chrono::Duration::days(14);
+
+/// Data-export downloads a project may make per rolling 24 hours — "a
+/// few per day" so export clicks can't clock the server. Counts across
+/// the whole project (all members share one pool).
+pub const EXPORTS_PER_DAY: i64 = 3;
 
 /// Assignable team roles (mirrors the dashboard role union).
 pub const MEMBER_ROLES: [&str; 5] = ["owner", "admin", "developer", "viewer", "billing"];

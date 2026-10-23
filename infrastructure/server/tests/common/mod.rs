@@ -23,7 +23,7 @@ use server::ports::notifications_store::{
     BroadcastRecipient, BroadcastRecord, BroadcastStats, BroadcastStatus, NotificationRecord,
     NotificationsStore,
 };
-use server::ports::projects_store::{ProjectSummary, ProjectsStore};
+use server::ports::projects_store::{ProjectSummary, ProjectsStore, PurgeDueProject};
 use server::ports::recipients_store::{RecipientRecord, RecipientsStore};
 use server::ports::templates_store::{
     AttachmentInput, AttachmentRecord, TemplateRecord, TemplatesStore,
@@ -46,6 +46,9 @@ pub struct FakeAuthStore {
     members: RwLock<Vec<(String, String, String)>>,
     /// Team invites: InviteRecord by id.
     invites: RwLock<Vec<server::ports::projects_store::InviteRecord>>,
+    /// Data-export downloads: (project_id, requested_by, when) — the rate
+    /// limit counter and audit trail in one list.
+    exports: RwLock<Vec<(String, String, chrono::DateTime<chrono::Utc>)>>,
 }
 
 impl FakeAuthStore {
@@ -90,6 +93,18 @@ impl FakeAuthStore {
             user_id.to_string(),
             role.to_string(),
         ));
+    }
+
+    /// Test lever: tumbles one project straight into "purge due" (expired
+    /// tombstone) without waiting out the grace window.
+    pub fn mark_purge_due(&self, project_id: &str) {
+        let now = chrono::Utc::now();
+        for (_, p) in self.projects.write().unwrap().iter_mut() {
+            if p.id == project_id {
+                p.deleted_at = Some(now - chrono::Duration::hours(48));
+                p.purge_after = Some(now - chrono::Duration::seconds(1));
+            }
+        }
     }
 
     /// Seeds a pending invite directly (expiry control for tests).
@@ -544,11 +559,23 @@ impl ProjectsStore for FakeAuthStore {
         user_id: UserId,
     ) -> BoxFut<'_, Result<Vec<ProjectSummary>, StoreError>> {
         let projects = &self.projects;
+        let members = &self.members;
+        let user_id_str = user_id.to_string();
         Box::pin(async move {
-            let owned = projects.read().map_err(lock_err)?;
-            Ok(owned
+            // The PG store's rule: creator OR active member sees the
+            // project — tombstones included (the deletion window stays
+            // downloadable + cancellable).
+            let members = members.read().map_err(lock_err)?;
+            Ok(projects
+                .read()
+                .map_err(lock_err)?
                 .iter()
-                .filter(|(owner, _)| *owner == user_id.to_string())
+                .filter(|(owner, p)| {
+                    *owner == user_id_str
+                        || members
+                            .iter()
+                            .any(|(pid, uid, _)| *pid == p.id && uid == &user_id_str)
+                })
                 .map(|(_, p)| p.clone())
                 .collect())
         })
@@ -588,7 +615,7 @@ impl ProjectsStore for FakeAuthStore {
         Box::pin(async move {
             Ok(projects
                 .into_iter()
-                .find(|(_, p)| p.id == project_id)
+                .find(|(_, p)| p.id == project_id && p.deleted_at.is_none())
                 .and_then(|(owner, p)| {
                     let is_owner = owner == user_id_str;
                     let member_role = members
@@ -604,6 +631,133 @@ impl ProjectsStore for FakeAuthStore {
                         member_role,
                     })
                 }))
+        })
+    }
+
+    fn request_project_deletion(
+        &self,
+        user_id: UserId,
+        project_id: &str,
+        purge_after: chrono::DateTime<chrono::Utc>,
+    ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>> {
+        let projects = &self.projects;
+        let members = &self.members;
+        let project_id = project_id.to_string();
+        let user_id_str = user_id.to_string();
+        Box::pin(async move {
+            let mut projects = projects.write().map_err(lock_err)?;
+            let members = members.read().map_err(lock_err)?;
+            let actor_role = members
+                .iter()
+                .find(|(pid, uid, _)| *pid == project_id && *uid == user_id_str)
+                .map(|(_, _, role)| role.clone());
+            let boss = matches!(actor_role.as_deref(), Some("owner") | Some("admin"));
+            Ok(projects
+                .iter_mut()
+                .find(|(owner, p)| {
+                    p.id == project_id && p.deleted_at.is_none() && (*owner == user_id_str || boss)
+                })
+                .map(|(_, p)| {
+                    p.deleted_at = Some(chrono::Utc::now());
+                    p.purge_after = Some(purge_after);
+                    p.clone()
+                }))
+        })
+    }
+
+    fn cancel_project_deletion(
+        &self,
+        user_id: UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>> {
+        let projects = &self.projects;
+        let members = &self.members;
+        let project_id = project_id.to_string();
+        let user_id_str = user_id.to_string();
+        Box::pin(async move {
+            let mut projects = projects.write().map_err(lock_err)?;
+            let members = members.read().map_err(lock_err)?;
+            let actor_role = members
+                .iter()
+                .find(|(pid, uid, _)| *pid == project_id && *uid == user_id_str)
+                .map(|(_, _, role)| role.clone());
+            let boss = matches!(actor_role.as_deref(), Some("owner") | Some("admin"));
+            Ok(projects
+                .iter_mut()
+                .find(|(owner, p)| {
+                    p.id == project_id && p.deleted_at.is_some() && (*owner == user_id_str || boss)
+                })
+                .map(|(_, p)| {
+                    p.deleted_at = None;
+                    p.purge_after = None;
+                    p.clone()
+                }))
+        })
+    }
+
+    fn list_projects_due_for_purge(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> BoxFut<'_, Result<Vec<PurgeDueProject>, StoreError>> {
+        let projects = &self.projects;
+        Box::pin(async move {
+            let projects = projects.read().map_err(lock_err)?;
+            Ok(projects
+                .iter()
+                .filter(|(_, p)| {
+                    p.deleted_at.is_some() && p.purge_after.is_some_and(|after| after <= now)
+                })
+                .take(limit as usize)
+                .map(|(_, p)| PurgeDueProject {
+                    id: p.id.clone(),
+                    slug: p.slug.clone(),
+                })
+                .collect())
+        })
+    }
+
+    fn delete_project(&self, project_id: &str) -> BoxFut<'_, Result<bool, StoreError>> {
+        let projects = &self.projects;
+        let project_id = project_id.to_string();
+        Box::pin(async move {
+            let mut projects = projects.write().map_err(lock_err)?;
+            let before = projects.len();
+            projects.retain(|(_, p)| p.id != project_id);
+            Ok(projects.len() < before)
+        })
+    }
+
+    fn record_project_export(
+        &self,
+        project_id: &str,
+        requested_by: &UserId,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let exports = &self.exports;
+        let project_id = project_id.to_string();
+        let requested_by = requested_by.to_string();
+        Box::pin(async move {
+            exports
+                .write()
+                .map_err(lock_err)?
+                .push((project_id, requested_by, chrono::Utc::now()));
+            Ok(())
+        })
+    }
+
+    fn count_project_export(
+        &self,
+        project_id: &str,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> BoxFut<'_, Result<i64, StoreError>> {
+        let exports = &self.exports;
+        let project_id = project_id.to_string();
+        Box::pin(async move {
+            let exports = exports.read().map_err(lock_err)?;
+            Ok(exports
+                .iter()
+                .filter(|(pid, _, at)| pid == &project_id && *at > since)
+                .count() as i64)
         })
     }
 
@@ -836,18 +990,9 @@ impl ProjectsStore for FakeAuthStore {
         let projects = &self.projects;
         Box::pin(async move {
             let mut projects = projects.write().map_err(lock_err)?;
-            let slug = name
-                .to_lowercase()
-                .replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "")
-                .replace(char::is_whitespace, "-")
-                .trim_matches('-')
-                .to_string();
-            let slug = if slug.is_empty() {
-                "project".to_string()
-            } else {
-                slug
-            };
-            // Ensure uniqueness
+            // Same slug rule as the PG store (kernel is the single source
+            // of truth), matching how brand-folder keys get derived.
+            let slug = server::kernel::config::project_slug(&name);
             let slug = if projects.iter().any(|(_, p)| p.slug == slug) {
                 format!("{slug}-{}", projects.len() + 1)
             } else {
@@ -861,6 +1006,8 @@ impl ProjectsStore for FakeAuthStore {
                 active: false,
                 require_2fa: false,
                 created_at: chrono::Utc::now(),
+                deleted_at: None,
+                purge_after: None,
             };
             projects.push((user_id_str, record.clone()));
             Ok(record)

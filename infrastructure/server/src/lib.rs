@@ -100,34 +100,18 @@ fn run_inner() -> Result<(), String> {
             }
         }
 
-        // Composition root: every database-backed service, built exactly
-        // once — the worker binary calls the same `compose`, so a new
-        // service wires in one place for both processes. Mail/system
-        // templates come from this entry point (the API verifies SMTP at
-        // boot; the worker passes None — no sweep service consumes mail).
-        let graph = db.as_ref().map(|pool| {
-            compose::compose(
-                pool.clone(),
-                &config,
-                mailer.clone(),
-                system_templates.clone(),
-            )
-        });
-
-        // Provider tester: always available (validates credentials before saving).
-        let provider_tester: std::sync::Arc<dyn ports::ProviderTester + Send + Sync> =
-            std::sync::Arc::new(infra::ConfigProviderTester::new());
-
         // Tenant brand config storage: the factory picks the driver and
         // logs the choice (R2 when NOTIFI_R2_* is all set, filesystem
         // otherwise), so ops flags and boot can never pick differently.
-        let config_store: std::sync::Arc<dyn ports::ConfigStore + Send + Sync> =
-            infra::config_store_factory::build(&config).expect("config store builds");
-
         // Read-through config cache when Redis is reachable: warm keys
         // answer at Redis speed and the store behind sees nothing, so
         // R2 request counts (and per-delivery latency) stay near zero.
         // Writes invalidate through the wrapper, never fail the send path.
+        // Built before `compose` so the project service (creation seeding,
+        // deletion purge) shares this exact instance — cache invalidation
+        // only works if every writer goes through the same wrapper.
+        let config_store: std::sync::Arc<dyn ports::ConfigStore + Send + Sync> =
+            infra::config_store_factory::build(&config).expect("config store builds");
         let config_store: std::sync::Arc<dyn ports::ConfigStore + Send + Sync> =
             match &redis_conn {
                 Some(client) => match client.clone().get_connection_manager().await {
@@ -151,6 +135,25 @@ fn run_inner() -> Result<(), String> {
                     config_store
                 }
             };
+
+        // Composition root: every database-backed service, built exactly
+        // once — the worker binary calls the same `compose`, so a new
+        // service wires in one place for both processes. Mail/system
+        // templates come from this entry point (the API verifies SMTP at
+        // boot; the worker passes None — no sweep service consumes mail).
+        let graph = db.as_ref().map(|pool| {
+            compose::compose(
+                pool.clone(),
+                &config,
+                mailer.clone(),
+                system_templates.clone(),
+                config_store.clone(),
+            )
+        });
+
+        // Provider tester: always available (validates credentials before saving).
+        let provider_tester: std::sync::Arc<dyn ports::ProviderTester + Send + Sync> =
+            std::sync::Arc::new(infra::ConfigProviderTester::new());
 
         // OAuth sign-in is wired when at least one provider has credentials.
         let github = match (
@@ -211,6 +214,7 @@ fn run_inner() -> Result<(), String> {
                 admin_projects: services.map(|s| s.admin_projects.clone()),
                 admin_notifications: services.map(|s| s.admin_notifications.clone()),
                 projects: services.map(|s| s.projects.clone()),
+                project_exports: services.map(|s| s.project_exports.clone()),
                 project_members: services.map(|s| s.project_members.clone()),
                 audit: services.map(|s| s.audit.clone()),
                 recipients: services.map(|s| s.recipients.clone()),

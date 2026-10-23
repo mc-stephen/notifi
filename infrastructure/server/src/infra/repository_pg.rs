@@ -17,7 +17,7 @@ use crate::domain::auth::entities::{
 use crate::domain::auth::value_objects::Email;
 use crate::ports::auth_store::{AuthStore, BoxFut, OnboardingInput, StoreError};
 use crate::ports::projects_store::{
-    InviteRecord, ProjectAccess, ProjectSummary, ProjectsStore, TeamMemberRecord,
+    InviteRecord, ProjectAccess, ProjectSummary, ProjectsStore, PurgeDueProject, TeamMemberRecord,
 };
 /// PostgreSQL-backed auth store.
 pub struct PgAuthStore {
@@ -131,21 +131,10 @@ fn map_err(err: sqlx::Error) -> StoreError {
 }
 
 /// Lowercase ASCII slug from a display name (`"Acme Corp!"` → `acme-corp`).
+/// One source of truth lives in the kernel ([`crate::kernel::config::project_slug`]);
+/// this wrapper keeps the call sites short.
 fn slugify(name: &str) -> String {
-    let mut slug = String::new();
-    for ch in name.trim().chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-        } else if matches!(ch, ' ' | '-' | '_' | '.' | '/') && !slug.ends_with('-') {
-            slug.push('-');
-        }
-    }
-    let trimmed = slug.trim_matches('-').to_string();
-    if trimmed.is_empty() {
-        "project".to_string()
-    } else {
-        trimmed
-    }
+    crate::kernel::config::project_slug(name)
 }
 
 /// Appends `-2`, `-3`, ... until the candidate is free; falls back to a
@@ -191,7 +180,7 @@ async fn insert_project(
     let row = sqlx::query_as::<_, ProjectRow>(
         "INSERT INTO platform_projects (id, name, slug, description, created_by)
          VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, name, slug, description, active, require_2fa, created_at",
+         RETURNING id, name, slug, description, active, require_2fa, created_at, deleted_at, purge_after",
     )
     .bind(&project_id)
     .bind(name)
@@ -729,6 +718,8 @@ struct ProjectRow {
     active: bool,
     require_2fa: bool,
     created_at: DateTime<Utc>,
+    deleted_at: Option<DateTime<Utc>>,
+    purge_after: Option<DateTime<Utc>>,
 }
 
 impl TryFrom<ProjectRow> for ProjectSummary {
@@ -743,6 +734,8 @@ impl TryFrom<ProjectRow> for ProjectSummary {
             active: row.active,
             require_2fa: row.require_2fa,
             created_at: row.created_at,
+            deleted_at: row.deleted_at,
+            purge_after: row.purge_after,
         })
     }
 }
@@ -777,6 +770,11 @@ impl TryFrom<AdminProjectRow> for crate::ports::projects_store::AdminProjectReco
                 active: row.active,
                 require_2fa: row.require_2fa,
                 created_at: row.created_at,
+                // Admin listings filter tombstones out of their SQL (below
+                // in the listing flow); pending deletion shows only as
+                // "deleted project is invisible in admin list" for now.
+                deleted_at: None,
+                purge_after: None,
             },
             owner_id: row.owner_id,
             owner_name: row.owner_name,
@@ -795,10 +793,9 @@ impl ProjectsStore for PgAuthStore {
         let pool = self.pool.clone();
         Box::pin(async move {
             let rows = sqlx::query_as::<_, ProjectRow>(
-                "SELECT id, name, slug, description, active, require_2fa, created_at
+                "SELECT id, name, slug, description, active, require_2fa, created_at, deleted_at, purge_after
                  FROM platform_projects p
-                 WHERE p.deleted_at IS NULL
-                   AND (
+                 WHERE (
                         p.created_by = $1
                         OR EXISTS (
                             SELECT 1 FROM platform_project_members pm
@@ -862,7 +859,7 @@ impl ProjectsStore for PgAuthStore {
                               AND pm.deleted_at IS NULL
                         )
                    )
-                  RETURNING id, name, slug, description, active, require_2fa, created_at",
+                  RETURNING id, name, slug, description, active, require_2fa, created_at, deleted_at, purge_after",
             )
             .bind(user_id.to_string())
             .bind(&project_id)
@@ -872,6 +869,161 @@ impl ProjectsStore for PgAuthStore {
             .map_err(map_err)?;
 
             row.map(ProjectSummary::try_from).transpose()
+        })
+    }
+
+    fn request_project_deletion(
+        &self,
+        user_id: UserId,
+        project_id: &str,
+        purge_after: chrono::DateTime<chrono::Utc>,
+    ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, ProjectRow>(
+                "UPDATE platform_projects p
+                 SET deleted_at = now(), purge_after = $3, updated_at = now()
+                 WHERE p.id = $2
+                   AND p.deleted_at IS NULL
+                   AND (
+                        p.created_by = $1
+                        OR EXISTS (
+                            SELECT 1 FROM platform_project_members pm
+                            WHERE pm.project_id = p.id
+                              AND pm.user_id = $1
+                              AND pm.deleted_at IS NULL
+                              AND pm.role IN ('owner', 'admin')
+                        )
+                   )
+                  RETURNING id, name, slug, description, active, require_2fa, created_at, deleted_at, purge_after",
+            )
+            .bind(user_id.to_string())
+            .bind(&project_id)
+            .bind(purge_after)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+
+            row.map(ProjectSummary::try_from).transpose()
+        })
+    }
+
+    fn cancel_project_deletion(
+        &self,
+        user_id: UserId,
+        project_id: &str,
+    ) -> BoxFut<'_, Result<Option<ProjectSummary>, StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, ProjectRow>(
+                "UPDATE platform_projects p
+                 SET deleted_at = NULL, purge_after = NULL, updated_at = now()
+                 WHERE p.id = $2
+                   AND p.deleted_at IS NOT NULL
+                   AND (
+                        p.created_by = $1
+                        OR EXISTS (
+                            SELECT 1 FROM platform_project_members pm
+                            WHERE pm.project_id = p.id
+                              AND pm.user_id = $1
+                              AND pm.deleted_at IS NULL
+                              AND pm.role IN ('owner', 'admin')
+                        )
+                   )
+                  RETURNING id, name, slug, description, active, require_2fa, created_at, deleted_at, purge_after",
+            )
+            .bind(user_id.to_string())
+            .bind(&project_id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+
+            row.map(ProjectSummary::try_from).transpose()
+        })
+    }
+
+    fn list_projects_due_for_purge(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> BoxFut<'_, Result<Vec<PurgeDueProject>, StoreError>> {
+        let pool = self.pool.clone();
+        Box::pin(async move {
+            let rows: Vec<(String, String)> = sqlx::query_as(
+                "SELECT id, slug FROM platform_projects
+                 WHERE deleted_at IS NOT NULL AND purge_after <= $1
+                 ORDER BY purge_after
+                 LIMIT $2",
+            )
+            .bind(now)
+            .bind(limit)
+            .fetch_all(&pool)
+            .await
+            .map_err(map_err)?;
+
+            Ok(rows
+                .into_iter()
+                .map(|(id, slug)| PurgeDueProject { id, slug })
+                .collect())
+        })
+    }
+
+    fn delete_project(&self, project_id: &str) -> BoxFut<'_, Result<bool, StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        Box::pin(async move {
+            let result = sqlx::query("DELETE FROM platform_projects WHERE id = $1")
+                .bind(&project_id)
+                .execute(&pool)
+                .await
+                .map_err(map_err)?;
+            Ok(result.rows_affected() > 0)
+        })
+    }
+
+    fn record_project_export(
+        &self,
+        project_id: &str,
+        requested_by: &UserId,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        let requested_by = requested_by.to_string();
+        Box::pin(async move {
+            let id = Ulid::new().to_string();
+            sqlx::query(
+                "INSERT INTO project_exports (id, project_id, requested_by)
+                 VALUES ($1, $2, $3)",
+            )
+            .bind(&id)
+            .bind(&project_id)
+            .bind(&requested_by)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(())
+        })
+    }
+
+    fn count_project_export(
+        &self,
+        project_id: &str,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> BoxFut<'_, Result<i64, StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        Box::pin(async move {
+            let (count,): (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM project_exports WHERE project_id = $1 AND created_at > $2",
+            )
+            .bind(&project_id)
+            .bind(since)
+            .fetch_one(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(count)
         })
     }
 
@@ -923,6 +1075,11 @@ impl ProjectsStore for PgAuthStore {
                     active: row.active,
                     require_2fa: row.require_2fa,
                     created_at: row.created_at,
+                    // The access row can only be for a live project (its
+                    // WHERE clause hides tombstones), so these are always
+                    // unset here by construction.
+                    deleted_at: None,
+                    purge_after: None,
                 })
                 .map(|project| ProjectAccess {
                     project,
@@ -1055,7 +1212,7 @@ impl ProjectsStore for PgAuthStore {
                         u.totp_enabled AS has_2fa, u.last_login_at AS last_active_at
                  FROM platform_projects p
                  JOIN auth_users u ON u.id = p.created_by AND u.deleted_at IS NULL
-                 WHERE p.id = $1 AND p.deleted_at IS NULL
+                 WHERE p.id = $1
                    AND (p.created_by = $2
                         OR EXISTS (SELECT 1 FROM platform_project_members pm
                                    WHERE pm.project_id = p.id AND pm.user_id = $2
@@ -1073,7 +1230,7 @@ impl ProjectsStore for PgAuthStore {
                  JOIN auth_users u ON u.id = pm.user_id AND u.deleted_at IS NULL
                  WHERE pm.project_id = $1 AND pm.deleted_at IS NULL
                    AND EXISTS (SELECT 1 FROM platform_projects p
-                               WHERE p.id = $1 AND p.deleted_at IS NULL
+                               WHERE p.id = $1
                                  AND (p.created_by = $2
                                       OR EXISTS (SELECT 1 FROM platform_project_members mine
                                                  WHERE mine.project_id = p.id AND mine.user_id = $2

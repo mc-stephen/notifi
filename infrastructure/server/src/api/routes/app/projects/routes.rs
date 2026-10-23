@@ -2,7 +2,7 @@
 
 use super::handlers;
 use axum::Router;
-use axum::routing::{get, patch, post};
+use axum::routing::{delete, get, patch, post};
 
 pub fn router<S>() -> Router<S>
 where
@@ -19,4 +19,9 @@ where
             "/{id}/members",
             post(handlers::add_member).get(handlers::list_members),
         )
+        // Deletion lifecycle: request (freeze + countdown), cancel inside
+        // the window, and the always-available data export.
+        .route("/{id}", delete(handlers::request_deletion))
+        .route("/{id}/deletion/cancel", post(handlers::cancel_deletion))
+        .route("/{id}/export", get(handlers::export_zip))
 }

@@ -90,12 +90,15 @@ const KEY_COLUMNS: &str = "id, project_id, name, prefix, key_hash, permissions, 
 
 /// Scopes a key row to projects the actor can see; invisible rows read as missing.
 fn visible_key(actor: &str, project_id: &str, key_id: Option<&str>) -> (String, Vec<String>) {
+    // Read path: membership scopes visibility, but the deletion tombstone
+    // does NOT hide rows — members can still inspect their data inside
+    // the countdown window; traffic (`find_key_by_hash`) stays frozen.
     let mut sql = format!(
         "SELECT {KEY_COLUMNS} FROM auth_api_keys k
          WHERE k.project_id = $2 AND k.deleted_at IS NULL
            AND EXISTS (
                SELECT 1 FROM platform_projects p
-               WHERE p.id = k.project_id AND p.deleted_at IS NULL
+               WHERE p.id = k.project_id
                  AND (p.created_by = $1 OR EXISTS (
                      SELECT 1 FROM platform_project_members pm
                      WHERE pm.project_id = p.id AND pm.user_id = $1 AND pm.deleted_at IS NULL

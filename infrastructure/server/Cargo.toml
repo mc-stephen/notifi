@@ -41,6 +41,7 @@ ulid = { workspace = true }
 urlencoding = { workspace = true }
 web-push = { workspace = true }
 yup-oauth2 = { workspace = true }
+zip = { workspace = true }
 
 [dev-dependencies]
 http-body-util = "0.1"
