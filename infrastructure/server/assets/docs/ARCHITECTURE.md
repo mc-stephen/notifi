@@ -231,7 +231,19 @@ Env vars with `NOTIFI_` prefix. See `src/infra/config.rs`.
 
 ## 18. Runtime configuration
 
-Configs load dynamically from `{NOTIFI_CONFIG_ROOT}/brands/{brand}/config/{channel_name}/`.
+Brand channel configs and template assets load through the [`ports::ConfigStore`] port (§6). Keys are relative to the convention root; kernel key-builders (`ConfigResolver::channel_key` / `template_key`) share one home with the path helpers, so keys and paths stay one convention:
+
+```text
+brands/{brand}/config/{channel_name}/{file_name}
+brands/{brand}/templates/{template_name}/{file_name}
+```
+
+Driver selection at boot (`AppState.config_store`, always available):
+
+* `infra/file_config_store.rs` — baseline; reads `{NOTIFI_CONFIG_ROOT}` (dev points it at `server/assets` via `.cargo/config.toml`).
+* `infra/r2_config_store.rs` — Cloudflare R2 (S3-compatible, zero egress); active when all four `NOTIFI_R2_ACCOUNT_ID / _ACCESS_KEY_ID / _SECRET_ACCESS_KEY / _BUCKET` are set. The bucket **is** the root: the same key addresses either driver, so the folder scheme never becomes a special case.
+
+`server/tests/config_store_r2.rs` seeds the local `assets/brands/**` tree into the bucket and probes the live roundtrip (`--ignored`); `config_store_file.rs` covers the file driver against kernel-derived keys.
 
 ## 19. Migration Strategy
 

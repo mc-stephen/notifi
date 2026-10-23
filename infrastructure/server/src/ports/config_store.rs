@@ -22,6 +22,20 @@
 
 use async_trait::async_trait;
 
+/// Defensive key validation: keys MUST be relative, non-empty, and
+/// root-convention-shaped strings. A leading `/` is a classic escape on
+/// the file driver (`root.join("/abs")` replaces the root outright) and
+/// means a different thing on the object driver (normalized away) — both
+/// count as an error rather than a silent surprise.
+pub(crate) fn validate_key(key: &str) -> Result<(), String> {
+    if key.is_empty() || key.starts_with('/') {
+        return Err(format!(
+            "invalid config key (must be relative, non-empty): '{key}'"
+        ));
+    }
+    Ok(())
+}
+
 /// Trait implemented by infra drivers (filesystem today, object stores
 /// like R2 for deployment). [`crate::infra::config::AppConfig`] decides
 /// which one is active at boot.

@@ -8,6 +8,7 @@ description = "Notifi server — HTTP API, domain logic, and infrastructure in o
 argon2 = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
+object_store = { workspace = true }
 axum-extra = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }

@@ -58,6 +58,48 @@ pub struct RedisConfig {
     pub url: Option<String>,
 }
 
+/// Cloudflare R2 (S3-compatible) object storage for tenant brand config —
+/// where the file driver reads `NOTIFI_CONFIG_ROOT` in dev, deployed
+/// instances read this bucket. Active for the config store when all four
+/// values are set; otherwise the file driver stays in charge.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+pub struct R2Config {
+    /// R2 account id — the S3 endpoint derives from it as
+    /// `https://{account_id}.r2.cloudflarestorage.com` (deriving instead
+    /// of accepting a hand-pasted URL avoids bucket-path suffix mistakes).
+    #[serde(default)]
+    pub account_id: Option<String>,
+    /// S3-compatible access key id from the R2 API token.
+    #[serde(default)]
+    pub access_key_id: Option<String>,
+    /// S3-compatible secret access key from the R2 API token.
+    #[serde(default)]
+    pub secret_access_key: Option<String>,
+    /// Bucket name — enforced lowercase by R2/S3 naming rules.
+    #[serde(default)]
+    pub bucket: Option<String>,
+}
+
+impl R2Config {
+    /// All four values present → R2 takes over the config store.
+    pub fn configured(&self) -> bool {
+        self.account_id.is_some()
+            && self.access_key_id.is_some()
+            && self.secret_access_key.is_some()
+            && self.bucket.is_some()
+    }
+
+    /// `https://{account_id}.r2.cloudflarestorage.com`
+    pub fn endpoint(&self) -> String {
+        format!(
+            "https://{}.r2.cloudflarestorage.com",
+            self.account_id
+                .as_deref()
+                .expect("configured() checks account_id")
+        )
+    }
+}
+
 /// RabbitMQ connection settings. Optional: when unset, sweep work stays
 /// embedded in the API process (30s loops); when set, the API publishes
 /// sweep ticks and a `worker` binary shares the load.
@@ -186,6 +228,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub redis: RedisConfig,
     #[serde(default)]
+    pub r2: R2Config,
+    #[serde(default)]
     pub rabbitmq: RabbitMQConfig,
     #[serde(default)]
     pub auth: AuthConfig,
@@ -283,6 +327,18 @@ impl AppConfig {
         if let Ok(url) = std::env::var("NOTIFI_REDIS_URL") {
             config.redis.url = Some(url);
         }
+        if let Ok(v) = std::env::var("NOTIFI_R2_ACCOUNT_ID") {
+            config.r2.account_id = Some(v);
+        }
+        if let Ok(v) = std::env::var("NOTIFI_R2_ACCESS_KEY_ID") {
+            config.r2.access_key_id = Some(v);
+        }
+        if let Ok(v) = std::env::var("NOTIFI_R2_SECRET_ACCESS_KEY") {
+            config.r2.secret_access_key = Some(v);
+        }
+        if let Ok(v) = std::env::var("NOTIFI_R2_BUCKET") {
+            config.r2.bucket = Some(v);
+        }
         if let Ok(url) = std::env::var("NOTIFI_RABBITMQ_URL") {
             config.rabbitmq.url = Some(url);
         }
@@ -354,6 +410,9 @@ impl AppConfig {
         }
         if other.redis != RedisConfig::default() {
             self.redis = other.redis;
+        }
+        if other.r2 != R2Config::default() {
+            self.r2 = other.r2;
         }
         if other.rabbitmq != RabbitMQConfig::default() {
             self.rabbitmq = other.rabbitmq;

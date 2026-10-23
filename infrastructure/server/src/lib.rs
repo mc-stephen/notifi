@@ -118,12 +118,25 @@ fn run_inner() -> Result<(), String> {
         let provider_tester: std::sync::Arc<dyn ports::ProviderTester + Send + Sync> =
             std::sync::Arc::new(infra::ConfigProviderTester::new());
 
-        // Tenant brand config storage: always available. The file driver
-        // reads the NOTIFI_CONFIG_ROOT root (dev points it at server/assets
-        // via .cargo/config.toml); the object-store driver arrives with
-        // NOTIFI_R2_* (see infra::config R2Config wiring).
+        // Tenant brand config storage: always available. NOTIFI_R2_* (all
+        // four values) switches the file driver for the R2 object store —
+        // the bucket then IS the convention root, keys unchanged from the
+        // file layout. Otherwise files under NOTIFI_CONFIG_ROOT stay in
+        // charge (dev points it at server/assets via .cargo/config.toml).
         let config_store: std::sync::Arc<dyn ports::ConfigStore + Send + Sync> =
-            std::sync::Arc::new(infra::FileConfigStore::from_root_env());
+            if config.r2.configured() {
+                tracing::info!(
+                    bucket = %config.r2.bucket.clone().expect("configured() checked"),
+                    "config store: R2 object storage"
+                );
+                std::sync::Arc::new(
+                    infra::R2ConfigStore::from_config(&config.r2)
+                        .expect("r2 config store built from configured values"),
+                )
+            } else {
+                tracing::info!("config store: filesystem (NOTIFI_CONFIG_ROOT)");
+                std::sync::Arc::new(infra::FileConfigStore::from_root_env())
+            };
 
         // OAuth sign-in is wired when at least one provider has credentials.
         let github = match (

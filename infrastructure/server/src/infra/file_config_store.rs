@@ -35,6 +35,7 @@ impl FileConfigStore {
 #[async_trait::async_trait]
 impl ConfigStore for FileConfigStore {
     async fn load_raw(&self, key: &str) -> Result<Vec<u8>, String> {
+        crate::ports::config_store::validate_key(key)?;
         let path = self.path_for(key);
         if !path.is_file() {
             return Err(format!(
@@ -46,6 +47,7 @@ impl ConfigStore for FileConfigStore {
     }
 
     async fn put_raw(&self, key: &str, bytes: Vec<u8>) -> Result<(), String> {
+        crate::ports::config_store::validate_key(key)?;
         let path = self.path_for(key);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -55,6 +57,7 @@ impl ConfigStore for FileConfigStore {
     }
 
     async fn list_keys(&self, prefix: &str) -> Result<Vec<String>, String> {
+        crate::ports::config_store::validate_key(prefix)?;
         let base = self.path_for(prefix);
         if !base.is_dir() {
             return Ok(Vec::new());
@@ -104,6 +107,18 @@ mod file_config_store_tests {
             .await
             .expect_err("missing key is an error");
         assert!(err.contains("not found"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn absolute_keys_can_not_escape_the_root() {
+        // `root.join("/abs")` would replace the root; the key guard makes
+        // that an error instead of a filesystem escape.
+        let store = FileConfigStore::new(temp_root("traversal"));
+        let result = store.load_raw("/etc/passwd").await;
+        match result {
+            Ok(_) => panic!("absolute keys must not pass"),
+            Err(e) => assert!(e.contains("invalid config key"), "got: {e}"),
+        }
     }
 
     #[tokio::test]

@@ -16,6 +16,7 @@ pub mod http_requester;
 pub mod notifications_repository_pg;
 pub mod oauth_provider_http;
 pub mod provider_tester;
+pub mod r2_config_store;
 pub mod rabbit;
 pub mod recipients_repository_pg;
 pub mod redis;
@@ -40,6 +41,7 @@ pub use flow_repository_pg::PgFlowStore;
 pub use http_requester::ReqwestHttpRequester;
 pub use notifications_repository_pg::PgNotificationsStore;
 pub use provider_tester::ConfigProviderTester;
+pub use r2_config_store::R2ConfigStore;
 
 pub use oauth_provider_http::{ProviderCredentials, http_oauth_provider};
 pub use recipients_repository_pg::PgRecipientsStore;
