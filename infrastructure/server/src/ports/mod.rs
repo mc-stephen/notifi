@@ -13,6 +13,7 @@ pub mod campaigns_store;
 pub mod channel_provider_store;
 pub mod config_store;
 pub mod delivery;
+pub mod devices_store;
 pub mod event_bus;
 pub mod flow_store;
 pub mod http_requester;

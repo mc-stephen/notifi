@@ -7,6 +7,7 @@ pub mod auth;
 pub mod billing;
 pub mod campaigns;
 pub mod channels;
+pub mod devices;
 pub mod error;
 pub mod flows;
 pub mod inbound;
