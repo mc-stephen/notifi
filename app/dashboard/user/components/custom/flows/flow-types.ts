@@ -26,6 +26,11 @@ export type TriggerData = {
   note?: string;
   /** Webhook triggers only: fallback message template. */
   templateId?: string;
+  /** Webhook triggers only: presets for the fallback template's
+   * declared refs (the backend renders them at fire time;
+   * `{{recipient.*}}` never needs one — it resolves from the
+   * recipient). Rides the node, same doctrine as `TemplateData`. */
+  values?: Record<string, string>;
   /** Webhook triggers only: fallback channel. */
   channel?: string;
   /** Webhook triggers only: fallback recipients. */

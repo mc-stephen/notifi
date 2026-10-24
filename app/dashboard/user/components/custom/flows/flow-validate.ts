@@ -110,6 +110,22 @@ export function validateFlow(
         if (kind === "webhook" && !data.token) {
           issues.push({ severity: "error", nodeId: n.id, message: "No token on this webhook trigger — start the flow from the Webhooks page instead of placing the trigger by hand." });
         }
+        // The fallback template's declared refs ride the trigger's
+        // values presets — the backend renders them at fire time,
+        // same rule as the template node's presets.
+        if (kind === "webhook" && typeof data.templateId === "string" && data.templateId !== "") {
+          const template = templates.find((t) => t.id === data.templateId);
+          for (const v of template ? getVariables(template.content) : []) {
+            const preset = data.values?.[v.key];
+            if (typeof preset !== "string" || !preset.trim()) {
+              issues.push({
+                severity: "error",
+                nodeId: n.id,
+                message: `Set a value for {{${v.key}}} on this trigger.`,
+              });
+            }
+          }
+        }
         // "schedule" triggers are owner-side data — timing lives on the
         // schedule, nothing to check locally.
         need(HANDLE.out, "Trigger output");

@@ -239,12 +239,40 @@ function TriggerFallbackFields({
   const { registry } = useProviderRegistry();
   const channels = registry?.channels ?? [];
   const recipientsText = (data.recipients ?? []).join("\n");
+  const picked = templates.find((t) => t.id === data.templateId);
+  const declared = picked ? getVariables(picked.content) : [];
+
+  // Switching fallback templates prunes presets that no longer map to a
+  // declared ref; same-named refs keep their value (mirrors the
+  // template node's pick).
+  const pickTemplate = (v: string) => {
+    const chosen = templates.find((t) => t.id === v);
+    const keep = new Set(chosen ? getVariables(chosen.content).map((x) => x.key) : []);
+    const values = Object.fromEntries(
+      Object.entries(data.values ?? {}).filter(([key]) => keep.has(key)),
+    );
+    onChange({ ...data, templateId: v || undefined, values });
+  };
+
+  const setVar = (key: string, value: string) => {
+    const next = { ...data.values };
+    if (value.trim() === "") {
+      delete next[key];
+    } else {
+      next[key] = value.trim();
+    }
+    onChange({ ...data, values: next });
+  };
+
   return (
     <>
       <Field label="Fallback template (optional)">
         <Select
           value={data.templateId || undefined}
-          onValueChange={(v) => onChange({ ...data, templateId: v || undefined })}
+          onValueChange={(v) => {
+            if (!v) return;
+            pickTemplate(v);
+          }}
         >
           <SelectTrigger>
             <SelectValue placeholder={loading ? "Loading templates…" : "Select a template"} />
@@ -261,6 +289,21 @@ function TriggerFallbackFields({
           Renders the message when the call omits title and body.
         </p>
       </Field>
+      {/* The trigger's presets fill its fallback template's declared
+          {{refs}} at fire time (see inbound services) — same doctrine
+          as the template node's dynamic data. */}
+      {declared.length > 0 && picked && (
+        <Field label="Dynamic data">
+          <DeclaredValues
+            declared={declared}
+            values={data.values}
+            onSet={setVar}
+          />
+          <p className="text-xs text-muted-foreground">
+            The call&apos;s own title and body win when provided.
+          </p>
+        </Field>
+      )}
       <Field label="Fallback channel (optional)">
         <Select
           value={data.channel || undefined}
@@ -551,20 +594,11 @@ function TemplateForm({ data, onChange }: { data: TemplateData; onChange: (d: Te
           resolves from the recipient on its own. */}
       {declared.length > 0 && picked && (
         <Field label="Dynamic data">
-          {declared.map((v) => (
-            <div key={v.key} className="space-y-1">
-              <Input
-                value={data.values?.[v.key] ?? ""}
-                onChange={(e) => setVar(v.key, e.target.value)}
-                placeholder={`Value for {{${v.key}}}`}
-              />
-              {v.description && (
-                <p className="text-xs text-muted-foreground">
-                  {`{{${v.key}}}`} — {v.description}
-                </p>
-              )}
-            </div>
-          ))}
+          <DeclaredValues
+            declared={declared}
+            values={data.values}
+            onSet={setVar}
+          />
         </Field>
       )}
       <p className="text-xs text-muted-foreground">
@@ -572,6 +606,39 @@ function TemplateForm({ data, onChange }: { data: TemplateData; onChange: (d: Te
         the Templates page and the next run picks that up. The send chain
         below chooses what delivers it.
       </p>
+    </>
+  );
+}
+
+/** One input per declared ref — shared by the template node and the
+ * webhook trigger's fallback panel. Blank input deletes the preset;
+ * the description renders as the helper text. */
+function DeclaredValues({
+  declared,
+  values,
+  onSet,
+}: {
+  declared: ReturnType<typeof getVariables>;
+  values: Record<string, string> | undefined;
+  onSet: (key: string, value: string) => void;
+}) {
+  return (
+    <>
+      {declared.map((v) => (
+        <div key={v.key} className="space-y-1">
+          <Input
+            value={values?.[v.key] ?? ""}
+            onChange={(e) => onSet(v.key, e.target.value)}
+            placeholder={`Value for {{${v.key}}}`}
+            aria-label={`Value for ${v.key}`}
+          />
+          {v.description && (
+            <p className="text-xs text-muted-foreground">
+              {`{{${v.key}}}`} — {v.description}
+            </p>
+          )}
+        </div>
+      ))}
     </>
   );
 }
