@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, CalendarClock, Copy, ExternalLink, RefreshCw, Webhook, X, Zap } from "lucide-react";
+import { Check, CalendarClock, Copy, ExternalLink, Webhook, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +26,6 @@ import {
   CONDITION_OPERATORS,
   HTTP_METHODS,
   TRIGGER_EVENTS,
-  newTriggerToken,
   triggerKindOf,
   type AiTransformData,
   type ConditionData,
@@ -36,7 +35,6 @@ import {
   type StopData,
   type TemplateData,
   type TriggerData,
-  type TriggerKind,
 } from "./flow-types";
 import { env } from "@/lib/env";
 import { WEBHOOK_EVENTS } from "@/lib/constants";
@@ -78,22 +76,12 @@ function EventChips({ events }: { events: string[] }) {
 function TriggerForm({
   data,
   onChange,
-  locked,
 }: {
   data: TriggerData;
   onChange: (d: TriggerData) => void;
-  locked?: boolean;
 }) {
   const kind = triggerKindOf(data);
   const [copied, setCopied] = useState(false);
-
-  const setKind = (next: TriggerKind) => {
-    if (next === "webhook") {
-      onChange({ kind: "webhook", token: data.token || newTriggerToken(), note: data.note ?? "" });
-    } else {
-      onChange({ kind: "event", preset: data.preset, event: data.event || TRIGGER_EVENTS[0] });
-    }
-  };
 
   const copyUrl = async (url: string) => {
     try {
@@ -131,11 +119,23 @@ function TriggerForm({
     );
   }
 
-  // The palette part decides the type: scoped nodes go straight to their
-  // config. Only legacy preset-less nodes get the type chooser.
+  // Owner identity: the webhook page mints the token and picks the
+  // events; the builder only inspects. Webhook triggers are never
+  // placed by hand — a hand-placed one carries no owner token and can
+  // never fire. Fallback fields below are the flow's own config.
   if (kind === "webhook") {
     return (
       <div className="space-y-4">
+        <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-3">
+          <p className="flex items-center gap-2 text-sm font-medium">
+            <Webhook className="size-4 text-primary" /> Webhook trigger
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            This flow belongs to a webhook and fires on its inbound HTTP
+            call. The trigger itself is owned data — manage the webhook on
+            the Webhooks page.
+          </p>
+        </div>
         <Field label="Inbound URL">
           <div className="flex items-center gap-1.5">
             <Input
@@ -150,59 +150,24 @@ function TriggerForm({
               aria-label="Copy webhook URL"
               className="shrink-0"
               onClick={() => void copyUrl(webhookUrl)}
+              disabled={!webhookUrl}
             >
               {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            POST JSON to this URL to fire the flow. Missing fields fall
-            back to the config below.
-          </p>
-        </Field>
-        <Field label="Secret token">
-          <div className="flex items-center gap-1.5">
-            <Input
-              readOnly
-              value={data.token ?? ""}
-              aria-label="Webhook secret token"
-              className="h-9 font-mono text-xs"
-            />
-            {!locked && (
-              <Button
-                variant="outline"
-                size="icon-sm"
-                aria-label="Regenerate token"
-                title="Regenerate token (old URL stops working)"
-                className="shrink-0"
-                onClick={() => onChange({ ...data, token: newTriggerToken() })}
-              >
-                <RefreshCw className="size-3.5" />
-              </Button>
-            )}
-          </div>
-          {locked && (
-            <p className="text-xs text-muted-foreground">
-              The webhook owns this token — manage its events on the
-              Webhooks page.
+          {!webhookUrl && (
+            <p className="text-xs text-warning">
+              No token — this trigger was placed by hand and can never
+              fire. Delete it and start the flow from the Webhooks page.
             </p>
           )}
         </Field>
-        {locked && (
-          <Field label="Events">
+        {(data.events?.length ?? 0) > 0 && (
+          <Field label="Listens for">
             <EventChips events={data.events ?? []} />
             <p className="text-xs text-muted-foreground">
               Edited on the Webhooks page — the trigger follows along.
             </p>
-          </Field>
-        )}
-        {!locked && (
-          <Field label="Note (optional)">
-            <Input
-              value={data.note ?? ""}
-              onChange={(e) => onChange({ ...data, note: e.target.value })}
-              placeholder="e.g. Shopify order webhook"
-              className="h-9 text-sm"
-            />
           </Field>
         )}
         <TriggerFallbackFields data={data} onChange={onChange} />
@@ -235,42 +200,6 @@ function TriggerForm({
 
   return (
     <div className="space-y-4">
-      {!scopedGroup && (
-        <Field label="Trigger type">
-          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Trigger type">
-            {(
-              [
-                { kind: "event", title: "On event", blurb: "Notification events", icon: Zap },
-                { kind: "webhook", title: "On webhook", blurb: "Inbound HTTP call", icon: Webhook },
-              ] as const
-            ).map((t) => {
-              const selected = kind === t.kind;
-              return (
-                <button
-                  key={t.kind}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  onClick={() => setKind(t.kind)}
-                  className={cn(
-                    "flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors",
-                    selected
-                      ? "border-primary/50 bg-primary/5"
-                      : "border-border hover:bg-muted",
-                  )}
-                >
-                  <t.icon className={cn("size-4 shrink-0", selected ? "text-primary" : "text-muted-foreground")} />
-                  <span className="min-w-0">
-                    <span className="block truncate text-xs font-medium">{t.title}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">{t.blurb}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </Field>
-      )}
-
       <Field label="Event">
         <Select value={data.event} onValueChange={(v) => v && onChange({ ...data, event: v })}>
           <SelectTrigger>
@@ -731,7 +660,6 @@ export function NodeConfigPanel({ node, onChange, onClose, lockedTrigger }: Node
             <TriggerForm
               data={node.data as TriggerData}
               onChange={onChange}
-              locked={lockedTrigger}
             />
           )}
           {node.type === "provider" && (

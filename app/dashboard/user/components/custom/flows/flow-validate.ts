@@ -97,7 +97,7 @@ export function validateFlow(nodes: FlowNode[], edges: Edge[]): FlowIssue[] {
           issues.push({ severity: "error", nodeId: n.id, message: "Pick an event for the trigger." });
         }
         if (kind === "webhook" && !data.token) {
-          issues.push({ severity: "error", nodeId: n.id, message: "The webhook trigger needs a token — regenerate it in the panel." });
+          issues.push({ severity: "error", nodeId: n.id, message: "No token on this webhook trigger — start the flow from the Webhooks page instead of placing the trigger by hand." });
         }
         // "schedule" triggers are owner-side data — timing lives on the
         // schedule, nothing to check locally.

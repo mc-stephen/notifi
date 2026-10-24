@@ -56,7 +56,6 @@ const TRIGGER_PARTS: { preset: TriggerPreset; title: string; blurb: string; icon
       icon: GROUP_ICONS[g.label] ?? Zap,
     };
   }),
-  { preset: "webhook", title: "Webhook", blurb: "Start on inbound HTTP call", icon: Webhook },
 ];
 
 /** Word-prefix match so stray substrings (e.g. "art" in "start") don't hit. */

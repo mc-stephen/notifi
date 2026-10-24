@@ -27,11 +27,12 @@ import { FlowPalette, DRAG_MIME, TRIGGER_PRESET_MIME, PROVIDER_CHANNEL_MIME, typ
 import { NodeConfigPanel } from "./NodeConfigPanel";
 import {
   HANDLE,
-  newTriggerToken,
+  triggerKindOf,
   type FlowDoc,
   type FlowIssue,
   type FlowNode,
   type FlowNodeKind,
+  type TriggerData,
 } from "./flow-types";
 import { validateFlow } from "./flow-validate";
 
@@ -42,9 +43,8 @@ function defaultDataFor(
 ): FlowNode["data"] {
   switch (kind) {
     case "trigger": {
-      if (triggerPreset === "webhook") {
-        return { kind: "webhook", token: newTriggerToken(), note: "" };
-      }
+      // Webhook triggers are owner-born (the Webhooks page mints the
+      // token); the palette only offers event-kind starts.
       const group = WEBHOOK_EVENTS.find((g) => g.label === triggerPreset);
       const event =
         triggerPreset === "Notifications" || !group
@@ -119,19 +119,27 @@ function FlowEditor({
 }) {
   const [nodes, setNodes, onNodesChangeBase] = useNodesState(initialDoc.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialDoc.edges);
-  // Owner-managed trigger is undeletable: strip its remove changes (the
-  // drag-select + Backspace path) while leaving others untouched.
+  // Owner data is undeletable: owner-managed flows lock their trigger
+  // everywhere (drag-select + Backspace included), and any schedule-kind
+  // trigger is locked too — schedules are only ever born on the
+  // Schedules page, never placed by hand. Webhook-kind triggers outside
+  // owner-managed flows stay deletable on purpose: they are stale
+  // hand-placed data that can never fire (no owner token).
   const onNodesChangeSafe = useCallback(
     (changes: Parameters<typeof onNodesChangeBase>[0]) => {
-      const triggerIds = new Set(
-        nodes.filter((n) => n.type === "trigger").map((n) => n.id),
+      const lockedTriggerIds = new Set(
+        nodes
+          .filter(
+            (n) =>
+              n.type === "trigger" &&
+              (ownerManaged || triggerKindOf(n.data as TriggerData) === "schedule"),
+          )
+          .map((n) => n.id),
       );
       onNodesChangeBase(
-        ownerManaged
-          ? changes.filter(
-              (c) => !("type" in c && c.type === "remove" && triggerIds.has(c.id)),
-            )
-          : changes,
+        changes.filter(
+          (c) => !("type" in c && c.type === "remove" && lockedTriggerIds.has(c.id)),
+        ),
       );
     },
     [ownerManaged, nodes, onNodesChangeBase],

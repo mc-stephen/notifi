@@ -37,13 +37,6 @@ export function triggerKindOf(data: TriggerData): TriggerKind {
   return data.kind ?? "event";
 }
 
-/** Unguessable token for inbound webhook triggers (128 bits, hex). */
-export function newTriggerToken(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 export type ProviderData = {
   channelId: string;
   providerId: string;
