@@ -49,44 +49,6 @@ export function EventsPicker({
 
   return (
     <div className="space-y-2">
-      <div className="flex min-h-9 items-center justify-between gap-2 px-0.5">
-        <span className="text-xs text-muted-foreground">
-          {events.length === 0
-            ? "Nothing subscribed yet."
-            : `${events.length} event${events.length === 1 ? "" : "s"} subscribed`}
-        </span>
-        {events.length > 0 && (
-          <button
-            type="button"
-            onClick={() => onChange([])}
-            className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-          >
-            Clear all
-          </button>
-        )}
-      </div>
-
-      {custom.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {custom.map((e) => (
-            <span
-              key={e}
-              className="flex items-center gap-1 rounded-md border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px]"
-            >
-              {e}
-              <button
-                type="button"
-                aria-label={`Remove ${e}`}
-                className="rounded-sm text-muted-foreground hover:text-foreground"
-                onClick={() => onChange(events.filter((x) => x !== e))}
-              >
-                <X className="size-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-
       <div className="relative">
         <Input
           value={query}
@@ -144,6 +106,45 @@ export function EventsPicker({
           ))
         )}
       </div>
+
+      <div className="flex min-h-8 items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">
+          {events.length === 0
+            ? "Nothing subscribed yet."
+            : `${events.length} event${events.length === 1 ? "" : "s"} subscribed`}
+        </span>
+        {events.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            Clear all
+          </button>
+        )}
+      </div>
+
+      {custom.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {custom.map((e) => (
+            <span
+              key={e}
+              className="flex items-center gap-1 rounded-md border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px]"
+            >
+              {e}
+              <button
+                type="button"
+                aria-label={`Remove ${e}`}
+                className="rounded-sm text-muted-foreground hover:text-foreground"
+                onClick={() => onChange(events.filter((x) => x !== e))}
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <p className="text-xs text-muted-foreground">
         Pick what this webhook receives — subscribed events fire the
         destination URL with the event&apos;s payload.
