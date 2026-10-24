@@ -399,6 +399,53 @@ async fn webhook_rename_syncs_and_events_rewrite_keeps_token() {
     );
 }
 
+/// Saves the flow definition the way the builder does (PUT) and returns
+/// the response's `flow` (the page keeps this as its loaded flow).
+async fn put_flow(app: Router, token: &str, flow_id: &str, body: Value) -> (StatusCode, Value) {
+    let res = request_with_cookie(
+        app,
+        "PUT",
+        &format!("/app/flows/{flow_id}"),
+        Some(body),
+        token,
+    )
+    .await;
+    let status = res.status();
+    let flow = body_json(res).await["flow"].clone();
+    (status, flow)
+}
+
+#[tokio::test]
+async fn saving_an_owned_flow_keeps_its_owner_source() {
+    let (app, _fakes) = app_with_webhooks();
+    let (token, project) = setup_project(app.clone(), &_fakes, "i@x.com", "P").await;
+    let webhook = create_webhook(app.clone(), &token, create_webhook_body(&project)).await;
+    let flow = webhook["flowId"].as_str().unwrap().to_string();
+    let (_, doc) = get_flow(app.clone(), &token, &project, &flow).await;
+
+    // The builder replaces its loaded flow with the PUT response after
+    // every save, so that response must tag the owner like GET — an
+    // untagged save made an owner-managed flow forget its owner (seen as
+    // the back target reverting to /flows and the trigger lock lifting).
+    let (status, saved) = put_flow(
+        app.clone(),
+        &token,
+        &flow,
+        json!({
+            "projectId": project,
+            "name": doc["name"].as_str().unwrap(),
+            "definition": doc["definition"].clone(),
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["source"], "webhook");
+
+    // And the stored flow reads the same on the next load.
+    let (_, flow_doc) = get_flow(app.clone(), &token, &project, &flow).await;
+    assert_eq!(flow_doc["source"], "webhook");
+}
+
 #[tokio::test]
 async fn webhook_fire_through_owned_flow_records_send() {
     let (app, _fakes) = app_with_webhooks();

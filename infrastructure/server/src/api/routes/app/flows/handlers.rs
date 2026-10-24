@@ -1,6 +1,8 @@
 //! Project flow CRUD. Owner-managed flows (schedules/webhooks) never
 //! list here; sends execute every flow carrying a `notification.created`
-//! trigger (oldest first); no stored default flag.
+//! trigger (oldest first); no stored default flag. Reads and updates
+//! alike tag the flow's owning surface (`source`) so the builder keeps
+//! its owner-aware back target and trigger lock across saves.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -84,6 +86,38 @@ pub async fn list_flows(
     Ok((StatusCode::OK, Json(serde_json::json!({ "flows": dtos }))))
 }
 
+/// Tags the flow dto with its owning surface: webhook-born flows read
+/// `webhook`, schedule-born `schedule` (an owned-by-both flow reads
+/// `webhook`), everything else stays `flow_page`. Ownership is looked
+/// up live — the same check the list endpoint uses to hide those flow
+/// ids from `/flows`.
+async fn tag_source(
+    dto: &mut FlowDto,
+    schedules: &MaybeScheduleService,
+    webhooks: &MaybeWebhookService,
+    user: crate::domain::auth::entities::UserId,
+    project: &str,
+) {
+    if let Some(Extension(schedules)) = schedules
+        && schedules
+            .scheduled_flow_ids(user, project)
+            .await
+            .unwrap_or_default()
+            .contains(&dto.id)
+    {
+        dto.source = SOURCE_SCHEDULE;
+    }
+    if let Some(Extension(webhooks)) = webhooks
+        && webhooks
+            .owned_flow_ids(user, project)
+            .await
+            .unwrap_or_default()
+            .contains(&dto.id)
+    {
+        dto.source = SOURCE_WEBHOOK;
+    }
+}
+
 /// `GET /app/flows/:id?project_id=` — one flow, even when an owner
 /// (schedule/webhook) hides it from the list; the builder loads by id.
 /// The response tags `source` so the builder scopes the trigger UI to
@@ -100,24 +134,7 @@ pub async fn get_flow(
     let project = project_id(&query)?;
     let flow = service.get(user.id, project, &id).await?;
     let mut dto = FlowDto::from(flow);
-    if let Some(Extension(schedules)) = &schedules
-        && schedules
-            .scheduled_flow_ids(user.id, project)
-            .await
-            .unwrap_or_default()
-            .contains(&dto.id)
-    {
-        dto.source = SOURCE_SCHEDULE;
-    }
-    if let Some(Extension(webhooks)) = &webhooks
-        && webhooks
-            .owned_flow_ids(user.id, project)
-            .await
-            .unwrap_or_default()
-            .contains(&dto.id)
-    {
-        dto.source = SOURCE_WEBHOOK;
-    }
+    tag_source(&mut dto, &schedules, &webhooks, user.id, project).await;
     Ok((StatusCode::OK, Json(serde_json::json!({ "flow": dto }))))
 }
 
@@ -152,9 +169,14 @@ pub async fn create_flow(
 
 /// `PUT /app/flows/:id` — replace name/definition (builder save path).
 /// Webhook trigger tokens sync best-effort (a failed sync retries).
+/// The response tags `source` exactly like GET: the builder replaces
+/// its loaded flow with this response, so an untagged save would make
+/// an owner-managed flow forget its owner after the first edit.
 pub async fn update_flow(
     CurrentUser(user): CurrentUser,
     service: MaybeFlowService,
+    schedules: MaybeScheduleService,
+    webhooks: MaybeWebhookService,
     inbound: MaybeInboundService,
     Path(id): Path<String>,
     Json(body): Json<UpdateFlowRequest>,
@@ -168,10 +190,9 @@ pub async fn update_flow(
             .sync_flow_tokens(&body.project_id, &flow.id, &flow.definition)
             .await;
     }
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::json!({ "flow": FlowDto::from(flow) })),
-    ))
+    let mut dto = FlowDto::from(flow);
+    tag_source(&mut dto, &schedules, &webhooks, user.id, &body.project_id).await;
+    Ok((StatusCode::OK, Json(serde_json::json!({ "flow": dto }))))
 }
 
 /// `DELETE /app/flows/:id` — delete a flow. Idempotent; sends fail closed
