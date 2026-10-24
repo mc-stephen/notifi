@@ -140,7 +140,7 @@ export const admins = {
 
 import type { AdminTicket, AdminTicketMessage, AdminTicketStatus } from "./types";
 import type { AdminUser, AdminUserDetail, AdminUserStatus } from "./types";
-import type { AdminProject, AdminProjectDetail } from "./types";
+import type { AdminProject, AdminProjectDetail, ImportReport } from "./types";
 import type { AdminBroadcast, BroadcastAudience } from "./types";
 
 export type PageInfo = {
@@ -255,6 +255,27 @@ export const projects = {
     request<{ project: AdminProjectDetail }>(
       `/admin/projects/${encodeURIComponent(id)}`,
     ),
+
+  // Raw zip upload — the backend reads a `Bytes` body (32 MiB ceiling),
+  // so no JSON envelope here.
+  importZip: async (ownerId: string, file: File): Promise<{ import: ImportReport }> => {
+    const res = await fetch(
+      `${API_BASE}/admin/projects/import?owner_id=${encodeURIComponent(ownerId)}`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/zip" },
+        body: file,
+      },
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      const detail =
+        body?.detail ?? body?.message ?? `${res.status} ${res.statusText}`;
+      throw new ApiError(res.status, detail);
+    }
+    return (await res.json()) as { import: ImportReport };
+  },
 };
 
 // ── Notification broadcasts (admin view) ────────────────────────────────────

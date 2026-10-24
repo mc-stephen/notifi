@@ -2,11 +2,15 @@
 import AdminLayout from "../../layouts/AdminLayout.astro";
 import Pagination from "../../components/shared/pagination.astro";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../../components/ui/table";
-import type { AdminProject } from "../../lib/types";
+import type { AdminProject, AdminUser } from "../../lib/types";
 
 const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8080";
 const session = Astro.cookies.get("admin_session")?.value;
-const cookieHeader = session ? { Cookie: `admin_session=${session}` } : {};
+// Typed so both the table fetch and the import-owner fetch below pass
+// HeadersInit cleanly.
+const cookieHeader: Record<string, string> = session
+  ? { Cookie: `admin_session=${session}` }
+  : {};
 
 const searchQuery = Astro.url.searchParams.get("q") ?? "";
 const page = Math.max(1, parseInt(Astro.url.searchParams.get("page") ?? "1", 10) || 1);
@@ -51,6 +55,31 @@ function initials(name: string) {
 
 const pageParams: Record<string, string> = {};
 if (searchQuery.trim()) pageParams.q = searchQuery.trim();
+
+// Initial candidates for the import ZIP owner picker (the client
+// picker needs real account ids; a load failure only disables the
+// import control, never the table above).
+type OwnerCandidate = { id: string; name: string; email: string };
+let ownerCandidates: OwnerCandidate[] = [];
+let ownerLoadNote: string | null = null;
+try {
+  const res = await fetch(`${API_BASE}/admin/users?limit=100&page=1`, {
+    headers: cookieHeader,
+  });
+  if (res.ok) {
+    const data = await res.json();
+    ownerCandidates = ((data.users ?? []) as AdminUser[])
+      .filter((u) => u.status === "active")
+      .map((u) => ({ id: u.id, name: u.name, email: u.email }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } else if (res.status !== 503) {
+    ownerLoadNote = "Owner list unavailable — reload the page to enable imports.";
+  } else {
+    ownerLoadNote = "Owner list is unavailable while the API database is down.";
+  }
+} catch {
+  ownerLoadNote = "Owner list is unavailable — imports are disabled right now.";
+}
 ---
 
 <AdminLayout title="Projects">
@@ -65,15 +94,26 @@ if (searchQuery.trim()) pageParams.q = searchQuery.trim();
       <p class="text-sm text-muted-foreground">Every project created by platform users.</p>
     </div>
 
-    <form method="get" class="flex flex-wrap items-center gap-3">
-      <div class="relative flex-1 min-w-[200px] max-w-sm">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" name="q" value={searchQuery} placeholder="Search by name or slug..." class="flex h-9 w-full rounded-lg border border-input bg-card pl-8 pr-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
-      </div>
-      <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors h-9">
-        Search
+    <div class="flex flex-wrap items-center gap-3">
+      <form method="get" class="flex flex-1 items-center gap-3 min-w-[260px]">
+        <div class="relative flex-1 min-w-[200px] max-w-sm">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" name="q" value={searchQuery} placeholder="Search by name or slug..." class="flex h-9 w-full rounded-lg border border-input bg-card pl-8 pr-3 py-1.5 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
+        </div>
+        <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors h-9">
+          Search
+        </button>
+      </form>
+      <button
+        type="button"
+        id="import-toggle"
+        class="inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors h-9 shrink-0"
+        {...(ownerCandidates.length === 0 ? { disabled: "disabled" } : {})}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        Import ZIP
       </button>
-    </form>
+    </div>
 
     <div class="rounded-xl border bg-card overflow-hidden">
       <Table>
@@ -143,9 +183,139 @@ if (searchQuery.trim()) pageParams.q = searchQuery.trim();
       )}
     </div>
   </div>
+
+  <div id="import-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="import-title">
+    <div class="absolute inset-0 bg-black/50" id="import-backdrop"></div>
+    <div class="relative z-10 w-full max-w-md mx-4 rounded-xl border bg-card shadow-xl max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between p-5 border-b border-border">
+        <div>
+          <h2 id="import-title" class="font-semibold text-foreground">Import project ZIP</h2>
+          <p class="text-sm text-muted-foreground">Apply a project export as a fresh clone.</p>
+        </div>
+        <button type="button" id="import-close" aria-label="Close" class="text-muted-foreground hover:text-foreground transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <div id="import-form-view" class="p-5 space-y-4">
+        {ownerLoadNote && (
+          <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-foreground">
+            {ownerLoadNote}
+          </div>
+        )}
+        <div class="space-y-1.5">
+          <label for="import-file" class="text-sm font-medium text-foreground">Export ZIP</label>
+          <input
+            type="file"
+            id="import-file"
+            accept=".zip,application/zip,application/x-zip-compressed"
+            class="flex h-9 w-full rounded-lg border border-input bg-background px-3 text-sm file:mr-3 file:h-7 file:rounded-md file:border-0 file:bg-muted file:px-2 file:text-xs file:font-medium text-muted-foreground"
+          />
+        </div>
+        <div class="space-y-1.5">
+          <label for="import-owner" class="text-sm font-medium text-foreground">New owner</label>
+          <select
+            id="import-owner"
+            class="flex h-9 w-full rounded-lg border border-input bg-background px-3 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <option value="">Choose an account…</option>
+            {ownerCandidates.map((owner) => (
+              <option value={owner.id}>{owner.name} — {owner.email}</option>
+            ))}
+          </select>
+        </div>
+        <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-muted-foreground space-y-1">
+          <p>Creates a <span class="text-foreground font-medium">new project</span> for the selected owner — the original export is untouched.</p>
+          <p>Sends history, members and billing are <span class="text-foreground font-medium">not</span> carried over.</p>
+          <p>Webhook tokens and API key secrets regenerate; the new secrets are shown once in the result panel.</p>
+          <p>Schedules arrive paused.</p>
+        </div>
+        <div id="import-error" class="hidden rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            id="import-cancel"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            id="import-go"
+            disabled
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80 disabled:opacity-50 disabled:pointer-events-none"
+          >
+            Import ZIP
+          </button>
+        </div>
+      </div>
+
+      <div id="import-result-view" class="hidden p-5 space-y-4">
+        <div id="import-result-main" class="rounded-lg border border-success/20 bg-success/5 p-4 text-sm space-y-1"></div>
+        <div id="import-warnings" class="hidden rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm space-y-1"></div>
+        <div id="import-secrets" class="hidden space-y-2">
+          <p class="text-sm font-medium text-foreground">Fresh API key secrets — shown once, copy now</p>
+          <div id="import-secrets-list" class="space-y-2"></div>
+          <button
+            type="button"
+            id="import-copy-secrets"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+            Copy secrets
+          </button>
+        </div>
+        <div class="flex justify-end gap-2">
+          <a
+            id="import-open"
+            class="hidden inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+          >
+            Open project
+          </a>
+          <button
+            type="button"
+            id="import-done"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="import-confirm" class="hidden fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="import-confirm-title">
+    <div class="absolute inset-0 bg-black/50" id="import-confirm-backdrop"></div>
+    <div class="relative z-10 w-full max-w-sm mx-4 rounded-xl border bg-card shadow-xl">
+      <div class="p-5 space-y-2">
+        <h2 id="import-confirm-title" class="font-semibold text-foreground">Import this ZIP?</h2>
+        <p id="import-confirm-body" class="text-sm text-muted-foreground"></p>
+      </div>
+      <div id="import-confirm-error" class="hidden mx-5 mb-4 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"></div>
+      <div class="flex justify-end gap-2 p-5 pt-0">
+        <button
+          type="button"
+          id="import-confirm-cancel"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          id="import-confirm-go"
+          class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/80"
+        >
+          Import ZIP
+        </button>
+      </div>
+    </div>
+  </div>
 </AdminLayout>
 
 <script>
+  import { ApiError, projects } from "../../lib/api";
+  import type { ImportReport } from "../../lib/types";
+
   document.querySelectorAll<HTMLTableRowElement>("tr.project-row").forEach((row) => {
     row.addEventListener("click", (e) => {
       // Let the inner name link handle its own clicks (keyboard/middle-click safe).
@@ -153,5 +323,243 @@ if (searchQuery.trim()) pageParams.q = searchQuery.trim();
       const href = row.dataset.href;
       if (href) window.location.href = href;
     });
+  });
+
+  // .==================================================================================
+  // Import ZIP modal: fresh-project restore with a spelled-out confirm,
+  // one-shot fresh secrets in the result panel (no reload until Done —
+  // the table refreshes only after the secrets screen is dismissed).
+  // .==================================================================================
+
+  const importToggle = document.getElementById("import-toggle");
+  const importModal = document.getElementById("import-modal");
+  const importFormView = document.getElementById("import-form-view");
+  const importResultView = document.getElementById("import-result-view");
+  const importFile = document.getElementById("import-file") as HTMLInputElement | null;
+  const importOwner = document.getElementById("import-owner") as HTMLSelectElement | null;
+  const importGo = document.getElementById("import-go") as HTMLButtonElement | null;
+  const importError = document.getElementById("import-error");
+  const importMain = document.getElementById("import-result-main");
+  const importWarnings = document.getElementById("import-warnings");
+  const importSecrets = document.getElementById("import-secrets");
+  const importSecretsList = document.getElementById("import-secrets-list");
+  const importCopySecrets = document.getElementById("import-copy-secrets") as HTMLButtonElement | null;
+  const importOpen = document.getElementById("import-open") as HTMLAnchorElement | null;
+  const importDone = document.getElementById("import-done") as HTMLButtonElement | null;
+  const importConfirm = document.getElementById("import-confirm");
+  const importConfirmBody = document.getElementById("import-confirm-body");
+  const importConfirmError = document.getElementById("import-confirm-error");
+  const importConfirmGo = document.getElementById("import-confirm-go") as HTMLButtonElement | null;
+
+  let selectedFile: File | null = null;
+  let copiedSecrets: string[] = [];
+
+  const APPLIED_LABELS: Record<string, string> = {
+    templates: "Templates",
+    recipients: "Recipients",
+    webhooks: "Webhooks",
+    schedules: "Schedules",
+    flows: "Flow pages",
+    apiKeys: "API keys",
+    projectFiles: "Project files",
+  };
+
+  function show(box: HTMLElement | null, message: string) {
+    if (!box) return;
+    box.textContent = message;
+    box.classList.remove("hidden");
+  }
+
+  function hide(box: HTMLElement | null) {
+    box?.classList.add("hidden");
+  }
+
+  function closeConfirm() {
+    importConfirm?.classList.add("hidden");
+  }
+
+  function importReset() {
+    selectedFile = null;
+    copiedSecrets = [];
+    if (importFile) importFile.value = "";
+    if (importOwner) importOwner.value = "";
+    hide(importError);
+    importFormView?.classList.remove("hidden");
+    importResultView?.classList.add("hidden");
+    if (importMain) importMain.textContent = "";
+    hide(importWarnings);
+    if (importWarnings) importWarnings.textContent = "";
+    hide(importSecrets);
+    if (importSecretsList) importSecretsList.textContent = "";
+    hide(importOpen);
+    if (importCopySecrets) importCopySecrets.textContent = "Copy secrets";
+    refreshGoState();
+  }
+
+  function refreshGoState() {
+    if (!importGo) return;
+    importGo.disabled = !(selectedFile && importOwner?.value);
+  }
+
+  function openImport() {
+    importReset();
+    importModal?.classList.remove("hidden");
+  }
+
+  function closeImport() {
+    importModal?.classList.add("hidden");
+  }
+
+  importToggle?.addEventListener("click", openImport);
+  document.getElementById("import-backdrop")?.addEventListener("click", closeImport);
+  document.getElementById("import-close")?.addEventListener("click", closeImport);
+  document.getElementById("import-cancel")?.addEventListener("click", closeImport);
+  importFile?.addEventListener("change", () => {
+    selectedFile = importFile.files?.[0] ?? null;
+    refreshGoState();
+  });
+  importOwner?.addEventListener("change", refreshGoState);
+  importDone?.addEventListener("click", () => window.location.reload());
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    closeConfirm();
+    closeImport();
+  });
+
+  // Open the confirm step with everything spelled out.
+  importGo?.addEventListener("click", () => {
+    if (!selectedFile || !importOwner?.value) return;
+    const ownerLabel =
+      importOwner.selectedOptions[0]?.textContent?.trim() ?? "the chosen account";
+    if (importConfirmBody) {
+      importConfirmBody.textContent =
+        `This creates a fresh project for ${ownerLabel} from ${selectedFile.name}. ` +
+        "Sends history, members and billing are not carried over. Webhook and API key " +
+        "secrets regenerate — record them from the result panel.";
+    }
+    hide(importConfirmError);
+    importConfirm?.classList.remove("hidden");
+  });
+
+  document.getElementById("import-confirm-cancel")?.addEventListener("click", closeConfirm);
+  document.getElementById("import-confirm-backdrop")?.addEventListener("click", closeConfirm);
+
+  function renderResult(report: ImportReport) {
+    importFormView?.classList.add("hidden");
+    importResultView?.classList.remove("hidden");
+    if (!importMain) return;
+
+    const heading = document.createElement("p");
+    heading.className = "font-medium text-foreground";
+    heading.textContent = report.project.suffixed
+      ? `Imported "${report.project.name}" (the original name was taken here)`
+      : `Imported "${report.project.name}"`;
+    importMain.appendChild(heading);
+
+    const meta = document.createElement("p");
+    meta.className = "text-xs text-muted-foreground";
+    meta.textContent = `slug: ${report.project.slug}`;
+    importMain.appendChild(meta);
+
+    const chips = document.createElement("div");
+    chips.className = "flex flex-wrap gap-1.5 pt-1";
+    for (const [key, label] of Object.entries(APPLIED_LABELS)) {
+      const count = report.applied[key];
+      if (typeof count !== "number") continue;
+      let text = `${label}: ${count}`;
+      const requested = report.applied[`${key}Requested`];
+      if (key === "templates" && typeof requested === "number" && requested > count) {
+        text = `${label}: ${count} of ${requested}`;
+      }
+      if (key === "apiKeys" && typeof requested === "number" && requested > count) {
+        text = `${label}: ${count} of ${requested}`;
+      }
+      const chip = document.createElement("span");
+      chip.className = "rounded-md border border-border bg-background px-2 py-0.5 text-xs";
+      chip.textContent = text;
+      chips.appendChild(chip);
+    }
+    if (typeof report.skipped?.sendsCount === "number" && report.skipped.sendsCount > 0) {
+      const chip = document.createElement("span");
+      chip.className = "rounded-md border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground";
+      chip.textContent = `Sends history not carried: ${report.skipped.sendsCount}`;
+      chips.appendChild(chip);
+    }
+    importMain.appendChild(chips);
+
+    if (report.warnings?.length) {
+      importWarnings?.classList.remove("hidden");
+      if (importWarnings) {
+        const title = document.createElement("p");
+        title.className = "font-medium text-foreground";
+        title.textContent = "Warnings";
+        importWarnings.appendChild(title);
+        const list = document.createElement("ul");
+        list.className = "list-disc pl-4 text-xs space-y-0.5";
+        for (const warning of report.warnings) {
+          const item = document.createElement("li");
+          item.textContent = warning;
+          list.appendChild(item);
+        }
+        importWarnings.appendChild(list);
+      }
+    }
+
+    if (report.apiKeySecrets?.length) {
+      copiedSecrets = report.apiKeySecrets.map((secret) => `${secret.name}: ${secret.key}`);
+      importSecrets?.classList.remove("hidden");
+      if (importSecretsList) {
+        for (const secret of report.apiKeySecrets) {
+          const row = document.createElement("p");
+          row.className = "text-xs";
+          const name = document.createElement("span");
+          name.className = "font-medium text-foreground";
+          name.textContent = `${secret.name}: `;
+          const code = document.createElement("code");
+          code.className = "break-all";
+          code.textContent = secret.key;
+          row.appendChild(name);
+          row.appendChild(code);
+          importSecretsList.appendChild(row);
+        }
+      }
+    }
+
+    if (importOpen) {
+      importOpen.href = `/projects/${encodeURIComponent(report.project.id)}`;
+      importOpen.classList.remove("hidden");
+    }
+  }
+
+  importConfirmGo?.addEventListener("click", async () => {
+    if (!importConfirmGo) return;
+    if (!selectedFile || !importOwner?.value) return;
+    importConfirmGo.disabled = true;
+    try {
+      const { import: report } = await projects.importZip(importOwner.value, selectedFile);
+      closeConfirm();
+      renderResult(report);
+    } catch (err) {
+      show(
+        importConfirmError,
+        err instanceof ApiError ? err.message : "Import failed. Please try again.",
+      );
+    } finally {
+      importConfirmGo.disabled = false;
+    }
+  });
+
+  importCopySecrets?.addEventListener("click", async () => {
+    if (!copiedSecrets.length) return;
+    try {
+      await navigator.clipboard.writeText(copiedSecrets.join("\n"));
+      if (importCopySecrets) importCopySecrets.textContent = "Copied ✓";
+      window.setTimeout(() => {
+        if (importCopySecrets) importCopySecrets.textContent = "Copy secrets";
+      }, 2000);
+    } catch {
+      // Clipboard denied — the secrets stay on screen for manual copy.
+    }
   });
 </script>

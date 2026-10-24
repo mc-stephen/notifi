@@ -62,6 +62,26 @@ export type AdminProjectDetail = AdminProject & {
   members: AdminProjectMember[];
 };
 
+export type ImportReport = {
+  project: {
+    id: string;
+    name: string;
+    slug: string;
+    originalName: string;
+    originalSlug: string;
+    suffixed: boolean;
+  };
+  owner: string;
+  applied: Record<string, number>;
+  skipped: {
+    sendsCount?: number;
+    membersCount?: number;
+    note: string;
+  };
+  apiKeySecrets: Array<{ name: string; key: string }>;
+  warnings: string[];
+};
+
 export type AdminTicketStatus = "open" | "in_progress" | "resolved" | "closed";
 
 export type AdminTicket = {
