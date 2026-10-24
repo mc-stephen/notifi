@@ -27,8 +27,16 @@ impl ProviderTester for ConfigProviderTester {
         match channel_id {
             "email" => test_email_provider(provider_id, config).await,
             "sms" => test_sms_provider(provider_id, config).await,
-            "push" => test_push_provider(provider_id, config).await,
             "chat" => test_chat_provider(provider_id, config).await,
+            // Device destinations: no vendor probes yet — real
+            // validation lands with the M3 adapters. House fallback
+            // message, same as the shell providers in sms/chat.
+            "window" | "android" | "apple" | "linux" | "web" => TestResult {
+                success: true,
+                message: format!(
+                    "Device provider {provider_id} credentials saved (validation not available)"
+                ),
+            },
             _ => TestResult {
                 success: false,
                 message: format!("Unknown channel: {channel_id}"),
@@ -508,130 +516,6 @@ async fn test_vonage(config: &serde_json::Value) -> TestResult {
     TestResult {
         success: true,
         message: "Vonage credentials format is valid".to_string(),
-    }
-}
-
-async fn test_push_provider(provider_id: &str, config: &serde_json::Value) -> TestResult {
-    match provider_id {
-        "fcm" => test_fcm(config).await,
-        "apns" => test_apns(config).await,
-        "onesignal" => test_onesignal(config).await,
-        _ => TestResult {
-            success: true,
-            message: format!(
-                "Push provider {provider_id} credentials saved (validation not available)"
-            ),
-        },
-    }
-}
-
-async fn test_fcm(config: &serde_json::Value) -> TestResult {
-    let service_account_key = config
-        .get("service_account_key")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-
-    if service_account_key.is_empty() {
-        return TestResult {
-            success: false,
-            message: "FCM service account key is required".to_string(),
-        };
-    }
-
-    // Try to parse as JSON
-    match serde_json::from_str::<serde_json::Value>(service_account_key) {
-        Ok(json) => {
-            if json.get("type").and_then(|v| v.as_str()) == Some("service_account") {
-                TestResult {
-                    success: true,
-                    message: "FCM service account key format is valid".to_string(),
-                }
-            } else {
-                TestResult {
-                    success: false,
-                    message: "Invalid FCM service account key (missing 'type: service_account')"
-                        .to_string(),
-                }
-            }
-        }
-        Err(_) => TestResult {
-            success: false,
-            message: "Invalid FCM service account key (not valid JSON)".to_string(),
-        },
-    }
-}
-
-async fn test_apns(config: &serde_json::Value) -> TestResult {
-    let key_id = config.get("key_id").and_then(|v| v.as_str()).unwrap_or("");
-    let team_id = config.get("team_id").and_then(|v| v.as_str()).unwrap_or("");
-    let bundle_id = config
-        .get("bundle_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let private_key = config
-        .get("private_key")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-
-    if key_id.is_empty() {
-        return TestResult {
-            success: false,
-            message: "APNS Key ID is required".to_string(),
-        };
-    }
-    if team_id.is_empty() {
-        return TestResult {
-            success: false,
-            message: "APNS Team ID is required".to_string(),
-        };
-    }
-    if bundle_id.is_empty() {
-        return TestResult {
-            success: false,
-            message: "APNS Bundle ID is required".to_string(),
-        };
-    }
-    if private_key.is_empty() {
-        return TestResult {
-            success: false,
-            message: "APNS Private Key is required".to_string(),
-        };
-    }
-
-    // Check if private key looks like a P8 key
-    if !private_key.contains("BEGIN PRIVATE KEY") {
-        return TestResult {
-            success: false,
-            message: "Invalid APNS private key format (should be a P8 key)".to_string(),
-        };
-    }
-
-    TestResult {
-        success: true,
-        message: "APNS credentials format is valid".to_string(),
-    }
-}
-
-async fn test_onesignal(config: &serde_json::Value) -> TestResult {
-    let app_id = config.get("app_id").and_then(|v| v.as_str()).unwrap_or("");
-    let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
-
-    if app_id.is_empty() {
-        return TestResult {
-            success: false,
-            message: "OneSignal App ID is required".to_string(),
-        };
-    }
-    if api_key.is_empty() {
-        return TestResult {
-            success: false,
-            message: "OneSignal API key is required".to_string(),
-        };
-    }
-
-    TestResult {
-        success: true,
-        message: "OneSignal credentials format is valid".to_string(),
     }
 }
 

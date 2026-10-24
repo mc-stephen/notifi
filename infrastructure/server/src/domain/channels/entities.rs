@@ -9,7 +9,8 @@ pub struct ProviderRegistry {
     pub channels: Vec<ChannelDefinition>,
 }
 
-/// A channel type (email, sms, push, chat).
+/// A channel type (email, sms, chat; the device family derives its own
+/// — android, apple, linux, web, window).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelDefinition {
     pub channel_id: String,

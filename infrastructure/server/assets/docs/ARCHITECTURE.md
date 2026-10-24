@@ -267,9 +267,13 @@ Each domain is a crate with its own aggregate, outbox, schema namespace, event c
 
 ### Pattern
 
-Each channel (email, sms, push, chat) has a `providers/` directory with one
+Each base channel (email, sms, chat) has a `providers/` directory with one
 file per provider. Each file defines a config struct. The channel's
 `providers/mod.rs` enum lists all providers — this is the source of truth.
+The device family (android, apple, linux, web, window) additionally derives
+its registry rows from its own `providers::catalog()` (see the device
+subsection below); the vendor-first `push` channel was retired in favor of
+those destination rows — its FCM/APNS/OneSignal providers live there now.
 
 ### Architecture
 

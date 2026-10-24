@@ -61,7 +61,7 @@ pub async fn get_providers() -> Json<ProvidersResponse> {
     Json(registry.into())
 }
 
-/// Build the provider registry from Rust types. The four base channels
+/// Build the provider registry from Rust types. The three base channels
 /// are defined here; the device family's rows derive from
 /// `device_channel::providers::catalog()` — the compiler enforces
 /// structural correctness on both.
@@ -69,12 +69,11 @@ fn build_registry() -> ProviderRegistry {
     let mut channels = vec![
         build_email_channel(),
         build_sms_channel(),
-        build_push_channel(),
         build_chat_channel(),
     ];
     channels.extend(build_device_channels());
     ProviderRegistry {
-        version: "1.1.0".to_string(),
+        version: "1.2.0".to_string(),
         last_updated: chrono::Utc::now().to_rfc3339(),
         channels,
     }
@@ -885,146 +884,6 @@ fn build_sms_channel() -> ChannelDefinition {
                         label: "Sender ID".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
-                    },
-                ],
-                smtp_fallback: None,
-            },
-        ],
-    }
-}
-
-fn build_push_channel() -> ChannelDefinition {
-    ChannelDefinition {
-        channel_id: "push".to_string(),
-        channel_name: "Push".to_string(),
-        providers: vec![
-            ProviderDefinition {
-                provider_id: "fcm".to_string(),
-                name: "Firebase Cloud Messaging".to_string(),
-                scope: ProviderScope::Global,
-                primary_regions: vec![],
-                platforms: vec!["android".to_string(), "web".to_string()],
-                icon_url: Some("https://api.iconify.design/logos/firebase-icon.svg".to_string()),
-                docs_url: Some("https://firebase.google.com/docs/cloud-messaging".to_string()),
-                config_fields: vec![
-                    ConfigField {
-                        key: "service_account_key".to_string(),
-                        label: "Service Account Key (JSON)".to_string(),
-                        field_type: ConfigFieldType::Password,
-                        required: true,
-                    },
-                    ConfigField {
-                        key: "project_id".to_string(),
-                        label: "Project ID".to_string(),
-                        field_type: ConfigFieldType::Text,
-                        required: false,
-                    },
-                ],
-                smtp_fallback: None,
-            },
-            ProviderDefinition {
-                provider_id: "apns".to_string(),
-                name: "Apple Push Notification Service".to_string(),
-                scope: ProviderScope::Global,
-                primary_regions: vec![],
-                platforms: vec!["ios".to_string(), "macos".to_string()],
-                icon_url: Some(
-                    "https://cdn.brandfetch.io/apple.com/w/512/h/512/theme/dark/icon.jpeg"
-                        .to_string(),
-                ),
-                docs_url: Some(
-                    "https://developer.apple.com/documentation/usernotifications".to_string(),
-                ),
-                config_fields: vec![
-                    ConfigField {
-                        key: "key_id".to_string(),
-                        label: "Key ID".to_string(),
-                        field_type: ConfigFieldType::Text,
-                        required: true,
-                    },
-                    ConfigField {
-                        key: "team_id".to_string(),
-                        label: "Team ID".to_string(),
-                        field_type: ConfigFieldType::Text,
-                        required: true,
-                    },
-                    ConfigField {
-                        key: "bundle_id".to_string(),
-                        label: "Bundle ID".to_string(),
-                        field_type: ConfigFieldType::Text,
-                        required: true,
-                    },
-                    ConfigField {
-                        key: "private_key".to_string(),
-                        label: "Private Key".to_string(),
-                        field_type: ConfigFieldType::Password,
-                        required: true,
-                    },
-                    ConfigField {
-                        key: "sandbox".to_string(),
-                        label: "Sandbox Mode".to_string(),
-                        field_type: ConfigFieldType::Boolean,
-                        required: false,
-                    },
-                ],
-                smtp_fallback: None,
-            },
-            ProviderDefinition {
-                provider_id: "onesignal".to_string(),
-                name: "OneSignal".to_string(),
-                scope: ProviderScope::Global,
-                primary_regions: vec![],
-                platforms: vec!["android".to_string(), "ios".to_string(), "web".to_string()],
-                icon_url: Some(
-                    "https://cdn.brandfetch.io/onesignal.com/w/512/h/512/theme/dark/icon.jpeg"
-                        .to_string(),
-                ),
-                docs_url: Some("https://documentation.onesignal.com/".to_string()),
-                config_fields: vec![
-                    ConfigField {
-                        key: "app_id".to_string(),
-                        label: "App ID".to_string(),
-                        field_type: ConfigFieldType::Text,
-                        required: true,
-                    },
-                    ConfigField {
-                        key: "api_key".to_string(),
-                        label: "API Key".to_string(),
-                        field_type: ConfigFieldType::Password,
-                        required: true,
-                    },
-                    ConfigField {
-                        key: "rest_api_key".to_string(),
-                        label: "REST API Key".to_string(),
-                        field_type: ConfigFieldType::Password,
-                        required: false,
-                    },
-                ],
-                smtp_fallback: None,
-            },
-            ProviderDefinition {
-                provider_id: "pushy".to_string(),
-                name: "Pushy".to_string(),
-                scope: ProviderScope::Global,
-                primary_regions: vec![],
-                platforms: vec!["android".to_string(), "ios".to_string()],
-                icon_url: Some(
-                    "https://cdn.brandfetch.io/pushy.me/w/512/h/512/theme/dark/icon.jpeg"
-                        .to_string(),
-                ),
-                docs_url: Some("https://pushy.me/docs".to_string()),
-                config_fields: vec![
-                    ConfigField {
-                        key: "api_key".to_string(),
-                        label: "API Key".to_string(),
-                        field_type: ConfigFieldType::Password,
-                        required: true,
-                    },
-                    ConfigField {
-                        key: "app_id".to_string(),
-                        label: "App ID".to_string(),
-                        field_type: ConfigFieldType::Text,
-                        required: false,
                     },
                 ],
                 smtp_fallback: None,
