@@ -6,6 +6,7 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { PageHeader } from "@/components/custom/page-header";
 import { StatCard } from "@/components/custom/stat-card";
 import { DataTable } from "@/components/custom/data-table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DetailPanel } from "@/components/custom/detail-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -299,43 +300,86 @@ export default function WebhooksPage() {
               </div>
             </div>
           ) : (
-            <DataTable
-              columns={columns}
-              data={active}
-              searchPlaceholder="Search webhooks..."
-              emptyMessage="No webhooks yet. Create one to fire a flow on an inbound call."
-              onRowClick={(row) => setSelectedId(row.id)}
-              rowActions={(webhook) => (
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    title={webhook.active ? "Turn off" : "Turn on"}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void toggleActive(webhook);
-                    }}
-                  >
-                    {webhook.active ? (
-                      <Pause className="size-3" />
-                    ) : (
-                      <Play className="size-3" />
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    title="Delete"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteTarget(webhook);
-                    }}
-                  >
-                    <Trash2 className="size-3" />
-                  </Button>
-                </div>
-              )}
-            />
+            <Tabs defaultValue="active">
+              <TabsList>
+                <TabsTrigger value="active">Active ({active.length})</TabsTrigger>
+                <TabsTrigger value="archived">Archived ({archived.length})</TabsTrigger>
+              </TabsList>
+              <TabsContent value="active" className="mt-3">
+                <DataTable
+                  columns={columns}
+                  data={active}
+                  searchPlaceholder="Search webhooks..."
+                  emptyMessage="No webhooks yet. Create one to fire a flow on an inbound call."
+                  onRowClick={(row) => setSelectedId(row.id)}
+                  rowActions={(webhook) => (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        title={webhook.active ? "Turn off" : "Turn on"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void toggleActive(webhook);
+                        }}
+                      >
+                        {webhook.active ? (
+                          <Pause className="size-3" />
+                        ) : (
+                          <Play className="size-3" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        title="Delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteTarget(webhook);
+                        }}
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </div>
+                  )}
+                />
+              </TabsContent>
+              <TabsContent value="archived" className="mt-3">
+                <DataTable
+                  columns={columns}
+                  data={archived}
+                  searchPlaceholder="Search archived..."
+                  emptyMessage="Nothing archived."
+                  onRowClick={(row) => setSelectedId(row.id)}
+                  rowActions={(webhook) => (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        title="Restore"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void toggleArchived(webhook, true);
+                        }}
+                      >
+                        <Undo2 className="size-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        title="Delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteTarget(webhook);
+                        }}
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </div>
+                  )}
+                />
+              </TabsContent>
+            </Tabs>
           )}
         </div>
 
@@ -353,51 +397,6 @@ export default function WebhooksPage() {
           />
         )}
       </div>
-
-      {!error && !loading && archived.length > 0 && (
-        <section className="space-y-2">
-          <div className="flex items-center gap-2 px-0.5">
-            <Archive className="size-3.5 text-muted-foreground" />
-            <h2 className="text-sm font-medium text-muted-foreground">Archived</h2>
-            <span className="text-xs text-muted-foreground">
-              {archived.length} parked · kept, not firing
-            </span>
-          </div>
-          <DataTable
-            columns={columns}
-            data={archived}
-            searchPlaceholder="Search archived..."
-            emptyMessage="Nothing archived."
-            onRowClick={(row) => setSelectedId(row.id)}
-            rowActions={(webhook) => (
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  title="Restore"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void toggleArchived(webhook, true);
-                  }}
-                >
-                  <Undo2 className="size-3" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  title="Delete"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteTarget(webhook);
-                  }}
-                >
-                  <Trash2 className="size-3" />
-                </Button>
-              </div>
-            )}
-          />
-        </section>
-      )}
 
       {createOpen && (
         <DetailPanel
