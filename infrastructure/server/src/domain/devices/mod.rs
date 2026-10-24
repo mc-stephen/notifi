@@ -14,3 +14,8 @@
 
 pub mod entities;
 pub mod services;
+
+pub use entities::Device;
+pub use entities::DeviceId;
+pub use services::DeviceDestinationCatalog;
+pub use services::DeviceService;

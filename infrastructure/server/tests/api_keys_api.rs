@@ -51,6 +51,7 @@ fn app_with_api_keys() -> (Router, Arc<FakeApiKeysStore>) {
                 project_members: None,
                 audit: Some(audit),
                 recipients: None,
+                devices: None,
                 api_keys: Some(api_keys),
                 templates: None,
                 channel_providers: None,

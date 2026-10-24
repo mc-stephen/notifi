@@ -134,6 +134,7 @@ fn app_with_sends(fail: &[&str]) -> (Router, Fakes) {
             project_members: None,
             audit: Some(audit),
             recipients: None,
+            devices: None,
             api_keys: None,
             templates: None,
             channel_providers: Some(channel_providers.clone()),

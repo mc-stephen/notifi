@@ -33,6 +33,7 @@ pub struct ServiceGraph {
     pub project_imports: Arc<domain::projects::ProjectImportService>,
     pub project_members: Arc<domain::projects::ProjectMembersService>,
     pub recipients: Arc<domain::recipients::RecipientService>,
+    pub devices: Arc<domain::devices::DeviceService>,
     pub templates: Arc<domain::templates::TemplateService>,
     pub api_keys: Arc<domain::api_keys::ApiKeyService>,
     pub channel_providers: Arc<dyn ports::ChannelProviderStore + Send + Sync>,
@@ -138,6 +139,32 @@ pub fn compose(
     let recipients = Arc::new(domain::recipients::RecipientService::new(
         Arc::new(infra::PgRecipientsStore::new(pool.clone())),
         audit.clone(),
+    ));
+
+    // Devices slice: per-device destination records (M5). The destination
+    // catalog is the api assembler's own device tables — the exact truth
+    // the Browse modal renders — so register accepts only vendors the
+    // registry really lists. Delivery adapters come later; they will look
+    // these rows up.
+    let device_catalog = domain::devices::services::DeviceDestinationCatalog::new(
+        crate::api::routes::app::providers::handlers::build_device_channels()
+            .into_iter()
+            .map(|channel| {
+                (
+                    channel.channel_id.clone(),
+                    channel
+                        .providers
+                        .iter()
+                        .map(|provider| provider.provider_id.clone())
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect(),
+    );
+    let devices = Arc::new(domain::devices::DeviceService::new(
+        Arc::new(infra::PgDevicesStore::new(pool.clone())),
+        audit.clone(),
+        device_catalog,
     ));
 
     // Templates slice: per-channel message definitions with attachments.
@@ -305,6 +332,7 @@ pub fn compose(
         project_imports,
         project_members,
         recipients,
+        devices,
         templates,
         api_keys,
         channel_providers,

@@ -55,6 +55,7 @@ fn app_with_billing() -> (Router, Arc<FakeBillingStore>) {
                 project_members: None,
                 audit: Some(audit),
                 recipients: None,
+                devices: None,
                 api_keys: None,
                 templates: None,
                 channel_providers: None,

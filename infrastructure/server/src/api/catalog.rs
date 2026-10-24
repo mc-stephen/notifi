@@ -230,6 +230,35 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         feature: "logs",
         description: "audit-log entries the user may see (their own + project)",
     },
+    // -- devices feature (M5 per-device destination records) -----------------
+    RouteInfo {
+        method: "POST",
+        path: "/app/projects/{id}/devices",
+        surface: Surface::App,
+        feature: "devices",
+        description: "register (or refresh) a device token for a device destination",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/app/projects/{id}/devices",
+        surface: Surface::App,
+        feature: "devices",
+        description: "list a project's devices, newest first, optional recipientId filter",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/app/projects/{id}/devices/{device_id}",
+        surface: Surface::App,
+        feature: "devices",
+        description: "fetch a single device",
+    },
+    RouteInfo {
+        method: "DELETE",
+        path: "/app/projects/{id}/devices/{device_id}",
+        surface: Surface::App,
+        feature: "devices",
+        description: "revoke a device (status flip, row kept)",
+    },
     // -- recipients feature ---------------------------------------------------
     RouteInfo {
         method: "POST",

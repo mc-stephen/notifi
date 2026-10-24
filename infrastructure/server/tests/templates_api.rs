@@ -50,6 +50,7 @@ fn app_with_templates() -> (Router, Arc<FakeTemplatesStore>) {
                 project_members: None,
                 audit: Some(audit),
                 recipients: None,
+                devices: None,
                 api_keys: None,
                 templates: Some(templates),
                 channel_providers: None,
