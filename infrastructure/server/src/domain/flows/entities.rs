@@ -65,6 +65,45 @@ pub fn template_node_id(definition: &serde_json::Value) -> Option<String> {
         })
 }
 
+/// A node's `data.values` presets — name-keyed strings for the
+/// template's declared `{{refs}}` (the dashboard's template-node panel
+/// writes one entry per declared ref). Non-string or blank entries are
+/// skipped: a preset is a default, an absent one falls back to whatever
+/// the fire carries later.
+pub fn node_data_values(data: &serde_json::Value) -> std::collections::HashMap<String, String> {
+    let mut values = std::collections::HashMap::new();
+    let Some(entries) = data.get("values").and_then(|v| v.as_object()) else {
+        return values;
+    };
+    for (key, value) in entries {
+        if let Some(text) = value.as_str() {
+            let text = text.trim();
+            if !text.is_empty() {
+                values.insert(key.clone(), text.to_string());
+            }
+        }
+    }
+    values
+}
+
+/// The first template node's `data.values` — presets for the template
+/// that [`template_node_id`] reads (same node, so the presets always
+/// describe the template actually in use).
+pub fn template_node_values(
+    definition: &serde_json::Value,
+) -> std::collections::HashMap<String, String> {
+    definition
+        .get("nodes")
+        .and_then(|n| n.as_array())
+        .and_then(|nodes| {
+            nodes.iter().find_map(|n| {
+                let is_template = n.get("type").and_then(|t| t.as_str()) == Some("template");
+                is_template.then(|| n.get("data").map(node_data_values).unwrap_or_default())
+            })
+        })
+        .unwrap_or_default()
+}
+
 /// Collects provider steps for one channel, ordered by priority ascending.
 /// Malformed nodes are skipped (the UI validator flags them separately).
 pub fn provider_chain(definition: &serde_json::Value, channel: &str) -> Vec<ProviderStep> {
@@ -182,5 +221,34 @@ mod flow_tests {
         let def = serde_json::json!({ "nodes": [{"id": "t", "type": "trigger", "data": {}}] });
         assert!(template_node_id(&def).is_none());
         assert!(template_node_id(&serde_json::json!({})).is_none());
+    }
+
+    #[test]
+    fn template_node_values_reads_the_first_template_nodes_presets() {
+        let def = serde_json::json!({
+            "nodes": [
+                {"id": "n1", "type": "template", "data": {"templateId": "tpl_1", "values": {
+                    "code": "  4420 ", "region": "eu-1", "gone": "", "bad": 7
+                }}},
+                {"id": "n2", "type": "template", "data": {"values": {"later": "x"}}}
+            ]
+        });
+        let values = template_node_values(&def);
+        assert_eq!(values.len(), 2, "blank and non-string entries are skipped");
+        assert_eq!(values["code"], "4420", "presets are trimmed");
+        assert_eq!(values["region"], "eu-1");
+        assert!(!values.contains_key("gone"));
+        assert!(!values.contains_key("bad"));
+        assert!(
+            !values.contains_key("later"),
+            "only the FIRST template node counts"
+        );
+
+        // No template node, no values key, malformed shapes: empty map.
+        let def = serde_json::json!({"nodes": [{"id": "t", "type": "trigger", "data": {}}]});
+        assert!(template_node_values(&def).is_empty());
+        let def = serde_json::json!({"nodes": [{"type": "template", "data": {}}]});
+        assert!(template_node_values(&def).is_empty());
+        assert!(template_node_values(&serde_json::json!({})).is_empty());
     }
 }

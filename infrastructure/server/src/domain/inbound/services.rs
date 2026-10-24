@@ -4,8 +4,14 @@
 //! Resolution is caller-wins with flow fallback: each of channel,
 //! recipients, title, body, and template comes from the call when
 //! present, else the trigger node's stored config, else the picked
-//! template's render. Anything still missing fails closed. Runs record
-//! send rows, so deliveries show inbound fires like any other send.
+//! template's render. The fallback template's declared `{{refs}}` render
+//! from the trigger's stored `values` presets (the config panel's
+//! dynamic-data inputs; caller-side variable plumbing rides on top the
+//! day inbound carries it — proven by
+//! `template_fallback_presets_render_declared_refs` in
+//! `server/tests/inbound_api.rs`). Anything still missing fails closed.
+//! Runs record send rows, so deliveries show inbound fires like any
+//! other send.
 
 use std::sync::Arc;
 
@@ -110,13 +116,17 @@ impl InboundService {
                 .map_err(Self::map_store_error)?
                 .filter(|t| t.project_id == project_id)
                 .ok_or_else(|| AppError::Validation("template not found in this project".into()))?;
-            // No webhook-event personalization yet; the values map lands
-            // on the trigger's data the day inbound carries it.
+            // Declared refs render from the trigger's stored presets
+            // (the node's `values` map — one entry per declared ref, see
+            // the webhook fallback panel). Caller-side variable plumbing
+            // is still on the road: a payload `data` map will override
+            // these the day inbound carries it (proven by
+            // `template_fallback_presets_render_declared_refs` in
+            // `server/tests/inbound_api.rs`).
             let content =
-                render_template_content(&template.content, &std::collections::HashMap::new())
-                    .ok_or_else(|| {
-                        AppError::Validation("template covers no renderable channels".into())
-                    })?;
+                render_template_content(&template.content, &node.values).ok_or_else(|| {
+                    AppError::Validation("template covers no renderable channels".into())
+                })?;
             rendered = Some((content.channel, content.title, content.body));
         }
 

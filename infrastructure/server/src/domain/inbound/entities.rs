@@ -15,11 +15,15 @@ pub struct InboundPayload {
 }
 
 /// Stored per-node fallback config (mirrors the builder panel fields).
+/// `values` are the trigger's stored presets for its fallback template's
+/// declared `{{refs}}` — the same node-level-preset doctrine the flow's
+/// template node follows ([`crate::domain::flows::template_node_values`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WebhookNodeConfig {
     pub template_id: Option<String>,
     pub channel: Option<String>,
     pub recipients: Vec<String>,
+    pub values: std::collections::HashMap<String, String>,
 }
 
 /// Tokens are 128-bit hex (see `newTriggerToken` on the frontend).
@@ -88,6 +92,7 @@ pub fn webhook_node_data(
                     .collect()
             })
             .unwrap_or_default(),
+        values: crate::domain::flows::node_data_values(data),
     })
 }
 
@@ -129,7 +134,25 @@ mod inbound_entities_tests {
         assert_eq!(config.template_id.as_deref(), Some("tpl_1"));
         assert_eq!(config.channel.as_deref(), Some("email"));
         assert_eq!(config.recipients, vec!["u1".to_string(), "u2".to_string()]);
+        assert!(config.values.is_empty(), "no values key reads as none");
         assert!(webhook_node_data(&definition(), "t2").is_none());
         assert!(webhook_node_data(&definition(), "nope").is_none());
+    }
+
+    #[test]
+    fn reads_node_value_presets() {
+        let mut def = definition();
+        def["nodes"][0]["data"]["values"] = serde_json::json!({
+            "code": "  4420 ", "gone": "", "bad": 7
+        });
+        let config = webhook_node_data(&def, "t1").unwrap();
+        assert_eq!(
+            config.values.len(),
+            1,
+            "blank and non-string entries are skipped"
+        );
+        assert_eq!(config.values["code"], "4420", "presets are trimmed");
+        assert!(!config.values.contains_key("gone"));
+        assert!(!config.values.contains_key("bad"));
     }
 }

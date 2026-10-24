@@ -381,6 +381,53 @@ async fn template_fallback_fills_missing_fields() {
 }
 
 #[tokio::test]
+async fn template_fallback_presets_render_declared_refs() {
+    let (app, fakes) = app_with_inbound();
+    let (token, project) = setup_project(app.clone(), &fakes, "f2@x.com", "P").await;
+    // A fallback template declaring `{{code}}` — the trigger's stored
+    // `values` presets feed it at fire time.
+    let res = post_json(
+        app.clone(),
+        &format!("/app/projects/{project}/templates"),
+        Some(json!({
+            "name": "Coded edition",
+            "channel": "email",
+            "content": {"email": {"subject": "Code {{code}}", "text": "Your code is {{code}} — {{missing}} stays raw."}},
+        })),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let template = body_json(res).await["template"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let mut definition = webhook_flow_definition(TOKEN_A);
+    definition["nodes"][0]["data"]["templateId"] = json!(template);
+    definition["nodes"][0]["data"]["values"] = json!({"code": "4420", "blank": ""});
+    create_flow(app.clone(), &token, &project, definition).await;
+
+    // Caller sends only recipients: the template + presets own content.
+    let res = post_json(
+        app.clone(),
+        &format!("/v1/hooks/{TOKEN_A}"),
+        Some(json!({"recipients": ["user-3"]})),
+        "",
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let n = body_json(res).await["notification"].clone();
+    assert_eq!(n["status"], "completed");
+    assert_eq!(n["title"], "Code 4420");
+
+    // The body rendered off the same presets; undeclared refs stay raw.
+    let rows = fakes.sends.all();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].body, "Your code is 4420 — {{missing}} stays raw.");
+}
+
+#[tokio::test]
 async fn token_rotates_on_flow_update() {
     let (app, fakes) = app_with_inbound();
     let (token, project) = setup_project(app.clone(), &fakes, "e@x.com", "P").await;

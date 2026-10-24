@@ -759,6 +759,81 @@ async fn template_node_executes_rendered_content() {
 }
 
 #[tokio::test]
+async fn template_node_presets_render_on_schedule_runs() {
+    let (app, fakes) = app_with_schedules();
+    let (token, project) = setup_project(app.clone(), &fakes, "o@x.com", "P").await;
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        &format!("/app/projects/{project}/templates"),
+        Some(json!({
+            "name": "Coded digest",
+            "channel": "email",
+            "content": {"email": {"subject": "Code {{code}}", "text": "Digest {{code}} — {{missing}} stays raw."}},
+        })),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let template = body_json(res).await["template"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        "/app/schedules",
+        Some(json!({
+            "projectId": project, "name": "presets",
+            "kind": "recurring", "intervalSecs": 3600,
+            "recipients": ["user-9"],
+        })),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let created = body_json(res).await["schedule"].clone();
+    let id = created["id"].as_str().unwrap().to_string();
+    let flow = created["flowId"].as_str().unwrap().to_string();
+
+    // The flow's template node carries presets for its declared refs.
+    let mut definition = email_flow_with_template_node(&template);
+    definition["nodes"][1]["data"]["values"] = json!({"code": "4420", "blank": ""});
+    put_flow_definition(app.clone(), &token, &project, &flow, "presets", definition).await;
+
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        &format!("/app/schedules/{id}/run-now"),
+        Some(json!({"projectId": project})),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let ran = body_json(res).await["schedule"].clone();
+    assert_eq!(ran["lastStatus"], "completed");
+
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        &format!("/app/sends?project_id={project}"),
+        None,
+        &token,
+    )
+    .await;
+    let sends = body_json(res).await["sends"].clone();
+    assert_eq!(sends.as_array().unwrap().len(), 1);
+    assert_eq!(sends[0]["title"], "Code 4420");
+    assert_eq!(sends[0]["channel"], "email");
+
+    // The body rendered off the node's presets; undeclared refs stay raw.
+    let rows = fakes.sends.all();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].body, "Digest 4420 — {{missing}} stays raw.");
+}
+
+#[tokio::test]
 async fn template_schedule_without_recipients_fails_closed() {
     let (app, fakes) = app_with_schedules();
     let (token, project) = setup_project(app.clone(), &fakes, "k@x.com", "P").await;

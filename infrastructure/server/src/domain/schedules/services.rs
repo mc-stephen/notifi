@@ -15,11 +15,15 @@
 //!
 //! Content doctrine: the message lives in the flow — a `template` node
 //! resolves and renders at every fire (tier one, picked fresh off the
-//! templates store); rows born before the node existed fall back to
-//! their stored template snapshot (tier two), then to the legacy
-//! title/body fields (tier three). New schedules carry neither fallback:
-//! content is optional at create, and bare rows fail closed at execute
-//! (proven by `template_node_executes_rendered_content`,
+//! templates store), its declared `{{refs}}` filled by the node's stored
+//! `data.values` presets (the dashboard's template-node panel writes one
+//! entry per declared ref; per-recipient data rides on top the day
+//! schedules resolve recipients into records); rows born before the node
+//! existed fall back to their stored template snapshot (tier two), then
+//! to the legacy title/body fields (tier three). New schedules carry
+//! neither fallback: content is optional at create, and bare rows fail
+//! closed at execute (proven by `template_node_executes_rendered_content`,
+//! `template_node_presets_render_on_schedule_runs`,
 //! `legacy_template_rows_still_render_snapshot`, and
 //! `bare_schedules_fail_closed_with_a_directive` in `schedules_api.rs`).
 
@@ -28,7 +32,7 @@ use std::sync::Arc;
 
 use crate::domain::auth::entities::UserId;
 use crate::domain::error::AppError;
-use crate::domain::flows::{provider_chain, template_node_id};
+use crate::domain::flows::{provider_chain, template_node_id, template_node_values};
 use crate::domain::schedules::entities::{
     MAX_INTERVAL_SECS, MAX_RECIPIENTS, MIN_INTERVAL_SECS, Schedule, ScheduleInput, ScheduleKind,
     advance_next_run, describe_timing, initial_next_run, next_weekly_run, normalize_days,
@@ -608,8 +612,18 @@ impl ScheduleService {
                         ),
                     );
                 };
-                match render_template_content(&template.content, &std::collections::HashMap::new())
-                {
+                // Declared refs render from the template node's stored
+                // presets (its `data.values` map — one entry per declared
+                // ref, see the template-node panel). Run-level
+                // personalization is still on the road: per-recipient data
+                // rides on top the day schedules resolve recipients into
+                // records (proven by
+                // `template_node_presets_render_on_schedule_runs` in
+                // `server/tests/schedules_api.rs`).
+                match render_template_content(
+                    &template.content,
+                    &template_node_values(&schedule.flow_definition),
+                ) {
                     Some(rendered) => (rendered.channel, rendered.title, rendered.body),
                     None => {
                         return settle(
