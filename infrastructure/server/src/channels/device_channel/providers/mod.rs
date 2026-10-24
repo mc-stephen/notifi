@@ -84,6 +84,10 @@ pub struct VendorEntry {
     /// for self-hosted or standard-not-a-company entries — the
     /// dashboard falls back to a name glyph.
     pub icon_url: Option<&'static str>,
+    /// Where the dashboard's "Docs" link points: the vendor's own
+    /// integration page, or the platform/protocol spec for no-company
+    /// rows. Verified-alive URLs only.
+    pub docs_url: Option<&'static str>,
     pub fields: Vec<VendorField>,
 }
 

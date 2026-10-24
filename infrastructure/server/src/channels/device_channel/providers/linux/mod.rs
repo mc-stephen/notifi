@@ -29,6 +29,7 @@ pub fn vendors() -> Vec<super::VendorEntry> {
         name: "Self-hosted endpoint",
         platforms: &["linux"],
         icon_url: None,
+        docs_url: Some("https://specifications.freedesktop.org/notification-spec/latest/"),
         fields: vec![],
     }]
 }

@@ -69,6 +69,9 @@ pub fn vendors() -> Vec<super::VendorEntry> {
             name: "Webhook (self-hosted)",
             platforms: &["windows"],
             icon_url: None,
+            docs_url: Some(
+                "https://learn.microsoft.com/en-us/windows/apps/develop/notifications/app-notifications/",
+            ),
             fields: vec![],
         },
         super::VendorEntry {
@@ -77,6 +80,9 @@ pub fn vendors() -> Vec<super::VendorEntry> {
             platforms: &["windows"],
             icon_url: Some(
                 "https://cdn.brandfetch.io/microsoft.com/w/512/h/512/theme/dark/icon.jpeg",
+            ),
+            docs_url: Some(
+                "https://learn.microsoft.com/en-us/windows/apps/develop/notifications/push-notifications/wns-overview",
             ),
             fields: vec![
                 super::VendorField {

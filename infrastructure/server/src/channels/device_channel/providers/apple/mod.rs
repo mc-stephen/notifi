@@ -38,6 +38,7 @@ pub fn vendors() -> Vec<super::VendorEntry> {
             name: "Apple Push Notification Service (iOS)",
             platforms: &["ios"],
             icon_url: Some("https://cdn.brandfetch.io/apple.com/w/512/h/512/theme/dark/icon.jpeg"),
+            docs_url: Some("https://developer.apple.com/documentation/usernotifications"),
             fields: apns_fields(),
         },
         super::VendorEntry {
@@ -45,6 +46,7 @@ pub fn vendors() -> Vec<super::VendorEntry> {
             name: "Apple Push Notification Service (macOS)",
             platforms: &["macos"],
             icon_url: Some("https://cdn.brandfetch.io/apple.com/w/512/h/512/theme/dark/icon.jpeg"),
+            docs_url: Some("https://developer.apple.com/documentation/usernotifications"),
             fields: apns_fields(),
         },
         super::VendorEntry {
@@ -54,6 +56,7 @@ pub fn vendors() -> Vec<super::VendorEntry> {
             icon_url: Some(
                 "https://cdn.brandfetch.io/onesignal.com/w/512/h/512/theme/dark/icon.jpeg",
             ),
+            docs_url: Some("https://documentation.onesignal.com/"),
             fields: one_signal_fields(),
         },
     ]

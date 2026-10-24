@@ -99,7 +99,7 @@ fn build_device_channels() -> Vec<ChannelDefinition> {
                     primary_regions: vec![],
                     platforms: v.platforms.iter().map(|p| p.to_string()).collect(),
                     icon_url: v.icon_url.map(str::to_string),
-                    docs_url: None,
+                    docs_url: v.docs_url.map(str::to_string),
                     config_fields: v
                         .fields
                         .into_iter()

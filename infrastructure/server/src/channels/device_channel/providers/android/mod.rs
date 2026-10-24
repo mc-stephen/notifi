@@ -43,6 +43,7 @@ pub fn vendors() -> Vec<super::VendorEntry> {
             name: "Firebase Cloud Messaging",
             platforms: &["android"],
             icon_url: Some("https://api.iconify.design/logos/firebase-icon.svg"),
+            docs_url: Some("https://firebase.google.com/docs/cloud-messaging"),
             fields: vec![super::VendorField {
                 key: "service_account_path",
                 label: "Service account key path (JSON)",
@@ -55,6 +56,7 @@ pub fn vendors() -> Vec<super::VendorEntry> {
             name: "Pushy",
             platforms: &["android"],
             icon_url: Some("https://cdn.brandfetch.io/pushy.me/w/512/h/512/theme/dark/icon.jpeg"),
+            docs_url: Some("https://pushy.me/docs"),
             fields: vec![
                 super::VendorField {
                     key: "api_key",
@@ -77,6 +79,7 @@ pub fn vendors() -> Vec<super::VendorEntry> {
             icon_url: Some(
                 "https://cdn.brandfetch.io/onesignal.com/w/512/h/512/theme/dark/icon.jpeg",
             ),
+            docs_url: Some("https://documentation.onesignal.com/"),
             fields: one_signal_fields(),
         },
     ]
