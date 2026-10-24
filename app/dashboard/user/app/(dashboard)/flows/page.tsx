@@ -285,12 +285,6 @@ export default function FlowsPage() {
           description={error}
           action={{ label: "Try again", onClick: () => void refresh() }}
         />
-      ) : flows.length === 0 && !loading && !importing ? (
-        <EmptyState
-          title="No flows yet"
-          description="Design your first notification flow — priority order, fallbacks, conditions, and AI transforms."
-          action={{ label: creating ? "Creating…" : "New flow", onClick: () => void handleCreate() }}
-        />
       ) : (
         <>
           {projectId && (flows.length > 0 || statsLoading) && (
@@ -311,7 +305,11 @@ export default function FlowsPage() {
             data={flows}
             isLoading={loading || importing}
             searchPlaceholder="Search flows..."
-            emptyMessage="No flows match."
+            emptyMessage={
+              flows.length === 0
+                ? "No flows yet. Create one to start routing notifications."
+                : "No flows match."
+            }
             onRowClick={(row) => router.push(`/flows/${row.id}`)}
             rowActions={(flow) => (
               <Button
