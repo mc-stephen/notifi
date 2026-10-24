@@ -347,6 +347,18 @@ fn build_email_channel() -> ChannelDefinition {
 5. **Compiler forces handling**: If you miss a match arm in the delivery code,
    the compiler will catch it.
 
+#### Device family — derived, not hand-built
+
+The device destinations (android, apple, linux, web, window) skip the
+registry builder: `GET /app/providers` assembles their rows from
+`device_channel::providers::catalog()`. Adding a vendor there is two
+edits — the vendor's file (sender + config) and its destination's
+`Provider` enum + `vendors()` listing — and the golden test
+`catalog_pins_every_family_variant` pins that listing to the enum, so
+the dashboard picks vendors up with no registry edits. Delivery wiring
+is unchanged: the adapter factory remains the gate (adapters land with
+M3). The four base channels above keep the hand-built flow (steps 1–4).
+
 ### API Endpoint
 
 `GET /app/providers` — returns the full provider registry:

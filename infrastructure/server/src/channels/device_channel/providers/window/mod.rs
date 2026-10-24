@@ -60,6 +60,44 @@ impl Provider {
     }
 }
 
+/// The destination's registry listing — kept in sync with `Provider`
+/// by the family's golden test (add a flavor in both places).
+pub fn vendors() -> Vec<super::VendorEntry> {
+    vec![
+        super::VendorEntry {
+            id: "webhook",
+            name: "Webhook (self-hosted)",
+            platforms: &["windows"],
+            fields: vec![],
+        },
+        super::VendorEntry {
+            id: "wns",
+            name: "Windows Notification Service (WNS)",
+            platforms: &["windows"],
+            fields: vec![
+                super::VendorField {
+                    key: "client_id",
+                    label: "Client ID",
+                    ty: super::FieldType::Text,
+                    required: true,
+                },
+                super::VendorField {
+                    key: "client_secret",
+                    label: "Client Secret",
+                    ty: super::FieldType::Password,
+                    required: true,
+                },
+                super::VendorField {
+                    key: "package_sid",
+                    label: "Package SID",
+                    ty: super::FieldType::Text,
+                    required: true,
+                },
+            ],
+        },
+    ]
+}
+
 impl WindowProvider {
     pub fn new(provider: Provider) -> Self {
         Self {

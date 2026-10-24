@@ -3,8 +3,9 @@
 //! chat provider, not its own channel, and the device family
 //! (`device_channel/providers/`) holds android, ios, macos, linux,
 //! window, and web as provider flavors of one destination class. Only
-//! `email_channel` is wired into the API today; the rest are available
-//! for future channel plugins.
+//! `email_channel` delivers today; the rest are available for future
+//! channel plugins — the device family's catalog already feeds the
+//! provider registry (`/app/providers`).
 
 pub mod chat_channel;
 pub mod device_channel;

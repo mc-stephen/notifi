@@ -9,5 +9,12 @@
 //! self-hosted endpoint / WNS channel URI / web-push subscription), so
 //! the family dispatches by variant rather than a uniform message type.
 //! Onboarding docs for vendors live in `docs/`.
+//!
+//! The dashboard's provider registry (`/app/providers`) derives its
+//! device rows from `providers::catalog()` — adding a vendor is its
+//! provider file plus the destination's `Provider` enum and `vendors()`
+//! listing (golden test `catalog_pins_every_family_variant` pins both
+//! lists to each other). Delivery itself stays adapter-wired (see
+//! `infra::delivery_adapters` — device adapters land with M3).
 
 pub mod providers;

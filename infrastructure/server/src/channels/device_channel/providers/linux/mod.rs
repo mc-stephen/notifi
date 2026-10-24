@@ -20,6 +20,18 @@ impl Provider {
     }
 }
 
+/// The destination's registry listing — kept in sync with `Provider`
+/// by the family's golden test. Nothing to configure: the receiver
+/// endpoint is the per-device target, not provider state.
+pub fn vendors() -> Vec<super::VendorEntry> {
+    vec![super::VendorEntry {
+        id: "endpoint",
+        name: "Self-hosted endpoint",
+        platforms: &["linux"],
+        fields: vec![],
+    }]
+}
+
 #[cfg(test)]
 mod linux_dest_tests {
     use super::*;

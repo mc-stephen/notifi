@@ -29,6 +29,91 @@ impl Provider {
     }
 }
 
+/// The destination's registry listing — kept in sync with `Provider`
+/// by the family's golden test (add a vendor in both places).
+pub fn vendors() -> Vec<super::VendorEntry> {
+    vec![
+        super::VendorEntry {
+            id: "apns",
+            name: "Apple Push Notification Service (iOS)",
+            platforms: &["ios"],
+            fields: apns_fields(),
+        },
+        super::VendorEntry {
+            id: "apns_macos",
+            name: "Apple Push Notification Service (macOS)",
+            platforms: &["macos"],
+            fields: apns_fields(),
+        },
+        super::VendorEntry {
+            id: "onesignal",
+            name: "OneSignal",
+            platforms: &["ios", "macos"],
+            fields: one_signal_fields(),
+        },
+    ]
+}
+
+/// Same APNs signing flow per flavor — the bundle differs, the fields
+/// match [`apple::apns::IosConfig`]/[`apple::apns::MacosConfig`].
+fn apns_fields() -> Vec<super::VendorField> {
+    vec![
+        super::VendorField {
+            key: "key_id",
+            label: "Key ID",
+            ty: super::FieldType::Text,
+            required: true,
+        },
+        super::VendorField {
+            key: "team_id",
+            label: "Team ID",
+            ty: super::FieldType::Text,
+            required: true,
+        },
+        super::VendorField {
+            key: "bundle_id",
+            label: "Bundle ID",
+            ty: super::FieldType::Text,
+            required: true,
+        },
+        super::VendorField {
+            key: "p8_key_path",
+            label: "APNs auth key path (.p8)",
+            ty: super::FieldType::Text,
+            required: true,
+        },
+        super::VendorField {
+            key: "sandbox",
+            label: "Sandbox mode",
+            ty: super::FieldType::Boolean,
+            required: false,
+        },
+    ]
+}
+
+fn one_signal_fields() -> Vec<super::VendorField> {
+    vec![
+        super::VendorField {
+            key: "app_id",
+            label: "App ID",
+            ty: super::FieldType::Text,
+            required: true,
+        },
+        super::VendorField {
+            key: "api_key",
+            label: "API key",
+            ty: super::FieldType::Password,
+            required: true,
+        },
+        super::VendorField {
+            key: "rest_api_key",
+            label: "REST API key",
+            ty: super::FieldType::Password,
+            required: false,
+        },
+    ]
+}
+
 #[cfg(test)]
 mod apple_dest_tests {
     use super::*;

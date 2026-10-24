@@ -34,6 +34,72 @@ impl Provider {
     }
 }
 
+/// The destination's registry listing — kept in sync with `Provider`
+/// by the family's golden test (add a vendor in both places).
+pub fn vendors() -> Vec<super::VendorEntry> {
+    vec![
+        super::VendorEntry {
+            id: "fcm",
+            name: "Firebase Cloud Messaging",
+            platforms: &["android"],
+            fields: vec![super::VendorField {
+                key: "service_account_path",
+                label: "Service account key path (JSON)",
+                ty: super::FieldType::Text,
+                required: true,
+            }],
+        },
+        super::VendorEntry {
+            id: "pushy",
+            name: "Pushy",
+            platforms: &["android"],
+            fields: vec![
+                super::VendorField {
+                    key: "api_key",
+                    label: "API key",
+                    ty: super::FieldType::Password,
+                    required: true,
+                },
+                super::VendorField {
+                    key: "app_id",
+                    label: "App ID",
+                    ty: super::FieldType::Text,
+                    required: false,
+                },
+            ],
+        },
+        super::VendorEntry {
+            id: "onesignal",
+            name: "OneSignal",
+            platforms: &["android"],
+            fields: one_signal_fields(),
+        },
+    ]
+}
+
+fn one_signal_fields() -> Vec<super::VendorField> {
+    vec![
+        super::VendorField {
+            key: "app_id",
+            label: "App ID",
+            ty: super::FieldType::Text,
+            required: true,
+        },
+        super::VendorField {
+            key: "api_key",
+            label: "API key",
+            ty: super::FieldType::Password,
+            required: true,
+        },
+        super::VendorField {
+            key: "rest_api_key",
+            label: "REST API key",
+            ty: super::FieldType::Password,
+            required: false,
+        },
+    ]
+}
+
 #[cfg(test)]
 mod android_dest_tests {
     use super::*;

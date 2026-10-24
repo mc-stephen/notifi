@@ -1,6 +1,7 @@
 use axum::Json;
 use serde::Serialize;
 
+use crate::channels::device_channel;
 use crate::domain::channels::{
     ChannelDefinition, ConfigField, ConfigFieldType, ProviderDefinition, ProviderRegistry,
     ProviderScope, SmtpFallbackConfig,
@@ -60,18 +61,71 @@ pub async fn get_providers() -> Json<ProvidersResponse> {
     Json(registry.into())
 }
 
-/// Build the provider registry from Rust types.
-/// Each channel and provider is defined here — the compiler enforces completeness.
+/// Build the provider registry from Rust types. The four base channels
+/// are defined here; the device family's rows derive from
+/// `device_channel::providers::catalog()` — the compiler enforces
+/// structural correctness on both.
 fn build_registry() -> ProviderRegistry {
+    let mut channels = vec![
+        build_email_channel(),
+        build_sms_channel(),
+        build_push_channel(),
+        build_chat_channel(),
+    ];
+    channels.extend(build_device_channels());
     ProviderRegistry {
-        version: "1.0.0".to_string(),
+        version: "1.1.0".to_string(),
         last_updated: chrono::Utc::now().to_rfc3339(),
-        channels: vec![
-            build_email_channel(),
-            build_sms_channel(),
-            build_push_channel(),
-            build_chat_channel(),
-        ],
+        channels,
+    }
+}
+
+/// The device family's registry rows — assembled from the family's own
+/// catalog (`channels/device_channel/providers::catalog()`), so a new
+/// vendor lands on the dashboard with its provider file and enum
+/// registration alone; nothing is typed out here.
+fn build_device_channels() -> Vec<ChannelDefinition> {
+    device_channel::providers::catalog()
+        .into_iter()
+        .map(|dest| ChannelDefinition {
+            channel_id: dest.destination.to_string(),
+            channel_name: dest.title.to_string(),
+            providers: dest
+                .vendors
+                .into_iter()
+                .map(|v| ProviderDefinition {
+                    provider_id: v.id.to_string(),
+                    name: v.name.to_string(),
+                    scope: ProviderScope::Global,
+                    primary_regions: vec![],
+                    platforms: v.platforms.iter().map(|p| p.to_string()).collect(),
+                    icon_url: None,
+                    docs_url: None,
+                    config_fields: v
+                        .fields
+                        .into_iter()
+                        .map(|f| ConfigField {
+                            key: f.key.to_string(),
+                            label: f.label.to_string(),
+                            field_type: device_field_type(f.ty),
+                            required: f.required,
+                        })
+                        .collect(),
+                    smtp_fallback: None,
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+/// Maps the family's connect-form field types onto the registry's
+/// enum. Compiler-exhaustive both ways.
+fn device_field_type(ty: device_channel::providers::FieldType) -> ConfigFieldType {
+    match ty {
+        device_channel::providers::FieldType::Text => ConfigFieldType::Text,
+        device_channel::providers::FieldType::Password => ConfigFieldType::Password,
+        device_channel::providers::FieldType::Email => ConfigFieldType::Email,
+        device_channel::providers::FieldType::Boolean => ConfigFieldType::Boolean,
     }
 }
 

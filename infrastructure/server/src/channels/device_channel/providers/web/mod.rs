@@ -16,6 +16,36 @@ impl Provider {
     }
 }
 
+/// The destination's registry listing — kept in sync with `Provider`
+/// by the family's golden test.
+pub fn vendors() -> Vec<super::VendorEntry> {
+    vec![super::VendorEntry {
+        id: "web_push",
+        name: "Web Push (VAPID)",
+        platforms: &["web"],
+        fields: vec![
+            super::VendorField {
+                key: "vapid_public_key",
+                label: "VAPID public key",
+                ty: super::FieldType::Text,
+                required: true,
+            },
+            super::VendorField {
+                key: "vapid_private_key",
+                label: "VAPID private key",
+                ty: super::FieldType::Password,
+                required: true,
+            },
+            super::VendorField {
+                key: "contact_email",
+                label: "Contact email",
+                ty: super::FieldType::Email,
+                required: true,
+            },
+        ],
+    }]
+}
+
 #[cfg(test)]
 mod web_dest_tests {
     use super::*;
