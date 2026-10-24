@@ -99,7 +99,7 @@ fn build_device_channels() -> Vec<ChannelDefinition> {
                     scope: ProviderScope::Global,
                     primary_regions: vec![],
                     platforms: v.platforms.iter().map(|p| p.to_string()).collect(),
-                    icon_url: None,
+                    icon_url: v.icon_url.map(str::to_string),
                     docs_url: None,
                     config_fields: v
                         .fields

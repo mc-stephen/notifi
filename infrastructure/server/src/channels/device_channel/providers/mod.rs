@@ -80,6 +80,10 @@ pub struct VendorEntry {
     pub name: &'static str,
     /// Device flavors the vendor serves (e.g. `["ios"]`).
     pub platforms: &'static [&'static str],
+    /// Brand icon (same icon/brand CDNs the base channels use). None
+    /// for self-hosted or standard-not-a-company entries — the
+    /// dashboard falls back to a name glyph.
+    pub icon_url: Option<&'static str>,
     pub fields: Vec<VendorField>,
 }
 

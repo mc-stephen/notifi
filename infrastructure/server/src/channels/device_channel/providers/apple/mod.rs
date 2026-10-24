@@ -37,18 +37,23 @@ pub fn vendors() -> Vec<super::VendorEntry> {
             id: "apns",
             name: "Apple Push Notification Service (iOS)",
             platforms: &["ios"],
+            icon_url: Some("https://cdn.brandfetch.io/apple.com/w/512/h/512/theme/dark/icon.jpeg"),
             fields: apns_fields(),
         },
         super::VendorEntry {
             id: "apns_macos",
             name: "Apple Push Notification Service (macOS)",
             platforms: &["macos"],
+            icon_url: Some("https://cdn.brandfetch.io/apple.com/w/512/h/512/theme/dark/icon.jpeg"),
             fields: apns_fields(),
         },
         super::VendorEntry {
             id: "onesignal",
             name: "OneSignal",
             platforms: &["ios", "macos"],
+            icon_url: Some(
+                "https://cdn.brandfetch.io/onesignal.com/w/512/h/512/theme/dark/icon.jpeg",
+            ),
             fields: one_signal_fields(),
         },
     ]

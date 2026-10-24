@@ -28,6 +28,7 @@ pub fn vendors() -> Vec<super::VendorEntry> {
         id: "endpoint",
         name: "Self-hosted endpoint",
         platforms: &["linux"],
+        icon_url: None,
         fields: vec![],
     }]
 }

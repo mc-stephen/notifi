@@ -68,12 +68,16 @@ pub fn vendors() -> Vec<super::VendorEntry> {
             id: "webhook",
             name: "Webhook (self-hosted)",
             platforms: &["windows"],
+            icon_url: None,
             fields: vec![],
         },
         super::VendorEntry {
             id: "wns",
             name: "Windows Notification Service (WNS)",
             platforms: &["windows"],
+            icon_url: Some(
+                "https://cdn.brandfetch.io/microsoft.com/w/512/h/512/theme/dark/icon.jpeg",
+            ),
             fields: vec![
                 super::VendorField {
                     key: "client_id",

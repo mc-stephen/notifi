@@ -23,6 +23,7 @@ pub fn vendors() -> Vec<super::VendorEntry> {
         id: "web_push",
         name: "Web Push (VAPID)",
         platforms: &["web"],
+        icon_url: None,
         fields: vec![
             super::VendorField {
                 key: "vapid_public_key",
