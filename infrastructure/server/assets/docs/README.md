@@ -62,6 +62,25 @@ Routes/handlers: `api/routes/app/projects/`; SQL + fake stores:
 `ports/projects_store.rs` (trait), `infra` (Postgres), `tests/common`
 (fakes). Proven by `server/tests/projects_lifecycle.rs` end to end.
 
+### The life of a device registration (§25)
+
+1. **Register** — `POST /app/projects/{id}/devices`
+   (`domain/devices/services.rs`): destination + vendor validated against
+   the device catalog (built from the same tables the provider registry
+   renders — no duplicated lists), token stored, optional recipient must
+   be a live same-project recipient.
+2. **Refresh** — the same `(project, destination, token)` re-registering
+   updates the row (recipient/label flip back to `active`, `last_seen_at`
+   stamped) — never a duplicate.
+3. **Revoke** — `DELETE /app/projects/{id}/devices/{id}` flips the status;
+   delivery (M5+ adapters) will look up active rows only, and the row
+   stays as history.
+4. **(Parked)** the device-side self-registration handshake waits for the
+   external API + API keys (M6+); until then the owner registers by hand.
+
+Routes/handlers: `api/routes/app/devices/`; SQL: `infra/devices_repository_pg.rs`
+(port `ports/devices_store.rs`). Proven by `server/tests/devices_api.rs`.
+
 ### The life of a backup (§23)
 
 Self-contained block in `worker/src/backup.rs` on its **own clock** (never
@@ -119,7 +138,7 @@ src/
 assets/               # server-owned data & docs
 ├── projects/         # tenant channel configs + templates (NOTIFI_CONFIG_ROOT)
 ├── docs/             # ARCHITECTURE.md, SERVER.md, this README, COMMANDS.md
-└── migrations/       # sqlx migrations (0001_initial_schema.sql)
+└── migrations/       # sqlx migrations (0001…0004: schema, device records)
 worker/               # background binary — RabbitMQ sweep-tick consumer
 ```
 
@@ -164,6 +183,8 @@ cargo run
 | `/app/auth/*` | app | Auth: signup, login, logout, me, OAuth, password flows, verify-email, onboarding-complete |
 | `/app/providers` | app | Provider registry — all channels + providers + config fields (GET) |
 | `/app/projects/{id}/channel-configs` | app | Channel configs CRUD (list, create, update, delete) |
+| `/app/projects/{id}/devices` | app | Device registration: register (upsert-refresh), list, get, revoke |
+| `/app/projects/{id}/recipients` | app | Recipients CRUD (project end-users) |
 | any other path | — | RFC 9457 `application/problem+json` 404 |
 
 Every response carries a `x-request-id` header for log correlation.
@@ -219,7 +240,7 @@ configs API contract.
 Nuke the database and re-apply migrations from scratch:
 
 ```shell
-cargo run -- --reset-db    # drops public schema, re-applies 0001_initial_schema.sql, exits
+cargo run -- --reset-db    # drops public schema, re-applies all migrations, exits
 cargo run                  # normal server start
 ```
 
