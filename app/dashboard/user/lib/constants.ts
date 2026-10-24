@@ -406,7 +406,6 @@ export type RecommendedProvider = {
 export const RECOMMENDED_PROVIDERS: RecommendedProvider[] = [
   { channel_id: "email", provider_id: "sendgrid" },
   { channel_id: "sms", provider_id: "twilio" },
-  { channel_id: "push", provider_id: "fcm" },
   { channel_id: "chat", provider_id: "whatsapp_business" },
 ];
 
@@ -426,11 +425,6 @@ export const PROVIDER_BLURBS: Record<string, string> = {
   "sms:infobip": "Global omnichannel messaging.",
   "sms:vonage": "SMS and voice communications.",
   "sms:bird": "Global messaging platform.",
-  "push:fcm": "Push notifications for Android and web.",
-  "push:apns": "Push notifications for Apple devices.",
-  "push:onesignal": "Multi-channel engagement platform.",
-  "push:pushy": "Reliable push delivery at scale.",
-  "push:braze_airship": "Customer engagement messaging.",
   "chat:slack": "Send alerts to Slack channels.",
   "chat:telegram": "Message users via Telegram bot.",
   "chat:whatsapp_business": "Reach users on WhatsApp.",
