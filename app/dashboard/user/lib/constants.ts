@@ -406,6 +406,7 @@ export type RecommendedProvider = {
 export const RECOMMENDED_PROVIDERS: RecommendedProvider[] = [
   { channel_id: "email", provider_id: "sendgrid" },
   { channel_id: "sms", provider_id: "twilio" },
+  { channel_id: "android", provider_id: "fcm" },
   { channel_id: "chat", provider_id: "whatsapp_business" },
 ];
 
