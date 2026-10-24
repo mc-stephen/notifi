@@ -1,5 +1,7 @@
 import type { Edge } from "@xyflow/react";
-import { HANDLE, type ConditionData, type FlowIssue, type FlowNode, type ProviderData, type TriggerData } from "./flow-types";
+import { getVariables } from "@/lib/template-content";
+import type { Template } from "@/lib/types";
+import { HANDLE, type ConditionData, type FlowIssue, type FlowNode, type ProviderData, type TemplateData, type TriggerData } from "./flow-types";
 
 function isProviderData(d: unknown): d is ProviderData {
   return typeof d === "object" && d !== null && "providerId" in d && "priority" in d;
@@ -26,8 +28,17 @@ function isHttpUrl(url: unknown): boolean {
 /**
  * Pure graph validation for v1 flows. Errors block test runs; warnings
  * are advisory. No I/O, no React — unit-testable in isolation.
+ *
+ * `templates` feeds the template-node dynamic-data rule: a template's
+ * declared refs (its `content.variables`) must carry a preset value on
+ * the node. Caller-dependent — callers that don't have templates yet
+ * pass nothing and only get the structural checks.
  */
-export function validateFlow(nodes: FlowNode[], edges: Edge[]): FlowIssue[] {
+export function validateFlow(
+  nodes: FlowNode[],
+  edges: Edge[],
+  templates: Template[] = [],
+): FlowIssue[] {
   const issues: FlowIssue[] = [];
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const outHandles = new Map<string, Set<string>>();
@@ -118,6 +129,23 @@ export function validateFlow(nodes: FlowNode[], edges: Edge[]): FlowIssue[] {
         const data = n.data as { templateId?: unknown };
         if (typeof data.templateId !== "string" || data.templateId === "") {
           issues.push({ severity: "error", nodeId: n.id, message: "Pick a template for this node." });
+        } else {
+          // Declared-to-use: every ref the template declares needs a
+          // preset value on this node. `{{recipient.*}}` never appears in
+          // declarations (it resolves from the recipient), so none of
+          // these checks touch it.
+          const template = templates.find((t) => t.id === data.templateId);
+          const values = (n.data as Partial<TemplateData>).values;
+          for (const v of template ? getVariables(template.content) : []) {
+            const preset = values?.[v.key];
+            if (typeof preset !== "string" || !preset.trim()) {
+              issues.push({
+                severity: "error",
+                nodeId: n.id,
+                message: `Set a value for {{${v.key}}} on this node.`,
+              });
+            }
+          }
         }
         need(HANDLE.out, "Template output");
         break;

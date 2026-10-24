@@ -32,6 +32,7 @@ import {
   type ServerFlow,
 } from "@/hooks/use-flows";
 import { validateFlow } from "@/components/custom/flows/flow-validate";
+import { useTemplates } from "@/hooks/use-templates";
 
 const columns: ColumnDef<ServerFlow>[] = [
   {
@@ -82,6 +83,7 @@ const columns: ColumnDef<ServerFlow>[] = [
 ];
 
 function FlowStatusBadge({ flow }: { flow: ServerFlow }) {
+  const { templates } = useTemplates();
   const doc = asFlowDoc(flow.definition);
   if (!doc) {
     return (
@@ -90,7 +92,7 @@ function FlowStatusBadge({ flow }: { flow: ServerFlow }) {
       </Badge>
     );
   }
-  const errors = validateFlow(doc.nodes, doc.edges).filter(
+  const errors = validateFlow(doc.nodes, doc.edges, templates).filter(
     (i) => i.severity === "error",
   ).length;
   return errors > 0 ? (
@@ -138,6 +140,7 @@ export default function FlowsPage() {
   const router = useRouter();
   const projectId = useProjectStore((s) => s.currentProject?.id);
   const { flows, loading, error, refresh } = useFlows();
+  const { templates } = useTemplates();
   const [deleteTarget, setDeleteTarget] = useState<ServerFlow | null>(null);
   const [confirmName, setConfirmName] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -186,13 +189,13 @@ export default function FlowsPage() {
       const doc = asFlowDoc(flow.definition);
       if (
         doc &&
-        validateFlow(doc.nodes, doc.edges).every((i) => i.severity !== "error")
+        validateFlow(doc.nodes, doc.edges, templates).every((i) => i.severity !== "error")
       ) {
         valid += 1;
       }
     }
     return { total: flows.length, handling, valid, attention: flows.length - valid };
-  }, [flows]);
+  }, [flows, templates]);
 
   const statsLoading = loading || importing;
 

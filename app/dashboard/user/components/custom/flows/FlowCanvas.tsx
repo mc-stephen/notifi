@@ -22,6 +22,7 @@ import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { WEBHOOK_EVENTS } from "@/lib/constants";
+import { useTemplates } from "@/hooks/use-templates";
 import { FLOW_NODE_TYPES } from "./nodes/flow-nodes";
 import { FlowPalette, DRAG_MIME, TRIGGER_PRESET_MIME, PROVIDER_CHANNEL_MIME, type TriggerPreset } from "./FlowPalette";
 import { NodeConfigPanel } from "./NodeConfigPanel";
@@ -119,6 +120,9 @@ function FlowEditor({
 }) {
   const [nodes, setNodes, onNodesChangeBase] = useNodesState(initialDoc.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialDoc.edges);
+  // Template declarations back the template-node dynamic-data rule in
+  // runValidation (declared refs need node presets).
+  const { templates } = useTemplates();
   // Owner data is undeletable: owner-managed flows lock their trigger
   // everywhere (drag-select + Backspace included), and any schedule-kind
   // trigger is locked too — schedules are only ever born on the
@@ -270,14 +274,14 @@ function FlowEditor({
   );
 
   const runValidation = useCallback(() => {
-    const found = validateFlow(nodes, edges);
+    const found = validateFlow(nodes, edges, templates);
     setIssues(found);
     const errors = found.filter((i) => i.severity === "error");
     if (errors.length > 0) {
       toast.error(`Flow has ${errors.length} problem${errors.length === 1 ? "" : "s"} — see the list.`);
     }
     return found;
-  }, [nodes, edges]);
+  }, [nodes, edges, templates]);
 
   const runTest = useCallback(() => {
     const found = runValidation();

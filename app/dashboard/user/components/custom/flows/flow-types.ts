@@ -77,6 +77,12 @@ export type TemplateData = {
   templateId: string;
   /** Name snapshot for the node + panel labels. */
   templateName?: string;
+  /** Node-level presets for the template's declared refs
+   * (`content.variables`, see template-content.ts). Values ride the node,
+   * not the template, so the same template can take different values in
+   * two nodes. `{{recipient.*}}` refs never appear here — they resolve
+   * from the recipient at delivery. */
+  values?: Record<string, string>;
 };
 
 export type FlowNodeData =

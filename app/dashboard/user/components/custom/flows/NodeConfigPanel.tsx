@@ -20,6 +20,7 @@ import { DetailPanel } from "@/components/custom/detail-panel";
 import { ProviderIcon } from "@/components/custom/providers/provider-icon";
 import { useProviderRegistry } from "@/hooks/use-provider-registry";
 import { useTemplates } from "@/hooks/use-templates";
+import { getVariables } from "@/lib/template-content";
 import {
   AI_MODELS,
   CONDITION_FIELDS,
@@ -494,6 +495,29 @@ function HttpRequestForm({ data, onChange }: { data: HttpRequestData; onChange: 
 function TemplateForm({ data, onChange }: { data: TemplateData; onChange: (d: TemplateData) => void }) {
   const { templates, loading } = useTemplates();
   const picked = templates.find((t) => t.id === data.templateId);
+  const declared = picked ? getVariables(picked.content) : [];
+
+  // Switching templates prunes presets that no longer map to a declared
+  // ref; same-named refs keep their value.
+  const pickTemplate = (v: string) => {
+    const chosen = templates.find((t) => t.id === v);
+    const keep = new Set(chosen ? getVariables(chosen.content).map((x) => x.key) : []);
+    const values = Object.fromEntries(
+      Object.entries(data.values ?? {}).filter(([key]) => keep.has(key)),
+    );
+    onChange({ ...data, templateId: v, templateName: chosen?.name ?? data.templateName, values });
+  };
+
+  const setVar = (key: string, value: string) => {
+    const next = { ...data.values };
+    if (value.trim() === "") {
+      delete next[key];
+    } else {
+      next[key] = value.trim();
+    }
+    onChange({ ...data, values: next });
+  };
+
   return (
     <>
       <Field label="Template">
@@ -501,8 +525,7 @@ function TemplateForm({ data, onChange }: { data: TemplateData; onChange: (d: Te
           value={data.templateId || undefined}
           onValueChange={(v) => {
             if (!v) return;
-            const chosen = templates.find((t) => t.id === v);
-            onChange({ ...data, templateId: v, templateName: chosen?.name ?? data.templateName });
+            pickTemplate(v);
           }}
         >
           <SelectTrigger>
@@ -523,6 +546,27 @@ function TemplateForm({ data, onChange }: { data: TemplateData; onChange: (d: Te
           </SelectContent>
         </Select>
       </Field>
+      {/* Declared {{refs}} need a preset here — the declared-to-use rule
+          makes the editor refuse undeclared ones, and {{recipient.*}}
+          resolves from the recipient on its own. */}
+      {declared.length > 0 && picked && (
+        <Field label="Dynamic data">
+          {declared.map((v) => (
+            <div key={v.key} className="space-y-1">
+              <Input
+                value={data.values?.[v.key] ?? ""}
+                onChange={(e) => setVar(v.key, e.target.value)}
+                placeholder={`Value for {{${v.key}}}`}
+              />
+              {v.description && (
+                <p className="text-xs text-muted-foreground">
+                  {`{{${v.key}}}`} — {v.description}
+                </p>
+              )}
+            </div>
+          ))}
+        </Field>
+      )}
       <p className="text-xs text-muted-foreground">
         The template&apos;s content renders fresh at every fire — rename it on
         the Templates page and the next run picks that up. The send chain
