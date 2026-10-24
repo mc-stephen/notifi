@@ -2,7 +2,11 @@
 //! anytime from project settings, capped per day, and the same lifeline
 //! during the deletion countdown. Builds an in-memory ZIP: one JSON file
 //! per data section plus the project's files at their real storage
-//! paths.
+//! paths. Config/content sections are complete (templates, flows,
+//! webhooks, schedules, members, apiKeys, recipients); only the sends
+//! history caps (`SENDS_CAP`) and the manifest records when it truncates.
+//! The manifest also carries an informational subscription snapshot —
+//! billing state never re-enters through an import.
 //!
 //! Layer: domain — this module owns small port records and turns them into
 //! `serde_json::Value`s by hand (explicit field lists; no new derives on
@@ -22,34 +26,25 @@ use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
 use crate::domain::auth::entities::UserId;
+use crate::domain::billing::BillingService;
 use crate::domain::error::AppError;
 use crate::ports::api_keys_store::ApiKeysStore;
 use crate::ports::config_store::ConfigStore;
 use crate::ports::flow_store::FlowStore;
 use crate::ports::projects_store::{ProjectsStore, TeamMemberRecord};
 use crate::ports::recipients_store::{RecipientRecord, RecipientsStore};
+use crate::ports::schedule_store::{ScheduleRecord, ScheduleStore};
 use crate::ports::send_store::{SendRecord, SendStore};
 use crate::ports::templates_store::{AttachmentRecord, TemplateRecord, TemplatesStore};
 use crate::ports::webhook_store::{WebhookRecord, WebhookStore};
 
-/// Row caps — the ZIP is built in memory, so big sections stop at a
-/// documented ceiling instead of risking a project with a million sends.
-const CAPS: &[(&str, i64)] = &[
-    ("members", 500),
-    ("sends", 500),
-    ("recipients", 5_000),
-    ("templates", 1_000),
-    ("flows", 500),
-    ("webhooks", 500),
-    ("apiKeys", 200),
-];
-
-fn cap(section: &str) -> i64 {
-    CAPS.iter()
-        .find(|(name, _)| *name == section)
-        .map(|(_, cap)| *cap)
-        .expect("cap table lists every section")
-}
+/// The one capped row section: a long-lived project accumulates sends
+/// without bound and the ZIP builds in memory, so the history snapshot
+/// stops at a documented ceiling (full-history export becomes a
+/// streaming job when real size arrives). Every config/content section
+/// is complete — the manifest records one `sends` truncation event,
+/// and everything else round-trips untouched.
+const SENDS_CAP: i64 = 5_000;
 
 pub struct ProjectExportService {
     projects: Arc<dyn ProjectsStore>,
@@ -59,6 +54,13 @@ pub struct ProjectExportService {
     recipients: Arc<dyn RecipientsStore>,
     webhooks: Arc<dyn WebhookStore>,
     flows: Arc<dyn FlowStore>,
+    /// Schedule rows ride the zip (the family that fires flows on
+    /// timing — absent from the export until manifest v2).
+    schedules: Arc<dyn ScheduleStore>,
+    /// The project's billing state, for the manifest's informational
+    /// subscription snapshot. `None` in unit tests; an absent billing
+    /// service yields a `null` manifest block.
+    billing: Option<Arc<BillingService>>,
     /// Project storage: `Some` in the composed app; `None` in unit tests
     /// exercising only the DB rows.
     config_store: Option<Arc<dyn ConfigStore>>,
@@ -88,6 +90,7 @@ impl ProjectExportService {
         recipients: Arc<dyn RecipientsStore>,
         webhooks: Arc<dyn WebhookStore>,
         flows: Arc<dyn FlowStore>,
+        schedules: Arc<dyn ScheduleStore>,
     ) -> Self {
         Self {
             projects,
@@ -97,6 +100,8 @@ impl ProjectExportService {
             recipients,
             webhooks,
             flows,
+            schedules,
+            billing: None,
             config_store: None,
         }
     }
@@ -104,6 +109,13 @@ impl ProjectExportService {
     /// Wires project storage so the zip also carries the project's files.
     pub fn with_config_store(mut self, config_store: Arc<dyn ConfigStore>) -> Self {
         self.config_store = Some(config_store);
+        self
+    }
+
+    /// Wires the billing service for the manifest's subscription
+    /// snapshot (informational only).
+    pub fn with_billing(mut self, billing: Arc<BillingService>) -> Self {
+        self.billing = Some(billing);
         self
     }
 
@@ -135,9 +147,10 @@ impl ProjectExportService {
             .map(Self::member_json)
             .collect::<Vec<_>>();
 
+        // Config/content sections read complete — no caps.
         let templates = self
             .templates
-            .list(actor, project_id, None, cap("templates"), None)
+            .list(actor, project_id, None, i64::MAX, None)
             .await
             .map_err(AppError::from)?
             .into_iter()
@@ -155,7 +168,7 @@ impl ProjectExportService {
 
         let sends = self
             .sends
-            .list_by_project(project_id, cap("sends"))
+            .list_by_project(project_id, SENDS_CAP)
             .await
             .map_err(AppError::from)?
             .into_iter()
@@ -164,11 +177,20 @@ impl ProjectExportService {
 
         let recipients = self
             .recipients
-            .list_by_project(project_id, cap("recipients"))
+            .list_by_project(project_id, i64::MAX)
             .await
             .map_err(AppError::from)?
             .into_iter()
             .map(Self::recipient_json)
+            .collect::<Vec<_>>();
+
+        let schedules = self
+            .schedules
+            .list_by_project(project_id)
+            .await
+            .map_err(AppError::from)?
+            .into_iter()
+            .map(Self::schedule_json)
             .collect::<Vec<_>>();
 
         let webhooks = self
@@ -205,8 +227,20 @@ impl ProjectExportService {
             }
         }
 
+        // Billing snapshot, informational only. Failures degrade to a
+        // null block — an export must not die on billing reads, and a
+        // null teaches the importer nothing was promised.
+        let subscription = match &self.billing {
+            Some(billing) => billing
+                .get_subscription(actor, project_id)
+                .await
+                .ok()
+                .map(|s| Self::subscription_json(s)),
+            _ => None,
+        };
+
         let manifest = json!({
-            "version": 1,
+            "version": 2,
             "generatedAt": chrono::Utc::now().to_rfc3339(),
             "project": {
                 "id": summary.id,
@@ -218,12 +252,16 @@ impl ProjectExportService {
                 "deletedAt": summary.deleted_at.map(|t| t.to_rfc3339()),
                 "purgeAfter": summary.purge_after.map(|t| t.to_rfc3339()),
             },
+            "subscription": subscription.unwrap_or(json!({
+                "note": "billing service absent — no snapshot in this export"
+            })),
             "sections": {
                 "members": Self::section(&members, "members"),
                 "templates": Self::section(&templates, "templates"),
                 "apiKeys": Self::section(&api_keys, "apiKeys"),
                 "sends": Self::section(&sends, "sends"),
                 "recipients": Self::section(&recipients, "recipients"),
+                "schedules": Self::section(&schedules, "schedules"),
                 "webhooks": Self::section(&webhooks, "webhooks"),
                 "flows": Self::section(&flows, "flows"),
                 "projectFiles": {
@@ -247,6 +285,7 @@ impl ProjectExportService {
         entries.push(section_bytes("apiKeys.json", &json!(api_keys))?);
         entries.push(section_bytes("sends.json", &json!(sends))?);
         entries.push(section_bytes("recipients.json", &json!(recipients))?);
+        entries.push(section_bytes("schedules.json", &json!(schedules))?);
         entries.push(section_bytes("webhooks.json", &json!(webhooks))?);
         entries.push(section_bytes("flows.json", &json!(flows))?);
         entries.extend(project_files);
@@ -261,14 +300,16 @@ impl ProjectExportService {
         })
     }
 
-    /// Section metadata for the manifest: count plus the cap note.
+    /// Section metadata for the manifest: count everywhere; the sends
+    /// section additionally records its truncation event when the cap
+    /// was reached.
     fn section(rows: &[Value], name: &str) -> Value {
-        let limit = cap(name);
-        json!({
-            "count": rows.len(),
-            "truncated": rows.len() == limit as usize,
-            "cap": limit,
-        })
+        let mut section = json!({ "count": rows.len() });
+        if name == "sends" {
+            section["truncated"] = json!(rows.len() == SENDS_CAP as usize);
+            section["cap"] = json!(SENDS_CAP);
+        }
+        section
     }
 
     fn assemble_zip(manifest: Value, entries: Vec<(String, Vec<u8>)>) -> Result<Vec<u8>, AppError> {
@@ -394,6 +435,42 @@ impl ProjectExportService {
             "version": f.version,
             "createdAt": f.created_at.to_rfc3339(),
             "updatedAt": f.updated_at.to_rfc3339(),
+        })
+    }
+
+    fn schedule_json(s: ScheduleRecord) -> Value {
+        json!({
+            "id": s.id,
+            "name": s.name,
+            "flowId": s.flow_id,
+            "kind": s.kind,
+            "runAt": s.run_at.map(|t| t.to_rfc3339()),
+            "intervalSecs": s.interval_secs,
+            "days": s.days,
+            "runTime": s.run_time,
+            "timezone": s.timezone,
+            "templateId": s.template_id,
+            "templateName": s.template_name,
+            "channel": s.channel,
+            "title": s.title,
+            "body": s.body,
+            "recipients": s.recipients,
+            "active": s.active,
+            "archivedAt": s.archived_at.map(|t| t.to_rfc3339()),
+            "createdAt": s.created_at.to_rfc3339(),
+        })
+    }
+
+    /// Manifest subscription block: names only, never prices or secrets.
+    /// Informational — an import never applies billing state.
+    fn subscription_json(s: crate::domain::billing::entities::Subscription) -> Value {
+        json!({
+            "plan": s.plan.name,
+            "status": s.status.as_str(),
+            "billingCycle": s.billing_cycle.as_str(),
+            "periodStart": s.period_start.to_rfc3339(),
+            "periodEnd": s.period_end.to_rfc3339(),
+            "cancelAtPeriodEnd": s.cancel_at_period_end,
         })
     }
 }

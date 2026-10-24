@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use common::{
     FakeApiKeysStore, FakeAuditStore, FakeAuthStore, FakeFlowStore, FakeRecipientsStore,
-    FakeSendStore, FakeTemplatesStore, FakeWebhookStore,
+    FakeScheduleStore, FakeSendStore, FakeTemplatesStore, FakeWebhookStore,
 };
 use server::domain::auth::entities::UserId;
 use server::domain::error::AppError;
@@ -63,6 +63,8 @@ async fn export_service(
         Arc::new(FakeWebhookStore::new(Arc::new(FakeFlowStore::new())))
             as Arc<dyn server::ports::webhook_store::WebhookStore>,
         Arc::new(FakeFlowStore::new()) as Arc<dyn server::ports::flow_store::FlowStore>,
+        Arc::new(FakeScheduleStore::new(Arc::new(FakeFlowStore::new())))
+            as Arc<dyn server::ports::schedule_store::ScheduleStore>,
     );
     match config_store {
         Some(cs) => base.with_config_store(
@@ -308,6 +310,7 @@ async fn export_zip_carries_sections_and_project_files() {
         "apiKeys.json",
         "sends.json",
         "recipients.json",
+        "schedules.json",
         "webhooks.json",
         "flows.json",
         project_key.as_str(),
@@ -323,6 +326,17 @@ async fn export_zip_carries_sections_and_project_files() {
     };
     assert_eq!(manifest["project"]["id"], project.id);
     assert_eq!(manifest["project"]["slug"], project.slug);
+    // Manifest v2: schedules ride along and the subscription block is a
+    // present object (informational — absent billing degrades to a note).
+    assert_eq!(manifest["version"], 2);
+    assert!(manifest["subscription"].is_object());
+    let schedules: serde_json::Value = {
+        let mut schedules_file = zip.by_name("schedules.json").unwrap();
+        let mut schedules_bytes = Vec::new();
+        schedules_file.read_to_end(&mut schedules_bytes).unwrap();
+        serde_json::from_slice(&schedules_bytes).unwrap()
+    };
+    assert_eq!(schedules, serde_json::json!([]));
     // The projectFiles section counts the project's whole folder (the creation
     // materialized the default layout, plus the banner staged above).
     let counted = manifest["sections"]["projectFiles"]["count"]

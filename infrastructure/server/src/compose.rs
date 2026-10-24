@@ -217,7 +217,8 @@ pub fn compose(
 
     // Data exports: the project-download service. Stores only — reads are
     // already tombstone-tolerant where needed; rate limiting and the audit
-    // stay with ProjectService::guard_export.
+    // stay with ProjectService::guard_export. Schedules ride the zip and
+    // the billing service feeds the manifest's informational snapshot.
     let project_exports = Arc::new(
         domain::projects::ProjectExportService::new(
             Arc::new(infra::PgAuthStore::new(pool.clone())),
@@ -227,8 +228,10 @@ pub fn compose(
             Arc::new(infra::PgRecipientsStore::new(pool.clone())),
             Arc::new(infra::PgWebhookStore::new(pool.clone())),
             Arc::new(infra::PgFlowStore::new(pool.clone())),
+            Arc::new(infra::PgScheduleStore::new(pool.clone())),
         )
-        .with_config_store(export_config_store),
+        .with_config_store(export_config_store)
+        .with_billing(billing.clone()),
     );
 
     // Campaigns: flow-less message origins. Built after sends (rows deliver
