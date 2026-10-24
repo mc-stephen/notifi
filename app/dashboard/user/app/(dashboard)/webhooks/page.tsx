@@ -42,7 +42,7 @@ import {
 } from "@/hooks/use-webhooks";
 import { getFlow } from "@/hooks/use-flows";
 import { downloadJson, fileSlug } from "@/lib/utils";
-import { EventsEditor } from "@/components/custom/webhooks/events-editor";
+import { EventsPicker } from "@/components/custom/webhooks/events-picker";
 import { WebhookDetailPanel } from "@/components/custom/webhooks/webhook-detail-panel";
 
 export default function WebhooksPage() {
@@ -433,7 +433,7 @@ export default function WebhooksPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium">Events</Label>
-                <EventsEditor events={createEvents} onChange={setCreateEvents} />
+                <EventsPicker events={createEvents} onChange={setCreateEvents} />
               </div>
             </div>
           </div>

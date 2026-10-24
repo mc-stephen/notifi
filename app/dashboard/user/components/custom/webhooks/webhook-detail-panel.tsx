@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { DetailPanel } from "@/components/custom/detail-panel";
-import { EventsEditor } from "./events-editor";
+import { EventsPicker } from "./events-picker";
 import { getFlow, asFlowDoc } from "@/hooks/use-flows";
 import {
   patchWebhook,
@@ -252,7 +252,7 @@ export function WebhookDetailPanel({
             label="Events"
             hint="The trigger rewrites to match these — its token survives, so the inbound URL never changes."
           >
-            <EventsEditor events={events} onChange={setEvents} />
+            <EventsPicker events={events} onChange={setEvents} />
           </Field>
 
           <Button size="sm" className="w-full" onClick={() => void handleSave()} disabled={saving}>
