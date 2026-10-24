@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   Mail,
-  MessageSquare,
   Smartphone,
   Globe,
   Webhook,
   Check,
+  Monitor,
+  Apple,
+  Terminal,
+  Bell,
 } from "lucide-react";
 import { OnboardingNav } from "@/components/custom/onboarding/onboarding-nav";
 import { useOnboardingStore } from "@/store/onboarding-store";
@@ -30,10 +33,38 @@ const CHANNELS = [
     configured: false,
   },
   {
-    id: "push",
-    label: "Push Notifications",
-    description: "iOS, Android, and web push via FCM and APNs",
-    icon: MessageSquare,
+    id: "window",
+    label: "Windows",
+    description: "Desktop toasts via WNS or a self-hosted webhook",
+    icon: Monitor,
+    configured: false,
+  },
+  {
+    id: "android",
+    label: "Android",
+    description: "Push to Android devices via FCM, Pushy, or OneSignal",
+    icon: Smartphone,
+    configured: false,
+  },
+  {
+    id: "apple",
+    label: "Apple",
+    description: "Push to iOS and macOS via APNs or OneSignal",
+    icon: Apple,
+    configured: false,
+  },
+  {
+    id: "linux",
+    label: "Linux",
+    description: "Desktop notifications via a self-hosted endpoint",
+    icon: Terminal,
+    configured: false,
+  },
+  {
+    id: "web",
+    label: "Web Push",
+    description: "Browser push via the VAPID protocol",
+    icon: Bell,
     configured: false,
   },
   {

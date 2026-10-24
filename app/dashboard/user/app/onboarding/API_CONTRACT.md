@@ -30,9 +30,11 @@ No environment concept — new projects start **inactive** (the project-level ki
 
 ### `/onboarding/setup-channels`
 ```json
-{ "selectedChannels": ["email", "sms", "push", "in_app", "webhook"] }
+{ "selectedChannels": ["email", "sms", "in_app", "webhook", "window", "android", "apple", "linux", "web"] }
 ```
-Subset selection; `email` and `in_app` are marked pre-configured.
+Subset selection; `email` and `in_app` are marked pre-configured. The device
+family appears as its five channels (window, android, apple, linux, web) —
+matching the served provider registry; there is no umbrella "push" channel.
 
 ### `/onboarding/invite-team`
 ```json
