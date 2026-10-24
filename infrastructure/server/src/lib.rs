@@ -219,6 +219,7 @@ fn run_inner() -> Result<(), String> {
                 admin_notifications: services.map(|s| s.admin_notifications.clone()),
                 projects: services.map(|s| s.projects.clone()),
                 project_exports: services.map(|s| s.project_exports.clone()),
+                project_imports: services.map(|s| s.project_imports.clone()),
                 project_members: services.map(|s| s.project_members.clone()),
                 audit: services.map(|s| s.audit.clone()),
                 recipients: services.map(|s| s.recipients.clone()),

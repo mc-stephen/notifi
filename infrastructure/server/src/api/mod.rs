@@ -56,6 +56,7 @@ mod tests {
                 admin_notifications: None,
                 projects: None,
                 project_exports: None,
+                project_imports: None,
                 project_members: None,
                 audit: None,
                 recipients: None,

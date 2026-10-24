@@ -29,6 +29,8 @@ pub struct AppState {
 
     /// Project data exports (the project-settings download).
     pub project_exports: Option<Arc<crate::domain::projects::ProjectExportService>>,
+    /// Admin-run project import (the export's twin).
+    pub project_imports: Option<Arc<crate::domain::projects::ProjectImportService>>,
     /// Project team management (2FA gate flag + member invites) — wired
     /// alongside auth/db.
     pub project_members: Option<Arc<crate::domain::projects::ProjectMembersService>>,

@@ -53,6 +53,7 @@ pub enum AuditAction {
     ProjectDeletionCancelled,
     ProjectPurged,
     ProjectExported,
+    ProjectImported,
     SubscriptionChanged,
     SubscriptionCancelled,
     PlanCreated,
@@ -112,6 +113,7 @@ impl AuditAction {
             Self::ProjectDeletionCancelled => "project.deletion_cancelled",
             Self::ProjectPurged => "project.purged",
             Self::ProjectExported => "project.exported",
+            Self::ProjectImported => "project.imported",
         }
     }
 }

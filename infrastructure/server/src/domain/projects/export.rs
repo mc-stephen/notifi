@@ -82,6 +82,7 @@ impl std::fmt::Debug for ExportBundle {
 }
 
 impl ProjectExportService {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         projects: Arc<dyn ProjectsStore>,
         templates: Arc<dyn TemplatesStore>,
@@ -235,7 +236,7 @@ impl ProjectExportService {
                 .get_subscription(actor, project_id)
                 .await
                 .ok()
-                .map(|s| Self::subscription_json(s)),
+                .map(Self::subscription_json),
             _ => None,
         };
 

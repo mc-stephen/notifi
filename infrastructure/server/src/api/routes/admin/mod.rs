@@ -41,6 +41,10 @@ pub fn admin_router(state: &AppState) -> Router<AppState> {
     if let Some(projects_service) = state.admin_projects.clone() {
         admin_routes = admin_routes.layer(axum::Extension(projects_service));
     }
+    // Admin project-import routes need the import service (absent -> 503).
+    if let Some(imports_service) = state.project_imports.clone() {
+        admin_routes = admin_routes.layer(axum::Extension(imports_service));
+    }
     // Admin notification routes need the service (absent -> 503).
     if let Some(notifications_service) = state.admin_notifications.clone() {
         admin_routes = admin_routes.layer(axum::Extension(notifications_service));

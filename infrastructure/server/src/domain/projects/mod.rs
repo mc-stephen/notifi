@@ -6,10 +6,12 @@
 
 pub mod entities;
 pub mod export;
+pub mod import;
 pub mod services;
 
 pub use entities::{Project, ProjectInvite, ProjectMember};
 pub use export::{ExportBundle, ProjectExportService};
+pub use import::ProjectImportService;
 pub use services::{
     EXPORTS_PER_DAY, MEMBER_ROLES, PURGE_GRACE, ProjectMembersService, ProjectService,
 };

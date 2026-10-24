@@ -39,6 +39,7 @@ fn app_with_notifications() -> (Router, Arc<FakeNotificationsStore>) {
                 admin_notifications: None,
                 projects: None,
                 project_exports: None,
+                project_imports: None,
                 project_members: None,
                 audit: Some(audit),
                 recipients: None,

@@ -30,6 +30,7 @@ pub struct ServiceGraph {
     pub admin_notifications: Arc<domain::admin::AdminNotificationsService>,
     pub projects: Arc<domain::projects::ProjectService>,
     pub project_exports: Arc<domain::projects::ProjectExportService>,
+    pub project_imports: Arc<domain::projects::ProjectImportService>,
     pub project_members: Arc<domain::projects::ProjectMembersService>,
     pub recipients: Arc<domain::recipients::RecipientService>,
     pub templates: Arc<domain::templates::TemplateService>,
@@ -104,6 +105,7 @@ pub fn compose(
     // (cache-wrapped on the API side) instance is shared by the export
     // service so every read/write sees one storage view.
     let export_config_store = Arc::clone(&config_store);
+    let import_config_store = Arc::clone(&config_store);
     let projects = Arc::new(
         domain::projects::ProjectService::new(
             Arc::new(infra::PgAuthStore::new(pool.clone())),
@@ -234,6 +236,26 @@ pub fn compose(
         .with_billing(billing.clone()),
     );
 
+    // Admin-run project import: the export's twin. Every restore flows
+    // through the app's own services (validations + folder lifecycle +
+    // token sync ride along — the import never hand-writes rows), and
+    // the shared config store keeps file writes cache-coherent.
+    let project_imports = Arc::new(
+        domain::projects::ProjectImportService::new(
+            projects.clone(),
+            templates.clone(),
+            webhooks.clone(),
+            schedules.clone(),
+            flows.clone(),
+            api_keys.clone(),
+            recipients.clone(),
+            Some(inbound.clone()),
+            Arc::new(infra::PgAuthStore::new(pool.clone())),
+            audit.clone(),
+        )
+        .with_config_store(import_config_store),
+    );
+
     // Campaigns: flow-less message origins. Built after sends (rows deliver
     // through default flows) and recipients/templates.
     let campaigns = Arc::new(domain::campaigns::CampaignService::new(
@@ -280,6 +302,7 @@ pub fn compose(
         admin_notifications,
         projects,
         project_exports,
+        project_imports,
         project_members,
         recipients,
         templates,

@@ -74,6 +74,7 @@ fn app_with_mail() -> (Router, Arc<FakeMailer>) {
                 admin_notifications: None,
                 projects: None,
                 project_exports: None,
+                project_imports: None,
                 project_members: None,
                 audit: Some(audit),
                 recipients: None,

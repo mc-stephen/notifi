@@ -50,6 +50,7 @@ fn app_with_admin_support() -> (Router, Arc<FakeTicketsStore>) {
                 admin_notifications: None,
                 projects: Some(projects),
                 project_exports: None,
+                project_imports: None,
                 project_members: None,
                 audit: Some(audit),
                 recipients: None,
