@@ -44,22 +44,31 @@ macro_rules! cache_key {
 }
 
 /// Redis-backed cache behind the same `NOTIFI_REDIS_URL` the rest of the
-/// platform already uses (`infra::redis::connect`).
+/// platform already uses (`infra::redis::connect`). `new` carries the
+/// config cache's TTL; `without_ttl` flips to forever keys (no expiry —
+/// the system-template warm layer, where a restart is the refresh path).
 pub struct RedisCacheBackend {
     conn: ConnectionManager,
-    ttl: Duration,
+    ttl: Option<Duration>,
 }
 
 impl RedisCacheBackend {
     pub fn new(conn: ConnectionManager) -> Self {
         Self {
             conn,
-            ttl: CONFIG_CACHE_TTL,
+            ttl: Some(CONFIG_CACHE_TTL),
         }
     }
 
     pub fn with_ttl(mut self, ttl: Duration) -> Self {
-        self.ttl = ttl;
+        self.ttl = Some(ttl);
+        self
+    }
+
+    /// Forever keys: `SET` without expiry. Refreshing is explicit —
+    /// a warm pass overwrites, nothing expires behind anyone's back.
+    pub fn without_ttl(mut self) -> Self {
+        self.ttl = None;
         self
     }
 }
@@ -78,13 +87,12 @@ impl CacheBackend for RedisCacheBackend {
 
     async fn set(&self, key: &str, bytes: Vec<u8>) {
         let mut connection = self.conn.clone();
-        let _: Result<(), _> = redis::cmd("SET")
-            .arg(cache_key!(key))
-            .arg(bytes)
-            .arg("EX")
-            .arg(self.ttl.as_secs().max(1))
-            .query_async(&mut connection)
-            .await;
+        let mut cmd = redis::cmd("SET");
+        cmd.arg(cache_key!(key)).arg(bytes);
+        if let Some(ttl) = self.ttl {
+            cmd.arg("EX").arg(ttl.as_secs().max(1));
+        }
+        let _: Result<(), _> = cmd.query_async(&mut connection).await;
     }
 
     async fn invalidate(&self, key: &str) {

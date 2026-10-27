@@ -114,11 +114,34 @@ fn run_inner() -> Result<(), String> {
 
         // System mail (transactional emails): bodies live in the store's
         // `templates/` folder, seeded write-if-missing from the built-ins,
-        // then read once into a process-lifetime cache — renders never
-        // touch the store again until restart or the admin re-warm. A
-        // failed pass logs loud and leaves the lazy fetch to self-heal.
+        // then read into forever-keys in Redis (`cfg:templates/…`, no
+        // expiry) when Redis is up — renders answer from there, never the
+        // store; the boot pass re-reads the folder, so an edit in the
+        // bucket lands on restart (or POST /admin/templates/warm). No
+        // Redis = the same cache in-process. A failed pass logs loud and
+        // leaves the lazy fetch to self-heal.
+        let template_cache: Option<std::sync::Arc<dyn infra::config_cache::CacheBackend + Send + Sync>> =
+            match &redis_conn {
+                Some(client) => match client.clone().get_connection_manager().await {
+                    Ok(conn) => {
+                        tracing::info!("system template cache: redis (forever keys)");
+                        Some(std::sync::Arc::new(
+                            infra::RedisCacheBackend::new(conn).without_ttl(),
+                        ))
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "system template cache unavailable; caching in-process");
+                        None
+                    }
+                },
+                None => {
+                    tracing::info!("system template cache: in-process (redis unset)");
+                    None
+                }
+            };
         let system_templates: Option<std::sync::Arc<dyn ports::SystemTemplates>> = {
-            let reader = infra::StoreSystemTemplates::new(config_store.clone());
+            let reader =
+                infra::StoreSystemTemplates::new(config_store.clone(), template_cache);
             match reader.seed_and_warm().await {
                 Ok(count) => tracing::info!(warmed = count, "system templates warm"),
                 Err(e) => tracing::warn!(error = %e, "system templates unavailable; renders will retry lazily"),

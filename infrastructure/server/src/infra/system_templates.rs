@@ -1,11 +1,16 @@
 //! System email templates: bodies live in the config store
 //! (`templates/{name}.html` — the R2 bucket in deployment), seeded
 //! write-if-missing at boot from the built-ins below (the same
-//! code-owned-defaults doctrine as the project starter layout) and read
-//! once per boot into a process-lifetime cache. After warm-up the store
-//! is never touched at render time — a cold name does one lazy fetch
-//! (a template dropped into the folder later needs no restart), and an
-//! edit in the bucket lands on restart or `POST /admin/templates/warm`.
+//! code-owned-defaults doctrine as the project starter layout).
+//!
+//! The warm layer is Redis forever-keys (`cfg:templates/{name}.html`,
+//! no expiry) when Redis is configured: renders answer from Redis, a
+//! cold name does one store fetch and is SET for good, and a warm pass
+//! (boot, or `POST /admin/templates/warm`) re-reads the folder and
+//! overwrites — that's how an edit in the bucket lands, on restart or
+//! on demand, visible to every instance sharing the Redis. Without
+//! Redis the same cache lives in-process for the lifetime of the
+//! server instead.
 //!
 //! Subjects are code — one template, one purpose (the old
 //! `.subject.txt` files are gone). Plaintext is derived by stripping
@@ -15,6 +20,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use crate::infra::config_cache::CacheBackend;
 use crate::ports::config_store::ConfigStore;
 use crate::ports::mailer::{BoxFut, MailError, RenderedTemplate, SystemTemplates};
 
@@ -388,26 +394,32 @@ fn substitute(template: &str, vars: &HashMap<String, String>) -> String {
     crate::kernel::templating::fill(template, vars)
 }
 
-/// The store-backed reader: the warm map answers every render for the
-/// life of the process; the store only answers cold names (once).
+/// The store-backed reader: Redis forever-keys answer every render when
+/// Redis is configured; the store only answers cold names (once). With
+/// no Redis, the same cache lives in-process instead.
 pub struct StoreSystemTemplates {
     store: Arc<dyn ConfigStore + Send + Sync>,
+    cache: Option<Arc<dyn CacheBackend + Send + Sync>>,
     warm: Mutex<HashMap<String, String>>,
 }
 
 impl StoreSystemTemplates {
-    pub fn new(store: Arc<dyn ConfigStore + Send + Sync>) -> Self {
+    pub fn new(
+        store: Arc<dyn ConfigStore + Send + Sync>,
+        cache: Option<Arc<dyn CacheBackend + Send + Sync>>,
+    ) -> Self {
         Self {
             store,
+            cache,
             warm: Mutex::new(HashMap::new()),
         }
     }
 
     /// Boot pass: upload built-ins the folder is missing (an edited file
-    /// is never clobbered), then read every `*.html` into the process
-    /// cache. Returns the warmed count. A failure logs loud at the call
-    /// site and leaves renders to the lazy path, which self-heals once
-    /// the store is reachable again.
+    /// is never clobbered), then read every `*.html` into the cache.
+    /// Returns the warmed count. A failure logs loud at the call site
+    /// and leaves renders to the lazy path, which self-heals once the
+    /// store is reachable again.
     pub async fn seed_and_warm(&self) -> Result<usize, String> {
         self.seed_built_ins().await?;
         self.warm_from_store().await
@@ -429,9 +441,10 @@ impl StoreSystemTemplates {
         Ok(())
     }
 
-    /// Re-reads the folder into the process cache (boot + the admin
-    /// re-warm endpoint). Read-only against the store: whatever is in
-    /// the bucket now is what renders until the next warm.
+    /// Re-reads the folder into the cache (boot + the admin re-warm
+    /// endpoint): every `*.html` body overwrites its cached copy, so
+    /// whatever is in the bucket now is what renders until the next
+    /// warm. Returns the warmed count.
     pub async fn warm_from_store(&self) -> Result<usize, String> {
         let keys = self.store.list_keys(TEMPLATES_FOLDER).await?;
         let mut warmed = 0;
@@ -445,19 +458,46 @@ impl StoreSystemTemplates {
             let body = self.store.load_raw(&key).await?;
             let body =
                 String::from_utf8(body).map_err(|_| format!("template '{key}' is not utf-8"))?;
-            self.warm.lock().unwrap().insert(name.to_string(), body);
+            self.stash(name, body).await;
             warmed += 1;
         }
         Ok(warmed)
     }
 
-    /// The warm body for `name` — cache first, one lazy store fetch on
-    /// a miss (which then lives in the cache for the process lifetime).
-    async fn load_html(&self, name: &str) -> Result<String, MailError> {
-        if let Some(body) = self.warm.lock().unwrap().get(name) {
-            return Ok(body.clone());
+    /// Caches a body for good: the Redis forever-key when Redis is on,
+    /// the in-process map otherwise.
+    async fn stash(&self, name: &str, body: String) {
+        if let Some(cache) = &self.cache {
+            cache
+                .set(
+                    &format!("{TEMPLATES_FOLDER}/{name}.html"),
+                    body.into_bytes(),
+                )
+                .await;
+        } else {
+            self.warm.lock().unwrap().insert(name.to_string(), body);
         }
+    }
+
+    /// The warm body for `name` — cache first, one lazy store fetch on
+    /// a miss (which is then cached for good).
+    async fn load_html(&self, name: &str) -> Result<String, MailError> {
         let key = format!("{TEMPLATES_FOLDER}/{name}.html");
+        let cached = if let Some(cache) = &self.cache {
+            cache.get(&key).await
+        } else {
+            self.warm
+                .lock()
+                .unwrap()
+                .get(name)
+                .cloned()
+                .map(String::into_bytes)
+        };
+        if let Some(bytes) = cached {
+            return String::from_utf8(bytes)
+                .map_err(|_| MailError::Template(format!("template '{name}' is not utf-8")));
+        }
+
         let body = self
             .store
             .load_raw(&key)
@@ -465,10 +505,7 @@ impl StoreSystemTemplates {
             .map_err(|e| MailError::Template(format!("template '{name}' unavailable: {e}")))?;
         let body = String::from_utf8(body)
             .map_err(|_| MailError::Template(format!("template '{name}' is not utf-8")))?;
-        self.warm
-            .lock()
-            .unwrap()
-            .insert(name.to_string(), body.clone());
+        self.stash(name, body.clone()).await;
         Ok(body)
     }
 }
@@ -533,9 +570,25 @@ mod tests {
     }
 
     fn reader(root: &std::path::Path) -> StoreSystemTemplates {
+        reader_with_cache(root, None)
+    }
+
+    fn reader_with_cache(
+        root: &std::path::Path,
+        cache: Option<Arc<dyn CacheBackend + Send + Sync>>,
+    ) -> StoreSystemTemplates {
         StoreSystemTemplates::new(
-            Arc::new(FileConfigStore::new(root)) as Arc<dyn ConfigStore + Send + Sync>
+            Arc::new(FileConfigStore::new(root)) as Arc<dyn ConfigStore + Send + Sync>,
+            cache,
         )
+    }
+
+    fn redis_like() -> Arc<dyn CacheBackend + Send + Sync> {
+        // The memory backend stands in for Redis in tests; a long TTL
+        // behaves like forever keys for a test's lifetime.
+        Arc::new(crate::infra::config_cache::MemoryCacheBackend::new(
+            std::time::Duration::from_secs(3600),
+        ))
     }
 
     #[tokio::test]
@@ -636,5 +689,52 @@ mod tests {
             .unwrap();
         assert_eq!(rendered.subject, "You've been invited to Acme on Notifi");
         assert!(!rendered.html.contains("{{"));
+    }
+
+    #[tokio::test]
+    async fn renders_answer_from_the_cache_without_touching_the_store() {
+        // Pre-seeded Redis, empty store: the render must come from the
+        // cache alone — the bucket sees nothing at render time.
+        let root = tmp_root("redis-first");
+        let cache = redis_like();
+        cache
+            .set(
+                "templates/verify-email.html",
+                b"<p>FROM-REDIS {{name}}</p>".to_vec(),
+            )
+            .await;
+        let r = reader_with_cache(&root, Some(cache));
+        let rendered = r.render("verify-email", &[("name", "Ada")]).await.unwrap();
+        assert!(rendered.html.contains("FROM-REDIS Ada"));
+    }
+
+    #[tokio::test]
+    async fn a_warm_pass_overwrites_the_cached_copy() {
+        // The "you edited the file in R2" flow: the stale forever-key is
+        // replaced by the warm pass (boot or POST /admin/templates/warm),
+        // and the fresh body is what sticks in the cache.
+        let root = tmp_root("redis-warm");
+        let cache = redis_like();
+        cache
+            .set("templates/verify-email.html", b"<p>STALE</p>".to_vec())
+            .await;
+
+        let r = reader_with_cache(&root, Some(Arc::clone(&cache)));
+        r.store
+            .put_raw(
+                "templates/verify-email.html",
+                b"<p>FRESH {{name}}</p>".to_vec(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r.warm_from_store().await.unwrap(), 1);
+
+        let rendered = r.render("verify-email", &[("name", "Ada")]).await.unwrap();
+        assert!(rendered.html.contains("FRESH Ada"));
+        // The cache now holds the fresh bytes for every other instance.
+        assert_eq!(
+            cache.get("templates/verify-email.html").await.unwrap(),
+            b"<p>FRESH {{name}}</p>".to_vec()
+        );
     }
 }

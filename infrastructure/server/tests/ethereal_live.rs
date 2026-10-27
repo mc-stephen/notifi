@@ -35,7 +35,7 @@ async fn live_ethereal_send() {
     let store: std::sync::Arc<dyn ConfigStore + Send + Sync> = std::sync::Arc::new(
         FileConfigStore::new(std::env::temp_dir().join("notifi-ethereal-templates")),
     );
-    let templates = StoreSystemTemplates::new(store);
+    let templates = StoreSystemTemplates::new(store, None);
     templates.seed_and_warm().await.expect("templates seed");
     for (name, vars) in [
         (

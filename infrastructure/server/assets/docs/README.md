@@ -78,11 +78,13 @@ audit covers every change. Delivery adapters (M5+) walk the array per
 The server's own emails (verify, resets, notices, invites) render from
 `templates/{name}.html` in the config store — the R2 bucket in
 deployment. Boot seeds missing built-ins (never overwrites an edit),
-reads the folder into a process-lifetime cache, and every render after
-that answers from memory; a cold name does one lazy fetch. Subjects are
-code (one template, one purpose — `.subject.txt` is gone), plaintext is
-tag-stripped, `{{vars}}` fill at send time. Edit a body in the bucket →
-restart, or `POST /admin/templates/warm`. Proven by `system_templates::tests`.
+reads the folder into the forever-cache — Redis keys with no expiry,
+or the in-process map when Redis is unset — and every render after
+that answers from the cache; a cold name does one lazy fetch.
+Subjects are code (one template, one purpose — `.subject.txt` is
+gone), plaintext is tag-stripped, `{{vars}}` fill at send time. Edit a
+body in the bucket → restart, or `POST /admin/templates/warm`. Proven
+by `system_templates::tests`.
 
 ### The life of a backup (§23)
 
