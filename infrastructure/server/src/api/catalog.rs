@@ -735,6 +735,13 @@ pub const ADMIN_ROUTES: &[RouteInfo] = &[
     },
     RouteInfo {
         method: "POST",
+        path: "/admin/templates/warm",
+        surface: Surface::Admin,
+        feature: "system-templates",
+        description: "re-read the system templates folder into the process cache (after an R2 edit)",
+    },
+    RouteInfo {
+        method: "POST",
         path: "/admin/login",
         surface: Surface::Admin,
         feature: "admin",

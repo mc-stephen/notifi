@@ -52,15 +52,18 @@ it explicitly per send, so the mapping stays visible.
 
 ## Templates
 
-Single reader: `src/infra/system_templates.rs` (dir defaults to
-`assets/templates/`, override with `NOTIFI_TEMPLATES_DIR`). Email-only:
-per template `<name>`, `<name>.subject.txt` (subject line) plus
-`<name>.html` (the body) with `{{var}}` substitution — no `.txt`
-bodies; the plaintext part is auto-derived by stripping tags, so
-multipart sending keeps working with HTML as the single source.
-Missing files fall back to built-ins so mail still flows in
-development. To move or rename templates, only that module changes.
-Current templates: `verify-email`, `password-reset`, `password-changed`
+Single reader: `src/infra/system_templates.rs` (`StoreSystemTemplates`).
+Bodies live in the config store at `templates/{name}.html` — the R2
+bucket in deployment — seeded write-if-missing at boot from the
+built-ins in that module, then read once into a process-lifetime
+cache: renders never touch the store again (a cold name does one lazy
+fetch, so a template added to the bucket later is live without a
+restart). Subjects are code — one template, one purpose — and the
+`{{var}}` substitution rides the shared kernel engine. Plaintext is
+auto-derived by stripping tags, so multipart sending keeps working
+with HTML as the single source. An edited bucket body lands on restart
+or `POST /admin/templates/warm`. Current templates: `verify-email`,
+`password-reset`, `password-changed`
 (sent after every completed reset — compromise signal when the reset
 wasn't yours), `login-notice`
 (sent on every password/OAuth sign-in), `member-invite` (project team

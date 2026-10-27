@@ -20,6 +20,7 @@ where
         .route("/login", post(handlers::login))
         .route("/logout", post(handlers::logout))
         .route("/me", get(handlers::me))
+        .route("/templates/warm", post(handlers::warm_templates))
         .route("/password/forgot", post(handlers::forgot_password))
         .route("/password/reset", post(handlers::reset_password))
         .route("/password/change", post(handlers::change_password))

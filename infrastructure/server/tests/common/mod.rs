@@ -3799,13 +3799,19 @@ impl FakeTemplates {
 }
 
 impl SystemTemplates for FakeTemplates {
-    fn render(&self, name: &str, _vars: &[(&str, &str)]) -> Result<RenderedTemplate, MailError> {
-        self.renders
-            .read()
-            .unwrap()
-            .get(name)
-            .cloned()
-            .ok_or_else(|| MailError::Template(format!("unknown template: {name}")))
+    fn render<'a>(
+        &'a self,
+        name: &'a str,
+        _vars: &'a [(&'a str, &'a str)],
+    ) -> BoxFut<'a, Result<RenderedTemplate, MailError>> {
+        Box::pin(async move {
+            self.renders
+                .read()
+                .unwrap()
+                .get(name)
+                .cloned()
+                .ok_or_else(|| MailError::Template(format!("unknown template: {name}")))
+        })
     }
 }
 

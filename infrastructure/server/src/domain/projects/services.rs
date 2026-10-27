@@ -561,15 +561,18 @@ impl ProjectMembersService {
                 self.dashboard_url.trim_end_matches('/')
             );
             // Best-effort render so a missing template never blocks invites.
-            if let Ok(rendered) = templates.render(
-                "member-invite",
-                &[
-                    ("name", target.name.as_str()),
-                    ("project", access.project.name.as_str()),
-                    ("role", role.as_str()),
-                    ("link", link.as_str()),
-                ],
-            ) {
+            if let Ok(rendered) = templates
+                .render(
+                    "member-invite",
+                    &[
+                        ("name", target.name.as_str()),
+                        ("project", access.project.name.as_str()),
+                        ("role", role.as_str()),
+                        ("link", link.as_str()),
+                    ],
+                )
+                .await
+            {
                 if let Err(e) = mailer
                     .send(
                         crate::ports::mailer::SystemSender::NoReply,

@@ -73,6 +73,17 @@ remove = the project dev PUTs the fresh blob — the recipients update swaps
 audit covers every change. Delivery adapters (M5+) walk the array per
 `vendor`. Proven by `device_blob_tests` in `domain/recipients/services.rs`.
 
+### The life of a system email (§18)
+
+The server's own emails (verify, resets, notices, invites) render from
+`templates/{name}.html` in the config store — the R2 bucket in
+deployment. Boot seeds missing built-ins (never overwrites an edit),
+reads the folder into a process-lifetime cache, and every render after
+that answers from memory; a cold name does one lazy fetch. Subjects are
+code (one template, one purpose — `.subject.txt` is gone), plaintext is
+tag-stripped, `{{vars}}` fill at send time. Edit a body in the bucket →
+restart, or `POST /admin/templates/warm`. Proven by `system_templates::tests`.
+
 ### The life of a backup (§23)
 
 Self-contained block in `worker/src/backup.rs` on its **own clock** (never
@@ -130,7 +141,7 @@ src/
 assets/               # server-owned data & docs
 ├── projects/         # tenant channel configs + templates (NOTIFI_CONFIG_ROOT)
 ├── docs/             # ARCHITECTURE.md, SERVER.md, this README, COMMANDS.md
-└── migrations/       # sqlx migrations (0001…0004: schema, device records)
+└── migrations/       # sqlx migration (0001: the complete schema — dev-stage squash)
 worker/               # background binary — RabbitMQ sweep-tick consumer
 ```
 

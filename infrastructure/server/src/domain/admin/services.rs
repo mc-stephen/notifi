@@ -66,6 +66,16 @@ impl AdminService {
         Ok(self.store.admin_exists().await?)
     }
 
+    /// Re-reads the system templates folder into the process cache — the
+    /// `POST /admin/templates/warm` body, for after an edit in the R2
+    /// bucket. 0 warmed = the folder is empty.
+    pub async fn warm_templates(&self) -> Result<usize, AppError> {
+        match self.templates.as_ref() {
+            Some(templates) => templates.warm().await.map_err(AppError::Storage),
+            None => Ok(0),
+        }
+    }
+
     /// Creates the first admin (bootstrap). Rejects if an admin already exists.
     pub async fn create_admin(
         &self,
@@ -319,7 +329,10 @@ impl AdminService {
                 "{}/password/reset?token={raw}",
                 self.admin_url.trim_end_matches('/')
             );
-            match templates.render("password-reset", &[("name", &admin.name), ("link", &link)]) {
+            match templates
+                .render("password-reset", &[("name", &admin.name), ("link", &link)])
+                .await
+            {
                 Ok(rendered) => {
                     if let Err(e) = mailer
                         .send(

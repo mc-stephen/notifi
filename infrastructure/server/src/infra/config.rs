@@ -143,9 +143,6 @@ pub struct MailConfig {
     /// Admin console origin for admin reset links.
     #[serde(default = "default_admin_url")]
     pub admin_url: String,
-    /// System template directory override (see infra::system_templates).
-    #[serde(default)]
-    pub templates_dir: Option<String>,
 }
 
 fn default_admin_url() -> String {
@@ -390,9 +387,6 @@ impl AppConfig {
         if let Ok(v) = std::env::var("NOTIFI_SMTP_TLS") {
             let lower = v.to_lowercase();
             config.mail.smtp_tls = !matches!(lower.as_str(), "0" | "false" | "no");
-        }
-        if let Ok(v) = std::env::var("NOTIFI_TEMPLATES_DIR") {
-            config.mail.templates_dir = Some(v);
         }
 
         Ok(config)

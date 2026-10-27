@@ -10,7 +10,8 @@
 //! ```
 
 use server::infra::config::MailConfig;
-use server::infra::{FileSystemTemplates, LiveSmtpMailer};
+use server::infra::{FileConfigStore, LiveSmtpMailer, StoreSystemTemplates};
+use server::ports::config_store::ConfigStore;
 use server::ports::mailer::{SmtpMailer, SystemSender, SystemTemplates};
 
 #[tokio::test]
@@ -25,12 +26,17 @@ async fn live_ethereal_send() {
         smtp_password: std::env::var("NOTIFI_SMTP_PASSWORD").ok(),
         mail_domain: std::env::var("NOTIFI_MAIL_DOMAIN").unwrap_or_else(|_| "notifi.dev".into()),
         smtp_tls: true,
-        templates_dir: None,
         ..Default::default()
     };
     assert!(config.enabled(), "NOTIFI_SMTP_HOST must be set");
 
-    let templates = FileSystemTemplates::new("assets/templates");
+    // The same store-backed reader the server runs: a throwaway file
+    // root, seeded from the built-ins so the renders exercise real bodies.
+    let store: std::sync::Arc<dyn ConfigStore + Send + Sync> = std::sync::Arc::new(
+        FileConfigStore::new(std::env::temp_dir().join("notifi-ethereal-templates")),
+    );
+    let templates = StoreSystemTemplates::new(store);
+    templates.seed_and_warm().await.expect("templates seed");
     for (name, vars) in [
         (
             "verify-email",
@@ -71,7 +77,7 @@ async fn live_ethereal_send() {
             ],
         ),
     ] {
-        let rendered = templates.render(name, &vars).unwrap();
+        let rendered = templates.render(name, &vars).await.unwrap();
         assert!(
             !rendered.html.contains("{{"),
             "{name} has unsubstituted variables"

@@ -103,7 +103,7 @@ impl AuthService {
         else {
             return;
         };
-        let rendered = match templates.render(template, vars) {
+        let rendered = match templates.render(template, vars).await {
             Ok(rendered) => rendered,
             Err(e) => {
                 tracing::warn!(template, error = %e, "system template render failed");

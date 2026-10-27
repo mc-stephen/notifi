@@ -366,6 +366,19 @@ pub async fn me(CurrentAdmin(admin): CurrentAdmin) -> Result<Response, Problem> 
     .into_response())
 }
 
+/// `POST /admin/templates/warm` — re-reads the system template folder
+/// (the store's `templates/` prefix — the R2 bucket in deployment) into
+/// the process cache. The same thing a restart does; use it after
+/// editing a body in the bucket.
+pub async fn warm_templates(
+    CurrentAdmin(_admin): CurrentAdmin,
+    service: MaybeAdminService,
+) -> Result<Response, Problem> {
+    let service = require_admin_service(service)?;
+    let warmed = service.warm_templates().await.map_err(Problem::from)?;
+    Ok(Json(json!({ "warmed": warmed })).into_response())
+}
+
 /// `POST /admin/password/forgot` — always 200; never reveals whether the
 /// account exists. The reset token is only exposed in local dev mode.
 pub async fn forgot_password(

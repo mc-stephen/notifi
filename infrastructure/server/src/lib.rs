@@ -68,11 +68,6 @@ fn run_inner() -> Result<(), String> {
         let db = infra::db::connect(&config).await;
         let redis_conn = infra::redis::connect(&config);
 
-        // System mail (transactional emails). Built only when SMTP is
-        // configured; flows keep their dev behavior otherwise.
-        let system_templates: Option<std::sync::Arc<dyn ports::SystemTemplates>> = Some(
-            std::sync::Arc::new(infra::FileSystemTemplates::from_config(&config.mail)),
-        );
         let mailer: Option<std::sync::Arc<dyn ports::SmtpMailer>> =
             config.mail.enabled().then(|| {
                 let live = infra::LiveSmtpMailer::from_config(&config.mail)
@@ -116,6 +111,21 @@ fn run_inner() -> Result<(), String> {
             infra::config_store_factory::build_ensured(&config)
                 .await
                 .expect("config store builds");
+
+        // System mail (transactional emails): bodies live in the store's
+        // `templates/` folder, seeded write-if-missing from the built-ins,
+        // then read once into a process-lifetime cache — renders never
+        // touch the store again until restart or the admin re-warm. A
+        // failed pass logs loud and leaves the lazy fetch to self-heal.
+        let system_templates: Option<std::sync::Arc<dyn ports::SystemTemplates>> = {
+            let reader = infra::StoreSystemTemplates::new(config_store.clone());
+            match reader.seed_and_warm().await {
+                Ok(count) => tracing::info!(warmed = count, "system templates warm"),
+                Err(e) => tracing::warn!(error = %e, "system templates unavailable; renders will retry lazily"),
+            }
+            Some(std::sync::Arc::new(reader))
+        };
+
         let config_store: std::sync::Arc<dyn ports::ConfigStore + Send + Sync> =
             match &redis_conn {
                 Some(client) => match client.clone().get_connection_manager().await {

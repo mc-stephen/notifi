@@ -92,8 +92,22 @@ fn is_bare_email(value: &str) -> bool {
 }
 
 /// Renders system email templates by name with `{{var}}` substitution.
+/// Async since the store-backed reader: a cold name does one store read;
+/// warmed names answer from the process cache.
 pub trait SystemTemplates: Send + Sync {
-    fn render(&self, name: &str, vars: &[(&str, &str)]) -> Result<RenderedTemplate, MailError>;
+    fn render<'a>(
+        &'a self,
+        name: &'a str,
+        vars: &'a [(&'a str, &'a str)],
+    ) -> BoxFut<'a, Result<RenderedTemplate, MailError>>;
+
+    /// Re-reads the template folder into the reader's process cache —
+    /// the same pass boot runs, exposed for `POST /admin/templates/warm`
+    /// (an edit in the bucket lands without a restart). Default no-op so
+    /// fakes stay zero-config.
+    fn warm(&self) -> BoxFut<'_, Result<usize, String>> {
+        Box::pin(async move { Ok(0) })
+    }
 }
 
 /// Sends one system email. Returns the provider message id on success.

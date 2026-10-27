@@ -1,50 +1,385 @@
-//! System email templates: the single reader for `assets/templates/`.
+//! System email templates: bodies live in the config store
+//! (`templates/{name}.html` — the R2 bucket in deployment), seeded
+//! write-if-missing at boot from the built-ins below (the same
+//! code-owned-defaults doctrine as the project starter layout) and read
+//! once per boot into a process-lifetime cache. After warm-up the store
+//! is never touched at render time — a cold name does one lazy fetch
+//! (a template dropped into the folder later needs no restart), and an
+//! edit in the bucket lands on restart or `POST /admin/templates/warm`.
 //!
-//! Layout per template `<name>` (all files optional except as noted):
-//! * `<name>.subject.txt` — one-line subject (required).
-//! * `<name>.html` — HTML body (required).
-//! * `<name>.txt` — plaintext fallback (optional; derived by stripping
-//!   tags from the HTML when absent — good enough for system mail).
-//!
-//! Variables use `{{name}}` placeholders, substituted verbatim. When a
-//! template directory or file is missing, built-in fallbacks for the
-//! known system templates keep mail flowing in development.
-//!
-//! The directory resolves from `MailConfig.templates_dir`, defaulting to
-//! [`DEFAULT_TEMPLATES_DIR`]. To move templates in the future, change the
-//! default here (or set `NOTIFI_TEMPLATES_DIR`) — nothing else reads the
-//! filesystem for mail.
+//! Subjects are code — one template, one purpose (the old
+//! `.subject.txt` files are gone). Plaintext is derived by stripping
+//! tags from the HTML. `{{name}}` variables ride the shared kernel
+//! engine, substituted verbatim.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
-use crate::ports::mailer::{MailError, RenderedTemplate, SystemTemplates};
+use crate::ports::config_store::ConfigStore;
+use crate::ports::mailer::{BoxFut, MailError, RenderedTemplate, SystemTemplates};
 
-/// Default system template directory (dev CWD is `infrastructure/`).
-pub const DEFAULT_TEMPLATES_DIR: &str = "assets/templates";
+/// Store folder holding the system template bodies (top level, next to
+/// `projects/` and `backup/`).
+const TEMPLATES_FOLDER: &str = "templates";
 
-pub struct FileSystemTemplates {
-    dir: PathBuf,
+/// Byte-for-byte transplant of the original `assets/templates/verify-email.html`.
+const VERIFY_EMAIL_HTML: &str = r##"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Verify your Notifi account</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F5F5F5;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    Confirm your email address to start sending notifications with Notifi.
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F5F5F5;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E4E4E7;">
+          <tr>
+            <td style="padding:32px 40px 0;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:20px;font-weight:700;letter-spacing:-0.02em;color:#5B3CD9;">Notifi</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 40px 0;">
+              <h1 style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;letter-spacing:-0.01em;color:#0A0A0A;">Verify your email address</h1>
+              <p style="margin:12px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#52525B;">Hi {{name}},</p>
+              <p style="margin:12px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#52525B;">Thanks for signing up for Notifi. Confirm your email address below to activate your account and start sending notifications.</p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:28px 40px 8px;">
+              <a href="{{link}}" style="display:inline-block;padding:13px 32px;background-color:#5B3CD9;color:#FAFAFA;border-radius:8px;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;">Verify email address</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 40px 0;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#71717A;">Button not working? Paste this link into your browser:</p>
+              <p style="margin:8px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;word-break:break-all;"><a href="{{link}}" style="color:#5B3CD9;">{{link}}</a></p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 40px 32px;border-top:1px solid #E4E4E7;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#A1A1AA;">If you did not create a Notifi account, you can safely ignore this email. This is an automated message, please do not reply.</p>
+            </td>
+          </tr>
+        </table>
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;">
+          <tr>
+            <td align="center" style="padding:20px 16px 0;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#A1A1AA;">Notifi &mdash; notifications, delivered.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"##;
+
+/// Byte-for-byte transplant of the original `assets/templates/password-reset.html`.
+const PASSWORD_RESET_HTML: &str = r##"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Reset your Notifi password</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F5F5F5;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    Reset your Notifi password. This link expires in one hour.
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F5F5F5;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E4E4E7;">
+          <tr>
+            <td style="padding:32px 40px 0;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:20px;font-weight:700;letter-spacing:-0.02em;color:#5B3CD9;">Notifi</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 40px 0;">
+              <h1 style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;letter-spacing:-0.01em;color:#0A0A0A;">Reset your password</h1>
+              <p style="margin:12px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#52525B;">Hi {{name}},</p>
+              <p style="margin:12px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#52525B;">We received a request to reset the password on your Notifi account. Choose a new password below. <strong>This link expires in one hour.</strong></p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:28px 40px 8px;">
+              <a href="{{link}}" style="display:inline-block;padding:13px 32px;background-color:#5B3CD9;color:#FAFAFA;border-radius:8px;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;">Reset password</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 40px 0;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#71717A;">Button not working? Paste this link into your browser:</p>
+              <p style="margin:8px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;word-break:break-all;"><a href="{{link}}" style="color:#5B3CD9;">{{link}}</a></p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 40px 32px;border-top:1px solid #E4E4E7;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#A1A1AA;">If you did not request a password reset, you can safely ignore this email — your password will stay the same. This is an automated message, please do not reply.</p>
+            </td>
+          </tr>
+        </table>
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;">
+          <tr>
+            <td align="center" style="padding:20px 16px 0;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#A1A1AA;">Notifi &mdash; notifications, delivered.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"##;
+
+/// Byte-for-byte transplant of the original `assets/templates/password-changed.html`.
+const PASSWORD_CHANGED_HTML: &str = r##"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Your Notifi password was changed</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F5F5F5;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    The password on your Notifi account was just changed.
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F5F5F5;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E4E4E7;">
+          <tr>
+            <td style="padding:32px 40px 0;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:20px;font-weight:700;letter-spacing:-0.02em;color:#5B3CD9;">Notifi</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 40px 0;">
+              <h1 style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;letter-spacing:-0.01em;color:#0A0A0A;">Password changed</h1>
+              <p style="margin:12px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#52525B;">Hi {{name}},</p>
+              <p style="margin:12px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#52525B;">The password on your Notifi account was just changed. All other sessions were signed out as a precaution.</p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:28px 40px 8px;">
+              <a href="{{link}}" style="display:inline-block;padding:13px 32px;background-color:#5B3CD9;color:#FAFAFA;border-radius:8px;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;">Sign in</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 40px 32px;border-top:1px solid #E4E4E7;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#A1A1AA;">If this was you, no action is needed. If you did not change your password, your account may be compromised — reset your password immediately and contact support@notifi.dev. This is an automated message, please do not reply.</p>
+            </td>
+          </tr>
+        </table>
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;">
+          <tr>
+            <td align="center" style="padding:20px 16px 0;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#A1A1AA;">Notifi &mdash; notifications, delivered.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"##;
+
+/// Byte-for-byte transplant of the original `assets/templates/login-notice.html`.
+const LOGIN_NOTICE_HTML: &str = r##"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>New sign-in to your Notifi account</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F5F5F5;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    A new sign-in to your Notifi account was just detected.
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F5F5F5;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E4E4E7;">
+          <tr>
+            <td style="padding:32px 40px 0;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:20px;font-weight:700;letter-spacing:-0.02em;color:#5B3CD9;">Notifi</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 40px 0;">
+              <h1 style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;letter-spacing:-0.01em;color:#0A0A0A;">New sign-in detected</h1>
+              <p style="margin:12px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#52525B;">Hi {{name}},</p>
+              <p style="margin:12px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#52525B;">Your Notifi account was just signed in to {{when}}.</p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:28px 40px 8px;">
+              <a href="{{link}}" style="display:inline-block;padding:13px 32px;background-color:#5B3CD9;color:#FAFAFA;border-radius:8px;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;">Review my account</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 40px 32px;border-top:1px solid #E4E4E7;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#A1A1AA;">If this was you, no action is needed. If you do not recognize this sign-in, reset your password immediately. This is an automated message, please do not reply.</p>
+            </td>
+          </tr>
+        </table>
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;">
+          <tr>
+            <td align="center" style="padding:20px 16px 0;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#A1A1AA;">Notifi &mdash; notifications, delivered.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"##;
+
+/// Byte-for-byte transplant of the original `assets/templates/member-invite.html`.
+const MEMBER_INVITE_HTML: &str = r##"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>You've been invited to {{project}} on Notifi</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F5F5F5;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    You've been invited to join {{project}} on Notifi as {{role}}. Accept within 7 days.
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F5F5F5;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E4E4E7;">
+          <tr>
+            <td style="padding:32px 40px 0;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:20px;font-weight:700;letter-spacing:-0.02em;color:#5B3CD9;">Notifi</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 40px 0;">
+              <h1 style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;letter-spacing:-0.01em;color:#0A0A0A;">You've been invited to {{project}}</h1>
+              <p style="margin:12px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#52525B;">Hi {{name}},</p>
+              <p style="margin:12px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#52525B;">You've been invited to join the <strong>{{project}}</strong> project on Notifi as <strong>{{role}}</strong>. Accept within 7 days to join the team — you'll be asked to sign in first if you aren't already.</p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:28px 40px 8px;">
+              <a href="{{link}}" style="display:inline-block;padding:13px 32px;background-color:#5B3CD9;color:#FAFAFA;border-radius:8px;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;">Review invitation</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 40px 0;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#71717A;">Button not working? Paste this link into your browser:</p>
+              <p style="margin:8px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;word-break:break-all;"><a href="{{link}}" style="color:#5B3CD9;">{{link}}</a></p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 40px 32px;border-top:1px solid #E4E4E7;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#A1A1AA;">If you were not expecting this invitation, you can safely ignore this email. This is an automated message, please do not reply.</p>
+            </td>
+          </tr>
+        </table>
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;">
+          <tr>
+            <td align="center" style="padding:20px 16px 0;">
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#A1A1AA;">Notifi &mdash; notifications, delivered.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"##;
+
+/// A built-in system template: the code-owned default body. The store's
+/// copy — seeded from here when missing — always wins at render time;
+/// built-ins only fill absences, never overwrite edits.
+struct BuiltIn {
+    name: &'static str,
+    subject: &'static str,
+    html: &'static str,
 }
 
-impl FileSystemTemplates {
-    pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+impl BuiltIn {
+    fn get(name: &str) -> Option<&'static Self> {
+        BUILT_INS.iter().find(|b| b.name == name)
     }
 
-    pub fn from_config(config: &crate::infra::config::MailConfig) -> Self {
-        Self::new(
-            config
-                .templates_dir
-                .clone()
-                .unwrap_or_else(|| DEFAULT_TEMPLATES_DIR.to_string()),
-        )
+    fn key(&self) -> String {
+        format!("{TEMPLATES_FOLDER}/{}.html", self.name)
     }
+}
 
-    fn read(&self, name: &str, ext: &str) -> Option<String> {
-        let path: PathBuf = [format!("{name}.{ext}")].iter().collect();
-        std::fs::read_to_string(self.dir.join(path)).ok()
+const BUILT_INS: &[BuiltIn] = &[
+    BuiltIn {
+        name: "verify-email",
+        subject: "Verify your Notifi account",
+        html: VERIFY_EMAIL_HTML,
+    },
+    BuiltIn {
+        name: "password-reset",
+        subject: "Reset your Notifi password",
+        html: PASSWORD_RESET_HTML,
+    },
+    BuiltIn {
+        name: "password-changed",
+        subject: "Your Notifi password was changed",
+        html: PASSWORD_CHANGED_HTML,
+    },
+    BuiltIn {
+        name: "login-notice",
+        subject: "New sign-in to your Notifi account",
+        html: LOGIN_NOTICE_HTML,
+    },
+    BuiltIn {
+        name: "member-invite",
+        subject: "You've been invited to {{project}} on Notifi",
+        html: MEMBER_INVITE_HTML,
+    },
+];
+
+/// Plaintext fallback: crude tag strip — fine for system mail.
+fn strip_tags(html: &str) -> String {
+    let mut text = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => text.push(c),
+            _ => {}
+        }
     }
+    text
 }
 
 /// Substitutes `{{key}}` placeholders via the shared kernel engine (one
@@ -53,172 +388,253 @@ fn substitute(template: &str, vars: &HashMap<String, String>) -> String {
     crate::kernel::templating::fill(template, vars)
 }
 
-fn fallback(name: &str) -> Option<RenderedTemplate> {
-    match name {
-        // Keep in sync with assets/templates/verify-email.*.
-        "verify-email" => Some(RenderedTemplate {
-            subject: "Verify your Notifi account".to_string(),
-            html: "<p>Hi {{name}},</p><p>Confirm your email address:</p><p><a href=\"{{link}}\">{{link}}</a></p>".to_string(),
-            text: "Hi {{name}},\n\nConfirm your email address:\n{{link}}\n".to_string(),
-        }),
-        // Keep in sync with assets/templates/password-reset.*.
-        "password-reset" => Some(RenderedTemplate {
-            subject: "Reset your Notifi password".to_string(),
-            html: "<p>Hi {{name}},</p><p>Reset your password (valid for one hour):</p><p><a href=\"{{link}}\">{{link}}</a></p><p>If you did not ask for this, ignore this email.</p>".to_string(),
-            text: "Hi {{name}},\n\nReset your password (valid for one hour):\n{{link}}\n\nIf you did not ask for this, ignore this email.\n".to_string(),
-        }),
-        // Keep in sync with assets/templates/password-changed.*.
-        "password-changed" => Some(RenderedTemplate {
-            subject: "Your Notifi password was changed".to_string(),
-            html: "<p>Hi {{name}},</p><p>The password on your Notifi account was just changed. All other sessions were signed out.</p><p><a href=\"{{link}}\">Sign in</a></p><p>If this was not you, reset your password immediately.</p>".to_string(),
-            text: "Hi {{name}},\n\nThe password on your Notifi account was just changed. All other sessions were signed out.\n\nSign in:\n{{link}}\n\nIf this was not you, reset your password immediately.\n".to_string(),
-        }),
-        // Keep in sync with assets/templates/login-notice.*.
-        "login-notice" => Some(RenderedTemplate {            subject: "New sign-in to your Notifi account".to_string(),
-            html: "<p>Hi {{name}},</p><p>Your Notifi account was just signed in to {{when}}.</p><p><a href=\"{{link}}\">Review my account</a></p><p>If this was you, no action is needed.</p>".to_string(),
-            text: "Hi {{name}},\n\nYour Notifi account was just signed in to {{when}}.\n\nReview your account:\n{{link}}\n\nIf this was you, no action is needed.\n".to_string(),
-        }),
-        // Keep in sync with assets/templates/member-invite.*.
-        "member-invite" => Some(RenderedTemplate {
-            subject: "You've been invited to {{project}} on Notifi".to_string(),
-            html: "<p>Hi {{name}},</p><p>You've been invited to join the {{project}} project on Notifi as {{role}}.</p><p><a href=\"{{link}}\">Review invitation</a></p>".to_string(),
-            text: "Hi {{name}},\n\nYou've been invited to join the {{project}} project on Notifi as {{role}}.\n\nReview your invitation:\n{{link}}\n".to_string(),
-        }),
-        _ => None,
+/// The store-backed reader: the warm map answers every render for the
+/// life of the process; the store only answers cold names (once).
+pub struct StoreSystemTemplates {
+    store: Arc<dyn ConfigStore + Send + Sync>,
+    warm: Mutex<HashMap<String, String>>,
+}
+
+impl StoreSystemTemplates {
+    pub fn new(store: Arc<dyn ConfigStore + Send + Sync>) -> Self {
+        Self {
+            store,
+            warm: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Boot pass: upload built-ins the folder is missing (an edited file
+    /// is never clobbered), then read every `*.html` into the process
+    /// cache. Returns the warmed count. A failure logs loud at the call
+    /// site and leaves renders to the lazy path, which self-heals once
+    /// the store is reachable again.
+    pub async fn seed_and_warm(&self) -> Result<usize, String> {
+        self.seed_built_ins().await?;
+        self.warm_from_store().await
+    }
+
+    /// Uploads built-ins the folder doesn't have yet — the same move
+    /// that put `projects/` and `backup/` in the bucket: defaults are
+    /// code, storage holds no ghost copy, seeding fills absences only.
+    async fn seed_built_ins(&self) -> Result<(), String> {
+        let keys = self.store.list_keys(TEMPLATES_FOLDER).await?;
+        for template in BUILT_INS {
+            let key = template.key();
+            if !keys.contains(&key) {
+                self.store
+                    .put_raw(&key, template.html.as_bytes().to_vec())
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Re-reads the folder into the process cache (boot + the admin
+    /// re-warm endpoint). Read-only against the store: whatever is in
+    /// the bucket now is what renders until the next warm.
+    pub async fn warm_from_store(&self) -> Result<usize, String> {
+        let keys = self.store.list_keys(TEMPLATES_FOLDER).await?;
+        let mut warmed = 0;
+        for key in keys {
+            let Some(name) = key
+                .strip_prefix(&format!("{TEMPLATES_FOLDER}/"))
+                .and_then(|n| n.strip_suffix(".html"))
+            else {
+                continue;
+            };
+            let body = self.store.load_raw(&key).await?;
+            let body =
+                String::from_utf8(body).map_err(|_| format!("template '{key}' is not utf-8"))?;
+            self.warm.lock().unwrap().insert(name.to_string(), body);
+            warmed += 1;
+        }
+        Ok(warmed)
+    }
+
+    /// The warm body for `name` — cache first, one lazy store fetch on
+    /// a miss (which then lives in the cache for the process lifetime).
+    async fn load_html(&self, name: &str) -> Result<String, MailError> {
+        if let Some(body) = self.warm.lock().unwrap().get(name) {
+            return Ok(body.clone());
+        }
+        let key = format!("{TEMPLATES_FOLDER}/{name}.html");
+        let body = self
+            .store
+            .load_raw(&key)
+            .await
+            .map_err(|e| MailError::Template(format!("template '{name}' unavailable: {e}")))?;
+        let body = String::from_utf8(body)
+            .map_err(|_| MailError::Template(format!("template '{name}' is not utf-8")))?;
+        self.warm
+            .lock()
+            .unwrap()
+            .insert(name.to_string(), body.clone());
+        Ok(body)
     }
 }
 
-impl SystemTemplates for FileSystemTemplates {
-    fn render(&self, name: &str, vars: &[(&str, &str)]) -> Result<RenderedTemplate, MailError> {
-        let vars: HashMap<String, String> = vars
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
+impl SystemTemplates for StoreSystemTemplates {
+    fn render<'a>(
+        &'a self,
+        name: &'a str,
+        vars: &'a [(&'a str, &'a str)],
+    ) -> BoxFut<'a, Result<RenderedTemplate, MailError>> {
+        Box::pin(async move {
+            let path = std::path::Path::new(name);
+            if path.components().count() != 1 {
+                return Err(MailError::Template(format!(
+                    "invalid template name: {name}"
+                )));
+            }
 
-        let path = Path::new(name);
-        if path.components().count() != 1 {
-            return Err(MailError::Template(format!(
-                "invalid template name: {name}"
-            )));
-        }
+            // Subjects are code: one template, one purpose. A body in
+            // the store without a registered subject is a wiring bug —
+            // add the entry to `BUILT_INS` (name, subject) and its call
+            // site, then restart or re-warm.
+            let subject = BuiltIn::get(name).map(|b| b.subject).ok_or_else(|| {
+                MailError::Template(format!(
+                    "unknown system template: {name} — register its subject in code"
+                ))
+            })?;
 
-        let subject = match self.read(name, "subject.txt") {
-            Some(s) => s,
-            None => fallback(name)
-                .map(|f| f.subject)
-                .ok_or_else(|| MailError::Template(format!("unknown template: {name}")))?,
-        };
-        let html = match self.read(name, "html") {
-            Some(h) => h,
-            None => fallback(name)
-                .map(|f| f.html)
-                .ok_or_else(|| MailError::Template(format!("unknown template: {name}")))?,
-        };
-        let text = match self.read(name, "txt") {
-            Some(t) => t,
-            None => fallback(name).map(|f| f.text).unwrap_or_else(|| {
-                // Crude tag strip — fine for a plaintext fallback.
-                let mut text = String::with_capacity(html.len());
-                let mut in_tag = false;
-                for c in html.chars() {
-                    match c {
-                        '<' => in_tag = true,
-                        '>' => in_tag = false,
-                        _ if !in_tag => text.push(c),
-                        _ => {}
-                    }
-                }
-                text
-            }),
-        };
+            let html = self.load_html(name).await?;
+            let text = strip_tags(&html);
 
-        Ok(RenderedTemplate {
-            subject: substitute(subject.trim(), &vars),
-            html: substitute(&html, &vars),
-            text: substitute(&text, &vars),
+            let vars: HashMap<String, String> = vars
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+            Ok(RenderedTemplate {
+                subject: substitute(subject.trim(), &vars),
+                html: substitute(&html, &vars),
+                text: substitute(&text, &vars),
+            })
         })
+    }
+
+    fn warm(&self) -> BoxFut<'_, Result<usize, String>> {
+        Box::pin(async move { self.warm_from_store().await })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::FileConfigStore;
 
-    #[test]
-    fn substitutes_vars_and_falls_back_without_files() {
-        let reader = FileSystemTemplates::new("/nonexistent-dir-xyz");
-        let rendered = reader
+    fn tmp_root(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "notifi-system-templates-{tag}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn reader(root: &std::path::Path) -> StoreSystemTemplates {
+        StoreSystemTemplates::new(
+            Arc::new(FileConfigStore::new(root)) as Arc<dyn ConfigStore + Send + Sync>
+        )
+    }
+
+    #[tokio::test]
+    async fn boot_seeds_built_ins_and_renders_from_the_store() {
+        let root = tmp_root("seed");
+        let r = reader(&root);
+        assert_eq!(r.seed_and_warm().await.unwrap(), 5);
+
+        let rendered = r
             .render("verify-email", &[("name", "Ada"), ("link", "https://x/y")])
+            .await
             .unwrap();
         assert_eq!(rendered.subject, "Verify your Notifi account");
+        assert!(rendered.html.contains("Verify your email address"));
         assert!(rendered.html.contains("https://x/y"));
         assert!(!rendered.html.contains("{{link}}"));
         assert!(rendered.text.contains("Ada"));
     }
 
-    #[test]
-    fn login_notice_and_invite_fall_back_without_files() {
-        let reader = FileSystemTemplates::new("/nonexistent-dir-xyz");
-        let rendered = reader
-            .render(
-                "login-notice",
-                &[
-                    ("name", "Ada"),
-                    ("when", "June 1, 2026"),
-                    ("link", "https://x/profile"),
-                ],
+    #[tokio::test]
+    async fn the_store_copy_wins_and_seeding_never_clobbers() {
+        let root = tmp_root("edit");
+        let r = reader(&root);
+        r.store
+            .put_raw(
+                "templates/verify-email.html",
+                b"<p>EDITED {{name}}</p>".to_vec(),
             )
+            .await
             .unwrap();
-        assert_eq!(rendered.subject, "New sign-in to your Notifi account");
-        assert!(rendered.html.contains("June 1, 2026"));
-        assert!(!rendered.html.contains("{{when}}"));
 
-        let rendered = reader
+        r.seed_and_warm().await.unwrap();
+
+        let rendered = r.render("verify-email", &[("name", "Ada")]).await.unwrap();
+        assert!(rendered.html.contains("EDITED Ada"));
+
+        // The edited file survived the seed pass byte-for-byte.
+        assert_eq!(
+            r.store
+                .load_raw("templates/verify-email.html")
+                .await
+                .unwrap(),
+            b"<p>EDITED {{name}}</p>".to_vec()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_cold_name_fetches_lazily_then_sticks() {
+        let root = tmp_root("cold");
+        let r = reader(&root);
+        // Empty folder, subject registered: the render fails loudly...
+        assert!(r.render("verify-email", &[]).await.is_err());
+        // ...then the file lands in the bucket — no restart, no warm:
+        r.store
+            .put_raw(
+                "templates/verify-email.html",
+                b"<p>LATE {{link}}</p>".to_vec(),
+            )
+            .await
+            .unwrap();
+        let rendered = r
+            .render("verify-email", &[("link", "https://x/y")])
+            .await
+            .unwrap();
+        assert!(rendered.html.contains("LATE https://x/y"));
+    }
+
+    #[tokio::test]
+    async fn unknown_name_and_traversal_are_rejected() {
+        let root = tmp_root("guard");
+        let r = reader(&root);
+        assert!(matches!(
+            r.render("nope", &[]).await,
+            Err(MailError::Template(_))
+        ));
+        assert!(matches!(
+            r.render("../secret", &[]).await,
+            Err(MailError::Template(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn invite_subject_fills_its_project_var() {
+        let root = tmp_root("invite");
+        let r = reader(&root);
+        r.seed_and_warm().await.unwrap();
+        let rendered = r
             .render(
                 "member-invite",
                 &[
                     ("name", "Ada"),
                     ("project", "Acme"),
                     ("role", "developer"),
-                    ("link", "https://x/invite/abc"),
+                    ("link", "https://x/i"),
                 ],
             )
+            .await
             .unwrap();
         assert_eq!(rendered.subject, "You've been invited to Acme on Notifi");
-        assert!(rendered.html.contains("https://x/invite/abc"));
         assert!(!rendered.html.contains("{{"));
-        assert!(rendered.text.contains("developer"));
-    }
-
-    #[test]
-    fn password_changed_falls_back_without_files() {
-        let reader = FileSystemTemplates::new("/nonexistent-dir-xyz");
-        let rendered = reader
-            .render(
-                "password-changed",
-                &[("name", "Ada"), ("link", "https://x/auth/login")],
-            )
-            .unwrap();
-        assert_eq!(rendered.subject, "Your Notifi password was changed");
-        assert!(rendered.html.contains("https://x/auth/login"));
-        assert!(!rendered.html.contains("{{link}}"));
-    }
-
-    #[test]
-    fn unknown_template_errors() {
-        let reader = FileSystemTemplates::new("/nonexistent-dir-xyz");
-        assert!(matches!(
-            reader.render("nope", &[]),
-            Err(MailError::Template(_))
-        ));
-    }
-
-    #[test]
-    fn rejects_path_traversal() {
-        let reader = FileSystemTemplates::new("/nonexistent-dir-xyz");
-        assert!(matches!(
-            reader.render("../secret", &[]),
-            Err(MailError::Template(_))
-        ));
     }
 }

@@ -52,7 +52,7 @@ pub use repository_pg::PgAuthStore;
 pub use schedule_repository_pg::PgScheduleStore;
 pub use send_repository_pg::PgSendStore;
 pub use smtp_mailer::LiveSmtpMailer;
-pub use system_templates::{DEFAULT_TEMPLATES_DIR, FileSystemTemplates};
+pub use system_templates::StoreSystemTemplates;
 pub use templates_repository_pg::PgTemplatesStore;
 pub use tickets_repository_pg::PgTicketsStore;
 pub use trigger_token_repository_pg::PgTriggerTokenStore;
