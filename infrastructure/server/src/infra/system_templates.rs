@@ -1,7 +1,7 @@
 //! System email templates: bodies live in the config store
 //! (`templates/{name}.html` — the R2 bucket in deployment), put there
-//! by ops (dashboard drag-drop or the `upload_system_templates` example)
-//! — the server never writes templates, it only reads them.
+//! by ops (dashboard drag-drop) — the server never writes templates,
+//! it only reads them.
 //!
 //! The cache is Redis forever-keys (`cfg:templates/{name}.html`, no
 //! expiry): boot reads the folder into Redis, renders answer from
