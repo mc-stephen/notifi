@@ -113,13 +113,11 @@ fn run_inner() -> Result<(), String> {
                 .expect("config store builds");
 
         // System mail (transactional emails): bodies live in the store's
-        // `templates/` folder, seeded write-if-missing from the built-ins,
-        // then read into forever-keys in Redis (`cfg:templates/…`, no
-        // expiry) when Redis is up — renders answer from there, never the
-        // store; the boot pass re-reads the folder, so an edit in the
-        // bucket lands on restart (or POST /admin/templates/warm). No
-        // Redis = the same cache in-process. A failed pass logs loud and
-        // leaves the lazy fetch to self-heal.
+        // `templates/` folder — put there by ops, the server never
+        // writes them. Boot reads the folder into forever-keys in Redis
+        // (`cfg:templates/…`, no expiry); renders answer from the cache;
+        // POST /admin/templates/warm re-reads after an edit in the
+        // bucket. No Redis = direct store reads (dev only).
         let template_cache: Option<std::sync::Arc<dyn infra::config_cache::CacheBackend + Send + Sync>> =
             match &redis_conn {
                 Some(client) => match client.clone().get_connection_manager().await {
@@ -130,21 +128,21 @@ fn run_inner() -> Result<(), String> {
                         ))
                     }
                     Err(e) => {
-                        tracing::warn!(error = %e, "system template cache unavailable; caching in-process");
+                        tracing::warn!(error = %e, "system template cache unavailable; renders read the store directly");
                         None
                     }
                 },
                 None => {
-                    tracing::info!("system template cache: in-process (redis unset)");
+                    tracing::info!("system template cache: none (redis unset); renders read the store directly");
                     None
                 }
             };
         let system_templates: Option<std::sync::Arc<dyn ports::SystemTemplates>> = {
             let reader =
                 infra::StoreSystemTemplates::new(config_store.clone(), template_cache);
-            match reader.seed_and_warm().await {
+            match reader.warm_from_store().await {
                 Ok(count) => tracing::info!(warmed = count, "system templates warm"),
-                Err(e) => tracing::warn!(error = %e, "system templates unavailable; renders will retry lazily"),
+                Err(e) => tracing::warn!(error = %e, "system templates unavailable; renders will read the store directly"),
             }
             Some(std::sync::Arc::new(reader))
         };

@@ -52,18 +52,7 @@ it explicitly per send, so the mapping stays visible.
 
 ## Templates
 
-Single reader: `src/infra/system_templates.rs` (`StoreSystemTemplates`).
-Bodies live in the config store at `templates/{name}.html` — the R2
-bucket in deployment — seeded write-if-missing at boot from the
-built-ins in that module, then read into the forever-cache: Redis keys
-with no expiry (`cfg:templates/{name}.html`) when Redis is up, the
-in-process map otherwise. Renders never touch the store (a cold name
-does one lazy fetch, so a template added to the bucket later is live
-without a restart). Subjects are code — one template, one purpose —
-and the `{{var}}` substitution rides the shared kernel engine.
-Plaintext is auto-derived by stripping tags, so multipart sending keeps
-working with HTML as the single source. An edited bucket body lands on
-restart or `POST /admin/templates/warm`. Current templates: `verify-email`,
+Single reader: `src/infra/system_templates.rs` (`StoreSystemTemplates`). Bodies live in the config store at `templates/{name}.html` — the R2 bucket in deployment — put there by ops (dashboard drag-drop or the `upload_system_templates` example); the server never writes templates. They are read into the forever-cache: Redis keys with no expiry when Redis is up (boot warms the folder; a cold name does one lazy fetch, so a template added to the bucket later is live without a restart). Subjects are code — one template, one purpose — and the `{{var}}` substitution rides the shared kernel engine. Plaintext is auto-derived by stripping tags, so multipart sending keeps working with HTML as the single source. An edited bucket body lands via `POST /admin/templates/warm` (a restart does the same). Current templates: `verify-email`,
 `password-reset`, `password-changed`
 (sent after every completed reset — compromise signal when the reset
 wasn't yours), `login-notice`

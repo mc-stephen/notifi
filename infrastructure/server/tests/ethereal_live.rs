@@ -31,12 +31,35 @@ async fn live_ethereal_send() {
     assert!(config.enabled(), "NOTIFI_SMTP_HOST must be set");
 
     // The same store-backed reader the server runs: a throwaway file
-    // root, seeded from the built-ins so the renders exercise real bodies.
-    let store: std::sync::Arc<dyn ConfigStore + Send + Sync> = std::sync::Arc::new(
-        FileConfigStore::new(std::env::temp_dir().join("notifi-ethereal-templates")),
-    );
+    // root with minimal bodies (this test proves SMTP transport, not
+    // template content — the real bodies live in the bucket).
+    let root = std::env::temp_dir().join("notifi-ethereal-templates");
+    std::fs::create_dir_all(root.join("templates")).unwrap();
+    for (name, body) in [
+        ("verify-email", "<p>Hi {{name}}, verify: {{link}}</p>"),
+        (
+            "password-reset",
+            "<p>Hi {{name}}, reset (one hour): {{link}}</p>",
+        ),
+        (
+            "login-notice",
+            "<p>Hi {{name}}, signed in to {{when}}: {{link}}</p>",
+        ),
+        (
+            "member-invite",
+            "<p>Hi {{name}}, join {{project}} as {{role}}: {{link}}</p>",
+        ),
+        (
+            "password-changed",
+            "<p>Hi {{name}}, password changed. {{link}}</p>",
+        ),
+    ] {
+        std::fs::write(root.join(format!("templates/{name}.html")), body).unwrap();
+    }
+    let store: std::sync::Arc<dyn ConfigStore + Send + Sync> =
+        std::sync::Arc::new(FileConfigStore::new(&root));
     let templates = StoreSystemTemplates::new(store, None);
-    templates.seed_and_warm().await.expect("templates seed");
+    templates.warm_from_store().await.expect("templates warm");
     for (name, vars) in [
         (
             "verify-email",
