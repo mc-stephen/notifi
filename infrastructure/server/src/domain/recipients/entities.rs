@@ -10,7 +10,9 @@ pub struct Recipient {
     /// The project's in-house targeting key, unique within `project_id`.
     pub user_id: String,
     pub name: String,
-    /// Flexible contact blob (email, phone, device/push ids, ...).
+    /// Flexible contact blob: flat single-value keys (email, phone, one
+    /// chat handle per channel) plus a `devices` array — one entry per
+    /// app install: `{destination, vendor?, token, label?}` (§25).
     pub contacts: Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }

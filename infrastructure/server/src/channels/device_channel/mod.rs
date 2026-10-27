@@ -14,10 +14,9 @@
 //! device rows from `providers::catalog()` — adding a vendor is its
 //! provider file plus the destination's `Provider` enum and `vendors()`
 //! listing (golden test `catalog_pins_every_family_variant` pins both
-//! lists to each other). Registered devices land in `domain/devices` +
-//! `project_devices` (dashboard-registered for now; the device-side
-//! handshake waits for the external API, §25). Delivery itself stays
-//! adapter-wired (see `infra::delivery_adapters` — device adapters land
-//! past M5 and will read the active rows there).
+//! lists to each other). Device tokens are recipient data — the
+//! recipient's contacts blob carries a `devices` array (§25); delivery
+//! stays adapter-wired (see `infra::delivery_adapters` — device
+//! adapters land past M5 and will read those blobs).
 
 pub mod providers;

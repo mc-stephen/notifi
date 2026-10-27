@@ -423,8 +423,6 @@ M3). The four base channels above keep the hand-built flow (steps 1–4).
 
 > **Triggers v1 + HTTP steps + inbound webhooks:** trigger nodes carry a type (`event` webhook-inbound chooser in the builder); `HTTP Request` action nodes fire once per run (log-only failures, `http.status` condition field for If-branching); `POST /v1/hooks/{token}` fires a flow with caller-wins/fallback resolution — the fallback template's declared `{{refs}}` render from the trigger's stored `values` presets (caller-side variable plumbing rides on top the day inbound carries it) — backed by the `flow_trigger_tokens` lookup synced on flow saves.
 
-> **Devices shipped (registration records v1, M5):** every `project_devices` row is one place a delivery can land — destination + vendor + the vendor's token, optionally tied to a recipient (`domain/devices`, API at `/app/projects/{id}/devices`: register, list, `recipientId` filter, revoke). Registration is **dashboard-owned** for now (phone-side self-registration rides the external API + API keys, M6+); `register` upserts on `(project, destination, token)` so a re-registered token refreshes instead of duplicating, validates destination/vendor against the api assembler's own device tables handed over as a plain catalog (`DeviceDestinationCatalog` — the registry stays the single truth), and revocation is a status flip, never a delete. Audit carries `device.registered`/`device.revoked`. Delivery adapters don't read these rows yet (`delivery_adapters` is still smtp-only — when adapters land they look devices up here); proven by `tests/devices_api.rs` and `device_validation_tests`.
-
 ## 23. Database backups
 
 The worker houses a self-contained backup block (`worker/src/backup.rs`) on its own clock, never the queue. Once a day (server-local `NOTIFI_BACKUP_AT`, default `03:00`) it runs `pg_dump --format=plain` into a temp file, streams that file into object storage in fixed 8 MiB multipart parts (R2 rule: ≥5 MiB equal parts), and deletes the temp file — memory never holds the whole dump. The object is one plain-text SQL file (`backup/postgres-{db}-{yyyyMMdd-HHmmss}.sql`) inside the **same bucket the config store uses**, under nothing else writes, isolating by key prefix rather than by bucket (the harder-isolation upgrade — a dedicated bucket — stays one env change away). Full schema + data, restorable into an empty database via `psql -f`. No second database, no replication.
@@ -447,38 +445,37 @@ Projects get a real end-of-life path. A deletion request freezes the project (to
 * **Creation ties the other end:** project creation now seeds the project folder via `materialize_project(project.slug)` (the code-owned default layout socketed under `projects/{slug}/`) and rolls the row back if the folder can't be written, so a project never exists without its storage. The bucket slug is the **project slug** (the DB's unique, rename-proof `project_slug`, kernel-sourced); no name-derived second convention.
 * **compose contract:** `compose(pool, config, mailer, system_templates, config_store)` — every entrypoint builds its one config store (API: cache-wrapped, so writes invalidate Redis; worker: plain driver, purge needs no cache coherence) and passes it in; the project service + export service share that instance.
 
-## 25. Devices (registration records)
+## 25. Devices (tokens on the recipient)
 
-`project_devices` (migration `0004`) is where a callback-address lives before
-there is anything to deliver to: one row per registered device token —
-project, destination (`android|apple|linux|web|window`), vendor
-(`fcm|pushy|onesignal|apns|wns|web_push|webhook|endpoint`), the vendor's
-registration token or endpoint URI, an optional recipient tie, and a status.
+Device tokens are **recipient data**, not a table of their own: a token is
+just another contact detail — the address of one app install — and it lives
+in the recipient's `contacts` blob (`platform_recipients.contacts`). The
+never-shipped `project_devices` table was dropped in dev-stage (squashed out
+of `0001`) — the blob is the whole feature.
 
-* **Registration is dashboard-owned** for now: the owner enters the token by
-  hand (`domain::devices::DeviceService`, API `/app/projects/{id}/devices`).
-  The device-side handshake — the SDK on a phone registering itself with a
-  project key — rides the external API surface when API-key auth lands (M6+),
-  and nothing in the schema assumes otherwise.
-* **Refresh, not duplicate:** `register` upserts on
-  `(project_id, destination, token)` — a re-registered token updates
-  recipient/label, flips status back to `active`, and stamps `last_seen_at`.
-  An assigned recipient must be a live recipient of the same project (a
-  plain FK cannot know project scope), and the invisible-project /
-  unknown-recipient cases surface as not-found problems.
-* **The registry is the only truth:** the service validates destination +
-  vendor against `DeviceDestinationCatalog`, which the composition root
-  builds from the api assembler's own device channel tables (which derive
-  from `device_channel::providers` anyway). Nothing else hardcodes the
-  destination/vendor lists.
-* **Revocation is a status flip** (`revoke`, idempotent); the row stays for
-  delivery history — send-side adapters (when they land past the smtp-only
-  `delivery_adapters` status quo) look up *active* rows only.
-* **Exports/imports don't carry devices** (§24): they are operational state
-  that re-registers, not content — same reason API keys are regenerated
-  rather than restored.
-* **Audit:** `device.registered` / `device.revoked` in the shared stream.
-* **Proven by:** `tests/devices_api.rs` (register echo, refresh-not-
-  duplicate, catalog rejections, empty token, foreign-project hiding,
-  revoke keeps the row, audit events, unknown-id 404s) and
-  `domain/devices/services.rs::device_validation_tests` (pure gate).
+* **Shape:** flat single-value keys (`email`, `phone`, one chat handle per
+  channel — `whatsapp`, `slack`, `telegram`, …) plus a `devices` array, one
+  entry per install: `{destination, vendor?, token, label?}`. `destination`
+  is the OS family the token can reach (`android|apple|linux|web|window` —
+  a tablet is just `apple` + label); `vendor` is who delivers
+  (`fcm|apns|wns|web_push|endpoint|…`) and stays the project dev's call —
+  Firebase genuinely serves iPhone over APNs underneath, so both entries
+  can say `fcm` with different destinations; `token` is whatever string the
+  vendor issued (FCM/APNs token, WNS channel URI, endpoint URL);
+  `label` is the dashboard display name.
+* **Replace-in-place:** token rotated → the project dev PUTs the fresh blob
+  and the entry is replaced; device gone → entry removed. The recipients
+  update already swaps `contacts` wholesale, so there is no token endpoint,
+  no diffing, no dedup logic — and `recipient.updated` audit rows cover
+  every change.
+* **Validation is light** (`validate_devices` in `domain/recipients/services.rs`):
+  `devices` must be an array of objects whose `destination` + `token` are
+  non-empty strings; `vendor`/`label` must be strings when present;
+  unknown keys anywhere stay allowed (future contact kinds need no
+  migration). No catalog coupling — the blob stores what the dev hands
+  over.
+* **Delivery (M5+ adapters)** walks the array at send time, dispatching
+  each entry per its `vendor`; nothing else in the backend knows the shape.
+* **Proven by:** `device_blob_tests` in `domain/recipients/services.rs`
+  (shape rejections, minimal-entry acceptance, blob-without-devices stays
+  untouched) and the recipients round-trip in `tests/recipients_api.rs`.

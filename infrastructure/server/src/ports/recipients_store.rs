@@ -20,7 +20,9 @@ pub struct RecipientRecord {
     /// The project's in-house targeting key, unique within `project_id`.
     pub user_id: String,
     pub name: String,
-    /// Flexible contact blob (email, phone, device/push ids, ...).
+    /// Flexible contact blob: flat single-value keys (email, phone, chat
+    /// handles) plus a `devices` array — `{destination, vendor?, token,
+    /// label?}` per app install (§25).
     pub contacts: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }

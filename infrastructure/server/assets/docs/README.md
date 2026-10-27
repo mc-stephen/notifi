@@ -62,24 +62,16 @@ Routes/handlers: `api/routes/app/projects/`; SQL + fake stores:
 `ports/projects_store.rs` (trait), `infra` (Postgres), `tests/common`
 (fakes). Proven by `server/tests/projects_lifecycle.rs` end to end.
 
-### The life of a device registration (§25)
+### The life of a device token (§25)
 
-1. **Register** — `POST /app/projects/{id}/devices`
-   (`domain/devices/services.rs`): destination + vendor validated against
-   the device catalog (built from the same tables the provider registry
-   renders — no duplicated lists), token stored, optional recipient must
-   be a live same-project recipient.
-2. **Refresh** — the same `(project, destination, token)` re-registering
-   updates the row (recipient/label flip back to `active`, `last_seen_at`
-   stamped) — never a duplicate.
-3. **Revoke** — `DELETE /app/projects/{id}/devices/{id}` flips the status;
-   delivery (M5+ adapters) will look up active rows only, and the row
-   stays as history.
-4. **(Parked)** the device-side self-registration handshake waits for the
-   external API + API keys (M6+); until then the owner registers by hand.
-
-Routes/handlers: `api/routes/app/devices/`; SQL: `infra/devices_repository_pg.rs`
-(port `ports/devices_store.rs`). Proven by `server/tests/devices_api.rs`.
+Tokens live on the recipient: the `contacts` blob carries a `devices`
+array — `{destination, vendor?, token, label?}` per app install
+(`destination` = OS family android/apple/linux/web/window; `vendor` = who
+delivers, the dev's call; `label` = dashboard display name). Rotate or
+remove = the project dev PUTs the fresh blob — the recipients update swaps
+`contacts` wholesale, so there's no token endpoint and `recipient.updated`
+audit covers every change. Delivery adapters (M5+) walk the array per
+`vendor`. Proven by `device_blob_tests` in `domain/recipients/services.rs`.
 
 ### The life of a backup (§23)
 
@@ -183,8 +175,7 @@ cargo run
 | `/app/auth/*` | app | Auth: signup, login, logout, me, OAuth, password flows, verify-email, onboarding-complete |
 | `/app/providers` | app | Provider registry — all channels + providers + config fields (GET) |
 | `/app/projects/{id}/channel-configs` | app | Channel configs CRUD (list, create, update, delete) |
-| `/app/projects/{id}/devices` | app | Device registration: register (upsert-refresh), list, get, revoke |
-| `/app/projects/{id}/recipients` | app | Recipients CRUD (project end-users) |
+| `/app/projects/{id}/recipients` | app | Recipients CRUD — the contacts blob carries the `devices` token array (§25) |
 | any other path | — | RFC 9457 `application/problem+json` 404 |
 
 Every response carries a `x-request-id` header for log correlation.

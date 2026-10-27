@@ -20,6 +20,52 @@ use crate::ports::recipients_store::RecipientsStore;
 const MAX_NAME: usize = 200;
 const MAX_USER_ID: usize = 200;
 
+/// The `devices` array doctrine (§25): device tokens are recipient data —
+/// one entry per app install, `{destination, vendor?, token, label?}`.
+/// Light on purpose: only the two load-bearing strings must be present
+/// and non-empty; `vendor`/`label` are the project dev's own; unknown
+/// keys anywhere in the blob stay allowed (future channels need no
+/// migration).
+fn validate_devices(contacts: &Value) -> Result<(), AppError> {
+    let Some(devices) = contacts.get("devices") else {
+        return Ok(());
+    };
+    let Some(list) = devices.as_array() else {
+        return Err(AppError::Validation(
+            "contacts.devices must be an array".to_string(),
+        ));
+    };
+    for entry in list {
+        let Some(entry) = entry.as_object() else {
+            return Err(AppError::Validation(
+                "each contacts.devices entry must be an object".to_string(),
+            ));
+        };
+        for key in ["destination", "token"] {
+            let value = entry
+                .get(key)
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .trim();
+            if value.is_empty() {
+                return Err(AppError::Validation(format!(
+                    "each contacts.devices entry needs a non-empty '{key}'"
+                )));
+            }
+        }
+        for key in ["vendor", "label"] {
+            if let Some(v) = entry.get(key)
+                && !v.is_string()
+            {
+                return Err(AppError::Validation(format!(
+                    "contacts.devices entry '{key}' must be a string"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub struct RecipientService {
     store: Arc<dyn RecipientsStore>,
     audit: Arc<AuditService>,
@@ -62,6 +108,7 @@ impl RecipientService {
         } else {
             contacts
         };
+        validate_devices(&contacts)?;
 
         let record = self
             .store
@@ -162,7 +209,9 @@ impl RecipientService {
                         "contacts must be a JSON object".to_string(),
                     ));
                 }
-                if value.is_null() { json!({}) } else { value }
+                let contacts = if value.is_null() { json!({}) } else { value };
+                validate_devices(&contacts)?;
+                contacts
             }
             None => current.contacts.clone(),
         };
@@ -234,5 +283,57 @@ fn map_store_error(err: StoreError) -> AppError {
             "A recipient with this user_id already exists in this project.".to_string(),
         ),
         StoreError::Storage(m) => AppError::Storage(m),
+    }
+}
+
+#[cfg(test)]
+mod device_blob_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn blob_without_devices_key_passes_untouched() {
+        // The blob stays shape-free: no devices key, nothing to check —
+        // future contact kinds land without migrations.
+        assert!(validate_devices(&json!({"email": "ada@example.com"})).is_ok());
+        assert!(validate_devices(&json!({})).is_ok());
+    }
+
+    #[test]
+    fn a_devices_entry_needs_destination_and_token() {
+        let ok = json!({"devices": [
+            {"destination": "android", "vendor": "fcm", "token": "tok-1", "label": "Pixel"}
+        ]});
+        assert!(validate_devices(&ok).is_ok());
+
+        // Missing / empty / blank on the two load-bearing strings reject.
+        for bad in [
+            json!({"devices": [{"vendor": "fcm"}]}),
+            json!({"devices": [{"destination": "android", "token": ""}]}),
+            json!({"devices": [{"destination": "  ", "token": "t"}]}),
+            json!({"devices": [{"destination": 7, "token": "t"}]}),
+        ] {
+            assert!(validate_devices(&bad).is_err(), "shape must reject: {bad}");
+        }
+    }
+
+    #[test]
+    fn devices_must_be_an_array_of_objects() {
+        for bad in [
+            json!({"devices": "tok-1"}),
+            json!({"devices": ["tok-1"]}),
+            json!({"devices": [{"destination": "android", "token": "t"}, "stray"]}),
+        ] {
+            assert!(validate_devices(&bad).is_err(), "reject: {bad}");
+        }
+    }
+
+    #[test]
+    fn vendor_and_label_may_be_absent_but_not_wrong_typed() {
+        let minimal = json!({"devices": [{"destination": "apple", "token": "tok-9"}]});
+        assert!(validate_devices(&minimal).is_ok());
+
+        let bad = json!({"devices": [{"destination": "apple", "token": "t", "label": 7}]});
+        assert!(validate_devices(&bad).is_err());
     }
 }
