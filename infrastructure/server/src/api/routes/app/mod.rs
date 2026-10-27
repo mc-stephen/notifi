@@ -7,7 +7,6 @@ pub mod auth;
 pub mod billing;
 pub mod campaigns;
 pub mod channel_configs;
-pub mod devices;
 pub mod flows;
 pub mod invites;
 pub mod logs;
@@ -66,14 +65,6 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
     }
     if let Some(service) = state.audit.clone() {
         log_routes = log_routes.layer(axum::Extension(service));
-    }
-
-    let mut device_routes = devices::routes::router();
-    if let Some(auth_service) = state.auth.clone() {
-        device_routes = device_routes.layer(axum::Extension(auth_service));
-    }
-    if let Some(service) = state.devices.clone() {
-        device_routes = device_routes.layer(axum::Extension(service));
     }
 
     let mut recipient_routes = recipients::routes::router();
@@ -200,7 +191,6 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
         .nest("/auth", auth_routes)
         .nest("/providers", provider_routes)
         .nest("/projects", project_routes)
-        .nest("/projects/{project_id}/devices", device_routes)
         .nest("/projects/{project_id}/recipients", recipient_routes)
         .nest("/projects/{project_id}/templates", template_routes)
         .nest("/projects/{project_id}/api-keys", api_key_routes)

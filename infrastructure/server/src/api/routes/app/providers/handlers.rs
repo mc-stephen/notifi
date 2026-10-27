@@ -83,10 +83,7 @@ fn build_registry() -> ProviderRegistry {
 /// catalog (`channels/device_channel/providers::catalog()`), so a new
 /// vendor lands on the dashboard with its provider file and enum
 /// registration alone; nothing is typed out here.
-/// The device family's registry rows, derived from the module catalog —
-/// `pub(crate)` so the composition root can feed the devices service the
-/// same destination/vendor truth the Browse modal renders.
-pub(crate) fn build_device_channels() -> Vec<ChannelDefinition> {
+fn build_device_channels() -> Vec<ChannelDefinition> {
     device_channel::providers::catalog()
         .into_iter()
         .map(|dest| ChannelDefinition {

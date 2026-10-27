@@ -223,7 +223,6 @@ fn run_inner() -> Result<(), String> {
                 project_members: services.map(|s| s.project_members.clone()),
                 audit: services.map(|s| s.audit.clone()),
                 recipients: services.map(|s| s.recipients.clone()),
-                devices: services.map(|s| s.devices.clone()),
                 api_keys: services.map(|s| s.api_keys.clone()),
                 templates: services.map(|s| s.templates.clone()),
                 channel_providers: services.map(|s| s.channel_providers.clone()),

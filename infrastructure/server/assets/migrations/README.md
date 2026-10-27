@@ -14,5 +14,9 @@ Single-file dev-stage squash, applied automatically at server boot (`src/infra/d
   allowlists), `notification_sends` + `flows` (record-first sends; no `kind`
   column — "default" is emergent, not stored), `schedules` (once/recurring/
   weekly + template columns folded in), `flow_trigger_tokens` (inbound
-  webhook tokens). Folded into `0001` on 2026-10-12; the 0010 OAuth backfill
-  was data-only and is omitted on fresh databases.
+  webhook tokens), `project_exports` (deletion-window download ledger).
+  Folded into `0001` on 2026-10-12 (governance/billing/TOTP) and again on
+  2026-10-27 (default-inactive + deletion lifecycle; the 0010 OAuth backfill
+  was data-only and is omitted on fresh databases). The never-shipped
+  `project_devices` table was dropped the same day — device tokens live in
+  the recipient contacts blob (§25).

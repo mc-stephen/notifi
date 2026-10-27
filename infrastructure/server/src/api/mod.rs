@@ -60,7 +60,6 @@ mod tests {
                 project_members: None,
                 audit: None,
                 recipients: None,
-                devices: None,
                 api_keys: None,
                 templates: None,
                 channel_providers: None,

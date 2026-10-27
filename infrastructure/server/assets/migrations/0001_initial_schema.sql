@@ -6,6 +6,10 @@
 -- status; the dropped approval-request flow is omitted entirely),
 -- audit actor attribution, billing catalog + subscriptions, and user
 -- TOTP + project 2FA requirement.
+-- Re-squashed 2026-10-27: folds the 0002 default-inactive doctrine and
+-- the 0003 deletion lifecycle (purge_after + project_exports) back in;
+-- the never-shipped 0004 project_devices experiment is dropped — device
+-- tokens live in the recipient contacts blob (§25), not a table.
 -- Re-squashed 2026-10-12: folds in 0009 (project_invites), 0011
 -- (key_ip_allowlist), 0012 (notification_sends + flows, minus the
 -- kind column dropped by 0013), 0014 + 0015 (schedules incl. weekly
@@ -138,12 +142,17 @@ CREATE TABLE platform_projects (
     created_by  VARCHAR(26) REFERENCES auth_users(id) ON DELETE SET NULL,
     -- Traffic switch: one boolean that turns all of the project's
     -- sends on or off (replaces the historic dev/prod environment gate).
-    active      BOOLEAN     NOT NULL DEFAULT TRUE,
+    -- Fresh projects start DORMANT (the 0002 doctrine: the owner flips
+    -- them on deliberately — topbar switch, Settings, or the banner).
+    active      BOOLEAN     NOT NULL DEFAULT FALSE,
     require_2fa BOOLEAN     NOT NULL DEFAULT FALSE,
     version     INT         NOT NULL DEFAULT 1,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at  TIMESTAMPTZ
+    deleted_at  TIMESTAMPTZ,
+    -- Deletion lifecycle (the 0003 doctrine): the grace deadline the
+    -- worker sweeps to — folder keys first, then the row (§24).
+    purge_after TIMESTAMPTZ
 );
 
 CREATE INDEX idx_projects_created_by ON platform_projects(created_by);
@@ -311,6 +320,17 @@ CREATE TABLE platform_recipients (
 );
 
 CREATE INDEX idx_recipients_project ON platform_recipients(project_id);
+
+-- Deletion-window data exports (the 0003 doctrine): one row per ZIP
+-- download, rate-limit ledger + audit trail (§24).
+CREATE TABLE project_exports (
+    id           VARCHAR(26) PRIMARY KEY,
+    project_id   VARCHAR(26) NOT NULL REFERENCES platform_projects(id) ON DELETE CASCADE,
+    requested_by VARCHAR(26) REFERENCES auth_users(id) ON DELETE SET NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_project_exports_project ON project_exports(project_id, created_at);
 
 -- ---------------------------------------------------------------------------
 -- message templates

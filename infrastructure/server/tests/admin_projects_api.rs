@@ -51,7 +51,6 @@ fn app_with_admin_projects() -> Router {
             project_members: None,
             audit: Some(audit),
             recipients: None,
-            devices: None,
             api_keys: None,
             templates: None,
             channel_providers: None,

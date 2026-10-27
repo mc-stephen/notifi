@@ -12,7 +12,6 @@ pub mod config_cache;
 pub mod config_store_factory;
 pub mod db;
 pub mod delivery_adapters;
-pub mod devices_repository_pg;
 pub mod file_config_store;
 pub mod flow_repository_pg;
 pub mod http_requester;
@@ -47,7 +46,6 @@ pub use notifications_repository_pg::PgNotificationsStore;
 pub use provider_tester::ConfigProviderTester;
 pub use r2_config_store::R2ConfigStore;
 
-pub use devices_repository_pg::PgDevicesStore;
 pub use oauth_provider_http::{ProviderCredentials, http_oauth_provider};
 pub use recipients_repository_pg::PgRecipientsStore;
 pub use repository_pg::PgAuthStore;
