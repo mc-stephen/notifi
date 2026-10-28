@@ -410,6 +410,7 @@ async fn test_sms_provider(provider_id: &str, config: &serde_json::Value) -> Tes
         "africas_talking" => test_africas_talking(config).await,
         "infobip" => test_infobip(config).await,
         "vonage" => test_vonage(config).await,
+        "bird" => test_bird(config).await,
         _ => TestResult {
             success: true,
             message: format!(
@@ -569,6 +570,58 @@ async fn test_vonage(config: &serde_json::Value) -> TestResult {
     TestResult {
         success: true,
         message: "Vonage credentials format is valid".to_string(),
+    }
+}
+
+/// Bird: a real authenticated read — the balance endpoint proves the
+/// access key without sending anything.
+async fn test_bird(config: &serde_json::Value) -> TestResult {
+    let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
+    let base_url = config
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if api_key.is_empty() {
+        return TestResult {
+            success: false,
+            message: "Bird API key is required".to_string(),
+        };
+    }
+    if base_url.is_empty() {
+        return TestResult {
+            success: false,
+            message: "Bird base URL is required".to_string(),
+        };
+    }
+
+    let client = match reqwest::Client::builder().build() {
+        Ok(c) => c,
+        Err(e) => {
+            return TestResult {
+                success: false,
+                message: format!("Failed to build HTTP client: {e}"),
+            };
+        }
+    };
+    match client
+        .get(format!("{}/balance", base_url.trim_end_matches('/')))
+        .header("Authorization", format!("AccessKey {api_key}"))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => TestResult {
+            success: true,
+            message: "Bird access key is valid (balance endpoint answered)".to_string(),
+        },
+        Ok(resp) => TestResult {
+            success: false,
+            message: format!("Bird balance check returned status {}", resp.status()),
+        },
+        Err(e) => TestResult {
+            success: false,
+            message: format!("Failed to verify Bird access key: {e}"),
+        },
     }
 }
 

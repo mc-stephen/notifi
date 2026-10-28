@@ -45,6 +45,10 @@ impl SmsSender2 {
                 let sender = providers::infobip::InfobipProvider::new(c);
                 sender.send(&msg.to, &msg.text).await
             }
+            providers::SmsProvider::Bird(c) => {
+                let sender = providers::bird::BirdProvider::new(c);
+                sender.send(&msg.to, &msg.text).await
+            }
             _ => Err(format!(
                 "SMS provider not yet implemented: {}",
                 provider.provider_name()
