@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
 use crate::channels::device_channel::providers::android::fcm::{FcmConfig, FcmProvider};
+use crate::channels::device_channel::providers::apple::apns::{ApnsProvider, IosConfig};
 use crate::ports::provider_tester::{ProviderTester, TestResult};
 
 pub struct ConfigProviderTester;
@@ -43,9 +44,10 @@ impl ProviderTester for ConfigProviderTester {
     }
 }
 
-/// Device-destination probes. Firebase (`fcm`) is live: the credential
-/// proves itself by reading the service account and exchanging it for a
-/// token — no message sent.
+/// Device-destination probes. Firebase (`fcm`) proves its service
+/// account for real (token exchange); Apple (`apns`/`apns_macos`) loads
+/// the `.p8` key and signs offline (APNs has no dry-run); the rest stay
+/// house-fallback until their controllers wire up.
 async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> TestResult {
     match provider_id {
         "fcm" => {
@@ -64,6 +66,26 @@ async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> 
                 Err(e) => TestResult {
                     success: false,
                     message: format!("Firebase rejected the credential: {e}"),
+                },
+            }
+        }
+        "apns" | "apns_macos" => {
+            let Ok(cfg) = serde_json::from_value::<IosConfig>(config.clone()) else {
+                return TestResult {
+                    success: false,
+                    message: format!(
+                        "Config does not parse for {provider_id} (key_id, team_id, bundle_id, p8_key_path required)"
+                    ),
+                };
+            };
+            match ApnsProvider::new(cfg).and_then(|provider| provider.verify()) {
+                Ok(()) => TestResult {
+                    success: true,
+                    message: "Apple signing key loads and signs (gateway untouched)".to_string(),
+                },
+                Err(e) => TestResult {
+                    success: false,
+                    message: format!("Apple rejected the credential: {e}"),
                 },
             }
         }

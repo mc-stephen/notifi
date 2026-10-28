@@ -171,6 +171,13 @@ impl ApnsProvider {
         let jwt = self.generate_jwt()?;
         self.post_apns(&jwt, msg).await
     }
+
+    /// Connection check for the provider tester: read the `.p8` key and
+    /// sign a token locally — the credential proves itself with no call
+    /// to Apple (APNs has no dry-run mode).
+    pub fn verify(&self) -> Result<(), String> {
+        self.generate_jwt().map(|_| ())
+    }
 }
 
 #[cfg(test)]

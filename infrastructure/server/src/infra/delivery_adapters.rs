@@ -16,6 +16,9 @@ use crate::channels::device_channel::providers::android::{
     AndroidMessage,
     fcm::{FcmConfig, FcmProvider},
 };
+use crate::channels::device_channel::providers::apple::apns::{
+    ApnsMessage, ApnsProvider, IosConfig, MacosConfig,
+};
 use crate::channels::email_channel::{
     EmailMessage, EmailSender, config::EmailConfig, providers::smtp::SmtpConfig,
 };
@@ -109,7 +112,89 @@ impl DeliveryProvider for FcmAdapter {
     }
 }
 
-/// Production factory: SMTP + Firebase from project config, stubs nowhere else yet.
+/// Apple Push Notifications (channel `apple`): the APNs controller
+/// signs with the project's `.p8` key and posts to Apple's gateway; the
+/// adapter only maps the normalized message. One controller serves iOS
+/// and macOS — the two provider ids (`apns`, `apns_macos`) pick the
+/// bundle flavor from each one's saved config. The recipient is the raw
+/// device token.
+pub struct ApnsAdapter {
+    provider: ApnsProvider,
+    provider_id: &'static str,
+}
+
+impl ApnsAdapter {
+    #[cfg(test)]
+    fn with_provider(provider: ApnsProvider, provider_id: &'static str) -> Self {
+        Self {
+            provider,
+            provider_id,
+        }
+    }
+}
+
+impl DeliveryProvider for ApnsAdapter {
+    fn channel(&self) -> &'static str {
+        "apple"
+    }
+
+    fn provider_name(&self) -> &'static str {
+        self.provider_id
+    }
+
+    fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_> {
+        let provider = &self.provider;
+        let provider_id = self.provider_id;
+        let msg = ApnsMessage {
+            device_token: message.recipient.clone(),
+            title: message.title.clone(),
+            body: message.body.clone(),
+        };
+        Box::pin(async move {
+            provider
+                .send_notification(&msg)
+                .await
+                .map(|_| DeliveryReceipt {
+                    provider: provider_id.to_string(),
+                    provider_message_id: None,
+                })
+                .map_err(DeliveryError::Provider)
+        })
+    }
+}
+
+/// Builds the APNs adapter for either OS flavor — same fields, different
+/// bundle config; a missing/blank `.p8` path means "not wired".
+fn apns_from_config(
+    config: &serde_json::Value,
+    provider_id: &str,
+) -> Option<Arc<dyn DeliveryProvider>> {
+    // The adapter's provider_name comes from the fixed id set.
+    let provider_id: &'static str = if provider_id == "apns" {
+        "apns"
+    } else {
+        "apns_macos"
+    };
+    let provider = if provider_id == "apns" {
+        let cfg: IosConfig = serde_json::from_value(config.clone()).ok()?;
+        if cfg.p8_key_path.as_os_str().is_empty() {
+            return None;
+        }
+        ApnsProvider::new(cfg).ok()?
+    } else {
+        let cfg: MacosConfig = serde_json::from_value(config.clone()).ok()?;
+        if cfg.p8_key_path.as_os_str().is_empty() {
+            return None;
+        }
+        ApnsProvider::new_macos(cfg).ok()?
+    };
+    Some(Arc::new(ApnsAdapter {
+        provider,
+        provider_id,
+    }))
+}
+
+/// Production factory: SMTP + Firebase + Apple from project config, stubs nowhere else yet.
 pub struct DefaultAdapterFactory;
 
 impl AdapterFactory for DefaultAdapterFactory {
@@ -143,6 +228,7 @@ impl AdapterFactory for DefaultAdapterFactory {
                     provider: FcmProvider::new(cfg),
                 }))
             }
+            ("apple", "apns" | "apns_macos") => apns_from_config(config, provider_id),
             _ => None,
         }
     }
@@ -151,6 +237,8 @@ impl AdapterFactory for DefaultAdapterFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::ConfigProviderTester;
+    use crate::ports::ProviderTester;
     use crate::testing::http_stub;
 
     fn message() -> DeliveryMessage {
@@ -215,6 +303,140 @@ mod tests {
                 .is_none()
         );
         assert!(f.adapter("sms", "twilio", &serde_json::json!({})).is_none());
+
+        // The apple arms arm from the same registry field set.
+        assert!(
+            f.adapter(
+                "apple",
+                "apns",
+                &serde_json::json!({
+                    "key_id": "K", "team_id": "T",
+                    "bundle_id": "b", "p8_key_path": "/keys/authkey.p8"
+                })
+            )
+            .is_some()
+        );
+        assert!(
+            f.adapter(
+                "apple",
+                "apns_macos",
+                &serde_json::json!({
+                    "key_id": "K", "team_id": "T",
+                    "bundle_id": "b", "p8_key_path": "/keys/authkey.p8"
+                })
+            )
+            .is_some()
+        );
+        assert!(
+            f.adapter(
+                "apple",
+                "apns",
+                &serde_json::json!({
+                    "key_id": "K", "team_id": "T", "bundle_id": "b", "p8_key_path": ""
+                })
+            )
+            .is_none()
+        );
+        assert!(
+            f.adapter("apple", "onesignal", &serde_json::json!({}))
+                .is_none()
+        );
+    }
+
+    /// Throwaway EC key for tests — signs test JWTs only, never a real
+    /// credential.
+    const TEST_P8_KEY: &str = "-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg9mlu4yOHZr3ZV6W/
+yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
+1QwErJ9yuwQuT4I4DAWWvbCAwVRzRhZdpOmRR6JPdhkuTwnLfl8d5ndU
+-----END PRIVATE KEY-----";
+
+    #[tokio::test]
+    async fn apns_adapter_posts_the_normalized_message() {
+        let stub = http_stub::start(200, "OK", "").await;
+        let key_path =
+            std::env::temp_dir().join(format!("notifi-apns-key-{}.p8", std::process::id()));
+        std::fs::write(&key_path, TEST_P8_KEY).unwrap();
+        let provider = ApnsProvider::new_with_base(
+            IosConfig {
+                key_id: "KEYID1".to_string(),
+                team_id: "TEAMID9".to_string(),
+                bundle_id: "app.notifi.test".to_string(),
+                p8_key_path: key_path,
+                sandbox: false,
+            },
+            format!("http://127.0.0.1:{}", stub.port),
+        );
+        let adapter = ApnsAdapter::with_provider(provider, "apns");
+
+        let receipt = adapter
+            .send(&DeliveryMessage {
+                channel: "apple".to_string(),
+                recipient: "device-token-9".to_string(),
+                title: "Hi".to_string(),
+                body: "Body".to_string(),
+                metadata: None,
+            })
+            .await
+            .expect("200 delivers");
+        assert_eq!(receipt.provider, "apns");
+
+        let raw = stub.request().await.expect("request captured");
+        assert!(raw.contains("POST /3/device/device-token-9"), "path: {raw}");
+        assert!(
+            raw.to_ascii_lowercase()
+                .contains("apns-topic: app.notifi.test"),
+            "topic: {raw}"
+        );
+        assert!(raw.contains(r#""title":"Hi""#), "alert: {raw}");
+        assert!(raw.contains(r#""body":"Body""#), "body: {raw}");
+    }
+
+    #[tokio::test]
+    async fn apns_probe_signs_offline_and_rejects_broken_keys() {
+        // A real EC key signs offline — no call to Apple.
+        let key_path =
+            std::env::temp_dir().join(format!("notifi-apns-probe-{}.p8", std::process::id()));
+        std::fs::write(&key_path, TEST_P8_KEY).unwrap();
+        let good = ConfigProviderTester
+            .test(
+                "apple",
+                "apns",
+                &serde_json::json!({
+                    "key_id": "KEYID1", "team_id": "TEAMID9",
+                    "bundle_id": "app.notifi.test", "p8_key_path": key_path.to_string_lossy()
+                }),
+            )
+            .await;
+        assert!(good.success, "{}", good.message);
+        assert!(good.message.contains("signs"), "{}", good.message);
+
+        // A missing key file fails the probe with Apple's reason.
+        let bad = ConfigProviderTester
+            .test(
+                "apple",
+                "apns",
+                &serde_json::json!({
+                    "key_id": "K", "team_id": "T",
+                    "bundle_id": "b", "p8_key_path": "/nonexistent/authkey.p8"
+                }),
+            )
+            .await;
+        assert!(!bad.success, "{}", bad.message);
+        assert!(bad.message.contains("Apple rejected"), "{}", bad.message);
+
+        // The macOS flavor parses the same shape and passes with a key.
+        let ok = ConfigProviderTester
+            .test(
+                "apple",
+                "apns_macos",
+                &serde_json::json!({
+                    "key_id": "KEYID1", "team_id": "TEAMID9",
+                    "bundle_id": "app.notifi.mac", "p8_key_path": key_path.to_string_lossy()
+                }),
+            )
+            .await;
+        assert!(ok.success, "{}", ok.message);
     }
 
     #[tokio::test]
