@@ -22,6 +22,11 @@ use crate::channels::device_channel::providers::apple::apns::{
 use crate::channels::email_channel::{
     EmailMessage, EmailSender, config::EmailConfig, providers::smtp::SmtpConfig,
 };
+use crate::channels::sms_channel::providers::{
+    africas_talking::AfricasTalkingConfig, local_nigeria::LocalNigeriaConfig, termii::TermiiConfig,
+    twilio::TwilioConfig,
+};
+use crate::channels::sms_channel::{SmsConfig, SmsMessage, SmsSender2};
 use crate::ports::{
     AdapterFactory, BoxSendFuture, DeliveryError, DeliveryMessage, DeliveryProvider,
     DeliveryReceipt,
@@ -194,7 +199,59 @@ fn apns_from_config(
     }))
 }
 
-/// Production factory: SMTP + Firebase + Apple from project config, stubs nowhere else yet.
+/// SMS (channel `sms`): one adapter serves every wired vendor — the
+/// family's `SmsSender2` dispatches to the vendor controller built from
+/// the project's saved config. The recipient is the raw phone number;
+/// SMS has no title concept, so only the body travels.
+pub struct SmsAdapter {
+    sender: SmsSender2,
+    provider_id: &'static str,
+}
+
+impl DeliveryProvider for SmsAdapter {
+    fn channel(&self) -> &'static str {
+        "sms"
+    }
+
+    fn provider_name(&self) -> &'static str {
+        self.provider_id
+    }
+
+    fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_> {
+        let sender = &self.sender;
+        let provider_id = self.provider_id;
+        let msg = SmsMessage {
+            to: message.recipient.clone(),
+            text: message.body.clone(),
+        };
+        Box::pin(async move {
+            sender
+                .send_sms(&msg)
+                .await
+                .map(|_| DeliveryReceipt {
+                    provider: provider_id.to_string(),
+                    provider_message_id: None,
+                })
+                .map_err(DeliveryError::Provider)
+        })
+    }
+}
+
+/// Builds the SMS adapter for one wired vendor: parse the vendor's bare
+/// config JSON, wrap it in the tagged enum the family sender dispatches.
+fn sms_adapter<T: serde::de::DeserializeOwned + 'static>(
+    config: &serde_json::Value,
+    provider_id: &'static str,
+    variant: fn(T) -> crate::channels::sms_channel::SmsConfig,
+) -> Option<Arc<dyn DeliveryProvider>> {
+    let parsed: T = serde_json::from_value(config.clone()).ok()?;
+    Some(Arc::new(SmsAdapter {
+        sender: SmsSender2::new(variant(parsed)),
+        provider_id,
+    }))
+}
+
+/// Production factory: SMTP + Firebase + Apple + SMS from project config, stubs nowhere else yet.
 pub struct DefaultAdapterFactory;
 
 impl AdapterFactory for DefaultAdapterFactory {
@@ -229,6 +286,19 @@ impl AdapterFactory for DefaultAdapterFactory {
                 }))
             }
             ("apple", "apns" | "apns_macos") => apns_from_config(config, provider_id),
+            // The four wired SMS vendors; the shells (bird, ebulksms,
+            // infobip, smslive247, vonage) stay unwired until their
+            // controllers exist.
+            ("sms", "twilio") => sms_adapter::<TwilioConfig>(config, "twilio", SmsConfig::Twilio),
+            ("sms", "termii") => sms_adapter::<TermiiConfig>(config, "termii", SmsConfig::Termii),
+            ("sms", "africas_talking") => sms_adapter::<AfricasTalkingConfig>(
+                config,
+                "africas_talking",
+                SmsConfig::AfricasTalking,
+            ),
+            ("sms", "local_nigeria") => {
+                sms_adapter::<LocalNigeriaConfig>(config, "local_nigeria", SmsConfig::LocalNigeria)
+            }
             _ => None,
         }
     }
@@ -339,6 +409,66 @@ mod tests {
         );
         assert!(
             f.adapter("apple", "onesignal", &serde_json::json!({}))
+                .is_none()
+        );
+
+        // The four wired SMS vendors arm; the five shells stay None.
+        let twilio_cfg =
+            serde_json::json!({"account_sid": "AC1", "auth_token": "t", "from_number": "+1"});
+        let sms = f.adapter("sms", "twilio", &twilio_cfg);
+        assert!(sms.is_some());
+        let sms = sms.unwrap();
+        assert_eq!(sms.channel(), "sms");
+        assert_eq!(sms.provider_name(), "twilio");
+        assert!(
+            f.adapter(
+                "sms",
+                "termii",
+                &serde_json::json!({"api_key": "k", "sender_id": "Notifi"})
+            )
+            .is_some()
+        );
+        assert!(
+            f.adapter(
+                "sms",
+                "africas_talking",
+                &serde_json::json!({"username": "u", "api_key": "k", "sender_id": "NOTIFI"})
+            )
+            .is_some()
+        );
+        assert!(
+            f.adapter(
+                "sms",
+                "local_nigeria",
+                &serde_json::json!({"api_key": "tok", "base_url": "https://x", "sender_id": "NOTIFI"})
+            )
+            .is_some()
+        );
+        // Shells stay unwired even with plausible config...
+        assert!(
+            f.adapter(
+                "sms",
+                "vonage",
+                &serde_json::json!({"api_key": "k", "api_secret": "s", "from_number": "+1"})
+            )
+            .is_none()
+        );
+        assert!(
+            f.adapter("sms", "infobip", &serde_json::json!({"api_key": "k"}))
+                .is_none()
+        );
+        assert!(f.adapter("sms", "bird", &serde_json::json!({})).is_none());
+        assert!(
+            f.adapter("sms", "ebulksms", &serde_json::json!({}))
+                .is_none()
+        );
+        assert!(
+            f.adapter("sms", "smslive247", &serde_json::json!({}))
+                .is_none()
+        );
+        // ...and a bad config for a wired vendor is None, never a panic.
+        assert!(
+            f.adapter("sms", "twilio", &serde_json::json!({"account_sid": "AC1"}))
                 .is_none()
         );
     }
