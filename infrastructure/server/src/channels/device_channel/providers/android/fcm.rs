@@ -39,6 +39,9 @@ pub struct FcmProvider {
     /// FCM root override for tests; production never sets it.
     #[cfg(test)]
     fcm_base: Option<String>,
+    /// Canned OAuth token for tests (skips Google's token service).
+    #[cfg(test)]
+    token_override: Option<String>,
 }
 
 impl FcmProvider {
@@ -48,6 +51,8 @@ impl FcmProvider {
             client: Client::new(),
             #[cfg(test)]
             fcm_base: None,
+            #[cfg(test)]
+            token_override: None,
         }
     }
 
@@ -56,11 +61,20 @@ impl FcmProvider {
         Self {
             #[cfg(test)]
             fcm_base: Some(fcm_base),
+            // send_notification through this constructor never touches
+            // Google's OAuth service — the canned token answers.
+            #[cfg(test)]
+            token_override: Some("fake-oauth-token".to_string()),
             ..Self::new(config)
         }
     }
 
     async fn get_access_token(&self) -> Result<String, String> {
+        #[cfg(test)]
+        if let Some(token) = &self.token_override {
+            return Ok(token.clone());
+        }
+
         let secret = yup_oauth2::read_service_account_key(&self.config.service_account_path)
             .await
             .map_err(|e| format!("Failed to read service account key: {e}"))?;
@@ -145,6 +159,17 @@ impl FcmProvider {
         let token = self.get_access_token().await?;
         let project_id = self.project_id()?;
         self.post_fcm(&token, &project_id, msg).await
+    }
+
+    /// Connection check for the provider tester: read the service
+    /// account and exchange it for a token — the credential proves
+    /// itself without sending anything.
+    pub async fn verify(&self) -> Result<(), String> {
+        #[cfg(test)]
+        if self.token_override.is_some() {
+            return Ok(());
+        }
+        self.get_access_token().await.map(|_| ())
     }
 }
 

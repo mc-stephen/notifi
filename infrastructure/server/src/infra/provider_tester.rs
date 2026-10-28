@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use crate::channels::device_channel::providers::android::fcm::{FcmConfig, FcmProvider};
 use crate::ports::provider_tester::{ProviderTester, TestResult};
 
 pub struct ConfigProviderTester;
@@ -28,20 +29,50 @@ impl ProviderTester for ConfigProviderTester {
             "email" => test_email_provider(provider_id, config).await,
             "sms" => test_sms_provider(provider_id, config).await,
             "chat" => test_chat_provider(provider_id, config).await,
-            // Device destinations: no vendor probes yet — real
-            // validation lands with the M3 adapters. House fallback
-            // message, same as the shell providers in sms/chat.
-            "window" | "android" | "apple" | "linux" | "web" => TestResult {
-                success: true,
-                message: format!(
-                    "Device provider {provider_id} credentials saved (validation not available)"
-                ),
-            },
+            // Device destinations: Firebase proves its service account
+            // for real (token exchange); the rest stay house-fallback
+            // until their controllers wire up.
+            "window" | "android" | "apple" | "linux" | "web" => {
+                test_device_provider(provider_id, config).await
+            }
             _ => TestResult {
                 success: false,
                 message: format!("Unknown channel: {channel_id}"),
             },
         }
+    }
+}
+
+/// Device-destination probes. Firebase (`fcm`) is live: the credential
+/// proves itself by reading the service account and exchanging it for a
+/// token — no message sent.
+async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> TestResult {
+    match provider_id {
+        "fcm" => {
+            let Ok(cfg) = serde_json::from_value::<FcmConfig>(config.clone()) else {
+                return TestResult {
+                    success: false,
+                    message: "Config does not parse for fcm (service_account_path required)"
+                        .to_string(),
+                };
+            };
+            match FcmProvider::new(cfg).verify().await {
+                Ok(()) => TestResult {
+                    success: true,
+                    message: "Firebase accepted the service account (token granted)".to_string(),
+                },
+                Err(e) => TestResult {
+                    success: false,
+                    message: format!("Firebase rejected the credential: {e}"),
+                },
+            }
+        }
+        _ => TestResult {
+            success: true,
+            message: format!(
+                "Device provider {provider_id} credentials saved (validation not available)"
+            ),
+        },
     }
 }
 
@@ -688,5 +719,42 @@ async fn test_discord(config: &serde_json::Value) -> TestResult {
             success: true,
             message: "Discord webhook URL format is valid".to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn fcm_probe_rejects_unparseable_or_broken_credentials() {
+        let t = ConfigProviderTester
+            .test("android", "fcm", &serde_json::json!({}))
+            .await;
+        assert!(!t.success);
+        assert!(t.message.contains("does not parse"), "{}", t.message);
+
+        // A JSON file that is not a real service account fails the token
+        // exchange offline — the probe reports Firebase's rejection.
+        let sa = std::env::temp_dir().join(format!("notifi-fcm-probe-{}.json", std::process::id()));
+        std::fs::write(&sa, r#"{"project_id": "proj-1"}"#).unwrap();
+        let t = ConfigProviderTester
+            .test(
+                "android",
+                "fcm",
+                &serde_json::json!({"service_account_path": sa.to_string_lossy()}),
+            )
+            .await;
+        assert!(!t.success, "{}", t.message);
+        assert!(t.message.contains("Firebase rejected"), "{}", t.message);
+    }
+
+    #[tokio::test]
+    async fn unwired_device_providers_keep_the_house_fallback() {
+        let t = ConfigProviderTester
+            .test("android", "pushy", &serde_json::json!({"api_key": "k"}))
+            .await;
+        assert!(t.success);
+        assert!(t.message.contains("validation not available"));
     }
 }
