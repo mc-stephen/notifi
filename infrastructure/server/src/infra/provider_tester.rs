@@ -411,6 +411,7 @@ async fn test_sms_provider(provider_id: &str, config: &serde_json::Value) -> Tes
         "infobip" => test_infobip(config).await,
         "vonage" => test_vonage(config).await,
         "bird" => test_bird(config).await,
+        "ebulksms" => test_ebulksms(config).await,
         _ => TestResult {
             success: true,
             message: format!(
@@ -621,6 +622,66 @@ async fn test_bird(config: &serde_json::Value) -> TestResult {
         Err(e) => TestResult {
             success: false,
             message: format!("Failed to verify Bird access key: {e}"),
+        },
+    }
+}
+
+/// EbulkSms: a real authenticated read — the balance endpoint proves
+/// the username + apikey pair without sending anything.
+async fn test_ebulksms(config: &serde_json::Value) -> TestResult {
+    let username = config
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
+    let base_url = config
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("https://api.ebulksms.com");
+
+    if username.is_empty() {
+        return TestResult {
+            success: false,
+            message: "EbulkSms username is required".to_string(),
+        };
+    }
+    if api_key.is_empty() {
+        return TestResult {
+            success: false,
+            message: "EbulkSms API key is required".to_string(),
+        };
+    }
+
+    let client = match reqwest::Client::builder().build() {
+        Ok(c) => c,
+        Err(e) => {
+            return TestResult {
+                success: false,
+                message: format!("Failed to build HTTP client: {e}"),
+            };
+        }
+    };
+    match client
+        .get(format!(
+            "{}/balance/{}/{}",
+            base_url.trim_end_matches('/'),
+            username,
+            api_key
+        ))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => TestResult {
+            success: true,
+            message: "EbulkSms credentials are valid (balance endpoint answered)".to_string(),
+        },
+        Ok(resp) => TestResult {
+            success: false,
+            message: format!("EbulkSms balance check returned status {}", resp.status()),
+        },
+        Err(e) => TestResult {
+            success: false,
+            message: format!("Failed to verify EbulkSms credentials: {e}"),
         },
     }
 }

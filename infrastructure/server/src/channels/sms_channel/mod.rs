@@ -49,6 +49,10 @@ impl SmsSender2 {
                 let sender = providers::bird::BirdProvider::new(c);
                 sender.send(&msg.to, &msg.text).await
             }
+            providers::SmsProvider::EbulkSms(c) => {
+                let sender = providers::ebulksms::EbulkSmsProvider::new(c);
+                sender.send(&msg.to, &msg.text).await
+            }
             _ => Err(format!(
                 "SMS provider not yet implemented: {}",
                 provider.provider_name()

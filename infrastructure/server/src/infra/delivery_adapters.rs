@@ -23,9 +23,9 @@ use crate::channels::email_channel::{
     EmailMessage, EmailSender, config::EmailConfig, providers::smtp::SmtpConfig,
 };
 use crate::channels::sms_channel::providers::{
-    africas_talking::AfricasTalkingConfig, bird::BirdConfig, infobip::InfobipConfig,
-    local_nigeria::LocalNigeriaConfig, termii::TermiiConfig, twilio::TwilioConfig,
-    vonage::VonageConfig,
+    africas_talking::AfricasTalkingConfig, bird::BirdConfig, ebulksms::EbulkSmsConfig,
+    infobip::InfobipConfig, local_nigeria::LocalNigeriaConfig, termii::TermiiConfig,
+    twilio::TwilioConfig, vonage::VonageConfig,
 };
 use crate::channels::sms_channel::{SmsConfig, SmsMessage, SmsSender2};
 use crate::ports::{
@@ -305,6 +305,9 @@ impl AdapterFactory for DefaultAdapterFactory {
                 sms_adapter::<InfobipConfig>(config, "infobip", SmsConfig::Infobip)
             }
             ("sms", "bird") => sms_adapter::<BirdConfig>(config, "bird", SmsConfig::Bird),
+            ("sms", "ebulksms") => {
+                sms_adapter::<EbulkSmsConfig>(config, "ebulksms", SmsConfig::EbulkSms)
+            }
             _ => None,
         }
     }
@@ -452,10 +455,6 @@ mod tests {
         );
         // Shells stay unwired even with plausible config...
         assert!(
-            f.adapter("sms", "ebulksms", &serde_json::json!({}))
-                .is_none()
-        );
-        assert!(
             f.adapter("sms", "smslive247", &serde_json::json!({}))
                 .is_none()
         );
@@ -477,6 +476,17 @@ mod tests {
         );
         assert!(bird.is_some());
         assert_eq!(bird.unwrap().provider_name(), "bird");
+
+        // EbulkSms arms (auth is the username+apikey pair).
+        let ebulk = f.adapter(
+            "sms",
+            "ebulksms",
+            &serde_json::json!({
+                "username": "a@b.c", "api_key": "k", "sender_id": "Notifi"
+            }),
+        );
+        assert!(ebulk.is_some());
+        assert_eq!(ebulk.unwrap().provider_name(), "ebulksms");
 
         // Infobip arms (probe already lived in the tester).
         let infobip = f.adapter(

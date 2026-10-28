@@ -18,7 +18,7 @@ pub struct VonageConfig {
 /// Vonage SMS provider implementation.
 ///
 /// Vonage quirk: the HTTP status is almost always 200 — the real verdict
-/// rides the body as a per-message `status` ("0" = sent, anything else
+/// rides the body as a per-message `status` (0 = sent, anything else
 /// fails with `error-text`). The controller parses that body; a bare 2xx
 /// is never good enough.
 pub struct VonageProvider {

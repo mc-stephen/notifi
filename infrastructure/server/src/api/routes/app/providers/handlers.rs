@@ -775,6 +775,12 @@ fn build_sms_channel() -> ChannelDefinition {
                 docs_url: Some("https://www.ebulksms.com/pages/api-docs".to_string()),
                 config_fields: vec![
                     ConfigField {
+                        key: "username".to_string(),
+                        label: "Account Username (email)".to_string(),
+                        field_type: ConfigFieldType::Text,
+                        required: true,
+                    },
+                    ConfigField {
                         key: "api_key".to_string(),
                         label: "API Key".to_string(),
                         field_type: ConfigFieldType::Password,
