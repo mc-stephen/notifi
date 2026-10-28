@@ -24,7 +24,7 @@ use crate::channels::email_channel::{
 };
 use crate::channels::sms_channel::providers::{
     africas_talking::AfricasTalkingConfig, local_nigeria::LocalNigeriaConfig, termii::TermiiConfig,
-    twilio::TwilioConfig,
+    twilio::TwilioConfig, vonage::VonageConfig,
 };
 use crate::channels::sms_channel::{SmsConfig, SmsMessage, SmsSender2};
 use crate::ports::{
@@ -286,9 +286,9 @@ impl AdapterFactory for DefaultAdapterFactory {
                 }))
             }
             ("apple", "apns" | "apns_macos") => apns_from_config(config, provider_id),
-            // The four wired SMS vendors; the shells (bird, ebulksms,
-            // infobip, smslive247, vonage) stay unwired until their
-            // controllers exist.
+            // The wired SMS vendors; the shells (bird, ebulksms,
+            // infobip, smslive247) stay unwired until their controllers
+            // exist.
             ("sms", "twilio") => sms_adapter::<TwilioConfig>(config, "twilio", SmsConfig::Twilio),
             ("sms", "termii") => sms_adapter::<TermiiConfig>(config, "termii", SmsConfig::Termii),
             ("sms", "africas_talking") => sms_adapter::<AfricasTalkingConfig>(
@@ -299,6 +299,7 @@ impl AdapterFactory for DefaultAdapterFactory {
             ("sms", "local_nigeria") => {
                 sms_adapter::<LocalNigeriaConfig>(config, "local_nigeria", SmsConfig::LocalNigeria)
             }
+            ("sms", "vonage") => sms_adapter::<VonageConfig>(config, "vonage", SmsConfig::Vonage),
             _ => None,
         }
     }
@@ -446,14 +447,6 @@ mod tests {
         );
         // Shells stay unwired even with plausible config...
         assert!(
-            f.adapter(
-                "sms",
-                "vonage",
-                &serde_json::json!({"api_key": "k", "api_secret": "s", "from_number": "+1"})
-            )
-            .is_none()
-        );
-        assert!(
             f.adapter("sms", "infobip", &serde_json::json!({"api_key": "k"}))
                 .is_none()
         );
@@ -471,6 +464,15 @@ mod tests {
             f.adapter("sms", "twilio", &serde_json::json!({"account_sid": "AC1"}))
                 .is_none()
         );
+
+        // Vonage arms (its probe already lived in the tester).
+        let vonage = f.adapter(
+            "sms",
+            "vonage",
+            &serde_json::json!({"api_key": "k", "api_secret": "s", "from_number": "Notifi"}),
+        );
+        assert!(vonage.is_some());
+        assert_eq!(vonage.unwrap().provider_name(), "vonage");
     }
 
     /// Throwaway EC key for tests — signs test JWTs only, never a real
