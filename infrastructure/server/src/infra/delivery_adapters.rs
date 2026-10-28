@@ -23,8 +23,9 @@ use crate::channels::email_channel::{
     EmailMessage, EmailSender, config::EmailConfig, providers::smtp::SmtpConfig,
 };
 use crate::channels::sms_channel::providers::{
-    africas_talking::AfricasTalkingConfig, local_nigeria::LocalNigeriaConfig, termii::TermiiConfig,
-    twilio::TwilioConfig, vonage::VonageConfig,
+    africas_talking::AfricasTalkingConfig, infobip::InfobipConfig,
+    local_nigeria::LocalNigeriaConfig, termii::TermiiConfig, twilio::TwilioConfig,
+    vonage::VonageConfig,
 };
 use crate::channels::sms_channel::{SmsConfig, SmsMessage, SmsSender2};
 use crate::ports::{
@@ -300,6 +301,9 @@ impl AdapterFactory for DefaultAdapterFactory {
                 sms_adapter::<LocalNigeriaConfig>(config, "local_nigeria", SmsConfig::LocalNigeria)
             }
             ("sms", "vonage") => sms_adapter::<VonageConfig>(config, "vonage", SmsConfig::Vonage),
+            ("sms", "infobip") => {
+                sms_adapter::<InfobipConfig>(config, "infobip", SmsConfig::Infobip)
+            }
             _ => None,
         }
     }
@@ -446,10 +450,6 @@ mod tests {
             .is_some()
         );
         // Shells stay unwired even with plausible config...
-        assert!(
-            f.adapter("sms", "infobip", &serde_json::json!({"api_key": "k"}))
-                .is_none()
-        );
         assert!(f.adapter("sms", "bird", &serde_json::json!({})).is_none());
         assert!(
             f.adapter("sms", "ebulksms", &serde_json::json!({}))
@@ -464,6 +464,19 @@ mod tests {
             f.adapter("sms", "twilio", &serde_json::json!({"account_sid": "AC1"}))
                 .is_none()
         );
+
+        // Infobip arms (probe already lived in the tester).
+        let infobip = f.adapter(
+            "sms",
+            "infobip",
+            &serde_json::json!({
+                "api_key": "k",
+                "base_url": "https://acct.api.infobip.com",
+                "sender_id": "Notifi"
+            }),
+        );
+        assert!(infobip.is_some());
+        assert_eq!(infobip.unwrap().provider_name(), "infobip");
 
         // Vonage arms (its probe already lived in the tester).
         let vonage = f.adapter(

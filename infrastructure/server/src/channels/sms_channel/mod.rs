@@ -41,6 +41,10 @@ impl SmsSender2 {
                 let sender = providers::vonage::VonageProvider::new(c);
                 sender.send(&msg.to, &msg.text).await
             }
+            providers::SmsProvider::Infobip(c) => {
+                let sender = providers::infobip::InfobipProvider::new(c);
+                sender.send(&msg.to, &msg.text).await
+            }
             _ => Err(format!(
                 "SMS provider not yet implemented: {}",
                 provider.provider_name()
