@@ -1,7 +1,7 @@
 use axum::Json;
 use serde::Serialize;
 
-use crate::channels::device_channel;
+use crate::channels::{device_channel, other_channel};
 use crate::domain::channels::{
     ChannelDefinition, ConfigField, ConfigFieldType, ProviderDefinition, ProviderRegistry,
     ProviderScope, SmtpFallbackConfig,
@@ -63,8 +63,9 @@ pub async fn get_providers() -> Json<ProvidersResponse> {
 
 /// Build the provider registry from Rust types. The three base channels
 /// are defined here; the device family's rows derive from
-/// `device_channel::providers::catalog()` — the compiler enforces
-/// structural correctness on both.
+/// `device_channel::providers::catalog()` and the other channel's from
+/// `other_channel::providers::catalog()` — the compiler enforces
+/// structural correctness on all of them.
 fn build_registry() -> ProviderRegistry {
     let mut channels = vec![
         build_email_channel(),
@@ -72,8 +73,9 @@ fn build_registry() -> ProviderRegistry {
         build_chat_channel(),
     ];
     channels.extend(build_device_channels());
+    channels.push(build_other_channel());
     ProviderRegistry {
-        version: "1.2.0".to_string(),
+        version: "1.3.0".to_string(),
         last_updated: chrono::Utc::now().to_rfc3339(),
         channels,
     }
@@ -86,40 +88,83 @@ fn build_registry() -> ProviderRegistry {
 fn build_device_channels() -> Vec<ChannelDefinition> {
     device_channel::providers::catalog()
         .into_iter()
-        .map(|dest| ChannelDefinition {
-            channel_id: dest.destination.to_string(),
-            channel_name: dest.title.to_string(),
-            providers: dest
-                .vendors
-                .into_iter()
-                .map(|v| ProviderDefinition {
-                    provider_id: v.id.to_string(),
-                    name: v.name.to_string(),
-                    scope: ProviderScope::Global,
-                    primary_regions: vec![],
-                    platforms: v.platforms.iter().map(|p| p.to_string()).collect(),
-                    icon_url: v.icon_url.map(str::to_string),
-                    docs_url: v.docs_url.map(str::to_string),
-                    config_fields: v
-                        .fields
-                        .into_iter()
-                        .map(|f| ConfigField {
-                            key: f.key.to_string(),
-                            label: f.label.to_string(),
-                            field_type: device_field_type(f.ty),
-                            required: f.required,
-                        })
-                        .collect(),
-                    smtp_fallback: None,
-                })
-                .collect(),
+        .map(|mut dest| {
+            // OneSignal serves both phone families at once — its single
+            // card lives in the "other" channel's section, so the family
+            // rows stop offering it. Projects that saved it under
+            // android/apple keep delivering through their own arms.
+            dest.vendors.retain(|v| v.id != "onesignal");
+            ChannelDefinition {
+                channel_id: dest.destination.to_string(),
+                channel_name: dest.title.to_string(),
+                providers: dest
+                    .vendors
+                    .into_iter()
+                    .map(|v| ProviderDefinition {
+                        provider_id: v.id.to_string(),
+                        name: v.name.to_string(),
+                        scope: ProviderScope::Global,
+                        primary_regions: vec![],
+                        platforms: v.platforms.iter().map(|p| p.to_string()).collect(),
+                        icon_url: v.icon_url.map(str::to_string),
+                        docs_url: v.docs_url.map(str::to_string),
+                        config_fields: v
+                            .fields
+                            .into_iter()
+                            .map(|f| ConfigField {
+                                key: f.key.to_string(),
+                                label: f.label.to_string(),
+                                field_type: vendor_field_type(f.ty),
+                                required: f.required,
+                            })
+                            .collect(),
+                        smtp_fallback: None,
+                    })
+                    .collect(),
+            }
         })
         .collect()
 }
 
-/// Maps the family's connect-form field types onto the registry's
-/// enum. Compiler-exhaustive both ways.
-fn device_field_type(ty: device_channel::providers::FieldType) -> ConfigFieldType {
+/// The other channel's registry rows — vendors that belong to no single
+/// platform family (wrapped controllers from their owning families),
+/// derived from the channel's own catalog
+/// (`channels/other_channel::providers::catalog()`), so nothing is
+/// typed out here twice.
+fn build_other_channel() -> ChannelDefinition {
+    ChannelDefinition {
+        channel_id: "other".to_string(),
+        channel_name: "Other".to_string(),
+        providers: other_channel::providers::catalog()
+            .into_iter()
+            .map(|v| ProviderDefinition {
+                provider_id: v.id.to_string(),
+                name: v.name.to_string(),
+                scope: ProviderScope::Global,
+                primary_regions: vec![],
+                platforms: v.platforms.iter().map(|p| p.to_string()).collect(),
+                icon_url: v.icon_url.map(str::to_string),
+                docs_url: v.docs_url.map(str::to_string),
+                config_fields: v
+                    .fields
+                    .into_iter()
+                    .map(|f| ConfigField {
+                        key: f.key.to_string(),
+                        label: f.label.to_string(),
+                        field_type: vendor_field_type(f.ty),
+                        required: f.required,
+                    })
+                    .collect(),
+                smtp_fallback: None,
+            })
+            .collect(),
+    }
+}
+
+/// Maps the vendor catalogs' connect-form field types onto the
+/// registry's enum. The device family and the other channel share the
+/// vocabulary; compiler-exhaustive both ways.
+fn vendor_field_type(ty: device_channel::providers::FieldType) -> ConfigFieldType {
     match ty {
         device_channel::providers::FieldType::Text => ConfigFieldType::Text,
         device_channel::providers::FieldType::Password => ConfigFieldType::Password,
@@ -1137,5 +1182,125 @@ impl From<SmtpFallbackConfig> for SmtpFallbackDto {
         Self {
             fields: config.fields.into_iter().map(|f| f.into()).collect(),
         }
+    }
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use super::*;
+
+    #[test]
+    fn registry_sections_cover_every_family_with_other_last() {
+        let registry = build_registry();
+        assert_eq!(registry.version, "1.3.0");
+
+        let ids: Vec<&str> = registry
+            .channels
+            .iter()
+            .map(|c| c.channel_id.as_str())
+            .collect();
+        assert_eq!(
+            ids,
+            vec![
+                "email", "sms", "chat", "android", "apple", "linux", "web", "window", "other"
+            ]
+        );
+    }
+
+    #[test]
+    fn device_sections_stop_offering_the_onesignal_card() {
+        let registry = build_registry();
+        for channel in &registry.channels {
+            if channel.channel_id == "android" || channel.channel_id == "apple" {
+                assert!(
+                    !channel
+                        .providers
+                        .iter()
+                        .any(|p| p.provider_id == "onesignal"),
+                    "oneSignal leaked into the {} section",
+                    channel.channel_id
+                );
+            }
+        }
+
+        // The rest of each family survived — never an empty section.
+        let android = registry
+            .channels
+            .iter()
+            .find(|c| c.channel_id == "android")
+            .expect("android section");
+        let android_ids: Vec<&str> = android
+            .providers
+            .iter()
+            .map(|p| p.provider_id.as_str())
+            .collect();
+        assert!(android_ids.contains(&"fcm") && android_ids.contains(&"pushy"));
+        let apple = registry
+            .channels
+            .iter()
+            .find(|c| c.channel_id == "apple")
+            .expect("apple section");
+        assert!(
+            apple
+                .providers
+                .iter()
+                .any(|p| p.provider_id.starts_with("apns"))
+        );
+    }
+
+    #[test]
+    fn other_section_derives_from_the_channel_catalog() {
+        let registry = build_registry();
+        let other = registry
+            .channels
+            .iter()
+            .find(|c| c.channel_id == "other")
+            .expect("other section built from other_channel::providers::catalog");
+        assert_eq!(other.channel_name, "Other");
+
+        let ids: Vec<&str> = other
+            .providers
+            .iter()
+            .map(|p| p.provider_id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["onesignal", "relay"]);
+
+        // The onesignal card serves both phone families from one
+        // connect — the whole point of the other channel's wrapper.
+        let onesignal = other
+            .providers
+            .iter()
+            .find(|p| p.provider_id == "onesignal")
+            .expect("onesignal card");
+        assert_eq!(onesignal.platforms, vec!["android", "apple"]);
+        assert_eq!(onesignal.name, "OneSignal (Android + Apple)");
+        let one_keys: Vec<&str> = onesignal
+            .config_fields
+            .iter()
+            .map(|f| f.key.as_str())
+            .collect();
+        assert_eq!(one_keys, vec!["app_id", "api_key", "rest_api_key"]);
+
+        // The relay recipe carries everything the webhook family's
+        // provider renders; headers stay optional.
+        let relay = other
+            .providers
+            .iter()
+            .find(|p| p.provider_id == "relay")
+            .expect("relay card");
+        let relay_required: Vec<(&str, bool)> = relay
+            .config_fields
+            .iter()
+            .map(|f| (f.key.as_str(), f.required))
+            .collect();
+        assert_eq!(
+            relay_required,
+            vec![
+                ("target_url", true),
+                ("method", true),
+                ("headers", false),
+                ("payload_template", true),
+            ]
+        );
     }
 }

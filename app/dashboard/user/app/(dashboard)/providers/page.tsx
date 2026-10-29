@@ -9,7 +9,7 @@ import {
   type ProviderDefinition,
 } from "@/hooks";
 import { useProjectStore } from "@/store/project-store";
-import { RECOMMENDED_PROVIDERS, providerBlurb } from "@/lib/constants";
+import { RECOMMENDED_PROVIDERS, isEnvelopeChannel, providerBlurb } from "@/lib/constants";
 import { ApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/custom/page-header";
@@ -189,6 +189,9 @@ export default function ProvidersPage() {
     for (const field of definition.config_fields) {
       coerced[field.key] = coerceValue(field.type, configForm[field.key]);
     }
+    // Envelope channels save the vendor name inside the config — the
+    // backend's adapter reads the tag to route the saved config.
+    if (isEnvelopeChannel(channel)) coerced.provider = provider;
     return {
       channel_id: channel,
       provider_id: provider,

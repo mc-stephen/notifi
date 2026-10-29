@@ -441,7 +441,21 @@ export const PROVIDER_BLURBS: Record<string, string> = {
   "web:web_push": "Browser push notifications via Web Push.",
   "window:webhook": "Windows notifications via your own webhook target.",
   "window:wns": "Windows push through Microsoft's notification service.",
+  "other:onesignal": "One connect arms Android and Apple push together.",
+  "other:relay": "Post raw webhook payloads to anything we don't cover.",
 };
+
+/**
+ * Channels whose saved provider config is the tagged envelope — the
+ * connect form collects the vendor fields flat, and the envelope's
+ * `provider` tag is built here before the save (the backend's adapters
+ * read the tag to route a saved config to its vendor).
+ */
+const ENVELOPE_CHANNELS = new Set(["chat", "other"]);
+
+export function isEnvelopeChannel(channelId: string): boolean {
+  return ENVELOPE_CHANNELS.has(channelId);
+}
 
 export function providerBlurb(
   channelId: string,

@@ -9,5 +9,6 @@
 //! outgrows the wrapper earns a real channel of its own.
 
 pub mod config;
+pub mod providers;
 
 pub use config::OtherChannelConfig;

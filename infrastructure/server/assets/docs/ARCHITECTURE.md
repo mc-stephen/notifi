@@ -273,9 +273,12 @@ Each base channel (email, sms, chat) has a `providers/` directory with one
 file per provider. Each file defines a config struct. The channel's
 `providers/mod.rs` enum lists all providers — this is the source of truth.
 The device family (android, apple, linux, web, window) additionally derives
-its registry rows from its own `providers::catalog()` (see the device
-subsection below); the vendor-first `push` channel was retired in favor of
-those destination rows — its FCM/APNS/OneSignal providers live there now.
+its registry rows from its own `providers::catalog()` (see the
+derived-families subsection below), and the other channel pushes its
+wrapper cards the same way; the vendor-first `push` channel was retired in
+favor of those destination rows — its FCM/APNS/OneSignal controllers live
+there still, while OneSignal's one card (both phone families served from
+one connect) rides the other channel's section instead.
 
 ### Architecture
 
@@ -353,17 +356,20 @@ fn build_email_channel() -> ChannelDefinition {
 5. **Compiler forces handling**: If you miss a match arm in the delivery code,
    the compiler will catch it.
 
-#### Device family — derived, not hand-built
+#### Derived families — device and other, not hand-built
 
-The device destinations (android, apple, linux, web, window) skip the
-registry builder: `GET /app/providers` assembles their rows from
-`device_channel::providers::catalog()`. Adding a vendor there is two
-edits — the vendor's file (sender + config) and its destination's
-`Provider` enum + `vendors()` listing — and the golden test
-`catalog_pins_every_family_variant` pins that listing to the enum, so
-the dashboard picks vendors up with no registry edits. Delivery wiring
-is unchanged: the adapter factory remains the gate (adapters land with
-M3). The four base channels above keep the hand-built flow (steps 1–4).
+The device destinations (android, apple, linux, web, window) and the
+other channel ("Other", the wrappers that hold the OneSignal card both
+phone families share) skip the registry builder: `GET /app/providers`
+assembles their rows from each family's own `providers::catalog()`.
+Adding a vendor there is still the vendor's file plus its catalog
+block, with the listing pinned to the code by golden tests — the device
+family's `catalog_pins_every_family_variant`, the other channel's
+`other_channel::providers` test `catalog_matches_the_wrapped_flavors`.
+Delivery wiring is the adapter factory's gate, and both families' arms
+are landed (`factory_arms_email_and_fcm_only` covers the chat family's,
+`factory_arms_the_other_channel_wrappers` the other channel's). The
+four base channels above keep the hand-built flow (steps 1–4).
 
 ### API Endpoint
 

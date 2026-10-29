@@ -14,6 +14,7 @@ use crate::channels::device_channel::providers::android::pushy::{PushyConfig, Pu
 use crate::channels::device_channel::providers::apple::apns::{ApnsProvider, IosConfig};
 use crate::channels::device_channel::providers::web::web_push::{WebConfig, WebProvider};
 use crate::channels::device_channel::providers::window::wns::WnsAuthenticator;
+use crate::channels::other_channel::OtherChannelConfig;
 use crate::ports::provider_tester::{ProviderTester, TestResult};
 
 pub struct ConfigProviderTester;
@@ -42,6 +43,7 @@ impl ProviderTester for ConfigProviderTester {
             "email" => test_email_provider(provider_id, config).await,
             "sms" => test_sms_provider(provider_id, config).await,
             "chat" => test_chat_provider(provider_id, config).await,
+            "other" => test_other_provider(provider_id, config).await,
             // Device destinations: Firebase proves its service account
             // for real (token exchange); the rest stay house-fallback
             // until their controllers wire up.
@@ -1046,6 +1048,80 @@ async fn test_ms_teams(config: &serde_json::Value) -> TestResult {
     }
 }
 
+/// Other-channel probes. OneSignal shares the device family's real read
+/// (same vendor, same REST surface, handed the bare fields after the
+/// envelope parses); the relay recipe honestly reports that a webhook
+/// cannot be read without posting to it. The envelope parse pins the
+/// vendor tag against the arm — a flat save's fields parse to nothing.
+async fn test_other_provider(provider_id: &str, config: &serde_json::Value) -> TestResult {
+    match provider_id {
+        "onesignal" => {
+            let Ok(OtherChannelConfig::OneSignal {
+                app_id,
+                api_key,
+                rest_api_key,
+            }) = serde_json::from_value::<OtherChannelConfig>(config.clone())
+            else {
+                return TestResult {
+                    success: false,
+                    message: "Config does not parse for the other channel's OneSignal (the \
+                              saved envelope carries the provider tag plus its fields)"
+                        .to_string(),
+                };
+            };
+            if app_id.trim().is_empty()
+                || (api_key.trim().is_empty()
+                    && rest_api_key.as_deref().unwrap_or("").trim().is_empty())
+            {
+                return TestResult {
+                    success: false,
+                    message: "OneSignal needs an app id plus an API key or REST API key"
+                        .to_string(),
+                };
+            }
+            // The device arms own the read — hand them the bare fields.
+            let bare = serde_json::json!({
+                "app_id": app_id,
+                "api_key": api_key,
+                "rest_api_key": rest_api_key
+            });
+            test_device_provider("onesignal", &bare).await
+        }
+        "relay" => {
+            let Ok(OtherChannelConfig::Relay { target_url, .. }) =
+                serde_json::from_value::<OtherChannelConfig>(config.clone())
+            else {
+                return TestResult {
+                    success: false,
+                    message: "Config does not parse for the other channel's relay (the \
+                              saved envelope carries the provider tag plus its fields)"
+                        .to_string(),
+                };
+            };
+            if target_url.trim().is_empty() {
+                return TestResult {
+                    success: false,
+                    message: "Relay needs a target URL".to_string(),
+                };
+            }
+            // Relay webhooks only send — there is no read that proves
+            // the URL without posting a payload for real.
+            TestResult {
+                success: true,
+                message: "Relay saved — nothing to verify until it fires; relay webhooks \
+                          only send"
+                    .to_string(),
+            }
+        }
+        _ => TestResult {
+            success: true,
+            message: format!(
+                "Other provider {provider_id} credentials saved (validation not available)"
+            ),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1095,5 +1171,81 @@ mod tests {
             .await;
         assert!(!t.success, "{}", t.message);
         assert!(t.message.contains("does not parse"), "{}", t.message);
+    }
+
+    #[tokio::test]
+    async fn other_onesignal_probe_rides_the_device_read() {
+        // Blank keys fail pre-network with the vendor's ask.
+        let t = ConfigProviderTester
+            .test(
+                "other",
+                "onesignal",
+                &serde_json::json!({"provider": "onesignal", "app_id": "a"}),
+            )
+            .await;
+        assert!(!t.success, "{}", t.message);
+        assert!(
+            t.message.contains("app id plus an API key"),
+            "{}",
+            t.message
+        );
+    }
+
+    #[tokio::test]
+    async fn other_arms_refuse_flat_saves() {
+        // The envelope's provider tag is the connect flow's job — flat
+        // fields alone parse to nothing and the probe says so.
+        let t = ConfigProviderTester
+            .test(
+                "other",
+                "onesignal",
+                &serde_json::json!({"app_id": "a", "api_key": "k"}),
+            )
+            .await;
+        assert!(!t.success, "{}", t.message);
+        assert!(t.message.contains("does not parse"), "{}", t.message);
+
+        let t = ConfigProviderTester
+            .test(
+                "other",
+                "relay",
+                &serde_json::json!({"target_url": "https://x/hook"}),
+            )
+            .await;
+        assert!(!t.success, "{}", t.message);
+        assert!(t.message.contains("does not parse"), "{}", t.message);
+    }
+
+    #[tokio::test]
+    async fn relay_probe_reports_its_read_limit_honestly() {
+        let t = ConfigProviderTester
+            .test(
+                "other",
+                "relay",
+                &serde_json::json!({
+                    "provider": "relay",
+                    "target_url": "https://x/hook",
+                    "method": "POST",
+                    "payload_template": "{}"
+                }),
+            )
+            .await;
+        assert!(t.success, "{}", t.message);
+        assert!(t.message.contains("only send"), "{}", t.message);
+
+        let t = ConfigProviderTester
+            .test(
+                "other",
+                "relay",
+                &serde_json::json!({
+                    "provider": "relay",
+                    "target_url": " ",
+                    "method": "POST",
+                    "payload_template": "{}"
+                }),
+            )
+            .await;
+        assert!(!t.success, "{}", t.message);
+        assert!(t.message.contains("target URL"), "{}", t.message);
     }
 }

@@ -29,7 +29,7 @@ pub enum OtherChannelConfig {
     Relay {
         target_url: String,
         method: String,
-        #[serde(default)]
+        #[serde(default, deserialize_with = "headers_from_json")]
         headers: HashMap<String, String>,
         payload_template: String,
     },
@@ -57,6 +57,35 @@ impl OtherChannelConfig {
             Self::Function { function_id } => !function_id.trim().is_empty(),
         }
     }
+}
+
+/// Headers travel loose: the connect form collects them as one text
+/// field, so the saved value can be a JSON object, a string holding a
+/// JSON object, or empty — all mean the header map.
+fn headers_from_json<'de, D>(d: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(d)?;
+    match value {
+        serde_json::Value::Null => Ok(HashMap::new()),
+        serde_json::Value::Object(map) => Ok(into_string_map(map)),
+        serde_json::Value::String(s) if s.trim().is_empty() => Ok(HashMap::new()),
+        serde_json::Value::String(s) => {
+            let map: serde_json::Map<String, serde_json::Value> =
+                serde_json::from_str(&s).map_err(serde::de::Error::custom)?;
+            Ok(into_string_map(map))
+        }
+        _ => Err(serde::de::Error::custom(
+            "headers must be a JSON object or a JSON object string",
+        )),
+    }
+}
+
+fn into_string_map(map: serde_json::Map<String, serde_json::Value>) -> HashMap<String, String> {
+    map.into_iter()
+        .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
+        .collect()
 }
 
 #[cfg(test)]
@@ -89,5 +118,44 @@ mod config_tests {
         )
         .expect("relay blank url parses");
         assert!(!blank.carries_credentials());
+    }
+
+    #[test]
+    fn relay_headers_travel_loose() {
+        // The connect form posts headers as one text field — a string
+        // holding the JSON — and an object or empty value is equally
+        // fine; all mean the header map.
+        let from_string: OtherChannelConfig = serde_json::from_str(
+            r#"{"provider":"relay","target_url":"https://x/hook","method":"POST","headers":"{\"Authorization\":\"Bearer t\"}","payload_template":"{}"}"#,
+        )
+        .expect("string headers parse");
+        let OtherChannelConfig::Relay { headers, .. } = from_string else {
+            panic!("relay variant expected");
+        };
+        assert_eq!(
+            headers.get("Authorization").map(String::as_str),
+            Some("Bearer t")
+        );
+
+        let from_object: OtherChannelConfig = serde_json::from_str(
+            r#"{"provider":"relay","target_url":"https://x/hook","method":"POST","headers":{"Content-Type":"application/json"},"payload_template":"{}"}"#,
+        )
+        .expect("object headers parse");
+        let OtherChannelConfig::Relay { headers, .. } = from_object else {
+            panic!("relay variant expected");
+        };
+        assert_eq!(
+            headers.get("Content-Type").map(String::as_str),
+            Some("application/json")
+        );
+
+        let empty: OtherChannelConfig = serde_json::from_str(
+            r#"{"provider":"relay","target_url":"https://x/hook","method":"POST","headers":"","payload_template":"{}"}"#,
+        )
+        .expect("empty headers parse");
+        let OtherChannelConfig::Relay { headers, .. } = empty else {
+            panic!("relay variant expected");
+        };
+        assert!(headers.is_empty());
     }
 }
