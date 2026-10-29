@@ -97,6 +97,12 @@ async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> 
                 "Self-hosted endpoint — nothing to verify; the delivery URL arrives per device"
                     .to_string(),
         },
+        "webhook" => TestResult {
+            success: true,
+            message:
+                "Self-hosted webhook — nothing to verify; the registration URL arrives per device"
+                    .to_string(),
+        },
         _ => TestResult {
             success: true,
             message: format!(

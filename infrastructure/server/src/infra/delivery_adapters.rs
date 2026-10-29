@@ -1,7 +1,8 @@
 //! Channel adapters for product sends (Phase A).
 //!
 //! Email (SMTP), android (fcm), apple (apns / apns_macos), linux
-//! (self-hosted endpoint) and all nine SMS vendors send for real — each adapter is built per-request from
+//! (self-hosted endpoint), window webhook and all nine SMS vendors send
+//! for real — each adapter is built per-request from
 //! the project's own provider config JSON. Anything else still resolves
 //! to `None` so the send worker records a provider-missing failure and
 //! falls through the priority chain — their adapters land as their
@@ -23,6 +24,7 @@ use crate::channels::device_channel::providers::apple::apns::{
 use crate::channels::device_channel::providers::linux::endpoint::{
     LinuxConfig, LinuxMessage, LinuxProvider,
 };
+use crate::channels::device_channel::providers::window::{WindowSender, webhook::WebhookProvider};
 use crate::channels::email_channel::{
     EmailMessage, EmailSender, config::EmailConfig, providers::smtp::SmtpConfig,
 };
@@ -242,6 +244,43 @@ impl DeliveryProvider for LinuxAdapter {
     }
 }
 
+/// Window (channel `window`): one adapter serves both flavors (webhook
+/// and WNS) — the flavor's Sender is built from the project's saved
+/// config and holds the targeting. The recipient is the target address
+/// (webhook registration URL or WNS channel URI).
+pub struct WindowAdapter {
+    sender: Box<dyn WindowSender>,
+    provider_id: &'static str,
+}
+
+impl DeliveryProvider for WindowAdapter {
+    fn channel(&self) -> &'static str {
+        "window"
+    }
+
+    fn provider_name(&self) -> &'static str {
+        self.provider_id
+    }
+
+    fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_> {
+        let sender = &self.sender;
+        let provider_id = self.provider_id;
+        let target = message.recipient.clone();
+        let title = message.title.clone();
+        let body = message.body.clone();
+        Box::pin(async move {
+            sender
+                .send(&target, &title, &body)
+                .await
+                .map(|_| DeliveryReceipt {
+                    provider: provider_id.to_string(),
+                    provider_message_id: None,
+                })
+                .map_err(DeliveryError::Provider)
+        })
+    }
+}
+
 /// SMS (channel `sms`): one adapter serves every wired vendor — the
 /// family's `SmsSender2` dispatches to the vendor controller built from
 /// the project's saved config. The recipient is the raw phone number;
@@ -335,6 +374,10 @@ impl AdapterFactory for DefaultAdapterFactory {
                     provider: LinuxProvider::new(cfg),
                 }))
             }
+            ("window", "webhook") => Some(Arc::new(WindowAdapter {
+                sender: Box::new(WebhookProvider::new()),
+                provider_id: "webhook",
+            })),
             // All nine SMS vendors arm from their own bare saved config.
             ("sms", "twilio") => sms_adapter::<TwilioConfig>(config, "twilio", SmsConfig::Twilio),
             ("sms", "termii") => sms_adapter::<TermiiConfig>(config, "termii", SmsConfig::Termii),
@@ -476,6 +519,13 @@ mod tests {
         let linux = linux.unwrap();
         assert_eq!(linux.channel(), "linux");
         assert_eq!(linux.provider_name(), "endpoint");
+
+        // The window webhook arm carries no credentials either.
+        let webhook = f.adapter("window", "webhook", &serde_json::json!({}));
+        assert!(webhook.is_some());
+        let webhook = webhook.unwrap();
+        assert_eq!(webhook.channel(), "window");
+        assert_eq!(webhook.provider_name(), "webhook");
 
         // The wired SMS vendors arm...
         let twilio_cfg =

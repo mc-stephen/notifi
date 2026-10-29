@@ -190,4 +190,19 @@ mod window_tests {
             .await
             .expect("real WNS accepted the push");
     }
+
+    #[tokio::test]
+    #[ignore = "live webhook delivery — needs NOTIFI_WEBHOOK_URL (a self-hosted receiver \
+                accepting {title, body} posts)"]
+    async fn live_webhook_delivery() {
+        let target = std::env::var("NOTIFI_WEBHOOK_URL").expect("NOTIFI_WEBHOOK_URL not set");
+        WindowProvider::new(Provider::Webhook)
+            .send_notification(&WindowMessage {
+                target,
+                title: "Notifi live-check".to_string(),
+                body: "Real webhook, real payload.".to_string(),
+            })
+            .await
+            .expect("real webhook accepted the payload");
+    }
 }
