@@ -2,11 +2,20 @@ mod auth;
 mod xml;
 
 use super::WindowSender;
-use auth::WnsAuthenticator;
+pub use auth::WnsAuthenticator;
 use futures::future::BoxFuture;
 use reqwest::Client;
+use serde::Deserialize;
 use std::sync::Arc;
 use xml::build_toast_xml;
+
+/// WNS configuration — Azure AD app credentials the token exchange uses.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WnsConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    pub package_sid: String,
+}
 
 pub struct WnsProvider {
     auth: Arc<WnsAuthenticator>,

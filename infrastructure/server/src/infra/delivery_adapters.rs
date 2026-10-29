@@ -1,8 +1,8 @@
 //! Channel adapters for product sends (Phase A).
 //!
 //! Email (SMTP), android (fcm), apple (apns / apns_macos), linux
-//! (self-hosted endpoint), window webhook and all nine SMS vendors send
-//! for real — each adapter is built per-request from
+//! (self-hosted endpoint), window (webhook / WNS) and all nine SMS
+//! vendors send for real — each adapter is built per-request from
 //! the project's own provider config JSON. Anything else still resolves
 //! to `None` so the send worker records a provider-missing failure and
 //! falls through the priority chain — their adapters land as their
@@ -24,7 +24,11 @@ use crate::channels::device_channel::providers::apple::apns::{
 use crate::channels::device_channel::providers::linux::endpoint::{
     LinuxConfig, LinuxMessage, LinuxProvider,
 };
-use crate::channels::device_channel::providers::window::{WindowSender, webhook::WebhookProvider};
+use crate::channels::device_channel::providers::window::{
+    WindowSender,
+    webhook::WebhookProvider,
+    wns::{WnsConfig, WnsProvider},
+};
 use crate::channels::email_channel::{
     EmailMessage, EmailSender, config::EmailConfig, providers::smtp::SmtpConfig,
 };
@@ -378,6 +382,20 @@ impl AdapterFactory for DefaultAdapterFactory {
                 sender: Box::new(WebhookProvider::new()),
                 provider_id: "webhook",
             })),
+            ("window", "wns") => {
+                let cfg: WnsConfig = serde_json::from_value(config.clone()).ok()?;
+                if cfg.client_id.trim().is_empty() || cfg.client_secret.trim().is_empty() {
+                    return None;
+                }
+                Some(Arc::new(WindowAdapter {
+                    sender: Box::new(WnsProvider::new(
+                        cfg.client_id,
+                        cfg.client_secret,
+                        cfg.package_sid,
+                    )),
+                    provider_id: "wns",
+                }))
+            }
             // All nine SMS vendors arm from their own bare saved config.
             ("sms", "twilio") => sms_adapter::<TwilioConfig>(config, "twilio", SmsConfig::Twilio),
             ("sms", "termii") => sms_adapter::<TermiiConfig>(config, "termii", SmsConfig::Termii),
@@ -526,6 +544,27 @@ mod tests {
         let webhook = webhook.unwrap();
         assert_eq!(webhook.channel(), "window");
         assert_eq!(webhook.provider_name(), "webhook");
+
+        // The WNS flavor arms from its credential pair; a blank one stays None.
+        let wns = f.adapter(
+            "window",
+            "wns",
+            &serde_json::json!({
+                "client_id": "cid", "client_secret": "sec", "package_sid": "sid"
+            }),
+        );
+        assert!(wns.is_some());
+        let wns = wns.unwrap();
+        assert_eq!(wns.channel(), "window");
+        assert_eq!(wns.provider_name(), "wns");
+        assert!(
+            f.adapter(
+                "window",
+                "wns",
+                &serde_json::json!({"client_id": "", "client_secret": "sec"})
+            )
+            .is_none()
+        );
 
         // The wired SMS vendors arm...
         let twilio_cfg =

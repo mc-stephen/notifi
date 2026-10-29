@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 use crate::channels::device_channel::providers::android::fcm::{FcmConfig, FcmProvider};
 use crate::channels::device_channel::providers::apple::apns::{ApnsProvider, IosConfig};
+use crate::channels::device_channel::providers::window::wns::WnsAuthenticator;
 use crate::ports::provider_tester::{ProviderTester, TestResult};
 
 pub struct ConfigProviderTester;
@@ -103,6 +104,41 @@ async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> 
                 "Self-hosted webhook — nothing to verify; the registration URL arrives per device"
                     .to_string(),
         },
+        "wns" => {
+            let client_id = config
+                .get("client_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let client_secret = config
+                .get("client_secret")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if client_id.is_empty() || client_secret.is_empty() {
+                return TestResult {
+                    success: false,
+                    message: "WNS requires client_id and client_secret".to_string(),
+                };
+            }
+            let authenticator = WnsAuthenticator::new(
+                client_id.to_string(),
+                client_secret.to_string(),
+                config
+                    .get("package_sid")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            );
+            match authenticator.get_token().await {
+                Ok(_) => TestResult {
+                    success: true,
+                    message: "Microsoft granted the WNS token (credential is live)".to_string(),
+                },
+                Err(e) => TestResult {
+                    success: false,
+                    message: format!("Microsoft rejected the WNS credential: {e}"),
+                },
+            }
+        }
         _ => TestResult {
             success: true,
             message: format!(
