@@ -60,7 +60,12 @@ impl SlackProvider {
 
 impl ChatSender for SlackProvider {
     fn send(&self, msg: &ChatMessage) -> BoxFuture<'static, Result<(), String>> {
-        let text = msg.text.clone();
+        // The title is the headline — slack's mrkdwn bolds it with
+        // single asterisks; the body follows beneath.
+        let text = match msg.title.as_deref() {
+            Some(title) if !title.is_empty() => format!("*{title}*\n{}", msg.text),
+            _ => msg.text.clone(),
+        };
         let client = self.client.clone();
         match self.auth.clone() {
             SlackAuth::Webhook { webhook_url } => Box::pin(async move {
@@ -141,6 +146,7 @@ mod slack_tests {
     fn msg() -> ChatMessage {
         ChatMessage {
             channel_id: None,
+            title: None,
             text: "hello".to_string(),
             metadata: None,
         }
@@ -213,6 +219,24 @@ mod slack_tests {
     }
 
     #[tokio::test]
+    async fn title_arrives_bolding_the_first_line() {
+        // slack's mrkdwn bolds with single asterisks; the body follows
+        // on the next line.
+        let mut titled = msg();
+        titled.title = Some("Deploy done".to_string());
+        let stub = http_stub::start(200, "OK", r#"{"ok":true}"#).await;
+        stub_bot_provider(stub.port)
+            .send(&titled)
+            .await
+            .expect("titled delivery");
+        let raw = stub.request().await.expect("request captured");
+        assert!(
+            raw.contains(r#""text":"*Deploy done*\nhello""#),
+            "bold headline: {raw}"
+        );
+    }
+
+    #[tokio::test]
     #[ignore = "live Slack Bot API delivery — needs NOTIFI_SLACK_BOT_TOKEN, NOTIFI_SLACK_CHANNEL_ID"]
     async fn live_slack_bot_delivery() {
         let config = SlackConfig {
@@ -226,6 +250,7 @@ mod slack_tests {
         SlackProvider::new(config)
             .send(&ChatMessage {
                 channel_id: None,
+                title: None,
                 text: format!(
                     "Notifi live-check {}",
                     chrono::Utc::now().timestamp_millis()

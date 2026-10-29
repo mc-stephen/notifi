@@ -3,8 +3,10 @@
 //! Email (SMTP), android (fcm), apple (apns / apns_macos), linux
 //! Email (SMTP), android (fcm / pushy / onesignal), apple (apns /
 //! apns_macos / onesignal), linux (self-hosted endpoint), window
-//! (webhook / WNS), web push and all nine SMS vendors send for real —
-//! one adapter set serves every destination in the registry. Each adapter is built per-request from
+//! (webhook / WNS), web push, the whole chat family (slack /
+//! telegram / whatsapp_business / discord / ms_teams) and all nine
+//! SMS vendors send for real — one adapter set serves every
+//! destination in the registry. Each adapter is built per-request from
 //! the project's own provider config JSON. Anything else still resolves
 //! to `None` so the send worker records a provider-missing failure and
 //! falls through the priority chain — their adapters land as their
@@ -16,6 +18,7 @@
 
 use std::sync::Arc;
 
+use crate::channels::chat_channel::{ChatMessage, ChatSender2, config::ChatConfig};
 use crate::channels::device_channel::providers::android::onesignal::{
     OneSignalConfig, OneSignalMessage, OneSignalProvider,
 };
@@ -465,6 +468,84 @@ impl DeliveryProvider for WindowAdapter {
     }
 }
 
+/// Chat (channel `chat`): one adapter serves every chat vendor. The
+/// saved provider config is the tagged envelope the channel's own
+/// config module owns — provider name first, vendor fields after — so
+/// the vendor split happens inside ChatConfig and this adapter only
+/// routes. The recipient is the per-send chat address: whatsapp reads
+/// it as the to-number; the channel-bound flavors (slack/telegram/
+/// discord bots, each webhook) target the channel saved in the
+/// provider config. Titles travel as the headline (each controller
+/// renders it its platform's way) and the body as the text.
+pub struct ChatAdapter {
+    sender: ChatSender2,
+    provider_id: &'static str,
+}
+
+impl DeliveryProvider for ChatAdapter {
+    fn channel(&self) -> &'static str {
+        "chat"
+    }
+
+    fn provider_name(&self) -> &'static str {
+        self.provider_id
+    }
+
+    fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_> {
+        let sender = &self.sender;
+        let provider_id = self.provider_id;
+        let msg = ChatMessage {
+            channel_id: Some(message.recipient.clone()),
+            title: Some(message.title.clone()),
+            text: message.body.clone(),
+            metadata: None,
+        };
+        Box::pin(async move {
+            sender
+                .send_message(&msg)
+                .await
+                .map(|_| DeliveryReceipt {
+                    provider: provider_id.to_string(),
+                    provider_message_id: None,
+                })
+                .map_err(DeliveryError::Provider)
+        })
+    }
+}
+
+/// Builds the chat adapter from the saved envelope. The tag must agree
+/// with the saved provider id (both come from the same registry card;
+/// a disagreement is a miswiring, not a sendable state), and the
+/// vendor tag maps to its known static name.
+fn chat_adapter(
+    config: &serde_json::Value,
+    provider_id: &str,
+) -> Option<Arc<dyn DeliveryProvider>> {
+    let tag = config
+        .get("provider")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let name: &'static str = match tag {
+        "slack" => "slack",
+        "telegram" => "telegram",
+        "whatsapp_business" => "whatsapp_business",
+        "discord" => "discord",
+        "ms_teams" => "ms_teams",
+        _ => return None,
+    };
+    if provider_id != name {
+        return None;
+    }
+    let cfg: ChatConfig = serde_json::from_value(config.clone()).ok()?;
+    if !cfg.carries_credentials() {
+        return None;
+    }
+    Some(Arc::new(ChatAdapter {
+        sender: ChatSender2::new(cfg),
+        provider_id: name,
+    }))
+}
+
 /// SMS (channel `sms`): one adapter serves every wired vendor — the
 /// family's `SmsSender2` dispatches to the vendor controller built from
 /// the project's saved config. The recipient is the raw phone number;
@@ -599,6 +680,7 @@ impl AdapterFactory for DefaultAdapterFactory {
                     provider: WebProvider::new(cfg).ok()?,
                 }))
             }
+            ("chat", provider_id) => chat_adapter(config, provider_id),
             // All nine SMS vendors arm from their own bare saved config.
             ("sms", "twilio") => sms_adapter::<TwilioConfig>(config, "twilio", SmsConfig::Twilio),
             ("sms", "termii") => sms_adapter::<TermiiConfig>(config, "termii", SmsConfig::Termii),
@@ -818,6 +900,79 @@ mod tests {
                     "vapid_private_key": "",
                     "contact_email": "ops@notifi.dev"
                 })
+            )
+            .is_none()
+        );
+
+        // The chat arm parses the tagged envelope its config module
+        // owns — the vendor split happens inside ChatConfig.
+        let chat = f.adapter(
+            "chat",
+            "slack",
+            &serde_json::json!({
+                "provider": "slack", "type": "webhook",
+                "webhook_url": "https://hooks.slack.com/x"
+            }),
+        );
+        assert!(chat.is_some());
+        let chat = chat.unwrap();
+        assert_eq!(chat.channel(), "chat");
+        assert_eq!(chat.provider_name(), "slack");
+        assert!(
+            f.adapter(
+                "chat",
+                "telegram",
+                &serde_json::json!({"provider": "telegram", "bot_token": "b", "chat_id": "c"})
+            )
+            .is_some()
+        );
+        assert!(
+            f.adapter(
+                "chat",
+                "whatsapp_business",
+                &serde_json::json!({
+                    "provider": "whatsapp_business",
+                    "phone_number_id": "p", "access_token": "a"
+                })
+            )
+            .is_some()
+        );
+        assert!(
+            f.adapter(
+                "chat",
+                "discord",
+                &serde_json::json!({
+                    "provider": "discord", "type": "bot",
+                    "bot_token": "b", "channel_id": "c"
+                })
+            )
+            .is_some()
+        );
+        assert!(
+            f.adapter(
+                "chat",
+                "ms_teams",
+                &serde_json::json!({
+                    "provider": "ms_teams",
+                    "webhook_url": "https://outlook.office.com/webhook/x"
+                })
+            )
+            .is_some()
+        );
+        assert!(
+            f.adapter(
+                "chat",
+                "telegram",
+                &serde_json::json!({"provider": "telegram", "bot_token": "", "chat_id": "c"})
+            )
+            .is_none()
+        );
+        // The saved id must agree with the envelope tag.
+        assert!(
+            f.adapter(
+                "chat",
+                "slack",
+                &serde_json::json!({"provider": "telegram", "bot_token": "b", "chat_id": "c"})
             )
             .is_none()
         );

@@ -60,7 +60,12 @@ impl DiscordProvider {
 
 impl ChatSender for DiscordProvider {
     fn send(&self, msg: &ChatMessage) -> BoxFuture<'static, Result<(), String>> {
-        let text = msg.text.clone();
+        // The title is the headline — discord's content markdown bolds
+        // it with double asterisks; the body follows beneath.
+        let text = match msg.title.as_deref() {
+            Some(title) if !title.is_empty() => format!("**{title}**\n{}", msg.text),
+            _ => msg.text.clone(),
+        };
         let client = self.client.clone();
         match self.auth.clone() {
             DiscordAuth::Webhook { webhook_url } => Box::pin(async move {
@@ -128,6 +133,7 @@ mod discord_tests {
     fn msg() -> ChatMessage {
         ChatMessage {
             channel_id: None,
+            title: None,
             text: "hello".to_string(),
             metadata: None,
         }
@@ -199,6 +205,23 @@ mod discord_tests {
     }
 
     #[tokio::test]
+    async fn title_arrives_bolding_the_first_line() {
+        // Discord content markdown bolds with double asterisks.
+        let mut titled = msg();
+        titled.title = Some("Deploy done".to_string());
+        let stub = http_stub::start(200, "OK", r#"{"id":"m1"}"#).await;
+        DiscordProvider::new_with_api_base(bot_config(), format!("http://127.0.0.1:{}", stub.port))
+            .send(&titled)
+            .await
+            .expect("titled delivery");
+        let raw = stub.request().await.expect("request captured");
+        assert!(
+            raw.contains(r#""content":"**Deploy done**\nhello""#),
+            "bold headline: {raw}"
+        );
+    }
+
+    #[tokio::test]
     #[ignore = "live Discord delivery — needs NOTIFI_DISCORD_BOT_TOKEN, NOTIFI_DISCORD_CHANNEL_ID"]
     async fn live_discord_bot_delivery() {
         let config = DiscordConfig {
@@ -212,6 +235,7 @@ mod discord_tests {
         DiscordProvider::new(config)
             .send(&ChatMessage {
                 channel_id: None,
+                title: None,
                 text: format!(
                     "Notifi live-check {}",
                     chrono::Utc::now().timestamp_millis()

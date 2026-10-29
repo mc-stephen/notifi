@@ -47,7 +47,13 @@ impl TelegramProvider {
 
 impl ChatSender for TelegramProvider {
     fn send(&self, msg: &ChatMessage) -> BoxFuture<'static, Result<(), String>> {
-        let text = msg.text.clone();
+        // The title is the headline — plain text only (no parse_mode is
+        // set, so user escape characters stay literal); the body follows
+        // beneath.
+        let text = match msg.title.as_deref() {
+            Some(title) if !title.is_empty() => format!("{title}\n{}", msg.text),
+            _ => msg.text.clone(),
+        };
         let client = self.client.clone();
         let url = {
             #[cfg(test)]
@@ -107,6 +113,7 @@ mod telegram_tests {
     fn msg() -> ChatMessage {
         ChatMessage {
             channel_id: None,
+            title: None,
             text: "hello".to_string(),
             metadata: None,
         }
@@ -153,6 +160,24 @@ mod telegram_tests {
     }
 
     #[tokio::test]
+    async fn title_arrives_as_the_plain_first_line() {
+        // No parse_mode is set (user escape characters stay literal), so
+        // the title is a plain first line.
+        let mut titled = msg();
+        titled.title = Some("Deploy done".to_string());
+        let stub = http_stub::start(200, "OK", r#"{"ok":true}"#).await;
+        stub_provider(stub.port)
+            .send(&titled)
+            .await
+            .expect("titled delivery");
+        let raw = stub.request().await.expect("request captured");
+        assert!(
+            raw.contains(r#""text":"Deploy done\nhello""#),
+            "headline: {raw}"
+        );
+    }
+
+    #[tokio::test]
     #[ignore = "live Telegram delivery — needs NOTIFI_TELEGRAM_BOT_TOKEN, NOTIFI_TELEGRAM_CHAT_ID"]
     async fn live_telegram_delivery() {
         let config = TelegramConfig {
@@ -164,6 +189,7 @@ mod telegram_tests {
         TelegramProvider::new(config)
             .send(&ChatMessage {
                 channel_id: None,
+                title: None,
                 text: format!(
                     "Notifi live-check {}",
                     chrono::Utc::now().timestamp_millis()

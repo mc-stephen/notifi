@@ -30,7 +30,12 @@ impl MsTeamsProvider {
 
 impl ChatSender for MsTeamsProvider {
     fn send(&self, msg: &ChatMessage) -> BoxFuture<'static, Result<(), String>> {
-        let text = msg.text.clone();
+        // The title is the headline — connector text is plain; the body
+        // follows beneath.
+        let text = match msg.title.as_deref() {
+            Some(title) if !title.is_empty() => format!("{title}\n{}", msg.text),
+            _ => msg.text.clone(),
+        };
         let url = self.config.webhook_url.clone();
         let client = self.client.clone();
 
@@ -66,6 +71,7 @@ mod ms_teams_tests {
     fn msg() -> ChatMessage {
         ChatMessage {
             channel_id: None,
+            title: None,
             text: "hello".to_string(),
             metadata: None,
         }
@@ -107,6 +113,23 @@ mod ms_teams_tests {
     }
 
     #[tokio::test]
+    async fn title_arrives_as_the_plain_first_line() {
+        // Connector text is plain; the title is the first line.
+        let mut titled = msg();
+        titled.title = Some("Deploy done".to_string());
+        let stub = http_stub::start(200, "OK", "1").await;
+        MsTeamsProvider::new(config(format!("http://127.0.0.1:{}", stub.port)))
+            .send(&titled)
+            .await
+            .expect("titled delivery");
+        let raw = stub.request().await.expect("request captured");
+        assert!(
+            raw.contains(r#""text":"Deploy done\nhello""#),
+            "headline: {raw}"
+        );
+    }
+
+    #[tokio::test]
     #[ignore = "live MS Teams delivery — needs NOTIFI_MS_TEAMS_WEBHOOK_URL"]
     async fn live_ms_teams_delivery() {
         let url = std::env::var("NOTIFI_MS_TEAMS_WEBHOOK_URL")
@@ -117,6 +140,7 @@ mod ms_teams_tests {
         })
         .send(&ChatMessage {
             channel_id: None,
+            title: None,
             text: format!(
                 "Notifi live-check {}",
                 chrono::Utc::now().timestamp_millis()

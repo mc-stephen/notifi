@@ -79,11 +79,17 @@ impl ChatSender for WhatsAppBusinessProvider {
             }
         };
         let to = msg.channel_id.clone().unwrap_or_default();
+        // The title is the headline — whatsapp's markdown-lite bolds it
+        // with single asterisks; the body follows beneath.
+        let text = match msg.title.as_deref() {
+            Some(title) if !title.is_empty() => format!("*{title}*\n{}", msg.text),
+            _ => msg.text.clone(),
+        };
         let payload = serde_json::json!({
             "messaging_product": "whatsapp",
             "to": to,
             "type": "text",
-            "text": { "body": msg.text }
+            "text": { "body": text }
         });
         let token = self.config.access_token.clone();
         let client = self.client.clone();
@@ -128,6 +134,7 @@ mod whatsapp_business_tests {
     fn msg(to: &str) -> ChatMessage {
         ChatMessage {
             channel_id: Some(to.to_string()),
+            title: None,
             text: "hello".to_string(),
             metadata: None,
         }
@@ -192,6 +199,23 @@ mod whatsapp_business_tests {
     }
 
     #[tokio::test]
+    async fn title_arrives_bolding_the_first_line() {
+        // WhatsApp's markdown-lite bolds with single asterisks.
+        let mut titled = msg("+2348012345678");
+        titled.title = Some("Deploy done".to_string());
+        let stub = http_stub::start(200, "OK", r#"{"messaging_product":"whatsapp"}"#).await;
+        stub_provider(stub.port)
+            .send(&titled)
+            .await
+            .expect("titled delivery");
+        let raw = stub.request().await.expect("request captured");
+        assert!(
+            raw.contains(r#""body":"*Deploy done*\nhello""#),
+            "bold headline: {raw}"
+        );
+    }
+
+    #[tokio::test]
     #[ignore = "live WhatsApp delivery — needs NOTIFI_WHATSAPP_ACCESS_TOKEN, \
                 NOTIFI_WHATSAPP_PHONE_NUMBER_ID, NOTIFI_WHATSAPP_TO"]
     async fn live_whatsapp_delivery() {
@@ -206,6 +230,7 @@ mod whatsapp_business_tests {
         WhatsAppBusinessProvider::new(config)
             .send(&ChatMessage {
                 channel_id: Some(to),
+                title: None,
                 text: format!(
                     "Notifi live-check {}",
                     chrono::Utc::now().timestamp_millis()

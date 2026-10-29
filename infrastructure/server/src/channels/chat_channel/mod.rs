@@ -6,6 +6,10 @@ pub use config::ChatConfig;
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ChatMessage {
     pub channel_id: Option<String>,
+    /// Optional headline. Each controller renders it its platform's way
+    /// (a bold first line where the platform's plain text allows it, a
+    /// plain first line otherwise); `text` is always the body beneath.
+    pub title: Option<String>,
     pub text: String,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
