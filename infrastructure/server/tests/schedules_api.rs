@@ -83,6 +83,7 @@ impl StubFactory {
 impl AdapterFactory for StubFactory {
     fn adapter(
         &self,
+        _project_id: &str,
         _channel: &str,
         provider_id: &str,
         _config: &serde_json::Value,

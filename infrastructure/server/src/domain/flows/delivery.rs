@@ -45,7 +45,9 @@ pub async fn deliver_through_chain(
                 continue;
             }
         };
-        let Some(adapter) = adapters.adapter(&step.channel_id, &step.provider_id, &config) else {
+        let Some(adapter) =
+            adapters.adapter(project_id, &step.channel_id, &step.provider_id, &config)
+        else {
             last_error = format!(
                 "provider '{}' has no sender yet (channel '{}')",
                 step.provider_id, step.channel_id

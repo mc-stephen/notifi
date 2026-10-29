@@ -4,13 +4,14 @@
 //! Email (SMTP), android (fcm / pushy / onesignal), apple (apns /
 //! apns_macos / onesignal), linux (self-hosted endpoint), window
 //! (webhook / WNS), web push, the whole chat family (slack /
-//! telegram / whatsapp_business / discord / ms_teams) and all nine
-//! SMS vendors send for real — one adapter set serves every
-//! destination in the registry. Each adapter is built per-request from
-//! the project's own provider config JSON. Anything else still resolves
-//! to `None` so the send worker records a provider-missing failure and
-//! falls through the priority chain — their adapters land as their
-//! controllers wire up.
+//! telegram / whatsapp_business / discord / ms_teams), all nine
+//! SMS vendors and the other channel (onesignal wrapping both phone
+//! families at once / webhook relay) send for real — one adapter set
+//! serves every destination in the registry. Each adapter is built
+//! per-request from the project's own provider config JSON. Anything
+//! else still resolves to `None` so the send worker records a
+//! provider-missing failure and falls through the priority chain —
+//! their adapters land as their controllers wire up.
 //!
 //! Adapters speak to ONE address (`DeliveryMessage.recipient` — an email
 //! address, a push token, a raw phone number); expanding a recipient's
@@ -44,12 +45,17 @@ use crate::channels::device_channel::providers::window::{
 use crate::channels::email_channel::{
     EmailMessage, EmailSender, config::EmailConfig, providers::smtp::SmtpConfig,
 };
+use crate::channels::other_channel::OtherChannelConfig;
 use crate::channels::sms_channel::providers::{
     africas_talking::AfricasTalkingConfig, bird::BirdConfig, ebulksms::EbulkSmsConfig,
     infobip::InfobipConfig, local_nigeria::LocalNigeriaConfig, smslive247::SmsLive247Config,
     termii::TermiiConfig, twilio::TwilioConfig, vonage::VonageConfig,
 };
 use crate::channels::sms_channel::{SmsConfig, SmsMessage, SmsSender2};
+use crate::channels::webhook_channel::{
+    WebhookMessage as RelayWebhookMessage, WebhookProvider as RelayWebhookProvider,
+    config::WebhookConfig as RelayWebhookConfig,
+};
 use crate::ports::{
     AdapterFactory, BoxSendFuture, DeliveryError, DeliveryMessage, DeliveryProvider,
     DeliveryReceipt,
@@ -601,9 +607,47 @@ fn sms_adapter<T: serde::de::DeserializeOwned + 'static>(
 /// Production factory: SMTP + Firebase + Apple + SMS from project config, stubs nowhere else yet.
 pub struct DefaultAdapterFactory;
 
+/// Webhook relay (channel `other`): posts the rendered payload to the
+/// target URL saved at connect time — the recipe carries url, method,
+/// headers and the payload template, so the per-send address is
+/// informational only. The webhook family's provider does the HTTP
+/// work; this adapter is the other channel's arm around it.
+pub struct WebhookRelayAdapter {
+    provider: RelayWebhookProvider,
+}
+
+impl DeliveryProvider for WebhookRelayAdapter {
+    fn channel(&self) -> &'static str {
+        "other"
+    }
+
+    fn provider_name(&self) -> &'static str {
+        "relay"
+    }
+
+    fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_> {
+        let provider = &self.provider;
+        let msg = RelayWebhookMessage {
+            title: message.title.clone(),
+            body: message.body.clone(),
+        };
+        Box::pin(async move {
+            provider
+                .send_notification(&msg)
+                .await
+                .map(|_| DeliveryReceipt {
+                    provider: "relay".to_string(),
+                    provider_message_id: None,
+                })
+                .map_err(DeliveryError::Provider)
+        })
+    }
+}
+
 impl AdapterFactory for DefaultAdapterFactory {
     fn adapter(
         &self,
+        project_id: &str,
         channel: &str,
         provider_id: &str,
         config: &serde_json::Value,
@@ -681,6 +725,54 @@ impl AdapterFactory for DefaultAdapterFactory {
                 }))
             }
             ("chat", provider_id) => chat_adapter(config, provider_id),
+            ("other", "onesignal") => {
+                let parsed: OtherChannelConfig = serde_json::from_value(config.clone()).ok()?;
+                if !parsed.carries_credentials() {
+                    return None;
+                }
+                let OtherChannelConfig::OneSignal {
+                    app_id,
+                    api_key,
+                    rest_api_key,
+                } = parsed
+                else {
+                    return None;
+                };
+                Some(Arc::new(OneSignalAdapter {
+                    provider: OneSignalProvider::new(OneSignalConfig {
+                        app_id,
+                        api_key,
+                        rest_api_key,
+                    }),
+                    channel: "other",
+                }))
+            }
+            ("other", "relay") => {
+                let parsed: OtherChannelConfig = serde_json::from_value(config.clone()).ok()?;
+                if !parsed.carries_credentials() {
+                    return None;
+                }
+                let OtherChannelConfig::Relay {
+                    target_url,
+                    method,
+                    headers,
+                    payload_template,
+                } = parsed
+                else {
+                    return None;
+                };
+                Some(Arc::new(WebhookRelayAdapter {
+                    provider: RelayWebhookProvider::new(
+                        RelayWebhookConfig::Relay {
+                            target_url,
+                            method,
+                            headers,
+                            payload_template,
+                        },
+                        project_id.to_string(),
+                    ),
+                }))
+            }
             // All nine SMS vendors arm from their own bare saved config.
             ("sms", "twilio") => sms_adapter::<TwilioConfig>(config, "twilio", SmsConfig::Twilio),
             ("sms", "termii") => sms_adapter::<TermiiConfig>(config, "termii", SmsConfig::Termii),
@@ -732,6 +824,7 @@ mod tests {
         // The email arm keeps its full-field parse (username/password required).
         assert!(
             f.adapter(
+                "proj-1",
                 "email",
                 "smtp",
                 &serde_json::json!({
@@ -743,12 +836,13 @@ mod tests {
             .is_some()
         );
         assert!(
-            f.adapter("email", "smtp", &serde_json::json!({"host": ""}))
+            f.adapter("proj-1", "email", "smtp", &serde_json::json!({"host": ""}))
                 .is_none()
         );
 
         // The fcm arm parses its registry field (`service_account_path`).
         let fcm = f.adapter(
+            "proj-1",
             "android",
             "fcm",
             &serde_json::json!({"service_account_path": "/keys/sa.json"}),
@@ -761,11 +855,12 @@ mod tests {
         // Missing / blank credential config resolves to None, and every
         // not-yet-wired pair stays None (never a panic).
         assert!(
-            f.adapter("android", "fcm", &serde_json::json!({}))
+            f.adapter("proj-1", "android", "fcm", &serde_json::json!({}))
                 .is_none()
         );
         assert!(
             f.adapter(
+                "proj-1",
                 "android",
                 "fcm",
                 &serde_json::json!({"service_account_path": ""})
@@ -773,20 +868,29 @@ mod tests {
             .is_none()
         );
         assert!(
-            f.adapter("android", "pushy", &serde_json::json!({}))
+            f.adapter("proj-1", "android", "pushy", &serde_json::json!({}))
                 .is_none()
         );
         // The pushy arm carries an api key.
-        let pushy = f.adapter("android", "pushy", &serde_json::json!({"api_key": "k"}));
+        let pushy = f.adapter(
+            "proj-1",
+            "android",
+            "pushy",
+            &serde_json::json!({"api_key": "k"}),
+        );
         assert!(pushy.is_some());
         let pushy = pushy.unwrap();
         assert_eq!(pushy.channel(), "android");
         assert_eq!(pushy.provider_name(), "pushy");
-        assert!(f.adapter("sms", "twilio", &serde_json::json!({})).is_none());
+        assert!(
+            f.adapter("proj-1", "sms", "twilio", &serde_json::json!({}))
+                .is_none()
+        );
 
         // The apple arms arm from the same registry field set.
         assert!(
             f.adapter(
+                "proj-1",
                 "apple",
                 "apns",
                 &serde_json::json!({
@@ -798,6 +902,7 @@ mod tests {
         );
         assert!(
             f.adapter(
+                "proj-1",
                 "apple",
                 "apns_macos",
                 &serde_json::json!({
@@ -809,6 +914,7 @@ mod tests {
         );
         assert!(
             f.adapter(
+                "proj-1",
                 "apple",
                 "apns",
                 &serde_json::json!({
@@ -820,6 +926,7 @@ mod tests {
         // OneSignal arms for BOTH destinations (one REST api serves
         // both platforms); blanks stay None.
         let onesignal = f.adapter(
+            "proj-1",
             "android",
             "onesignal",
             &serde_json::json!({"app_id": "appid", "api_key": "k"}),
@@ -827,6 +934,7 @@ mod tests {
         assert!(onesignal.is_some());
         assert_eq!(onesignal.unwrap().provider_name(), "onesignal");
         let onesignal = f.adapter(
+            "proj-1",
             "apple",
             "onesignal",
             &serde_json::json!({"app_id": "appid", "rest_api_key": "k"}),
@@ -835,6 +943,7 @@ mod tests {
         assert_eq!(onesignal.unwrap().channel(), "apple");
         assert!(
             f.adapter(
+                "proj-1",
                 "android",
                 "onesignal",
                 &serde_json::json!({"app_id": "appid"})
@@ -843,14 +952,14 @@ mod tests {
         );
 
         // The linux arm carries no credentials — any object config arms.
-        let linux = f.adapter("linux", "endpoint", &serde_json::json!({}));
+        let linux = f.adapter("proj-1", "linux", "endpoint", &serde_json::json!({}));
         assert!(linux.is_some());
         let linux = linux.unwrap();
         assert_eq!(linux.channel(), "linux");
         assert_eq!(linux.provider_name(), "endpoint");
 
         // The window webhook arm carries no credentials either.
-        let webhook = f.adapter("window", "webhook", &serde_json::json!({}));
+        let webhook = f.adapter("proj-1", "window", "webhook", &serde_json::json!({}));
         assert!(webhook.is_some());
         let webhook = webhook.unwrap();
         assert_eq!(webhook.channel(), "window");
@@ -858,6 +967,7 @@ mod tests {
 
         // The WNS flavor arms from its credential pair; a blank one stays None.
         let wns = f.adapter(
+            "proj-1",
             "window",
             "wns",
             &serde_json::json!({
@@ -870,6 +980,7 @@ mod tests {
         assert_eq!(wns.provider_name(), "wns");
         assert!(
             f.adapter(
+                "proj-1",
                 "window",
                 "wns",
                 &serde_json::json!({"client_id": "", "client_secret": "sec"})
@@ -879,6 +990,7 @@ mod tests {
 
         // The web push arm arms from the VAPID triple; blanks stay None.
         let web = f.adapter(
+            "proj-1",
             "web",
             "web_push",
             &serde_json::json!({
@@ -893,6 +1005,7 @@ mod tests {
         assert_eq!(web.provider_name(), "web_push");
         assert!(
             f.adapter(
+                "proj-1",
                 "web",
                 "web_push",
                 &serde_json::json!({
@@ -907,6 +1020,7 @@ mod tests {
         // The chat arm parses the tagged envelope its config module
         // owns — the vendor split happens inside ChatConfig.
         let chat = f.adapter(
+            "proj-1",
             "chat",
             "slack",
             &serde_json::json!({
@@ -920,6 +1034,7 @@ mod tests {
         assert_eq!(chat.provider_name(), "slack");
         assert!(
             f.adapter(
+                "proj-1",
                 "chat",
                 "telegram",
                 &serde_json::json!({"provider": "telegram", "bot_token": "b", "chat_id": "c"})
@@ -928,6 +1043,7 @@ mod tests {
         );
         assert!(
             f.adapter(
+                "proj-1",
                 "chat",
                 "whatsapp_business",
                 &serde_json::json!({
@@ -939,6 +1055,7 @@ mod tests {
         );
         assert!(
             f.adapter(
+                "proj-1",
                 "chat",
                 "discord",
                 &serde_json::json!({
@@ -950,6 +1067,7 @@ mod tests {
         );
         assert!(
             f.adapter(
+                "proj-1",
                 "chat",
                 "ms_teams",
                 &serde_json::json!({
@@ -961,6 +1079,7 @@ mod tests {
         );
         assert!(
             f.adapter(
+                "proj-1",
                 "chat",
                 "telegram",
                 &serde_json::json!({"provider": "telegram", "bot_token": "", "chat_id": "c"})
@@ -970,6 +1089,7 @@ mod tests {
         // The saved id must agree with the envelope tag.
         assert!(
             f.adapter(
+                "proj-1",
                 "chat",
                 "slack",
                 &serde_json::json!({"provider": "telegram", "bot_token": "b", "chat_id": "c"})
@@ -980,13 +1100,14 @@ mod tests {
         // The wired SMS vendors arm...
         let twilio_cfg =
             serde_json::json!({"account_sid": "AC1", "auth_token": "t", "from_number": "+1"});
-        let sms = f.adapter("sms", "twilio", &twilio_cfg);
+        let sms = f.adapter("proj-1", "sms", "twilio", &twilio_cfg);
         assert!(sms.is_some());
         let sms = sms.unwrap();
         assert_eq!(sms.channel(), "sms");
         assert_eq!(sms.provider_name(), "twilio");
         assert!(
             f.adapter(
+                "proj-1",
                 "sms",
                 "termii",
                 &serde_json::json!({"api_key": "k", "sender_id": "Notifi"})
@@ -995,6 +1116,7 @@ mod tests {
         );
         assert!(
             f.adapter(
+                "proj-1",
                 "sms",
                 "africas_talking",
                 &serde_json::json!({"username": "u", "api_key": "k", "sender_id": "NOTIFI"})
@@ -1002,7 +1124,7 @@ mod tests {
             .is_some()
         );
         assert!(
-            f.adapter(
+            f.adapter("proj-1", 
                 "sms",
                 "local_nigeria",
                 &serde_json::json!({"api_key": "tok", "base_url": "https://x", "sender_id": "NOTIFI"})
@@ -1011,16 +1133,22 @@ mod tests {
         );
         // A bad config for a wired vendor is None, never a panic.
         assert!(
-            f.adapter("sms", "twilio", &serde_json::json!({"account_sid": "AC1"}))
-                .is_none()
+            f.adapter(
+                "proj-1",
+                "sms",
+                "twilio",
+                &serde_json::json!({"account_sid": "AC1"})
+            )
+            .is_none()
         );
         // An unknown sms vendor is unwired, never a panic.
         assert!(
-            f.adapter("sms", "who_dis", &serde_json::json!({}))
+            f.adapter("proj-1", "sms", "who_dis", &serde_json::json!({}))
                 .is_none()
         );
         // Bird arms.
         let bird = f.adapter(
+            "proj-1",
             "sms",
             "bird",
             &serde_json::json!({
@@ -1034,6 +1162,7 @@ mod tests {
 
         // EbulkSms arms (auth is the username+apikey pair).
         let ebulk = f.adapter(
+            "proj-1",
             "sms",
             "ebulksms",
             &serde_json::json!({
@@ -1045,6 +1174,7 @@ mod tests {
 
         // SmsLive247 arms (the last of the nine).
         let live = f.adapter(
+            "proj-1",
             "sms",
             "smslive247",
             &serde_json::json!({"api_key": "k", "sender_id": "Notifi"}),
@@ -1054,6 +1184,7 @@ mod tests {
 
         // Infobip arms (probe already lived in the tester).
         let infobip = f.adapter(
+            "proj-1",
             "sms",
             "infobip",
             &serde_json::json!({
@@ -1067,12 +1198,85 @@ mod tests {
 
         // Vonage arms (its probe already lived in the tester).
         let vonage = f.adapter(
+            "proj-1",
             "sms",
             "vonage",
             &serde_json::json!({"api_key": "k", "api_secret": "s", "from_number": "Notifi"}),
         );
         assert!(vonage.is_some());
         assert_eq!(vonage.unwrap().provider_name(), "vonage");
+    }
+
+    #[test]
+    fn factory_arms_the_other_channel_wrappers() {
+        let f = DefaultAdapterFactory;
+
+        // The other channel's onesignal envelope arms both phone
+        // families from one saved config — the arm rides the device
+        // family's controller, tagged behind the "other" channel name.
+        let onesignal = f.adapter(
+            "proj-1",
+            "other",
+            "onesignal",
+            &serde_json::json!({"provider": "onesignal", "app_id": "appid", "api_key": "k"}),
+        );
+        assert!(onesignal.is_some());
+        let onesignal = onesignal.unwrap();
+        assert_eq!(onesignal.channel(), "other");
+        assert_eq!(onesignal.provider_name(), "onesignal");
+
+        // Blanks stay None, and an envelope whose tag disagrees with
+        // the arm resolves to None (never a wrong-vendor adapter).
+        assert!(
+            f.adapter(
+                "proj-1",
+                "other",
+                "onesignal",
+                &serde_json::json!({"provider": "onesignal", "app_id": "appid"})
+            )
+            .is_none()
+        );
+        assert!(
+            f.adapter(
+                "proj-1",
+                "other",
+                "onesignal",
+                &serde_json::json!({"provider": "relay", "target_url": "https://x/hook"})
+            )
+            .is_none()
+        );
+
+        // The relay recipe arms from its url — the method / headers /
+        // template ride along to the webhook family's provider.
+        let relay = f.adapter(
+            "proj-1",
+            "other",
+            "relay",
+            &serde_json::json!({
+                "provider": "relay",
+                "target_url": "https://x/hook",
+                "method": "POST",
+                "payload_template": "{\"t\":\"{{title}}\"}"
+            }),
+        );
+        assert!(relay.is_some());
+        let relay = relay.unwrap();
+        assert_eq!(relay.channel(), "other");
+        assert_eq!(relay.provider_name(), "relay");
+        assert!(
+            f.adapter(
+                "proj-1",
+                "other",
+                "relay",
+                &serde_json::json!({
+                    "provider": "relay",
+                    "target_url": "",
+                    "method": "POST",
+                    "payload_template": "{}"
+                })
+            )
+            .is_none()
+        );
     }
 
     /// Throwaway EC key for tests — signs test JWTs only, never a real

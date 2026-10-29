@@ -75,10 +75,13 @@ pub trait DeliveryProvider: Send + Sync {
 /// Builds channel adapters from per-project provider config JSON.
 /// Returns `None` when the channel/provider has no adapter yet — the send
 /// worker treats that as a provider-missing failure and falls through to
-/// the next priority (it must never panic or block).
+/// the next priority (it must never panic or block). The project id
+/// travels with the call: some recipes (webhook relay templates) render
+/// the project at send time, so arms can bake it into their controller.
 pub trait AdapterFactory: Send + Sync {
     fn adapter(
         &self,
+        project_id: &str,
         channel: &str,
         provider_id: &str,
         config: &serde_json::Value,
