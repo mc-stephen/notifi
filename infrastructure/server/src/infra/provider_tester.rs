@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
 use crate::channels::device_channel::providers::android::fcm::{FcmConfig, FcmProvider};
+use crate::channels::device_channel::providers::android::pushy::{PushyConfig, PushyProvider};
 use crate::channels::device_channel::providers::apple::apns::{ApnsProvider, IosConfig};
 use crate::channels::device_channel::providers::web::web_push::{WebConfig, WebProvider};
 use crate::channels::device_channel::providers::window::wns::WnsAuthenticator;
@@ -68,6 +69,25 @@ async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> 
                 Err(e) => TestResult {
                     success: false,
                     message: format!("Firebase rejected the credential: {e}"),
+                },
+            }
+        }
+        "pushy" => {
+            let Ok(cfg) = serde_json::from_value::<PushyConfig>(config.clone()) else {
+                return TestResult {
+                    success: false,
+                    message: "Config does not parse for pushy (api_key required)".to_string(),
+                };
+            };
+            match PushyProvider::new(cfg).verify().await {
+                Ok(()) => TestResult {
+                    success: true,
+                    message: "Pushy accepted the api key (device-info read, nothing sent)"
+                        .to_string(),
+                },
+                Err(e) => TestResult {
+                    success: false,
+                    message: format!("Pushy rejected the credential: {e}"),
                 },
             }
         }
@@ -1008,10 +1028,25 @@ mod tests {
 
     #[tokio::test]
     async fn unwired_device_providers_keep_the_house_fallback() {
+        // onesignal stays unwired until its controller lands; the
+        // fallback message stands for it alone now.
         let t = ConfigProviderTester
-            .test("android", "pushy", &serde_json::json!({"api_key": "k"}))
+            .test(
+                "android",
+                "onesignal",
+                &serde_json::json!({"app_id": "a", "api_key": "k"}),
+            )
             .await;
         assert!(t.success);
         assert!(t.message.contains("validation not available"));
+    }
+
+    #[tokio::test]
+    async fn pushy_probe_rejects_a_bad_config_before_any_network() {
+        let t = ConfigProviderTester
+            .test("android", "pushy", &serde_json::json!({}))
+            .await;
+        assert!(!t.success, "{}", t.message);
+        assert!(t.message.contains("does not parse"), "{}", t.message);
     }
 }

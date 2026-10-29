@@ -1,8 +1,9 @@
 //! Channel adapters for product sends (Phase A).
 //!
 //! Email (SMTP), android (fcm), apple (apns / apns_macos), linux
-//! (self-hosted endpoint), window (webhook / WNS), web push and all
-//! nine SMS vendors send for real — each adapter is built per-request from
+//! Email (SMTP), android (fcm / pushy), apple (apns / apns_macos),
+//! linux (self-hosted endpoint), window (webhook / WNS), web push and
+//! all nine SMS vendors send for real — each adapter is built per-request from
 //! the project's own provider config JSON. Anything else still resolves
 //! to `None` so the send worker records a provider-missing failure and
 //! falls through the priority chain — their adapters land as their
@@ -17,6 +18,7 @@ use std::sync::Arc;
 use crate::channels::device_channel::providers::android::{
     AndroidMessage,
     fcm::{FcmConfig, FcmProvider},
+    pushy::{PushyConfig, PushyMessage, PushyProvider},
 };
 use crate::channels::device_channel::providers::apple::apns::{
     ApnsMessage, ApnsProvider, IosConfig, MacosConfig,
@@ -211,6 +213,43 @@ fn apns_from_config(
         provider,
         provider_id,
     }))
+}
+
+/// Pushy (channel `android`): posts the notification to Pushy's push
+/// endpoint; the recipient is the device registration token. Same
+/// shape as the Firebase adapter — one vendor, one controller file,
+/// the warhead is the config.
+pub struct PushyAdapter {
+    provider: PushyProvider,
+}
+
+impl DeliveryProvider for PushyAdapter {
+    fn channel(&self) -> &'static str {
+        "android"
+    }
+
+    fn provider_name(&self) -> &'static str {
+        "pushy"
+    }
+
+    fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_> {
+        let provider = &self.provider;
+        let msg = PushyMessage {
+            token: message.recipient.clone(),
+            title: message.title.clone(),
+            body: message.body.clone(),
+        };
+        Box::pin(async move {
+            provider
+                .send_notification(&msg)
+                .await
+                .map(|_| DeliveryReceipt {
+                    provider: "pushy".to_string(),
+                    provider_message_id: None,
+                })
+                .map_err(DeliveryError::Provider)
+        })
+    }
 }
 
 /// Linux endpoint (channel `linux`): POSTs the notification JSON to the
@@ -434,6 +473,15 @@ impl AdapterFactory for DefaultAdapterFactory {
                     provider: FcmProvider::new(cfg),
                 }))
             }
+            ("android", "pushy") => {
+                let cfg: PushyConfig = serde_json::from_value(config.clone()).ok()?;
+                if cfg.api_key.trim().is_empty() {
+                    return None;
+                }
+                Some(Arc::new(PushyAdapter {
+                    provider: PushyProvider::new(cfg),
+                }))
+            }
             ("apple", "apns" | "apns_macos") => apns_from_config(config, provider_id),
             ("linux", "endpoint") => {
                 let cfg: LinuxConfig = serde_json::from_value(config.clone()).ok()?;
@@ -566,6 +614,12 @@ mod tests {
             f.adapter("android", "pushy", &serde_json::json!({}))
                 .is_none()
         );
+        // The pushy arm carries an api key.
+        let pushy = f.adapter("android", "pushy", &serde_json::json!({"api_key": "k"}));
+        assert!(pushy.is_some());
+        let pushy = pushy.unwrap();
+        assert_eq!(pushy.channel(), "android");
+        assert_eq!(pushy.provider_name(), "pushy");
         assert!(f.adapter("sms", "twilio", &serde_json::json!({})).is_none());
 
         // The apple arms arm from the same registry field set.
