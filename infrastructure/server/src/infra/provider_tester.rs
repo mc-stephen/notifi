@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 use crate::channels::device_channel::providers::android::fcm::{FcmConfig, FcmProvider};
 use crate::channels::device_channel::providers::apple::apns::{ApnsProvider, IosConfig};
+use crate::channels::device_channel::providers::web::web_push::{WebConfig, WebProvider};
 use crate::channels::device_channel::providers::window::wns::WnsAuthenticator;
 use crate::ports::provider_tester::{ProviderTester, TestResult};
 
@@ -136,6 +137,26 @@ async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> 
                 Err(e) => TestResult {
                     success: false,
                     message: format!("Microsoft rejected the WNS credential: {e}"),
+                },
+            }
+        }
+        "web_push" => {
+            let Ok(cfg) = serde_json::from_value::<WebConfig>(config.clone()) else {
+                return TestResult {
+                    success: false,
+                    message:
+                        "Config does not parse for web_push (VAPID keypair + contact required)"
+                            .to_string(),
+                };
+            };
+            match WebProvider::new(cfg).and_then(|provider| provider.verify()) {
+                Ok(()) => TestResult {
+                    success: true,
+                    message: "VAPID keypair loads and signs (gateway untouched)".to_string(),
+                },
+                Err(e) => TestResult {
+                    success: false,
+                    message: format!("Web push rejected the credential: {e}"),
                 },
             }
         }

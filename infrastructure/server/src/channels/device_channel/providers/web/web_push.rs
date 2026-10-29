@@ -65,6 +65,27 @@ impl WebProvider {
 
         Ok(())
     }
+
+    /// Credential check for the provider tester, offline: load the VAPID
+    /// private key and sign the same JWT a real send would — proving the
+    /// keypair is real without touching any push gateway or endpoint.
+    pub fn verify(&self) -> Result<(), String> {
+        let subscription_info = SubscriptionInfo::new(
+            "https://verify.notifi/endpoint",
+            "BEl62iUYgUivxIkv69yViEuiBIa-Ib37yF63A6XAmqk7LmCRyzrFn",
+            "bogus-auth",
+        );
+        let mut sig_builder = VapidSignatureBuilder::from_pem(
+            self.config.vapid_private_key.as_bytes(),
+            &subscription_info,
+        )
+        .map_err(|e| format!("VAPID private key does not parse: {e}"))?;
+        sig_builder.add_claim("sub", &*self.config.contact_email);
+        sig_builder
+            .build()
+            .map_err(|e| format!("VAPID signing failed: {e}"))?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -92,6 +113,41 @@ mod web_tests {
     #[test]
     fn new_builds_a_client() {
         WebProvider::new(config()).expect("client constructs");
+    }
+
+    /// Throwaway EC key for the verify tests — signs test JWTs only.
+    const TEST_VAPID_PEM: &str = "-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg9mlu4yOHZr3ZV6W/
+yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
+1QwErJ9yuwQuT4I4DAWWvbCAwVRzRhZdpOmRR6JPdhkuTwnLfl8d5ndU
+-----END PRIVATE KEY-----
+";
+
+    #[test]
+    fn verify_loads_the_key_and_signs_offline() {
+        let provider = WebProvider::new(WebConfig {
+            vapid_public_key: "pub".to_string(),
+            vapid_private_key: TEST_VAPID_PEM.to_string(),
+            contact_email: "ops@notifi.dev".to_string(),
+        })
+        .expect("client constructs");
+        provider
+            .verify()
+            .expect("a real key parses and signs with no network");
+    }
+
+    #[test]
+    fn verify_rejects_a_bogus_key() {
+        let provider = WebProvider::new(WebConfig {
+            vapid_public_key: "pub".to_string(),
+            vapid_private_key: "not-a-pem".to_string(),
+            contact_email: "ops@notifi.dev".to_string(),
+        })
+        .expect("client constructs");
+        let err = provider
+            .verify()
+            .expect_err("a garbage key must fail cleanly");
+        assert!(err.starts_with("VAPID"), "prefix: {err}");
     }
 
     #[tokio::test]

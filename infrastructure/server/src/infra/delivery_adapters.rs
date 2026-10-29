@@ -1,8 +1,8 @@
 //! Channel adapters for product sends (Phase A).
 //!
 //! Email (SMTP), android (fcm), apple (apns / apns_macos), linux
-//! (self-hosted endpoint), window (webhook / WNS) and all nine SMS
-//! vendors send for real — each adapter is built per-request from
+//! (self-hosted endpoint), window (webhook / WNS), web push and all
+//! nine SMS vendors send for real — each adapter is built per-request from
 //! the project's own provider config JSON. Anything else still resolves
 //! to `None` so the send worker records a provider-missing failure and
 //! falls through the priority chain — their adapters land as their
@@ -23,6 +23,9 @@ use crate::channels::device_channel::providers::apple::apns::{
 };
 use crate::channels::device_channel::providers::linux::endpoint::{
     LinuxConfig, LinuxMessage, LinuxProvider,
+};
+use crate::channels::device_channel::providers::web::web_push::{
+    WebConfig, WebMessage, WebProvider,
 };
 use crate::channels::device_channel::providers::window::{
     WindowSender,
@@ -248,6 +251,66 @@ impl DeliveryProvider for LinuxAdapter {
     }
 }
 
+/// Web push (channel `web`): the recipient is the browser's whole
+/// subscription — web push needs endpoint + client keys together, so
+/// the one address string is the `PushSubscription.toJSON()` payload
+/// `{"endpoint":..., "keys":{"p256dh":..., "auth":...}}`. The payload
+/// is the body alone (web push carries no separate title).
+pub struct WebPushAdapter {
+    provider: WebProvider,
+}
+
+#[derive(serde::Deserialize)]
+struct WebSubscription {
+    endpoint: String,
+    keys: WebSubscriptionKeys,
+}
+
+#[derive(serde::Deserialize)]
+struct WebSubscriptionKeys {
+    p256dh: String,
+    auth: String,
+}
+
+impl DeliveryProvider for WebPushAdapter {
+    fn channel(&self) -> &'static str {
+        "web"
+    }
+
+    fn provider_name(&self) -> &'static str {
+        "web_push"
+    }
+
+    fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_> {
+        let provider = &self.provider;
+        let Ok(sub) = serde_json::from_str::<WebSubscription>(&message.recipient) else {
+            return Box::pin(async {
+                Err(DeliveryError::Provider(
+                    "web push recipient must be the browser subscription json \
+                     (PushSubscription.toJSON shape)"
+                        .to_string(),
+                ))
+            });
+        };
+        let msg = WebMessage {
+            endpoint: sub.endpoint,
+            p256dh: sub.keys.p256dh,
+            auth: sub.keys.auth,
+            text: message.body.clone(),
+        };
+        Box::pin(async move {
+            provider
+                .send_notification(&msg)
+                .await
+                .map(|_| DeliveryReceipt {
+                    provider: "web_push".to_string(),
+                    provider_message_id: None,
+                })
+                .map_err(DeliveryError::Provider)
+        })
+    }
+}
+
 /// Window (channel `window`): one adapter serves both flavors (webhook
 /// and WNS) — the flavor's Sender is built from the project's saved
 /// config and holds the targeting. The recipient is the target address
@@ -394,6 +457,18 @@ impl AdapterFactory for DefaultAdapterFactory {
                         cfg.package_sid,
                     )),
                     provider_id: "wns",
+                }))
+            }
+            ("web", "web_push") => {
+                let cfg: WebConfig = serde_json::from_value(config.clone()).ok()?;
+                if cfg.vapid_public_key.trim().is_empty()
+                    || cfg.vapid_private_key.trim().is_empty()
+                    || cfg.contact_email.trim().is_empty()
+                {
+                    return None;
+                }
+                Some(Arc::new(WebPushAdapter {
+                    provider: WebProvider::new(cfg).ok()?,
                 }))
             }
             // All nine SMS vendors arm from their own bare saved config.
@@ -562,6 +637,33 @@ mod tests {
                 "window",
                 "wns",
                 &serde_json::json!({"client_id": "", "client_secret": "sec"})
+            )
+            .is_none()
+        );
+
+        // The web push arm arms from the VAPID triple; blanks stay None.
+        let web = f.adapter(
+            "web",
+            "web_push",
+            &serde_json::json!({
+                "vapid_public_key": "pub",
+                "vapid_private_key": "-----BEGIN PRIVATE KEY-----",
+                "contact_email": "ops@notifi.dev"
+            }),
+        );
+        assert!(web.is_some());
+        let web = web.unwrap();
+        assert_eq!(web.channel(), "web");
+        assert_eq!(web.provider_name(), "web_push");
+        assert!(
+            f.adapter(
+                "web",
+                "web_push",
+                &serde_json::json!({
+                    "vapid_public_key": "pub",
+                    "vapid_private_key": "",
+                    "contact_email": "ops@notifi.dev"
+                })
             )
             .is_none()
         );
