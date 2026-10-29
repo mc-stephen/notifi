@@ -28,6 +28,8 @@ import {
 import { toast } from "sonner";
 import { ProviderIcon } from "./provider-icon";
 import { ProviderConfigFields } from "./provider-config-fields";
+import { GatewayRouteHint } from "./gateway-route-hint";
+import { toText } from "./provider-config-fields";
 
 type ProviderDetailPanelProps = {
   config: ProviderConfig;
@@ -213,6 +215,13 @@ export function ProviderDetailPanel({
             values={values}
             onChange={setValue}
           />
+
+          {definition.provider_id === "gateway" && (
+            <GatewayRouteHint
+              topic={toText(values["topic"] ?? "")}
+              secretKey={toText(values["secret_key"] ?? "")}
+            />
+          )}
 
           {definition.smtp_fallback && (
             <p className="text-xs text-muted-foreground">

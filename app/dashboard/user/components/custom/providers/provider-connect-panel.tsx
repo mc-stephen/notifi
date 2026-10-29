@@ -5,6 +5,8 @@ import { Loader2 } from "lucide-react";
 import type { ProviderDefinition } from "@/hooks/use-provider-registry";
 import { DetailPanel } from "@/components/custom/detail-panel";
 import { ProviderConfigFields } from "./provider-config-fields";
+import { GatewayRouteHint } from "./gateway-route-hint";
+import { toText } from "./provider-config-fields";
 import { ProviderIcon } from "./provider-icon";
 
 type ProviderConnectPanelProps = {
@@ -66,6 +68,12 @@ export function ProviderConnectPanel({
             values={values}
             onChange={onChange}
           />
+          {definition.provider_id === "gateway" && (
+            <GatewayRouteHint
+              topic={toText(values["topic"] ?? "")}
+              secretKey={toText(values["secret_key"] ?? "")}
+            />
+          )}
           {definition.docs_url && (
             <a
               href={definition.docs_url}

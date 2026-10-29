@@ -23,6 +23,7 @@ import {
   type RecommendedItem,
 } from "@/components/custom/providers/recommended-integrations";
 import { cn } from "@/lib/utils";
+import { generateRouteSecret } from "@/lib/gateway";
 import { Globe, Loader2 } from "lucide-react";
 
 type Tab = "all" | "active" | "inactive";
@@ -45,6 +46,25 @@ function coerceValue(type: string, raw: unknown): unknown {
     return raw === "" || raw === null || raw === undefined ? "" : Number(raw);
   }
   return raw === null || raw === undefined ? "" : String(raw);
+}
+
+/**
+ * A fresh connect form for a definition: text fields start empty, selects
+ * land on their first option, and a gateway connect arrives with a
+ * generated route secret already in place (regenerable on the form).
+ */
+function freshConnectForm(definition: ProviderDefinition): Record<string, unknown> {
+  const form: Record<string, unknown> = {};
+  for (const field of definition.config_fields) {
+    if (field.type === "select") {
+      form[field.key] = field.options?.[0] ?? "";
+    } else if (field.key === "secret_key") {
+      form[field.key] = generateRouteSecret();
+    } else {
+      form[field.key] = "";
+    }
+  }
+  return form;
 }
 export default function ProvidersPage() {
   const { registry, loading: registryLoading, error: registryError } =
@@ -169,7 +189,7 @@ export default function ProvidersPage() {
         toast.error("Couldn't load provider details. Please try again.");
         return;
       }
-      setConfigForm({});
+      setConfigForm(freshConnectForm(found.definition));
       setSelectedId(null);
       setBrowseOpen(false);
       setConnectFromBrowse(false);
@@ -434,7 +454,7 @@ export default function ProvidersPage() {
               toast.error("Couldn't load provider details. Please try again.");
               return;
             }
-            setConfigForm({});
+            setConfigForm(freshConnectForm(found.definition));
             setSelectedId(null);
             setBrowseOpen(false);
             setConnectFromBrowse(true);

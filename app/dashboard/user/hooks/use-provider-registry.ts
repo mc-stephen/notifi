@@ -4,8 +4,10 @@ import { api } from "@/lib/api";
 export interface ConfigField {
   key: string;
   label: string;
-  type: "text" | "password" | "email" | "number" | "boolean";
+  type: "text" | "password" | "email" | "number" | "boolean" | "select";
   required: boolean;
+  /** The `select` field's exact choices (undefined for other types). */
+  options?: string[];
 }
 
 export interface SmtpFallbackConfig {

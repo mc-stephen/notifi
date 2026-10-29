@@ -1,8 +1,7 @@
 //! Channel adapters for product sends (Phase A).
 //!
 //! Email (SMTP), android (fcm / pushy / onesignal), apple (apns /
-//! onesignal), linux (self-hosted endpoint + hosted gateway), window
-//! (webhook / WNS),
+//! onesignal), linux (hosted Notifi gateway), window (webhook / WNS),
 //! web push, the whole chat family (slack /
 //! telegram / whatsapp_business / discord / ms_teams), all nine
 //! SMS vendors and the other channel (onesignal wrapping both phone
@@ -30,9 +29,6 @@ use crate::channels::device_channel::providers::android::{
 };
 use crate::channels::device_channel::providers::apple::apns::{
     ApnsMessage, ApnsProvider, IosConfig,
-};
-use crate::channels::device_channel::providers::linux::endpoint::{
-    LinuxConfig, LinuxMessage, LinuxProvider,
 };
 use crate::channels::device_channel::providers::linux::gateway::GatewayRecipe;
 use crate::channels::device_channel::providers::web::web_push::{
@@ -320,44 +316,6 @@ fn onesignal_adapter(
         }),
         channel,
     }))
-}
-
-/// Linux endpoint (channel `linux`): POSTs the notification JSON to the
-/// device's self-hosted webhook — the recipient IS the endpoint URL.
-/// There are no credentials to hold: the endpoint is per-device data,
-/// and optional auth headers arrive per message when targeting lands.
-pub struct LinuxAdapter {
-    provider: LinuxProvider,
-}
-
-impl DeliveryProvider for LinuxAdapter {
-    fn channel(&self) -> &'static str {
-        "linux"
-    }
-
-    fn provider_name(&self) -> &'static str {
-        "endpoint"
-    }
-
-    fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_> {
-        let provider = &self.provider;
-        let msg = LinuxMessage {
-            endpoint: message.recipient.clone(),
-            title: message.title.clone(),
-            body: message.body.clone(),
-            headers: None,
-        };
-        Box::pin(async move {
-            provider
-                .send_notification(&msg)
-                .await
-                .map(|_| DeliveryReceipt {
-                    provider: "endpoint".to_string(),
-                    provider_message_id: None,
-                })
-                .map_err(DeliveryError::Provider)
-        })
-    }
 }
 
 /// Web push (channel `web`): the recipient is the browser's whole
@@ -731,12 +689,6 @@ impl AdapterFactory for DefaultAdapterFactory {
             ("android", "onesignal") => onesignal_adapter(config, "android"),
             ("apple", "onesignal") => onesignal_adapter(config, "apple"),
             ("apple", "apns") => apns_from_config(config),
-            ("linux", "endpoint") => {
-                let cfg: LinuxConfig = serde_json::from_value(config.clone()).ok()?;
-                Some(Arc::new(LinuxAdapter {
-                    provider: LinuxProvider::new(cfg),
-                }))
-            }
             ("linux", "gateway") => {
                 let parsed: GatewayRecipe = serde_json::from_value(config.clone()).ok()?;
                 if !parsed.carries_credentials() {
@@ -1035,26 +987,6 @@ mod tests {
             )
             .is_none()
         );
-
-        // The linux arm carries no credentials — any object config arms.
-        let linux = f.adapter("proj-1", "linux", "endpoint", &serde_json::json!({}));
-        assert!(linux.is_some());
-        let linux = linux.unwrap();
-        assert_eq!(linux.channel(), "linux");
-        assert_eq!(linux.provider_name(), "endpoint");
-
-        // The gateway arm needs both route halves (topic + secret) and a
-        // wired store — the unit-defaulted factory has none, so it refuses.
-        let gateway = f.adapter(
-            "proj-1",
-            "linux",
-            "gateway",
-            &serde_json::json!({
-                "topic": "office-linux", "secret_key": "gen-32chars-long",
-                "mode": "polling"
-            }),
-        );
-        assert!(gateway.is_none());
 
         // The window webhook arm carries no credentials either.
         let webhook = f.adapter("proj-1", "window", "webhook", &serde_json::json!({}));

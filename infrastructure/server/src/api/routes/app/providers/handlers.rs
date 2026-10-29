@@ -47,6 +47,8 @@ pub struct ConfigFieldDto {
     #[serde(rename = "type")]
     pub field_type: String,
     pub required: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -75,7 +77,7 @@ fn build_registry() -> ProviderRegistry {
     channels.extend(build_device_channels());
     channels.push(build_other_channel());
     ProviderRegistry {
-        version: "1.3.1".to_string(),
+        version: "1.3.2".to_string(),
         last_updated: chrono::Utc::now().to_rfc3339(),
         channels,
     }
@@ -111,11 +113,15 @@ fn build_device_channels() -> Vec<ChannelDefinition> {
                         config_fields: v
                             .fields
                             .into_iter()
-                            .map(|f| ConfigField {
-                                key: f.key.to_string(),
-                                label: f.label.to_string(),
-                                field_type: vendor_field_type(f.ty),
-                                required: f.required,
+                            .map(|f| {
+                                let (field_type, options) = vendor_field_type(f.ty);
+                                ConfigField {
+                                    key: f.key.to_string(),
+                                    label: f.label.to_string(),
+                                    field_type,
+                                    required: f.required,
+                                    options,
+                                }
                             })
                             .collect(),
                         smtp_fallback: None,
@@ -148,11 +154,15 @@ fn build_other_channel() -> ChannelDefinition {
                 config_fields: v
                     .fields
                     .into_iter()
-                    .map(|f| ConfigField {
-                        key: f.key.to_string(),
-                        label: f.label.to_string(),
-                        field_type: vendor_field_type(f.ty),
-                        required: f.required,
+                    .map(|f| {
+                        let (field_type, options) = vendor_field_type(f.ty);
+                        ConfigField {
+                            key: f.key.to_string(),
+                            label: f.label.to_string(),
+                            field_type,
+                            required: f.required,
+                            options,
+                        }
                     })
                     .collect(),
                 smtp_fallback: None,
@@ -164,12 +174,17 @@ fn build_other_channel() -> ChannelDefinition {
 /// Maps the vendor catalogs' connect-form field types onto the
 /// registry's enum. The device family and the other channel share the
 /// vocabulary; compiler-exhaustive both ways.
-fn vendor_field_type(ty: device_channel::providers::FieldType) -> ConfigFieldType {
+fn vendor_field_type(ty: device_channel::providers::FieldType) -> (ConfigFieldType, Vec<String>) {
+    use device_channel::providers::FieldType;
     match ty {
-        device_channel::providers::FieldType::Text => ConfigFieldType::Text,
-        device_channel::providers::FieldType::Password => ConfigFieldType::Password,
-        device_channel::providers::FieldType::Email => ConfigFieldType::Email,
-        device_channel::providers::FieldType::Boolean => ConfigFieldType::Boolean,
+        FieldType::Text => (ConfigFieldType::Text, Vec::new()),
+        FieldType::Password => (ConfigFieldType::Password, Vec::new()),
+        FieldType::Email => (ConfigFieldType::Email, Vec::new()),
+        FieldType::Select(options) => (
+            ConfigFieldType::Select,
+            options.iter().map(|o| o.to_string()).collect(),
+        ),
+        FieldType::Boolean => (ConfigFieldType::Boolean, Vec::new()),
     }
 }
 
@@ -192,36 +207,42 @@ fn build_email_channel() -> ChannelDefinition {
                         label: "SMTP Host".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "port".to_string(),
                         label: "SMTP Port".to_string(),
                         field_type: ConfigFieldType::Number,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "username".to_string(),
                         label: "Username".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "password".to_string(),
                         label: "Password".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_email".to_string(),
                         label: "From Email".to_string(),
                         field_type: ConfigFieldType::Email,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_name".to_string(),
                         label: "From Name".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -243,18 +264,21 @@ fn build_email_channel() -> ChannelDefinition {
                         label: "API Key".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_email".to_string(),
                         label: "From Email".to_string(),
                         field_type: ConfigFieldType::Email,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_name".to_string(),
                         label: "From Name".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: Some(SmtpFallbackConfig {
@@ -264,36 +288,42 @@ fn build_email_channel() -> ChannelDefinition {
                             label: "SMTP Host".to_string(),
                             field_type: ConfigFieldType::Text,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_port".to_string(),
                             label: "SMTP Port".to_string(),
                             field_type: ConfigFieldType::Number,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_username".to_string(),
                             label: "SMTP Username".to_string(),
                             field_type: ConfigFieldType::Text,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_password".to_string(),
                             label: "SMTP Password".to_string(),
                             field_type: ConfigFieldType::Password,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_from_email".to_string(),
                             label: "From Email".to_string(),
                             field_type: ConfigFieldType::Email,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_tls".to_string(),
                             label: "TLS".to_string(),
                             field_type: ConfigFieldType::Boolean,
                             required: false,
+                            options: Vec::new(),
                         },
                     ],
                 }),
@@ -315,18 +345,21 @@ fn build_email_channel() -> ChannelDefinition {
                         label: "API Key".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_email".to_string(),
                         label: "From Email".to_string(),
                         field_type: ConfigFieldType::Email,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_name".to_string(),
                         label: "From Name".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: Some(SmtpFallbackConfig {
@@ -336,36 +369,42 @@ fn build_email_channel() -> ChannelDefinition {
                             label: "SMTP Host".to_string(),
                             field_type: ConfigFieldType::Text,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_port".to_string(),
                             label: "SMTP Port".to_string(),
                             field_type: ConfigFieldType::Number,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_username".to_string(),
                             label: "SMTP Username".to_string(),
                             field_type: ConfigFieldType::Text,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_password".to_string(),
                             label: "SMTP Password".to_string(),
                             field_type: ConfigFieldType::Password,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_from_email".to_string(),
                             label: "From Email".to_string(),
                             field_type: ConfigFieldType::Email,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_tls".to_string(),
                             label: "TLS".to_string(),
                             field_type: ConfigFieldType::Boolean,
                             required: false,
+                            options: Vec::new(),
                         },
                     ],
                 }),
@@ -384,30 +423,35 @@ fn build_email_channel() -> ChannelDefinition {
                         label: "Access Key".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "secret_key".to_string(),
                         label: "Secret Key".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "region".to_string(),
                         label: "Region".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_email".to_string(),
                         label: "From Email".to_string(),
                         field_type: ConfigFieldType::Email,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_name".to_string(),
                         label: "From Name".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: Some(SmtpFallbackConfig {
@@ -417,36 +461,42 @@ fn build_email_channel() -> ChannelDefinition {
                             label: "SMTP Host".to_string(),
                             field_type: ConfigFieldType::Text,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_port".to_string(),
                             label: "SMTP Port".to_string(),
                             field_type: ConfigFieldType::Number,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_username".to_string(),
                             label: "SMTP Username".to_string(),
                             field_type: ConfigFieldType::Text,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_password".to_string(),
                             label: "SMTP Password".to_string(),
                             field_type: ConfigFieldType::Password,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_from_email".to_string(),
                             label: "From Email".to_string(),
                             field_type: ConfigFieldType::Email,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_tls".to_string(),
                             label: "TLS".to_string(),
                             field_type: ConfigFieldType::Boolean,
                             required: false,
+                            options: Vec::new(),
                         },
                     ],
                 }),
@@ -468,18 +518,21 @@ fn build_email_channel() -> ChannelDefinition {
                         label: "Server Token".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_email".to_string(),
                         label: "From Email".to_string(),
                         field_type: ConfigFieldType::Email,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_name".to_string(),
                         label: "From Name".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: Some(SmtpFallbackConfig {
@@ -489,36 +542,42 @@ fn build_email_channel() -> ChannelDefinition {
                             label: "SMTP Host".to_string(),
                             field_type: ConfigFieldType::Text,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_port".to_string(),
                             label: "SMTP Port".to_string(),
                             field_type: ConfigFieldType::Number,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_username".to_string(),
                             label: "SMTP Username".to_string(),
                             field_type: ConfigFieldType::Text,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_password".to_string(),
                             label: "SMTP Password".to_string(),
                             field_type: ConfigFieldType::Password,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_from_email".to_string(),
                             label: "From Email".to_string(),
                             field_type: ConfigFieldType::Email,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_tls".to_string(),
                             label: "TLS".to_string(),
                             field_type: ConfigFieldType::Boolean,
                             required: false,
+                            options: Vec::new(),
                         },
                     ],
                 }),
@@ -540,24 +599,28 @@ fn build_email_channel() -> ChannelDefinition {
                         label: "API Key".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "domain".to_string(),
                         label: "Domain".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_email".to_string(),
                         label: "From Email".to_string(),
                         field_type: ConfigFieldType::Email,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_name".to_string(),
                         label: "From Name".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: Some(SmtpFallbackConfig {
@@ -567,36 +630,42 @@ fn build_email_channel() -> ChannelDefinition {
                             label: "SMTP Host".to_string(),
                             field_type: ConfigFieldType::Text,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_port".to_string(),
                             label: "SMTP Port".to_string(),
                             field_type: ConfigFieldType::Number,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_username".to_string(),
                             label: "SMTP Username".to_string(),
                             field_type: ConfigFieldType::Text,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_password".to_string(),
                             label: "SMTP Password".to_string(),
                             field_type: ConfigFieldType::Password,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_from_email".to_string(),
                             label: "From Email".to_string(),
                             field_type: ConfigFieldType::Email,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_tls".to_string(),
                             label: "TLS".to_string(),
                             field_type: ConfigFieldType::Boolean,
                             required: false,
+                            options: Vec::new(),
                         },
                     ],
                 }),
@@ -618,18 +687,21 @@ fn build_email_channel() -> ChannelDefinition {
                         label: "API Key".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_email".to_string(),
                         label: "From Email".to_string(),
                         field_type: ConfigFieldType::Email,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_name".to_string(),
                         label: "From Name".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: Some(SmtpFallbackConfig {
@@ -639,36 +711,42 @@ fn build_email_channel() -> ChannelDefinition {
                             label: "SMTP Host".to_string(),
                             field_type: ConfigFieldType::Text,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_port".to_string(),
                             label: "SMTP Port".to_string(),
                             field_type: ConfigFieldType::Number,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_username".to_string(),
                             label: "SMTP Username".to_string(),
                             field_type: ConfigFieldType::Text,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_password".to_string(),
                             label: "SMTP Password".to_string(),
                             field_type: ConfigFieldType::Password,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_from_email".to_string(),
                             label: "From Email".to_string(),
                             field_type: ConfigFieldType::Email,
                             required: true,
+                            options: Vec::new(),
                         },
                         ConfigField {
                             key: "smtp_tls".to_string(),
                             label: "TLS".to_string(),
                             field_type: ConfigFieldType::Boolean,
                             required: false,
+                            options: Vec::new(),
                         },
                     ],
                 }),
@@ -699,18 +777,21 @@ fn build_sms_channel() -> ChannelDefinition {
                         label: "Account SID".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "auth_token".to_string(),
                         label: "Auth Token".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_number".to_string(),
                         label: "From Number".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -732,18 +813,21 @@ fn build_sms_channel() -> ChannelDefinition {
                         label: "API Key".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "sender_id".to_string(),
                         label: "Sender ID".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "base_url".to_string(),
                         label: "Base URL".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -770,18 +854,21 @@ fn build_sms_channel() -> ChannelDefinition {
                         label: "API Key".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "username".to_string(),
                         label: "Username".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "sender_id".to_string(),
                         label: "Sender ID".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -800,12 +887,14 @@ fn build_sms_channel() -> ChannelDefinition {
                         label: "API Key".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "sender_id".to_string(),
                         label: "Sender ID".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -824,18 +913,21 @@ fn build_sms_channel() -> ChannelDefinition {
                         label: "Account Username (email)".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "api_key".to_string(),
                         label: "API Key".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "sender_id".to_string(),
                         label: "Sender ID".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -857,18 +949,21 @@ fn build_sms_channel() -> ChannelDefinition {
                         label: "API Key".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "base_url".to_string(),
                         label: "Base URL".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "sender_id".to_string(),
                         label: "Sender ID".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -890,18 +985,21 @@ fn build_sms_channel() -> ChannelDefinition {
                         label: "API Key".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "api_secret".to_string(),
                         label: "API Secret".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "from_number".to_string(),
                         label: "From Number".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -923,18 +1021,21 @@ fn build_sms_channel() -> ChannelDefinition {
                         label: "API Key".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "base_url".to_string(),
                         label: "Base URL".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "sender_id".to_string(),
                         label: "Sender ID".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -965,24 +1066,28 @@ fn build_chat_channel() -> ChannelDefinition {
                         label: "Auth Type".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "webhook_url".to_string(),
                         label: "Webhook URL".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "bot_token".to_string(),
                         label: "Bot Token".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: false,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "channel_id".to_string(),
                         label: "Channel ID".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -1004,12 +1109,14 @@ fn build_chat_channel() -> ChannelDefinition {
                         label: "Bot Token".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "chat_id".to_string(),
                         label: "Chat ID".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -1031,18 +1138,21 @@ fn build_chat_channel() -> ChannelDefinition {
                         label: "Phone Number ID".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "access_token".to_string(),
                         label: "Access Token".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "api_version".to_string(),
                         label: "API Version".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -1064,24 +1174,28 @@ fn build_chat_channel() -> ChannelDefinition {
                         label: "Auth Type".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "webhook_url".to_string(),
                         label: "Webhook URL".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "bot_token".to_string(),
                         label: "Bot Token".to_string(),
                         field_type: ConfigFieldType::Password,
                         required: false,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "channel_id".to_string(),
                         label: "Channel ID".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -1103,12 +1217,14 @@ fn build_chat_channel() -> ChannelDefinition {
                         label: "Webhook URL".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: true,
+                        options: Vec::new(),
                     },
                     ConfigField {
                         key: "channel_name".to_string(),
                         label: "Channel Name".to_string(),
                         field_type: ConfigFieldType::Text,
                         required: false,
+                        options: Vec::new(),
                     },
                 ],
                 smtp_fallback: None,
@@ -1171,8 +1287,10 @@ impl From<ConfigField> for ConfigFieldDto {
                 ConfigFieldType::Email => "email".to_string(),
                 ConfigFieldType::Number => "number".to_string(),
                 ConfigFieldType::Boolean => "boolean".to_string(),
+                ConfigFieldType::Select => "select".to_string(),
             },
             required: field.required,
+            options: field.options,
         }
     }
 }
@@ -1192,7 +1310,7 @@ mod registry_tests {
     #[test]
     fn registry_sections_cover_every_family_with_other_last() {
         let registry = build_registry();
-        assert_eq!(registry.version, "1.3.1");
+        assert_eq!(registry.version, "1.3.2");
 
         let ids: Vec<&str> = registry
             .channels
@@ -1246,6 +1364,40 @@ mod registry_tests {
                 .iter()
                 .any(|p| p.provider_id.starts_with("apns"))
         );
+    }
+
+    #[test]
+    fn linux_section_is_the_gateway_only() {
+        let registry = build_registry();
+        let linux = registry
+            .channels
+            .iter()
+            .find(|c| c.channel_id == "linux")
+            .expect("linux section");
+        let ids: Vec<&str> = linux
+            .providers
+            .iter()
+            .map(|p| p.provider_id.as_str())
+            .collect();
+        // The old self-hosted endpoint card was cut with the gateway's
+        // landing (dev stage, no life data) — the gateway is the family.
+        assert_eq!(ids, vec!["gateway"]);
+
+        let gateway = &linux.providers[0];
+        let mode = gateway
+            .config_fields
+            .iter()
+            .find(|f| f.key == "mode")
+            .expect("mode field");
+        assert!(matches!(mode.field_type, ConfigFieldType::Select));
+        assert_eq!(mode.options, vec!["polling", "https"]);
+
+        // Only select fields carry options — text/password stay bare.
+        for field in &gateway.config_fields {
+            if !matches!(field.field_type, ConfigFieldType::Select) {
+                assert!(field.options.is_empty(), "{} leaked options", field.key);
+            }
+        }
     }
 
     #[test]

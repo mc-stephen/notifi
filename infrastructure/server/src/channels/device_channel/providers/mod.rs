@@ -60,6 +60,9 @@ pub enum FieldType {
     Text,
     Password,
     Email,
+    /// A dropdown with exactly these choices (id strings the config
+    /// stores; the dashboard renders them as the picker's options).
+    Select(&'static [&'static str]),
     Boolean,
 }
 
@@ -144,10 +147,7 @@ mod device_dest_tests {
         let names: Vec<&str> = [
             DeviceProvider::Android(android::Provider::Fcm(fcm_like_config())).destination_name(),
             DeviceProvider::Apple(apple::Provider::Apns(apns_like_config())).destination_name(),
-            DeviceProvider::Linux(linux::Provider::Endpoint(
-                linux::endpoint::LinuxConfig::default(),
-            ))
-            .destination_name(),
+            DeviceProvider::Linux(linux::Provider::Gateway(Default::default())).destination_name(),
             DeviceProvider::Web(web::Provider::WebPush(web_push_like_config())).destination_name(),
             DeviceProvider::Window(window::Provider::Webhook).destination_name(),
         ]
@@ -222,7 +222,7 @@ mod device_dest_tests {
             ),
             (
                 "linux",
-                linux::Provider::Endpoint(linux::endpoint::LinuxConfig::default()).provider_name(),
+                linux::Provider::Gateway(linux::GatewayRecipe::default()).provider_name(),
             ),
             (
                 "web",

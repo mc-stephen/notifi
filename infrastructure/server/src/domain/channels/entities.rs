@@ -59,6 +59,9 @@ pub struct ConfigField {
     pub field_type: ConfigFieldType,
     #[serde(default)]
     pub required: bool,
+    /// The `select` field's exact choices (empty for other types).
+    #[serde(default)]
+    pub options: Vec<String>,
 }
 
 /// The type of input a config field expects.
@@ -70,6 +73,8 @@ pub enum ConfigFieldType {
     Email,
     Number,
     Boolean,
+    /// A dropdown whose choices are the field's `options`.
+    Select,
 }
 
 /// SMTP fallback config — the same shape for every email provider that supports it.

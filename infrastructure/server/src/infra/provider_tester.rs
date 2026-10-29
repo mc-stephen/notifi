@@ -147,14 +147,6 @@ async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> 
                 },
             }
         }
-        // Self-hosted flavors carry no credentials — the target address
-        // is per-device data, so there is honestly nothing to prove.
-        "endpoint" => TestResult {
-            success: true,
-            message:
-                "Self-hosted endpoint — nothing to verify; the delivery URL arrives per device"
-                    .to_string(),
-        },
         // Notifi gateway: no vendor API exists to shake hands with — the
         // honest probe is house-side (the route recipe's shape here); the
         // route proves itself once the user's app polls it.
