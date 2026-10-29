@@ -56,6 +56,61 @@ impl DiscordProvider {
             ..Self::new(config)
         }
     }
+
+    /// Credential check for the provider tester. The webhook flavor GETs
+    /// its own URL — webhook GETs return the webhook object without
+    /// posting anything; the bot flavor reads the authenticated user.
+    /// Both reveal nothing sendable.
+    pub async fn verify(&self) -> Result<(), String> {
+        match &self.auth {
+            DiscordAuth::Webhook { webhook_url } => {
+                let response = self
+                    .client
+                    .get(webhook_url)
+                    .send()
+                    .await
+                    .map_err(|e| format!("Discord request failed: {e}"))?;
+                if response.status().is_success() {
+                    Ok(())
+                } else {
+                    let err = response.text().await.unwrap_or_default();
+                    Err(format!("Discord rejected the credential: {err}"))
+                }
+            }
+            DiscordAuth::BotApi { bot_token, .. } => {
+                let url = {
+                    #[cfg(test)]
+                    {
+                        match &self.api_base {
+                            Some(base) => format!("{base}/api/v10/users/@me"),
+                            None => format!("{DISCORD_API_BASE}/api/v10/users/@me"),
+                        }
+                    }
+                    #[cfg(not(test))]
+                    {
+                        "https://discord.com/api/v10/users/@me".to_string()
+                    }
+                };
+                let response = self
+                    .client
+                    .get(url)
+                    .header("Authorization", format!("Bot {bot_token}"))
+                    .send()
+                    .await
+                    .map_err(|e| format!("Discord request failed: {e}"))?;
+                if response.status().is_success() {
+                    Ok(())
+                } else {
+                    let body: serde_json::Value = response.json().await.unwrap_or_default();
+                    let reason = body
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown error");
+                    Err(format!("Discord rejected the credential: {reason}"))
+                }
+            }
+        }
+    }
 }
 
 impl ChatSender for DiscordProvider {
@@ -219,6 +274,52 @@ mod discord_tests {
             raw.contains(r#""content":"**Deploy done**\nhello""#),
             "bold headline: {raw}"
         );
+    }
+
+    #[tokio::test]
+    async fn verify_reads_the_webhook_object() {
+        // A webhook GET returns the webhook object without posting
+        // anything — that proves the URL is live.
+        let stub = http_stub::start(200, "OK", r#"{"name":"notifi-hook"}"#).await;
+        DiscordProvider::new(DiscordConfig {
+            auth: DiscordAuth::Webhook {
+                webhook_url: format!("http://127.0.0.1:{}/webhook/x", stub.port),
+            },
+        })
+        .verify()
+        .await
+        .expect("a 200 webhook GET proves the URL");
+        let raw = stub.request().await.expect("request captured");
+        assert!(raw.contains("GET /webhook/x"), "probe path: {raw}");
+    }
+
+    #[tokio::test]
+    async fn verify_reads_the_bot_identity() {
+        let stub = http_stub::start(200, "OK", r#"{"id":"U1","username":"notifi"}"#).await;
+        DiscordProvider::new_with_api_base(bot_config(), format!("http://127.0.0.1:{}", stub.port))
+            .verify()
+            .await
+            .expect("users/@me proves the bot token");
+        let raw = stub.request().await.expect("request captured");
+        assert!(raw.contains("GET /api/v10/users/@me"), "probe path: {raw}");
+        assert!(
+            raw.to_ascii_lowercase().contains("authorization: bot "),
+            "bot token header: {raw}"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_rejects_a_bad_bot_token() {
+        let stub =
+            http_stub::start(401, "Unauthorized", r#"{"message": "401: Unauthorized"}"#).await;
+        let err = DiscordProvider::new_with_api_base(
+            bot_config(),
+            format!("http://127.0.0.1:{}", stub.port),
+        )
+        .verify()
+        .await
+        .expect_err("401 rejects the probe");
+        assert!(err.contains("Discord rejected the credential"), "{err}");
     }
 
     #[tokio::test]

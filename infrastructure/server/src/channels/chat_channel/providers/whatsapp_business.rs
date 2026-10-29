@@ -48,6 +48,60 @@ impl WhatsAppBusinessProvider {
             ..Self::new(config)
         }
     }
+
+    /// Credential check for the provider tester: reads the phone
+    /// number's info from Graph — an authenticated read that sends
+    /// nothing.
+    pub async fn verify(&self) -> Result<(), String> {
+        let version = self
+            .config
+            .api_version
+            .as_deref()
+            .unwrap_or(DEFAULT_API_VERSION);
+        let url = {
+            #[cfg(test)]
+            {
+                match &self.api_base {
+                    Some(base) => {
+                        format!("{base}/{version}/{}", self.config.phone_number_id)
+                    }
+                    None => format!("{GRAPH_API_BASE}/{version}/{}", self.config.phone_number_id),
+                }
+            }
+            #[cfg(not(test))]
+            {
+                format!(
+                    "https://graph.facebook.com/{version}/{}",
+                    self.config.phone_number_id
+                )
+            }
+        };
+        let response = self
+            .client
+            .get(url)
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.config.access_token),
+            )
+            .send()
+            .await
+            .map_err(|e| format!("WhatsApp request failed: {e}"))?;
+        let status = response.status();
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| format!("WhatsApp response unreadable (HTTP {status}): {e}"))?;
+        if status.is_success() {
+            Ok(())
+        } else {
+            let reason = body
+                .get("error")
+                .and_then(|v| v.get("message"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown error");
+            Err(format!("WhatsApp rejected the credential: {reason}"))
+        }
+    }
 }
 
 impl ChatSender for WhatsAppBusinessProvider {
@@ -213,6 +267,45 @@ mod whatsapp_business_tests {
             raw.contains(r#""body":"*Deploy done*\nhello""#),
             "bold headline: {raw}"
         );
+    }
+
+    #[tokio::test]
+    async fn verify_reads_the_phone_info() {
+        let stub = http_stub::start(
+            200,
+            "OK",
+            r#"{"display_phone_number":"+1-555-0100","verified_name":"notifi"}"#,
+        )
+        .await;
+        stub_provider(stub.port)
+            .verify()
+            .await
+            .expect("the phone read proves the system-user token");
+        let raw = stub.request().await.expect("request captured");
+        assert!(
+            raw.contains(&format!("GET /{DEFAULT_API_VERSION}/PHONE_ID_1")),
+            "phone path: {raw}"
+        );
+        assert!(
+            raw.to_ascii_lowercase()
+                .contains(&format!("authorization: bearer {TOKEN}")),
+            "bearer header: {raw}"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_rejects_a_bad_token() {
+        let stub = http_stub::start(
+            401,
+            "Unauthorized",
+            r#"{"error":{"message":"Invalid OAuth access token."}}"#,
+        )
+        .await;
+        let err = stub_provider(stub.port)
+            .verify()
+            .await
+            .expect_err("401 rejects the probe");
+        assert!(err.contains("WhatsApp rejected the credential"), "{err}");
     }
 
     #[tokio::test]

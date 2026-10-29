@@ -56,6 +56,58 @@ impl SlackProvider {
             ..Self::new(config)
         }
     }
+
+    /// Credential check for the provider tester. Webhook flavors cannot
+    /// be read without posting, so this covers the bot flavor only:
+    /// auth.test is an authenticated read that reveals nothing sendable
+    /// and posts nothing.
+    pub async fn verify(&self) -> Result<(), String> {
+        let (url, token) = match &self.auth {
+            SlackAuth::Webhook { .. } => {
+                return Err(
+                    "Slack webhooks only send — nothing to check without posting".to_string(),
+                );
+            }
+            SlackAuth::BotApi { bot_token, .. } => (
+                {
+                    #[cfg(test)]
+                    {
+                        match &self.api_base {
+                            Some(base) => format!("{base}/api/auth.test"),
+                            None => format!("{SLACK_API_BASE}/api/auth.test"),
+                        }
+                    }
+                    #[cfg(not(test))]
+                    {
+                        "https://slack.com/api/auth.test".to_string()
+                    }
+                },
+                bot_token.clone(),
+            ),
+        };
+        let response = self
+            .client
+            .post(url)
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .map_err(|e| format!("Slack request failed: {e}"))?;
+        let status = response.status();
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| format!("Slack response unreadable (HTTP {status}): {e}"))?;
+        // Slack quirk: the ok flag has the final say, HTTP 200 included.
+        if body.get("ok") == Some(&serde_json::Value::Bool(true)) {
+            Ok(())
+        } else {
+            let reason = body
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown error");
+            Err(format!("Slack rejected the credential: {reason}"))
+        }
+    }
 }
 
 impl ChatSender for SlackProvider {
@@ -234,6 +286,32 @@ mod slack_tests {
             raw.contains(r#""text":"*Deploy done*\nhello""#),
             "bold headline: {raw}"
         );
+    }
+
+    #[tokio::test]
+    async fn verify_reads_the_bot_identity() {
+        let stub = http_stub::start(200, "OK", r#"{"ok":true,"user_id":"U1"}"#).await;
+        stub_bot_provider(stub.port)
+            .verify()
+            .await
+            .expect("ok:true auth.test proves the bot token");
+        let raw = stub.request().await.expect("request captured");
+        assert!(raw.contains("POST /api/auth.test"), "auth.test path: {raw}");
+        assert!(
+            raw.to_ascii_lowercase()
+                .contains(&format!("authorization: bearer {TOKEN}")),
+            "bearer header: {raw}"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_rejects_a_bad_bot_token() {
+        let stub = http_stub::start(200, "OK", r#"{"ok":false,"error":"invalid_auth"}"#).await;
+        let err = stub_bot_provider(stub.port)
+            .verify()
+            .await
+            .expect_err("ok:false rejects the probe");
+        assert!(err.contains("Slack rejected the credential"), "{err}");
     }
 
     #[tokio::test]

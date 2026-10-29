@@ -43,6 +43,47 @@ impl TelegramProvider {
             ..Self::new(config)
         }
     }
+
+    /// Credential check for the provider tester: calls getMe — an
+    /// authenticated read of the bot's identity that sends nothing.
+    pub async fn verify(&self) -> Result<(), String> {
+        let url = {
+            #[cfg(test)]
+            {
+                match &self.api_base {
+                    Some(base) => format!("{base}/bot{}/getMe", self.config.bot_token),
+                    None => format!("{TELEGRAM_API_BASE}/bot{}/getMe", self.config.bot_token),
+                }
+            }
+            #[cfg(not(test))]
+            {
+                format!(
+                    "https://api.telegram.org/bot{}/getMe",
+                    self.config.bot_token
+                )
+            }
+        };
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| format!("Telegram request failed: {e}"))?;
+        let status = response.status();
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| format!("Telegram response unreadable (HTTP {status}): {e}"))?;
+        if status.is_success() && body.get("ok") == Some(&serde_json::Value::Bool(true)) {
+            Ok(())
+        } else {
+            let reason = body
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown error");
+            Err(format!("Telegram rejected the credential: {reason}"))
+        }
+    }
 }
 
 impl ChatSender for TelegramProvider {
@@ -175,6 +216,35 @@ mod telegram_tests {
             raw.contains(r#""text":"Deploy done\nhello""#),
             "headline: {raw}"
         );
+    }
+
+    #[tokio::test]
+    async fn verify_reads_the_bot_identity() {
+        let stub = http_stub::start(200, "OK", r#"{"ok":true,"result":{"id":1}}"#).await;
+        stub_provider(stub.port)
+            .verify()
+            .await
+            .expect("ok:true getMe proves the bot token");
+        let raw = stub.request().await.expect("request captured");
+        assert!(
+            raw.contains(&format!("GET /bot{TOKEN}/getMe")),
+            "getMe path: {raw}"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_rejects_a_bad_bot_token() {
+        let stub = http_stub::start(
+            401,
+            "Unauthorized",
+            r#"{"ok":false,"description":"Unauthorized"}"#,
+        )
+        .await;
+        let err = stub_provider(stub.port)
+            .verify()
+            .await
+            .expect_err("a rejected bot token fails the probe");
+        assert!(err.contains("Telegram rejected the credential"), "{err}");
     }
 
     #[tokio::test]

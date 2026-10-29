@@ -1,5 +1,11 @@
 use async_trait::async_trait;
 
+use crate::channels::chat_channel::providers::{
+    discord::{DiscordConfig, DiscordProvider},
+    slack::{SlackConfig, SlackProvider},
+    telegram::{TelegramConfig, TelegramProvider},
+    whatsapp_business::{WhatsAppBusinessConfig, WhatsAppBusinessProvider},
+};
 use crate::channels::device_channel::providers::android::fcm::{FcmConfig, FcmProvider};
 use crate::channels::device_channel::providers::android::onesignal::{
     OneSignalConfig, OneSignalProvider,
@@ -854,11 +860,18 @@ async fn test_smslive247(config: &serde_json::Value) -> TestResult {
     }
 }
 
+/// Chat-destination probes. Slack bots read auth.test (webhook flavors
+/// honestly carry nothing to verify); Telegram reads getMe; Discord
+/// GETs its webhook URL or the bot identity — both post nothing;
+/// WhatsApp reads the phone info; Teams webhooks only send. Unknown ids
+/// fall to the saved-without-check fallback.
 async fn test_chat_provider(provider_id: &str, config: &serde_json::Value) -> TestResult {
     match provider_id {
         "slack" => test_slack(config).await,
         "telegram" => test_telegram(config).await,
+        "whatsapp_business" => test_whatsapp(config).await,
         "discord" => test_discord(config).await,
+        "ms_teams" => test_ms_teams(config).await,
         _ => TestResult {
             success: true,
             message: format!(
@@ -869,6 +882,8 @@ async fn test_chat_provider(provider_id: &str, config: &serde_json::Value) -> Te
 }
 
 async fn test_slack(config: &serde_json::Value) -> TestResult {
+    // The webhook flavor cannot be read without posting — the URL is
+    // the credential, so its shape is the only honest check there.
     let webhook_url = config
         .get("webhook_url")
         .and_then(|v| v.as_str())
@@ -885,81 +900,63 @@ async fn test_slack(config: &serde_json::Value) -> TestResult {
         };
     }
 
-    if !webhook_url.is_empty() {
-        // Try to verify webhook URL format
-        if !webhook_url.contains("hooks.slack.com") {
-            return TestResult {
-                success: false,
-                message: "Invalid Slack webhook URL (should contain hooks.slack.com)".to_string(),
-            };
-        }
+    if !webhook_url.is_empty() && !webhook_url.contains("hooks.slack.com") {
+        return TestResult {
+            success: false,
+            message: "Invalid Slack webhook URL (should contain hooks.slack.com)".to_string(),
+        };
     }
 
     if !bot_token.is_empty() {
-        // Validate bot token format
-        if !bot_token.starts_with("xoxb-") {
+        // The bot flavor proves itself with auth.test — an
+        // authenticated read that posts nothing.
+        let Ok(cfg) = serde_json::from_value::<SlackConfig>(config.clone()) else {
             return TestResult {
                 success: false,
-                message: "Invalid Slack bot token format (should start with xoxb-)".to_string(),
+                message: "Config does not parse for slack (webhook or bot flavor, \
+                          type-tagged)"
+                    .to_string(),
             };
-        }
+        };
+        return match SlackProvider::new(cfg).verify().await {
+            Ok(()) => TestResult {
+                success: true,
+                message: "Slack accepted the bot token (auth.test read, nothing posted)"
+                    .to_string(),
+            },
+            Err(e) => TestResult {
+                success: false,
+                message: format!("Slack rejected the credential: {e}"),
+            },
+        };
     }
 
     TestResult {
         success: true,
-        message: "Slack credentials format is valid".to_string(),
+        message: "Slack webhook saved — nothing to verify until it fires; the URL \
+                  cannot be read without posting"
+            .to_string(),
     }
 }
 
 async fn test_telegram(config: &serde_json::Value) -> TestResult {
-    let bot_token = config
-        .get("bot_token")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let chat_id = config.get("chat_id").and_then(|v| v.as_str()).unwrap_or("");
-
-    if bot_token.is_empty() {
+    // getMe is an authenticated read of the bot's identity that sends
+    // nothing.
+    let Ok(cfg) = serde_json::from_value::<TelegramConfig>(config.clone()) else {
         return TestResult {
             success: false,
-            message: "Telegram bot token is required".to_string(),
+            message: "Config does not parse for telegram (bot_token + chat_id required)"
+                .to_string(),
         };
-    }
-    if chat_id.is_empty() {
-        return TestResult {
-            success: false,
-            message: "Telegram chat ID is required".to_string(),
-        };
-    }
-
-    // Validate bot token format (numbers:alphanumeric)
-    if !bot_token.contains(':') {
-        return TestResult {
-            success: false,
-            message: "Invalid Telegram bot token format (should contain ':')".to_string(),
-        };
-    }
-
-    // Try to get bot info
-    let client = reqwest::Client::new();
-    match client
-        .get(format!("https://api.telegram.org/bot{bot_token}/getMe"))
-        .send()
-        .await
-    {
-        Ok(resp) if resp.status().is_success() => TestResult {
+    };
+    match TelegramProvider::new(cfg).verify().await {
+        Ok(()) => TestResult {
             success: true,
-            message: "Telegram bot token is valid".to_string(),
+            message: "Telegram accepted the bot token (getMe read, nothing sent)".to_string(),
         },
-        Ok(resp) => {
-            let status = resp.status();
-            TestResult {
-                success: false,
-                message: format!("Telegram API returned status {status}"),
-            }
-        }
         Err(e) => TestResult {
             success: false,
-            message: format!("Failed to verify Telegram bot token: {e}"),
+            message: format!("Telegram rejected the credential: {e}"),
         },
     }
 }
@@ -981,48 +978,71 @@ async fn test_discord(config: &serde_json::Value) -> TestResult {
         };
     }
 
-    if !webhook_url.is_empty() {
-        // Try to verify webhook URL format
-        if !webhook_url.contains("discord.com/api/webhooks/")
-            && !webhook_url.contains("discordapp.com/api/webhooks/")
-        {
-            return TestResult {
-                success: false,
-                message: "Invalid Discord webhook URL".to_string(),
-            };
-        }
-    }
-
-    if !bot_token.is_empty() {
-        // Try to get bot info
-        let client = reqwest::Client::new();
-        match client
-            .get("https://discord.com/api/v10/users/@me")
-            .header("Authorization", format!("Bot {bot_token}"))
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => TestResult {
-                success: true,
-                message: "Discord bot token is valid".to_string(),
-            },
-            Ok(resp) => {
-                let status = resp.status();
-                TestResult {
-                    success: false,
-                    message: format!("Discord API returned status {status}"),
-                }
-            }
-            Err(e) => TestResult {
-                success: false,
-                message: format!("Failed to verify Discord bot token: {e}"),
-            },
-        }
-    } else {
-        TestResult {
+    // A webhook GET returns the webhook object without posting; the
+    // bot flavor reads the authenticated user. Both reveal nothing
+    // sendable.
+    let Ok(cfg) = serde_json::from_value::<DiscordConfig>(config.clone()) else {
+        return TestResult {
+            success: false,
+            message: "Config does not parse for discord (webhook or bot flavor, \
+                      type-tagged)"
+                .to_string(),
+        };
+    };
+    match DiscordProvider::new(cfg).verify().await {
+        Ok(()) => TestResult {
             success: true,
-            message: "Discord webhook URL format is valid".to_string(),
-        }
+            message: "Discord accepted the credential (a read that posts nothing)".to_string(),
+        },
+        Err(e) => TestResult {
+            success: false,
+            message: format!("Discord rejected the credential: {e}"),
+        },
+    }
+}
+
+async fn test_whatsapp(config: &serde_json::Value) -> TestResult {
+    // The phone info read is authenticated and sends nothing.
+    let Ok(cfg) = serde_json::from_value::<WhatsAppBusinessConfig>(config.clone()) else {
+        return TestResult {
+            success: false,
+            message: "Config does not parse for whatsapp_business (phone_number_id + \
+                      access_token required)"
+                .to_string(),
+        };
+    };
+    match WhatsAppBusinessProvider::new(cfg).verify().await {
+        Ok(()) => TestResult {
+            success: true,
+            message: "WhatsApp accepted the system-user token (phone info read, nothing \
+                      sent)"
+                .to_string(),
+        },
+        Err(e) => TestResult {
+            success: false,
+            message: format!("WhatsApp rejected the credential: {e}"),
+        },
+    }
+}
+
+async fn test_ms_teams(config: &serde_json::Value) -> TestResult {
+    let webhook_url = config
+        .get("webhook_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if webhook_url.is_empty() {
+        return TestResult {
+            success: false,
+            message: "MS Teams requires webhook_url".to_string(),
+        };
+    }
+    // Teams webhooks only send — there is no read that proves the URL
+    // without messaging a channel for real.
+    TestResult {
+        success: true,
+        message: "MS Teams webhook saved — nothing to verify until it fires; Teams \
+                  webhooks only send"
+            .to_string(),
     }
 }
 
