@@ -75,6 +75,9 @@ pub enum ConfigFieldType {
     Boolean,
     /// A dropdown whose choices are the field's `options`.
     Select,
+    /// Saved into the recipe, never rendered — the dashboard generates the
+    /// value at connect time.
+    Hidden,
 }
 
 /// SMTP fallback config — the same shape for every email provider that supports it.

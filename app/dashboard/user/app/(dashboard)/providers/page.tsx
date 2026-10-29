@@ -23,7 +23,7 @@ import {
   type RecommendedItem,
 } from "@/components/custom/providers/recommended-integrations";
 import { cn } from "@/lib/utils";
-import { generateRouteSecret } from "@/lib/gateway";
+import { generateRouteSecret, generateRouteTopic } from "@/lib/gateway";
 import { Globe, Loader2 } from "lucide-react";
 
 type Tab = "all" | "active" | "inactive";
@@ -58,6 +58,9 @@ function freshConnectForm(definition: ProviderDefinition): Record<string, unknow
   for (const field of definition.config_fields) {
     if (field.type === "select") {
       form[field.key] = field.options?.[0] ?? "";
+    } else if (field.type === "hidden") {
+      // Recipe-only values the dashboard generates (the gateway's topic).
+      form[field.key] = generateRouteTopic();
     } else if (field.key === "secret_key") {
       form[field.key] = generateRouteSecret();
     } else {

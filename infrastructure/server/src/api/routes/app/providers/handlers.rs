@@ -77,7 +77,7 @@ fn build_registry() -> ProviderRegistry {
     channels.extend(build_device_channels());
     channels.push(build_other_channel());
     ProviderRegistry {
-        version: "1.3.2".to_string(),
+        version: "1.3.3".to_string(),
         last_updated: chrono::Utc::now().to_rfc3339(),
         channels,
     }
@@ -185,6 +185,7 @@ fn vendor_field_type(ty: device_channel::providers::FieldType) -> (ConfigFieldTy
             options.iter().map(|o| o.to_string()).collect(),
         ),
         FieldType::Boolean => (ConfigFieldType::Boolean, Vec::new()),
+        FieldType::Hidden => (ConfigFieldType::Hidden, Vec::new()),
     }
 }
 
@@ -1288,6 +1289,7 @@ impl From<ConfigField> for ConfigFieldDto {
                 ConfigFieldType::Number => "number".to_string(),
                 ConfigFieldType::Boolean => "boolean".to_string(),
                 ConfigFieldType::Select => "select".to_string(),
+                ConfigFieldType::Hidden => "hidden".to_string(),
             },
             required: field.required,
             options: field.options,
@@ -1310,7 +1312,7 @@ mod registry_tests {
     #[test]
     fn registry_sections_cover_every_family_with_other_last() {
         let registry = build_registry();
-        assert_eq!(registry.version, "1.3.2");
+        assert_eq!(registry.version, "1.3.3");
 
         let ids: Vec<&str> = registry
             .channels
@@ -1391,6 +1393,23 @@ mod registry_tests {
             .expect("mode field");
         assert!(matches!(mode.field_type, ConfigFieldType::Select));
         assert_eq!(mode.options, vec!["polling", "https"]);
+
+        // The static route: both halves generate at connect — the topic is
+        // hidden (recipe-only, no form render) and the secret stays
+        // prefilled-and-regenerable on the form.
+        let topic = gateway
+            .config_fields
+            .iter()
+            .find(|f| f.key == "topic")
+            .expect("topic field");
+        assert!(matches!(topic.field_type, ConfigFieldType::Hidden));
+        let secret = gateway
+            .config_fields
+            .iter()
+            .find(|f| f.key == "secret_key")
+            .expect("secret field");
+        assert!(matches!(secret.field_type, ConfigFieldType::Text));
+        assert!(secret.required);
 
         // Only select fields carry options — text/password stay bare.
         for field in &gateway.config_fields {

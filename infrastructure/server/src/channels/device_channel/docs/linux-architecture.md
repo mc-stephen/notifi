@@ -8,10 +8,10 @@ their own push infrastructure, Notifi hosts the listening path itself: the
 ## How it Works
 
 1.  **Route recipe**: From the dashboard's provider page, the user connects
-    the **Notifi Gateway** card — they pick a route topic, Notifi generates
-    the secret key, and they choose a delivery mode (`polling` = long-poll
-    holds the request for instant landings; `https` = the app checks on its
-    own cadence).
+    the **Notifi Gateway** card — Notifi generates the whole route (topic +
+    secret — the form asks nothing), and they choose a delivery mode
+    (`polling` = long-poll holds the request for instant landings; `https` =
+    the app checks on its own cadence).
 2.  **Server-side delivery**: When a send targets the route, the
     `GatewayAdapter` queues the message into the gateway queue (see
     `ports::gateway` and the `gateway_messages` table).

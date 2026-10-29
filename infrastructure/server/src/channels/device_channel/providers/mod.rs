@@ -64,6 +64,9 @@ pub enum FieldType {
     /// stores; the dashboard renders them as the picker's options).
     Select(&'static [&'static str]),
     Boolean,
+    /// Saved into the recipe but never rendered — a value the dashboard
+    /// generates itself at connect time (e.g. the gateway's route topic).
+    Hidden,
 }
 
 /// One config field on a vendor's connect form.

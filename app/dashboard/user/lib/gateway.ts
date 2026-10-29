@@ -21,6 +21,17 @@ export function generateRouteSecret(): string {
   return toUrlSafeBase64(bytes);
 }
 
+/**
+ * Generates the route topic (the URL's path piece) — the static route's
+ * machine-readable half, generated at connect and shown only inside the
+ * subscribe URL. `gw-` + 12 url-safe characters.
+ */
+export function generateRouteTopic(): string {
+  const bytes = new Uint8Array(9);
+  crypto.getRandomValues(bytes);
+  return `gw-${toUrlSafeBase64(bytes)}`;
+}
+
 /** The poll URL for one secret route (`?wait=N` long-polls on the app side). */
 export function gatewaySubscribeUrl(
   apiBase: string,

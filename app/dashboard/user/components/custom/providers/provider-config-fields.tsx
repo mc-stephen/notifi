@@ -60,6 +60,11 @@ export function ProviderConfigFields({
     <>
       {definition.config_fields.map((field) => {
         const value = values[field.key];
+        // Hidden fields ride the recipe (the payload loops include them)
+        // but never render — the dashboard generates them at connect.
+        if (field.type === "hidden") {
+          return null;
+        }
         if (field.type === "boolean") {
           const checked = value === true || value === "true";
           return (

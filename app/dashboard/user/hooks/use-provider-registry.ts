@@ -4,7 +4,14 @@ import { api } from "@/lib/api";
 export interface ConfigField {
   key: string;
   label: string;
-  type: "text" | "password" | "email" | "number" | "boolean" | "select";
+  type:
+    | "text"
+    | "password"
+    | "email"
+    | "number"
+    | "boolean"
+    | "select"
+    | "hidden";
   required: boolean;
   /** The `select` field's exact choices (undefined for other types). */
   options?: string[];
