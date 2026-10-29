@@ -44,7 +44,7 @@ pub fn catalog() -> Vec<VendorEntry> {
             name: "Webhook (Relay)",
             platforms: &[],
             icon_url: None,
-            docs_url: None,
+            docs_url: Some("https://docs.notifi.dev/channels/webhook-relay"),
             fields: vec![
                 VendorField {
                     key: "target_url",

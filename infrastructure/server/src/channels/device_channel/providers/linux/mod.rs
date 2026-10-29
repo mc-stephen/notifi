@@ -29,15 +29,16 @@ impl Provider {
 }
 
 /// The destination's registry listing — kept in sync with `Provider`
-/// by the device family's golden test. `docs_url` stays unset until the
-/// docs app hosts the gateway explainer (the card must never 404).
+/// by the device family's golden test. The docs link points at our own
+/// explainer post (`app/documentation/.../channels/linux-gateway.mdx`),
+/// not a vendor page — there is no vendor.
 pub fn vendors() -> Vec<super::VendorEntry> {
     vec![super::VendorEntry {
         id: "gateway",
         name: "Notifi Gateway",
         platforms: &["linux"],
         icon_url: None,
-        docs_url: None,
+        docs_url: Some("https://docs.notifi.dev/channels/linux-gateway"),
         fields: vec![
             super::VendorField {
                 key: "topic",

@@ -1,0 +1,59 @@
+---
+title: How the Notifi gateway works
+description: Notifi hosts the listening path — your Linux app polls its secret route.
+---
+
+## The short version
+
+The Notifi gateway is a hosted push route for Linux apps. You connect the
+**Notifi Gateway** card in your project, send notifications through Notifi as
+usual, and your Linux app picks them up by polling one URL. Nobody runs a
+listener — your app is a client, not a server.
+
+## What you set up on the card
+
+Connecting the card asks for three things:
+
+1. **Route topic** — the name YOU pick for the route. It becomes the last
+   part of the poll URL, e.g. `office-linux` → `/gateway/linux/office-linux`.
+2. **Route secret** — Notifi generates it for you (the form sends it in
+   prefilled readonly, and there is a regenerate button). The secret is what
+   keeps the route yours.
+3. **Delivery mode** — how you plan to poll:
+   - **Web polling (recommended)** — your app's request holds the connection a
+     little bit longer (`?wait=20`) and the message lands the instant it is
+     queued. Lowest latency, tiny polling traffic.
+   - **HTTPS check** — no holding. Your app checks whenever it wants (a cron
+     job, a loop on its own cadence) and gets whatever is queued right away.
+
+The saved mode is just a note; the mode is really your app's per-request
+choice, so you can switch behavior any time without reconnecting.
+
+## The URL your app polls
+
+After connecting, the form shows the subscribe line, e.g.:
+
+```
+https://api.notifi.dev/gateway/linux/office-linux?key=<generated secret>
+```
+
+- Poll it with an ordinary HTTPS GET.
+- To long-poll, append `&wait=20` (the server holds up to 20 seconds and
+  answers as soon as something queues).
+- The reply is JSON: `{"messages": [ { "id", "title", "body", "received_at" } ]}`.
+  Empty queue → an empty list.
+
+## Reads are one-shot (poll-and-delete)
+
+A fetched message is ALSO removed at the same moment — a message leaves its
+route at first read. That keeps the story simple: no retries, no duplicates
+accumulating, no caching to babysit. If your app crashes mid-delivery, that
+message is gone; the next send starts fresh. If you need stored history,
+capture it on your side when you receive it.
+
+## How sends find your route
+
+Both route halves (topic and secret) live in the saved card recipe. When a
+flow or send targets the gateway, Notifi queues the message onto exactly that
+topic+secret pair — the queue needs no registry of its own, and a wrong key
+just sees an empty queue.

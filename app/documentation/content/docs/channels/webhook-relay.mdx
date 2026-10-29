@@ -1,0 +1,42 @@
+---
+title: How the webhook relay works
+description: One connect posts your rendered payload anywhere you point it.
+---
+
+## The short version
+
+The **Webhook relay** card (under the "Other" channel) delivers your
+notification by calling a URL of YOUR choosing, shaped however that receiver
+wants. It is the escape hatch for anything Notifi does not have a built-in
+card for yet — your own webhook target, a self-hosted tool, an internal
+service.
+
+## What you set up on the card
+
+Connecting the relay collects four things, and they are all saved into the
+card's recipe:
+
+1. **Target URL** — where the request goes.
+2. **Method** — the HTTP method to use (POST is the usual).
+3. **Headers** — optional request headers, e.g. an `Authorization` or a
+   signature line your receiver wants (they can be given as an object, a JSON
+   string, or left empty).
+4. **Payload template** — the body, written once and rendered per send with
+   Handlebars-style placeholders:
+
+   - `{{title}}` — the notification title
+   - `{{body}}` — the notification text
+   - `{{project}}` — the sending project
+   - `{{timestamp}}` — when the relay fires
+
+   Example template:
+   `{"title": "{{title}}", "message": "{{body}}", "source": "{{project}}"}`
+
+There are no vendor credentials — the URL is the provider. That is why only
+one "Other → Relay" card exists: one connect, many receivers.
+
+## What a send looks like
+
+On each send, Notifi renders your template with the notification's content
+and calls your target URL with your headers and method. One send, one request
+— no retry storm.
