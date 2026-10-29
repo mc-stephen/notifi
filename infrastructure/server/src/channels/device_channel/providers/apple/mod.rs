@@ -1,21 +1,19 @@
-//! Apple destination — everything that can push to an iPhone or Mac.
+//! Apple destination — everything that can push to an Apple device.
 //!
-//! Both OSes ride the same APNs signing flow; the flavor lives in the
-//! device configs (bundle ids differ), not in a separate controller.
-//! Third-party vendors have config shells; their controllers fail
-//! closed until wired.
+//! One APNs recipe covers the app's Apple installs: the team-scoped
+//! `.p8` key signs every push, the recipe's bundle id names the app,
+//! and each install (iPhone, iPad, Mac for a universal app) registers
+//! its own token that Apple routes. Mac installs ride the same recipe
+//! unless an app ships a separate Mac bundle id — that day, a second
+//! recipe earns its place back.
 
 pub mod apns;
 pub mod onesignal;
 
 /// All supported Apple push providers. THIS IS THE SOURCE OF TRUTH.
-///
-/// `Apns` and `ApnsMacos` are the same vendor against a different device
-/// flavor (iPhone bundle vs Mac bundle); each carries its own APNs config.
 #[derive(Debug, Clone)]
 pub enum Provider {
     Apns(apns::IosConfig),
-    ApnsMacos(apns::MacosConfig),
     OneSignal(onesignal::OneSignalConfig),
 }
 
@@ -23,7 +21,6 @@ impl Provider {
     pub fn provider_name(&self) -> &'static str {
         match self {
             Self::Apns(_) => "apns",
-            Self::ApnsMacos(_) => "apns_macos",
             Self::OneSignal(_) => "onesignal",
         }
     }
@@ -35,16 +32,8 @@ pub fn vendors() -> Vec<super::VendorEntry> {
     vec![
         super::VendorEntry {
             id: "apns",
-            name: "Apple Push Notification Service (iOS)",
-            platforms: &["ios"],
-            icon_url: Some("https://cdn.brandfetch.io/apple.com/w/512/h/512/theme/dark/icon.jpeg"),
-            docs_url: Some("https://developer.apple.com/documentation/usernotifications"),
-            fields: apns_fields(),
-        },
-        super::VendorEntry {
-            id: "apns_macos",
-            name: "Apple Push Notification Service (macOS)",
-            platforms: &["macos"],
+            name: "Apple Push (iPhone, iPad & Mac)",
+            platforms: &["ios", "ipados", "macos"],
             icon_url: Some("https://cdn.brandfetch.io/apple.com/w/512/h/512/theme/dark/icon.jpeg"),
             docs_url: Some("https://developer.apple.com/documentation/usernotifications"),
             fields: apns_fields(),
@@ -62,8 +51,8 @@ pub fn vendors() -> Vec<super::VendorEntry> {
     ]
 }
 
-/// Same APNs signing flow per flavor — the bundle differs, the fields
-/// match [`apple::apns::IosConfig`]/[`apple::apns::MacosConfig`].
+/// The APNs recipe's connect-form fields — they match
+/// [`apple::apns::IosConfig`].
 fn apns_fields() -> Vec<super::VendorField> {
     vec![
         super::VendorField {
@@ -136,13 +125,12 @@ mod apple_dest_tests {
             sandbox: false,
         });
         assert_eq!(apns.provider_name(), "apns");
-        let macos = Provider::ApnsMacos(apns::MacosConfig {
-            key_id: "k".to_string(),
-            team_id: "t".to_string(),
-            bundle_id: "b".to_string(),
-            p8_key_path: std::path::PathBuf::from("/k.p8"),
-            sandbox: false,
-        });
-        assert_eq!(macos.provider_name(), "apns_macos");
+
+        // One recipe covers the app's Apple installs — the universal
+        // app story: the carried platforms say so on the card.
+        let apns_row = &vendors()[0];
+        assert_eq!(apns_row.id, "apns");
+        assert_eq!(apns_row.platforms, &["ios", "ipados", "macos"]);
+        assert_eq!(apns_row.name, "Apple Push (iPhone, iPad & Mac)");
     }
 }

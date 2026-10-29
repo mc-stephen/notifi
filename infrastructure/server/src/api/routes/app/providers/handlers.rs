@@ -75,7 +75,7 @@ fn build_registry() -> ProviderRegistry {
     channels.extend(build_device_channels());
     channels.push(build_other_channel());
     ProviderRegistry {
-        version: "1.3.0".to_string(),
+        version: "1.3.1".to_string(),
         last_updated: chrono::Utc::now().to_rfc3339(),
         channels,
     }
@@ -1192,7 +1192,7 @@ mod registry_tests {
     #[test]
     fn registry_sections_cover_every_family_with_other_last() {
         let registry = build_registry();
-        assert_eq!(registry.version, "1.3.0");
+        assert_eq!(registry.version, "1.3.1");
 
         let ids: Vec<&str> = registry
             .channels

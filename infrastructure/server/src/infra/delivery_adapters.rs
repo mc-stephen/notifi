@@ -1,9 +1,8 @@
 //! Channel adapters for product sends (Phase A).
 //!
-//! Email (SMTP), android (fcm), apple (apns / apns_macos), linux
 //! Email (SMTP), android (fcm / pushy / onesignal), apple (apns /
-//! apns_macos / onesignal), linux (self-hosted endpoint), window
-//! (webhook / WNS), web push, the whole chat family (slack /
+//! onesignal), linux (self-hosted endpoint), window (webhook / WNS),
+//! web push, the whole chat family (slack /
 //! telegram / whatsapp_business / discord / ms_teams), all nine
 //! SMS vendors and the other channel (onesignal wrapping both phone
 //! families at once / webhook relay) send for real — one adapter set
@@ -29,7 +28,7 @@ use crate::channels::device_channel::providers::android::{
     pushy::{PushyConfig, PushyMessage, PushyProvider},
 };
 use crate::channels::device_channel::providers::apple::apns::{
-    ApnsMessage, ApnsProvider, IosConfig, MacosConfig,
+    ApnsMessage, ApnsProvider, IosConfig,
 };
 use crate::channels::device_channel::providers::linux::endpoint::{
     LinuxConfig, LinuxMessage, LinuxProvider,
@@ -148,10 +147,9 @@ impl DeliveryProvider for FcmAdapter {
 
 /// Apple Push Notifications (channel `apple`): the APNs controller
 /// signs with the project's `.p8` key and posts to Apple's gateway; the
-/// adapter only maps the normalized message. One controller serves iOS
-/// and macOS — the two provider ids (`apns`, `apns_macos`) pick the
-/// bundle flavor from each one's saved config. The recipient is the raw
-/// device token.
+/// adapter only maps the normalized message. One recipe covers the
+/// app's Apple installs — Apple routes each token to its device. The
+/// recipient is the raw device token.
 pub struct ApnsAdapter {
     provider: ApnsProvider,
     provider_id: &'static str,
@@ -197,34 +195,16 @@ impl DeliveryProvider for ApnsAdapter {
     }
 }
 
-/// Builds the APNs adapter for either OS flavor — same fields, different
-/// bundle config; a missing/blank `.p8` path means "not wired".
-fn apns_from_config(
-    config: &serde_json::Value,
-    provider_id: &str,
-) -> Option<Arc<dyn DeliveryProvider>> {
-    // The adapter's provider_name comes from the fixed id set.
-    let provider_id: &'static str = if provider_id == "apns" {
-        "apns"
-    } else {
-        "apns_macos"
-    };
-    let provider = if provider_id == "apns" {
-        let cfg: IosConfig = serde_json::from_value(config.clone()).ok()?;
-        if cfg.p8_key_path.as_os_str().is_empty() {
-            return None;
-        }
-        ApnsProvider::new(cfg).ok()?
-    } else {
-        let cfg: MacosConfig = serde_json::from_value(config.clone()).ok()?;
-        if cfg.p8_key_path.as_os_str().is_empty() {
-            return None;
-        }
-        ApnsProvider::new_macos(cfg).ok()?
-    };
+/// Builds the APNs adapter from the saved recipe — a missing/blank
+/// `.p8` path means "not wired".
+fn apns_from_config(config: &serde_json::Value) -> Option<Arc<dyn DeliveryProvider>> {
+    let cfg: IosConfig = serde_json::from_value(config.clone()).ok()?;
+    if cfg.p8_key_path.as_os_str().is_empty() {
+        return None;
+    }
     Some(Arc::new(ApnsAdapter {
-        provider,
-        provider_id,
+        provider: ApnsProvider::new(cfg).ok()?,
+        provider_id: "apns",
     }))
 }
 
@@ -687,7 +667,7 @@ impl AdapterFactory for DefaultAdapterFactory {
             }
             ("android", "onesignal") => onesignal_adapter(config, "android"),
             ("apple", "onesignal") => onesignal_adapter(config, "apple"),
-            ("apple", "apns" | "apns_macos") => apns_from_config(config, provider_id),
+            ("apple", "apns") => apns_from_config(config),
             ("linux", "endpoint") => {
                 let cfg: LinuxConfig = serde_json::from_value(config.clone()).ok()?;
                 Some(Arc::new(LinuxAdapter {
@@ -893,18 +873,6 @@ mod tests {
                 "proj-1",
                 "apple",
                 "apns",
-                &serde_json::json!({
-                    "key_id": "K", "team_id": "T",
-                    "bundle_id": "b", "p8_key_path": "/keys/authkey.p8"
-                })
-            )
-            .is_some()
-        );
-        assert!(
-            f.adapter(
-                "proj-1",
-                "apple",
-                "apns_macos",
                 &serde_json::json!({
                     "key_id": "K", "team_id": "T",
                     "bundle_id": "b", "p8_key_path": "/keys/authkey.p8"
@@ -1360,19 +1328,6 @@ yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
             .await;
         assert!(!bad.success, "{}", bad.message);
         assert!(bad.message.contains("Apple rejected"), "{}", bad.message);
-
-        // The macOS flavor parses the same shape and passes with a key.
-        let ok = ConfigProviderTester
-            .test(
-                "apple",
-                "apns_macos",
-                &serde_json::json!({
-                    "key_id": "KEYID1", "team_id": "TEAMID9",
-                    "bundle_id": "app.notifi.mac", "p8_key_path": key_path.to_string_lossy()
-                }),
-            )
-            .await;
-        assert!(ok.success, "{}", ok.message);
     }
 
     #[tokio::test]

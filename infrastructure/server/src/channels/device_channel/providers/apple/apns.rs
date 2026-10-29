@@ -7,26 +7,19 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// iOS (APNs) configuration.
+/// The Apple (APNs) recipe — one connect per app.
 ///
-/// `p8_key_path` points at the Apple signing key; the JWT `iss` claim is
-/// the team id and the `apns-topic` header the bundle id. `sandbox`
-/// selects Apple's sandbox gateway for dev builds; it defaults to
-/// production, since an omitted flag silently-sandboxing real sends
-/// would be the worse surprise.
+/// The team-scoped `.p8` key signs every Apple push the team owns;
+/// `bundle_id` names the app. A universal app shares one bundle id
+/// across iPhone, iPad and Mac — each install registers its own token,
+/// and Apple routes each token to its device. `p8_key_path` points at
+/// the Apple signing key; the JWT `iss` claim is the team id and the
+/// `apns-topic` header the bundle id. `sandbox` selects Apple's
+/// sandbox gateway for dev builds; it defaults to production, since an
+/// omitted flag silently-sandboxing real sends would be the worse
+/// surprise.
 #[derive(Debug, Clone, Deserialize)]
 pub struct IosConfig {
-    pub key_id: String,
-    pub team_id: String,
-    pub bundle_id: String,
-    pub p8_key_path: PathBuf,
-    #[serde(default)]
-    pub sandbox: bool,
-}
-
-/// macOS (APNs) configuration — the same APNs signing flow as iOS.
-#[derive(Debug, Clone, Deserialize)]
-pub struct MacosConfig {
     pub key_id: String,
     pub team_id: String,
     pub bundle_id: String,
@@ -48,9 +41,9 @@ struct Claims {
     iat: u64,
 }
 
-/// Shared APNs controller for both iOS and macOS destinations. The two
-/// flows were identical down to the byte; the flavor lives in the config,
-/// not in this code.
+/// The Apple APNs controller. The gateway does the device routing —
+/// the same controller serves every Apple install the recipe's bundle
+/// id covers.
 pub struct ApnsProvider {
     team_id: String,
     bundle_id: String,
@@ -64,7 +57,7 @@ pub struct ApnsProvider {
 }
 
 impl ApnsProvider {
-    /// Builds the shared controller from either OS flavor's config.
+    /// Builds the controller from the saved recipe.
     pub fn new(config: IosConfig) -> Result<Self, String> {
         Ok(Self {
             team_id: config.team_id,
@@ -76,16 +69,6 @@ impl ApnsProvider {
                 .map_err(|e| format!("Failed to build APNs HTTP client: {e}"))?,
             #[cfg(test)]
             apns_base: None,
-        })
-    }
-
-    pub fn new_macos(config: MacosConfig) -> Result<Self, String> {
-        ApnsProvider::new(IosConfig {
-            key_id: config.key_id,
-            team_id: config.team_id,
-            bundle_id: config.bundle_id,
-            p8_key_path: config.p8_key_path,
-            sandbox: config.sandbox,
         })
     }
 
@@ -203,31 +186,13 @@ mod apns_tests {
     }
 
     #[test]
-    fn macos_config_maps_onto_the_shared_controller() {
-        let provider = ApnsProvider::new_macos(MacosConfig {
-            key_id: "K".to_string(),
-            team_id: "T".to_string(),
-            bundle_id: "b.1".to_string(),
-            p8_key_path: PathBuf::from("/x/key.p8"),
-            sandbox: false,
-        })
-        .expect("builds");
-        assert_eq!(provider.team_id, "T");
-        assert_eq!(provider.bundle_id, "b.1");
-    }
-
-    #[test]
-    fn configs_deserialize_both_flavors() {
+    fn apple_recipe_deserializes_with_defaults() {
         let ios: IosConfig = serde_json::from_str(
             r#"{"key_id":"k","team_id":"t","bundle_id":"b","p8_key_path":"/k.p8"}"#,
         )
-        .expect("ios parses");
+        .expect("apple recipe parses");
         assert_eq!(ios.team_id, "t");
         assert!(!ios.sandbox, "omitted flag defaults to production");
-        let _: MacosConfig = serde_json::from_str(
-            r#"{"key_id":"k","team_id":"t","bundle_id":"b","p8_key_path":"/k.p8"}"#,
-        )
-        .expect("macos parses");
     }
 
     #[test]

@@ -213,17 +213,6 @@ mod device_dest_tests {
             ),
             (
                 "apple",
-                apple::Provider::ApnsMacos(apple::apns::MacosConfig {
-                    key_id: "k".to_string(),
-                    team_id: "t".to_string(),
-                    bundle_id: "b".to_string(),
-                    p8_key_path: std::path::PathBuf::from("/k.p8"),
-                    sandbox: false,
-                })
-                .provider_name(),
-            ),
-            (
-                "apple",
                 apple::Provider::OneSignal(apple::onesignal::OneSignalConfig {
                     app_id: "a".to_string(),
                     api_key: "k".to_string(),

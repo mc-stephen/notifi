@@ -59,13 +59,14 @@ impl ProviderTester for ConfigProviderTester {
 }
 
 /// Device-destination probes. Firebase (`fcm`) proves its service
-/// account for real (token exchange); Apple (`apns`/`apns_macos`) loads
-/// the `.p8` key and signs offline (APNs has no dry-run); Pushy does an
-/// authenticated device-info read; OneSignal reads the notification
-/// list with the REST key; WNS exchanges with Microsoft login; web push
-/// signs its VAPID pair offline; the self-hosted flavors honestly
-/// carry nothing to prove. Unknown ids fall to the saved-without-check
-/// fallback.
+/// account for real (token exchange); Apple (`apns`) loads the `.p8`
+/// key and signs offline (APNs has no dry-run); Pushy does an
+/// authenticated device-info read; OneSignal shares the other
+/// channel's probe (gets reused); the relay honestly reports that a
+/// webhook cannot be read without posting to it; WNS exchanges with
+/// Microsoft login; web push signs its VAPID pair offline; the
+/// self-hosted flavors honestly carry nothing to prove. Unknown ids
+/// fall to the saved-without-check fallback.
 async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> TestResult {
     match provider_id {
         "fcm" => {
@@ -106,13 +107,13 @@ async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> 
                 },
             }
         }
-        "apns" | "apns_macos" => {
+        "apns" => {
             let Ok(cfg) = serde_json::from_value::<IosConfig>(config.clone()) else {
                 return TestResult {
                     success: false,
-                    message: format!(
-                        "Config does not parse for {provider_id} (key_id, team_id, bundle_id, p8_key_path required)"
-                    ),
+                    message: "Config does not parse for apns (key_id, team_id, bundle_id, \
+                              p8_key_path required)"
+                        .to_string(),
                 };
             };
             match ApnsProvider::new(cfg).and_then(|provider| provider.verify()) {

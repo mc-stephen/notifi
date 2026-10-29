@@ -17,7 +17,7 @@
 //! lists to each other). Device tokens are recipient data — the
 //! recipient's contacts blob carries a `devices` array (§25); delivery
 //! is adapter-wired in `infra::delivery_adapters` — every registry
-//! vendor sends (fcm, pushy, onesignal; apns/apns_macos + onesignal;
+//! vendor sends (fcm, pushy, onesignal; apns + onesignal;
 //! endpoint; webhook + WNS; web_push), and the blob walker that fans a
 //! recipient's `devices` array out per install is still the send
 //! layer's pending job.
