@@ -1,7 +1,7 @@
 //! Channel adapters for product sends (Phase A).
 //!
-//! Email (SMTP), android (fcm), apple (apns / apns_macos) and all nine
-//! SMS vendors send for real — each adapter is built per-request from
+//! Email (SMTP), android (fcm), apple (apns / apns_macos), linux
+//! (self-hosted endpoint) and all nine SMS vendors send for real — each adapter is built per-request from
 //! the project's own provider config JSON. Anything else still resolves
 //! to `None` so the send worker records a provider-missing failure and
 //! falls through the priority chain — their adapters land as their
@@ -19,6 +19,9 @@ use crate::channels::device_channel::providers::android::{
 };
 use crate::channels::device_channel::providers::apple::apns::{
     ApnsMessage, ApnsProvider, IosConfig, MacosConfig,
+};
+use crate::channels::device_channel::providers::linux::endpoint::{
+    LinuxConfig, LinuxMessage, LinuxProvider,
 };
 use crate::channels::email_channel::{
     EmailMessage, EmailSender, config::EmailConfig, providers::smtp::SmtpConfig,
@@ -201,6 +204,44 @@ fn apns_from_config(
     }))
 }
 
+/// Linux endpoint (channel `linux`): POSTs the notification JSON to the
+/// device's self-hosted webhook — the recipient IS the endpoint URL.
+/// There are no credentials to hold: the endpoint is per-device data,
+/// and optional auth headers arrive per message when targeting lands.
+pub struct LinuxAdapter {
+    provider: LinuxProvider,
+}
+
+impl DeliveryProvider for LinuxAdapter {
+    fn channel(&self) -> &'static str {
+        "linux"
+    }
+
+    fn provider_name(&self) -> &'static str {
+        "endpoint"
+    }
+
+    fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_> {
+        let provider = &self.provider;
+        let msg = LinuxMessage {
+            endpoint: message.recipient.clone(),
+            title: message.title.clone(),
+            body: message.body.clone(),
+            headers: None,
+        };
+        Box::pin(async move {
+            provider
+                .send_notification(&msg)
+                .await
+                .map(|_| DeliveryReceipt {
+                    provider: "endpoint".to_string(),
+                    provider_message_id: None,
+                })
+                .map_err(DeliveryError::Provider)
+        })
+    }
+}
+
 /// SMS (channel `sms`): one adapter serves every wired vendor — the
 /// family's `SmsSender2` dispatches to the vendor controller built from
 /// the project's saved config. The recipient is the raw phone number;
@@ -288,6 +329,12 @@ impl AdapterFactory for DefaultAdapterFactory {
                 }))
             }
             ("apple", "apns" | "apns_macos") => apns_from_config(config, provider_id),
+            ("linux", "endpoint") => {
+                let cfg: LinuxConfig = serde_json::from_value(config.clone()).ok()?;
+                Some(Arc::new(LinuxAdapter {
+                    provider: LinuxProvider::new(cfg),
+                }))
+            }
             // All nine SMS vendors arm from their own bare saved config.
             ("sms", "twilio") => sms_adapter::<TwilioConfig>(config, "twilio", SmsConfig::Twilio),
             ("sms", "termii") => sms_adapter::<TermiiConfig>(config, "termii", SmsConfig::Termii),
@@ -422,6 +469,13 @@ mod tests {
             f.adapter("apple", "onesignal", &serde_json::json!({}))
                 .is_none()
         );
+
+        // The linux arm carries no credentials — any object config arms.
+        let linux = f.adapter("linux", "endpoint", &serde_json::json!({}));
+        assert!(linux.is_some());
+        let linux = linux.unwrap();
+        assert_eq!(linux.channel(), "linux");
+        assert_eq!(linux.provider_name(), "endpoint");
 
         // The wired SMS vendors arm...
         let twilio_cfg =

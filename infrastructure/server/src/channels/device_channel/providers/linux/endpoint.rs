@@ -118,4 +118,21 @@ mod linux_tests {
         assert!(err.starts_with("Linux webhook error:"), "prefix: {err}");
         assert!(err.contains("not-a-daemon"), "body surfaced: {err}");
     }
+
+    #[tokio::test]
+    #[ignore = "live endpoint delivery — needs NOTIFI_LINUX_ENDPOINT_URL (a self-hosted \
+                receiver that accepts posts)"]
+    async fn live_linux_delivery() {
+        let endpoint =
+            std::env::var("NOTIFI_LINUX_ENDPOINT_URL").expect("NOTIFI_LINUX_ENDPOINT_URL not set");
+        LinuxProvider::new(LinuxConfig::default())
+            .send_notification(&LinuxMessage {
+                endpoint,
+                title: "Notifi live-check".to_string(),
+                body: "Real endpoint, real payload.".to_string(),
+                headers: None,
+            })
+            .await
+            .expect("real endpoint accepted the payload");
+    }
 }

@@ -89,6 +89,14 @@ async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> 
                 },
             }
         }
+        // Self-hosted flavors carry no credentials — the target address
+        // is per-device data, so there is honestly nothing to prove.
+        "endpoint" => TestResult {
+            success: true,
+            message:
+                "Self-hosted endpoint — nothing to verify; the delivery URL arrives per device"
+                    .to_string(),
+        },
         _ => TestResult {
             success: true,
             message: format!(
