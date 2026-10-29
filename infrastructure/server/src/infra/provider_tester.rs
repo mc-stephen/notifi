@@ -155,6 +155,32 @@ async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> 
                 "Self-hosted endpoint — nothing to verify; the delivery URL arrives per device"
                     .to_string(),
         },
+        // Notifi gateway: no vendor API exists to shake hands with — the
+        // honest probe is house-side (the route recipe's shape here); the
+        // route proves itself once the user's app polls it.
+        "gateway" => {
+            let topic = config.get("topic").and_then(|v| v.as_str()).unwrap_or("");
+            let secret_key = config
+                .get("secret_key")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if topic.trim().is_empty() {
+                TestResult {
+                    success: false,
+                    message: "The gateway recipe needs its topic (the route path)".to_string(),
+                }
+            } else if secret_key.len() < 24 {
+                TestResult {
+                    success: false,
+                    message: "The route secret looks too short (regenerate it — the connect form makes 30+ characters)".to_string(),
+                }
+            } else {
+                TestResult {
+                    success: true,
+                    message: "Route recipe checks out (topic + secret key) — the route proves itself when your app polls".to_string(),
+                }
+            }
+        }
         "webhook" => TestResult {
             success: true,
             message:
@@ -1248,5 +1274,45 @@ mod tests {
             .await;
         assert!(!t.success, "{}", t.message);
         assert!(t.message.contains("target URL"), "{}", t.message);
+    }
+
+    #[tokio::test]
+    async fn gateway_probe_checks_the_route_recipe_house_side() {
+        // A recipe missing its topic fails before anything else.
+        let t = ConfigProviderTester
+            .test(
+                "linux",
+                "gateway",
+                &serde_json::json!({"secret_key": "0123456789abcdef0123456789"}),
+            )
+            .await;
+        assert!(!t.success, "{}", t.message);
+        assert!(t.message.contains("topic"), "{}", t.message);
+
+        // A stubbed-together key is refused (regenerated keys are 30+).
+        let t = ConfigProviderTester
+            .test(
+                "linux",
+                "gateway",
+                &serde_json::json!({"topic": "office-linux", "secret_key": "short"}),
+            )
+            .await;
+        assert!(!t.success, "{}", t.message);
+        assert!(t.message.contains("too short"), "{}", t.message);
+
+        // A full recipe passes — honestly, with a "your app proves it" line.
+        let t = ConfigProviderTester
+            .test(
+                "linux",
+                "gateway",
+                &serde_json::json!({
+                    "topic": "office-linux",
+                    "secret_key": "0123456789abcdef0123456789",
+                    "mode": "polling"
+                }),
+            )
+            .await;
+        assert!(t.success, "{}", t.message);
+        assert!(t.message.contains("proves itself"), "{}", t.message);
     }
 }

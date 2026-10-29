@@ -1,7 +1,8 @@
 //! Channel adapters for product sends (Phase A).
 //!
 //! Email (SMTP), android (fcm / pushy / onesignal), apple (apns /
-//! onesignal), linux (self-hosted endpoint), window (webhook / WNS),
+//! onesignal), linux (self-hosted endpoint + hosted gateway), window
+//! (webhook / WNS),
 //! web push, the whole chat family (slack /
 //! telegram / whatsapp_business / discord / ms_teams), all nine
 //! SMS vendors and the other channel (onesignal wrapping both phone
@@ -33,6 +34,7 @@ use crate::channels::device_channel::providers::apple::apns::{
 use crate::channels::device_channel::providers::linux::endpoint::{
     LinuxConfig, LinuxMessage, LinuxProvider,
 };
+use crate::channels::device_channel::providers::linux::gateway::GatewayRecipe;
 use crate::channels::device_channel::providers::web::web_push::{
     WebConfig, WebMessage, WebProvider,
 };
@@ -55,6 +57,7 @@ use crate::channels::webhook_channel::{
     WebhookMessage as RelayWebhookMessage, WebhookProvider as RelayWebhookProvider,
     config::WebhookConfig as RelayWebhookConfig,
 };
+use crate::ports::gateway::GatewayStore;
 use crate::ports::{
     AdapterFactory, BoxSendFuture, DeliveryError, DeliveryMessage, DeliveryProvider,
     DeliveryReceipt,
@@ -585,7 +588,67 @@ fn sms_adapter<T: serde::de::DeserializeOwned + 'static>(
 }
 
 /// Production factory: SMTP + Firebase + Apple + SMS from project config, stubs nowhere else yet.
-pub struct DefaultAdapterFactory;
+/// Linux gateway (channel `linux`, provider `gateway`): queues the
+/// notification into Notifi's own device gateway — the user's Linux app
+/// polls its secret route (`GET /gateway/linux/{topic}?key=...`) and
+/// reads it away. No external provider at all: the store IS the
+/// vendor's listening path (see `ports::gateway`). The recipe carries
+/// the route's two halves, so the recipient contact is unused here.
+pub struct GatewayAdapter {
+    store: Arc<dyn GatewayStore + Send + Sync>,
+    topic: String,
+    secret_key: String,
+}
+
+impl DeliveryProvider for GatewayAdapter {
+    fn channel(&self) -> &'static str {
+        "linux"
+    }
+
+    fn provider_name(&self) -> &'static str {
+        "gateway"
+    }
+
+    fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_> {
+        let store = self.store.clone();
+        let topic = self.topic.clone();
+        let secret_key = self.secret_key.clone();
+        let title = message.title.clone();
+        let body = message.body.clone();
+        Box::pin(async move {
+            store
+                .push(&topic, &secret_key, &title, &body)
+                .await
+                .map(|_| DeliveryReceipt {
+                    provider: "gateway".to_string(),
+                    provider_message_id: None,
+                })
+                .map_err(|e| DeliveryError::Provider(e.to_string()))
+        })
+    }
+}
+
+/// Builds channel adapters from per-project provider config.
+///
+/// Most arms are self-contained (the recipe carries the credential); the
+/// linux gateway arm is the exception — its send writes into Notifi's own
+/// device queue, so the factory holds the store when the server is wired
+/// with a database (unit-defaulted factories arm everything but it).
+#[derive(Default)]
+pub struct DefaultAdapterFactory {
+    /// Device gateway queue (`ports::gateway`) — the `("linux","gateway")`
+    /// arm's write target (`None` in store-less deployments/tests).
+    gateway: Option<Arc<dyn GatewayStore + Send + Sync>>,
+}
+
+impl DefaultAdapterFactory {
+    /// Factory wired with the server's gateway queue.
+    pub fn new(gateway: Arc<dyn GatewayStore + Send + Sync>) -> Self {
+        Self {
+            gateway: Some(gateway),
+        }
+    }
+}
 
 /// Webhook relay (channel `other`): posts the rendered payload to the
 /// target URL saved at connect time — the recipe carries url, method,
@@ -672,6 +735,18 @@ impl AdapterFactory for DefaultAdapterFactory {
                 let cfg: LinuxConfig = serde_json::from_value(config.clone()).ok()?;
                 Some(Arc::new(LinuxAdapter {
                     provider: LinuxProvider::new(cfg),
+                }))
+            }
+            ("linux", "gateway") => {
+                let parsed: GatewayRecipe = serde_json::from_value(config.clone()).ok()?;
+                if !parsed.carries_credentials() {
+                    return None;
+                }
+                let store = self.gateway.clone()?;
+                Some(Arc::new(GatewayAdapter {
+                    store,
+                    topic: parsed.topic,
+                    secret_key: parsed.secret_key,
                 }))
             }
             ("window", "webhook") => Some(Arc::new(WindowAdapter {
@@ -787,6 +862,48 @@ mod tests {
     use crate::ports::ProviderTester;
     use crate::testing::http_stub;
 
+    /// Gateway-arm spied routes: (topic, key, title, body) per push.
+    static GATEWAY_LOG: std::sync::Mutex<Vec<(String, String, String, String)>> =
+        std::sync::Mutex::new(Vec::new());
+
+    /// In-file gateway queue fake — records pushes in GATEWAY_LOG; poll
+    /// stays memoryless (factory tests only prove the write-through).
+    struct RecordingGatewayStore;
+
+    impl GatewayStore for RecordingGatewayStore {
+        fn push(
+            &self,
+            topic: &str,
+            key: &str,
+            title: &str,
+            body: &str,
+        ) -> crate::ports::gateway::BoxGatewayFuture<'_, ()> {
+            GATEWAY_LOG.lock().unwrap().push((
+                topic.to_string(),
+                key.to_string(),
+                title.to_string(),
+                body.to_string(),
+            ));
+            Box::pin(async { Ok(()) })
+        }
+
+        fn poll(
+            &self,
+            _topic: &str,
+            _key: &str,
+            _wait_secs: u64,
+        ) -> crate::ports::gateway::BoxGatewayFuture<'_, Vec<crate::ports::gateway::GatewayMessage>>
+        {
+            Box::pin(async { Ok(Vec::new()) })
+        }
+    }
+
+    /// Factory wired with the recording store (fresh log each call).
+    fn factory_with_store() -> DefaultAdapterFactory {
+        GATEWAY_LOG.lock().unwrap().clear();
+        DefaultAdapterFactory::new(Arc::new(RecordingGatewayStore))
+    }
+
     fn message() -> DeliveryMessage {
         DeliveryMessage {
             channel: "android".to_string(),
@@ -799,7 +916,7 @@ mod tests {
 
     #[test]
     fn factory_arms_email_and_fcm_only() {
-        let f = DefaultAdapterFactory;
+        let f = DefaultAdapterFactory::default();
 
         // The email arm keeps its full-field parse (username/password required).
         assert!(
@@ -925,6 +1042,19 @@ mod tests {
         let linux = linux.unwrap();
         assert_eq!(linux.channel(), "linux");
         assert_eq!(linux.provider_name(), "endpoint");
+
+        // The gateway arm needs both route halves (topic + secret) and a
+        // wired store — the unit-defaulted factory has none, so it refuses.
+        let gateway = f.adapter(
+            "proj-1",
+            "linux",
+            "gateway",
+            &serde_json::json!({
+                "topic": "office-linux", "secret_key": "gen-32chars-long",
+                "mode": "polling"
+            }),
+        );
+        assert!(gateway.is_none());
 
         // The window webhook arm carries no credentials either.
         let webhook = f.adapter("proj-1", "window", "webhook", &serde_json::json!({}));
@@ -1177,7 +1307,7 @@ mod tests {
 
     #[test]
     fn factory_arms_the_other_channel_wrappers() {
-        let f = DefaultAdapterFactory;
+        let f = DefaultAdapterFactory::default();
 
         // The other channel's onesignal envelope arms both phone
         // families from one saved config — the arm rides the device
@@ -1356,5 +1486,77 @@ yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
         assert!(raw.contains(r#""token":"device-token-1""#), "token: {raw}");
         assert!(raw.contains(r#""title":"Hi""#), "title: {raw}");
         assert!(raw.contains(r#""body":"Body""#), "body: {raw}");
+    }
+
+    #[test]
+    fn gateway_factory_arms_store_only() {
+        // An un-wired factory has nothing for gateway; a wired one arms the
+        // full recipe. The unit-defaulted factory holds no store, so the
+        // full-recipe case is the only one that lands here.
+        assert!(
+            factory_with_store()
+                .adapter(
+                    "proj-1",
+                    "linux",
+                    "gateway",
+                    &serde_json::json!({
+                        "topic": "office-linux", "secret_key": "gen-32chars-long-secret"
+                    })
+                )
+                .is_some()
+        );
+
+        // A recipe missing either route half refuses even with the store.
+        assert!(
+            factory_with_store()
+                .adapter(
+                    "proj-1",
+                    "linux",
+                    "gateway",
+                    &serde_json::json!({"topic": "t"})
+                )
+                .is_none()
+        );
+        assert!(
+            factory_with_store()
+                .adapter(
+                    "proj-1",
+                    "linux",
+                    "gateway",
+                    &serde_json::json!({"secret_key": "only-key"})
+                )
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn gateway_send_queues_onto_the_route() {
+        let factory = factory_with_store();
+        let adapter = factory
+            .adapter(
+                "proj-1",
+                "linux",
+                "gateway",
+                &serde_json::json!({
+                    "topic": "office-linux", "secret_key": "gen-32chars-long-secret",
+                    "mode": "polling"
+                }),
+            )
+            .unwrap();
+        assert_eq!(adapter.channel(), "linux");
+        assert_eq!(adapter.provider_name(), "gateway");
+
+        let receipt = adapter.send(&message()).await.expect("gateway send queues");
+        assert_eq!(receipt.provider, "gateway");
+        assert!(receipt.provider_message_id.is_none());
+
+        let mut store = GATEWAY_LOG.lock().unwrap();
+        assert_eq!(store.len(), 1, "exactly one row queued");
+        let single = store.pop().unwrap();
+        assert_eq!(single.0, "office-linux");
+        assert_eq!(single.1, "gen-32chars-long-secret");
+        assert_eq!(single.2, "Hi");
+        assert_eq!(single.3, "Body");
+        assert!(store.is_empty(), "exactly one row queued");
     }
 }

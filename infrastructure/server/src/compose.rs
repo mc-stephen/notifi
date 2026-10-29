@@ -176,12 +176,20 @@ pub fn compose(
         infra::PgFlowStore::new(pool.clone()),
     )));
 
+    // Device gateway queue: the linux gateway arm's write target (shared
+    // server route storage; the HTTP poll surface holds its own handle to
+    // the same table).
+    let gateway_queue = Arc::new(infra::gateway_store::PgGatewayStore::new(pool.clone()))
+        as Arc<dyn ports::GatewayStore + Send + Sync>;
+
     // Sends: record-first product sends executed through default flows.
     let sends = Arc::new(domain::sends::SendService::new(
         Arc::new(infra::PgSendStore::new(pool.clone())),
         flows.clone(),
         channel_providers.clone(),
-        Arc::new(infra::delivery_adapters::DefaultAdapterFactory),
+        Arc::new(infra::delivery_adapters::DefaultAdapterFactory::new(
+            gateway_queue.clone(),
+        )),
         Arc::new(infra::ReqwestHttpRequester::new()),
     ));
 
@@ -193,7 +201,9 @@ pub fn compose(
         Arc::new(infra::PgSendStore::new(pool.clone())),
         Arc::new(infra::PgTemplatesStore::new(pool.clone())),
         channel_providers.clone(),
-        Arc::new(infra::delivery_adapters::DefaultAdapterFactory),
+        Arc::new(infra::delivery_adapters::DefaultAdapterFactory::new(
+            gateway_queue.clone(),
+        )),
         Arc::new(infra::ReqwestHttpRequester::new()),
     ));
 
@@ -204,7 +214,9 @@ pub fn compose(
         Arc::new(infra::PgSendStore::new(pool.clone())),
         Arc::new(infra::PgTemplatesStore::new(pool.clone())),
         channel_providers.clone(),
-        Arc::new(infra::delivery_adapters::DefaultAdapterFactory),
+        Arc::new(infra::delivery_adapters::DefaultAdapterFactory::new(
+            gateway_queue,
+        )),
         Arc::new(infra::ReqwestHttpRequester::new()),
     ));
 

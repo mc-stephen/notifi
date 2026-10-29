@@ -1,10 +1,13 @@
-//! Linux destination — currently a single self-hosted endpoint flavor.
+//! Linux destination — a self-hosted webhook endpoint or the hosted
+//! Notifi Gateway.
 //!
-//! Desktop Linux has no vendor-shaped push; delivery rides a webhook
-//! endpoint supplied per message, optionally with auth headers. The
-//! enum keeps the family shape uniform for when a real flavor lands.
+//! Two flavors share the family: the self-hosted endpoint receives a
+//! webhook per device (recipient IS the URL), while the Notifi gateway
+//! queues sends inside Notifi and the user's app polls its secret route.
+//! The enum keeps the family shape uniform for further flavors.
 
 pub mod endpoint;
+pub mod gateway;
 
 /// All supported Linux providers. THIS IS THE SOURCE OF TRUTH.
 #[derive(Debug, Clone)]
