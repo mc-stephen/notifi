@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 
 use crate::channels::device_channel::providers::android::fcm::{FcmConfig, FcmProvider};
+use crate::channels::device_channel::providers::android::onesignal::{
+    OneSignalConfig, OneSignalProvider,
+};
 use crate::channels::device_channel::providers::android::pushy::{PushyConfig, PushyProvider};
 use crate::channels::device_channel::providers::apple::apns::{ApnsProvider, IosConfig};
 use crate::channels::device_channel::providers::web::web_push::{WebConfig, WebProvider};
@@ -49,8 +52,12 @@ impl ProviderTester for ConfigProviderTester {
 
 /// Device-destination probes. Firebase (`fcm`) proves its service
 /// account for real (token exchange); Apple (`apns`/`apns_macos`) loads
-/// the `.p8` key and signs offline (APNs has no dry-run); the rest stay
-/// house-fallback until their controllers wire up.
+/// the `.p8` key and signs offline (APNs has no dry-run); Pushy does an
+/// authenticated device-info read; OneSignal reads the notification
+/// list with the REST key; WNS exchanges with Microsoft login; web push
+/// signs its VAPID pair offline; the self-hosted flavors honestly
+/// carry nothing to prove. Unknown ids fall to the saved-without-check
+/// fallback.
 async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> TestResult {
     match provider_id {
         "fcm" => {
@@ -108,6 +115,26 @@ async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> 
                 Err(e) => TestResult {
                     success: false,
                     message: format!("Apple rejected the credential: {e}"),
+                },
+            }
+        }
+        "onesignal" => {
+            let Ok(cfg) = serde_json::from_value::<OneSignalConfig>(config.clone()) else {
+                return TestResult {
+                    success: false,
+                    message: "Config does not parse for onesignal (app_id + a key required)"
+                        .to_string(),
+                };
+            };
+            match OneSignalProvider::new(cfg).verify().await {
+                Ok(()) => TestResult {
+                    success: true,
+                    message: "OneSignal accepted the app id + REST key (notification list read, nothing sent)"
+                        .to_string(),
+                },
+                Err(e) => TestResult {
+                    success: false,
+                    message: format!("OneSignal rejected the credential: {e}"),
                 },
             }
         }
@@ -1028,13 +1055,13 @@ mod tests {
 
     #[tokio::test]
     async fn unwired_device_providers_keep_the_house_fallback() {
-        // onesignal stays unwired until its controller lands; the
-        // fallback message stands for it alone now.
+        // Every registry vendor now probes for real; the fallback
+        // remains for ids that never existed.
         let t = ConfigProviderTester
             .test(
                 "android",
-                "onesignal",
-                &serde_json::json!({"app_id": "a", "api_key": "k"}),
+                "not_a_vendor",
+                &serde_json::json!({"some": "config"}),
             )
             .await;
         assert!(t.success);

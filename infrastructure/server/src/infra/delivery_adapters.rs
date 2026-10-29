@@ -1,9 +1,10 @@
 //! Channel adapters for product sends (Phase A).
 //!
 //! Email (SMTP), android (fcm), apple (apns / apns_macos), linux
-//! Email (SMTP), android (fcm / pushy), apple (apns / apns_macos),
-//! linux (self-hosted endpoint), window (webhook / WNS), web push and
-//! all nine SMS vendors send for real — each adapter is built per-request from
+//! Email (SMTP), android (fcm / pushy / onesignal), apple (apns /
+//! apns_macos / onesignal), linux (self-hosted endpoint), window
+//! (webhook / WNS), web push and all nine SMS vendors send for real —
+//! one adapter set serves every destination in the registry. Each adapter is built per-request from
 //! the project's own provider config JSON. Anything else still resolves
 //! to `None` so the send worker records a provider-missing failure and
 //! falls through the priority chain — their adapters land as their
@@ -15,6 +16,9 @@
 
 use std::sync::Arc;
 
+use crate::channels::device_channel::providers::android::onesignal::{
+    OneSignalConfig, OneSignalMessage, OneSignalProvider,
+};
 use crate::channels::device_channel::providers::android::{
     AndroidMessage,
     fcm::{FcmConfig, FcmProvider},
@@ -252,6 +256,80 @@ impl DeliveryProvider for PushyAdapter {
     }
 }
 
+/// OneSignal (channels `android` + `apple`): one REST API genuinely
+/// serves both platforms, so one adapter is armed for both pairs. The
+/// recipient is the subscription id; auth is the REST API key the
+/// config prefers (falling back to the plain api key).
+pub struct OneSignalAdapter {
+    provider: OneSignalProvider,
+    channel: &'static str,
+}
+
+impl DeliveryProvider for OneSignalAdapter {
+    fn channel(&self) -> &'static str {
+        self.channel
+    }
+
+    fn provider_name(&self) -> &'static str {
+        "onesignal"
+    }
+
+    fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_> {
+        let provider = &self.provider;
+        let msg = OneSignalMessage {
+            token: message.recipient.clone(),
+            title: message.title.clone(),
+            body: message.body.clone(),
+        };
+        Box::pin(async move {
+            provider
+                .send_notification(&msg)
+                .await
+                .map(|_| DeliveryReceipt {
+                    provider: "onesignal".to_string(),
+                    provider_message_id: None,
+                })
+                .map_err(DeliveryError::Provider)
+        })
+    }
+}
+
+/// Builds the shared OneSignal adapter for either destination.
+fn onesignal_adapter(
+    config: &serde_json::Value,
+    channel: &'static str,
+) -> Option<Arc<dyn DeliveryProvider>> {
+    // Extracted by hand, not via the vendor struct: the REST key or the
+    // plain api key alone must both arm — the dashboard may save either
+    // field first.
+    let obj = config.as_object()?;
+    let app_id = obj.get("app_id").and_then(|v| v.as_str()).unwrap_or("");
+    let api_key = obj.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
+    let rest = obj
+        .get("rest_api_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if app_id.trim().is_empty() {
+        return None;
+    }
+    let rest_key = if rest.trim().is_empty() {
+        None
+    } else {
+        Some(rest.to_string())
+    };
+    if rest_key.is_none() && api_key.trim().is_empty() {
+        return None;
+    }
+    Some(Arc::new(OneSignalAdapter {
+        provider: OneSignalProvider::new(OneSignalConfig {
+            app_id: app_id.to_string(),
+            api_key: api_key.to_string(),
+            rest_api_key: rest_key,
+        }),
+        channel,
+    }))
+}
+
 /// Linux endpoint (channel `linux`): POSTs the notification JSON to the
 /// device's self-hosted webhook — the recipient IS the endpoint URL.
 /// There are no credentials to hold: the endpoint is per-device data,
@@ -482,6 +560,8 @@ impl AdapterFactory for DefaultAdapterFactory {
                     provider: PushyProvider::new(cfg),
                 }))
             }
+            ("android", "onesignal") => onesignal_adapter(config, "android"),
+            ("apple", "onesignal") => onesignal_adapter(config, "apple"),
             ("apple", "apns" | "apns_macos") => apns_from_config(config, provider_id),
             ("linux", "endpoint") => {
                 let cfg: LinuxConfig = serde_json::from_value(config.clone()).ok()?;
@@ -655,9 +735,29 @@ mod tests {
             )
             .is_none()
         );
+        // OneSignal arms for BOTH destinations (one REST api serves
+        // both platforms); blanks stay None.
+        let onesignal = f.adapter(
+            "android",
+            "onesignal",
+            &serde_json::json!({"app_id": "appid", "api_key": "k"}),
+        );
+        assert!(onesignal.is_some());
+        assert_eq!(onesignal.unwrap().provider_name(), "onesignal");
+        let onesignal = f.adapter(
+            "apple",
+            "onesignal",
+            &serde_json::json!({"app_id": "appid", "rest_api_key": "k"}),
+        );
+        assert!(onesignal.is_some());
+        assert_eq!(onesignal.unwrap().channel(), "apple");
         assert!(
-            f.adapter("apple", "onesignal", &serde_json::json!({}))
-                .is_none()
+            f.adapter(
+                "android",
+                "onesignal",
+                &serde_json::json!({"app_id": "appid"})
+            )
+            .is_none()
         );
 
         // The linux arm carries no credentials — any object config arms.

@@ -16,7 +16,10 @@
 //! listing (golden test `catalog_pins_every_family_variant` pins both
 //! lists to each other). Device tokens are recipient data — the
 //! recipient's contacts blob carries a `devices` array (§25); delivery
-//! stays adapter-wired (see `infra::delivery_adapters` — device
-//! adapters land past M5 and will read those blobs).
+//! is adapter-wired in `infra::delivery_adapters` — every registry
+//! vendor sends (fcm, pushy, onesignal; apns/apns_macos + onesignal;
+//! endpoint; webhook + WNS; web_push), and the blob walker that fans a
+//! recipient's `devices` array out per install is still the send
+//! layer's pending job.
 
 pub mod providers;
