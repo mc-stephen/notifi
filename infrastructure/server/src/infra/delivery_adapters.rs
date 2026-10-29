@@ -1,14 +1,15 @@
 //! Channel adapters for product sends (Phase A).
 //!
-//! Two vendors send for real today — SMTP (generic email) and Firebase
-//! (android `fcm`) — built per-request from the project's own provider
-//! config JSON. Every other channel/provider still resolves to `None` so
-//! the send worker records a provider-missing failure and falls through
-//! the priority chain — their adapters land as their controllers wire up.
+//! Email (SMTP), android (fcm), apple (apns / apns_macos) and all nine
+//! SMS vendors send for real — each adapter is built per-request from
+//! the project's own provider config JSON. Anything else still resolves
+//! to `None` so the send worker records a provider-missing failure and
+//! falls through the priority chain — their adapters land as their
+//! controllers wire up.
 //!
 //! Adapters speak to ONE address (`DeliveryMessage.recipient` — an email
-//! address, a push token); expanding a recipient's `devices` blob into
-//! tokens is the send layer's job (§25).
+//! address, a push token, a raw phone number); expanding a recipient's
+//! `devices` blob into tokens is the send layer's job (§25).
 
 use std::sync::Arc;
 
@@ -24,8 +25,8 @@ use crate::channels::email_channel::{
 };
 use crate::channels::sms_channel::providers::{
     africas_talking::AfricasTalkingConfig, bird::BirdConfig, ebulksms::EbulkSmsConfig,
-    infobip::InfobipConfig, local_nigeria::LocalNigeriaConfig, termii::TermiiConfig,
-    twilio::TwilioConfig, vonage::VonageConfig,
+    infobip::InfobipConfig, local_nigeria::LocalNigeriaConfig, smslive247::SmsLive247Config,
+    termii::TermiiConfig, twilio::TwilioConfig, vonage::VonageConfig,
 };
 use crate::channels::sms_channel::{SmsConfig, SmsMessage, SmsSender2};
 use crate::ports::{
@@ -287,9 +288,7 @@ impl AdapterFactory for DefaultAdapterFactory {
                 }))
             }
             ("apple", "apns" | "apns_macos") => apns_from_config(config, provider_id),
-            // The wired SMS vendors; the shells (bird, ebulksms,
-            // infobip, smslive247) stay unwired until their controllers
-            // exist.
+            // All nine SMS vendors arm from their own bare saved config.
             ("sms", "twilio") => sms_adapter::<TwilioConfig>(config, "twilio", SmsConfig::Twilio),
             ("sms", "termii") => sms_adapter::<TermiiConfig>(config, "termii", SmsConfig::Termii),
             ("sms", "africas_talking") => sms_adapter::<AfricasTalkingConfig>(
@@ -307,6 +306,9 @@ impl AdapterFactory for DefaultAdapterFactory {
             ("sms", "bird") => sms_adapter::<BirdConfig>(config, "bird", SmsConfig::Bird),
             ("sms", "ebulksms") => {
                 sms_adapter::<EbulkSmsConfig>(config, "ebulksms", SmsConfig::EbulkSms)
+            }
+            ("sms", "smslive247") => {
+                sms_adapter::<SmsLive247Config>(config, "smslive247", SmsConfig::SmsLive247)
             }
             _ => None,
         }
@@ -421,7 +423,7 @@ mod tests {
                 .is_none()
         );
 
-        // The four wired SMS vendors arm; the five shells stay None.
+        // The wired SMS vendors arm...
         let twilio_cfg =
             serde_json::json!({"account_sid": "AC1", "auth_token": "t", "from_number": "+1"});
         let sms = f.adapter("sms", "twilio", &twilio_cfg);
@@ -453,17 +455,16 @@ mod tests {
             )
             .is_some()
         );
-        // Shells stay unwired even with plausible config...
-        assert!(
-            f.adapter("sms", "smslive247", &serde_json::json!({}))
-                .is_none()
-        );
-        // ...and a bad config for a wired vendor is None, never a panic.
+        // A bad config for a wired vendor is None, never a panic.
         assert!(
             f.adapter("sms", "twilio", &serde_json::json!({"account_sid": "AC1"}))
                 .is_none()
         );
-
+        // An unknown sms vendor is unwired, never a panic.
+        assert!(
+            f.adapter("sms", "who_dis", &serde_json::json!({}))
+                .is_none()
+        );
         // Bird arms.
         let bird = f.adapter(
             "sms",
@@ -487,6 +488,15 @@ mod tests {
         );
         assert!(ebulk.is_some());
         assert_eq!(ebulk.unwrap().provider_name(), "ebulksms");
+
+        // SmsLive247 arms (the last of the nine).
+        let live = f.adapter(
+            "sms",
+            "smslive247",
+            &serde_json::json!({"api_key": "k", "sender_id": "Notifi"}),
+        );
+        assert!(live.is_some());
+        assert_eq!(live.unwrap().provider_name(), "smslive247");
 
         // Infobip arms (probe already lived in the tester).
         let infobip = f.adapter(

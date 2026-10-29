@@ -53,10 +53,10 @@ impl SmsSender2 {
                 let sender = providers::ebulksms::EbulkSmsProvider::new(c);
                 sender.send(&msg.to, &msg.text).await
             }
-            _ => Err(format!(
-                "SMS provider not yet implemented: {}",
-                provider.provider_name()
-            )),
+            providers::SmsProvider::SmsLive247(c) => {
+                let sender = providers::smslive247::SmsLive247Provider::new(c);
+                sender.send(&msg.to, &msg.text).await
+            }
         }
     }
 }

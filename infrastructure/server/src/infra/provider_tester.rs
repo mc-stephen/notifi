@@ -412,6 +412,7 @@ async fn test_sms_provider(provider_id: &str, config: &serde_json::Value) -> Tes
         "vonage" => test_vonage(config).await,
         "bird" => test_bird(config).await,
         "ebulksms" => test_ebulksms(config).await,
+        "smslive247" => test_smslive247(config).await,
         _ => TestResult {
             success: true,
             message: format!(
@@ -682,6 +683,55 @@ async fn test_ebulksms(config: &serde_json::Value) -> TestResult {
         Err(e) => TestResult {
             success: false,
             message: format!("Failed to verify EbulkSms credentials: {e}"),
+        },
+    }
+}
+
+/// SmsLive247: a real authenticated read — the self-account endpoint
+/// proves the api key without sending anything.
+async fn test_smslive247(config: &serde_json::Value) -> TestResult {
+    let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
+    let base_url = config
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("https://api.smslive247.com");
+
+    if api_key.is_empty() {
+        return TestResult {
+            success: false,
+            message: "SmsLive247 API key is required".to_string(),
+        };
+    }
+
+    let client = match reqwest::Client::builder().build() {
+        Ok(c) => c,
+        Err(e) => {
+            return TestResult {
+                success: false,
+                message: format!("Failed to build HTTP client: {e}"),
+            };
+        }
+    };
+    match client
+        .get(format!(
+            "{}/api/v4/accounts/self",
+            base_url.trim_end_matches('/')
+        ))
+        .header("Authorization", format!("Bearer {api_key}"))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => TestResult {
+            success: true,
+            message: "SmsLive247 API key is valid (account endpoint answered)".to_string(),
+        },
+        Ok(resp) => TestResult {
+            success: false,
+            message: format!("SmsLive247 account check returned status {}", resp.status()),
+        },
+        Err(e) => TestResult {
+            success: false,
+            message: format!("Failed to verify SmsLive247 API key: {e}"),
         },
     }
 }
