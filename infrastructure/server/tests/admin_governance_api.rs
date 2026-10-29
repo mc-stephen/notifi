@@ -40,6 +40,7 @@ fn app_with_admin() -> Router {
         AppState {
             db: None,
             redis: None,
+            gateway: None,
             auth: Some(auth),
             oauth: None,
             admin: Some(admin),

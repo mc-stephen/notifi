@@ -9,6 +9,7 @@ Single-file dev-stage squash, applied automatically at server boot (`src/infra/d
 - Tables are domain-prefixed: `auth_*` (identity), `platform_*` (projects,
   members, recipients, templates, provider configs), `billing_plans` +
   `project_subscriptions` (pricing catalog + per-project subscriptions),
+  `gateway_messages` (device-route poll queue — poll-and-delete),
   `audit_logs` (append-only audit trail), `event_outbox` (transactional outbox).
 - Plus: `project_invites` (team invites), `key_ip_allowlist` (per-key IP
   allowlists), `notification_sends` + `flows` (record-first sends; no `kind`

@@ -43,7 +43,7 @@ notifi/                         # repo root
 │   ├── server/                 # server crate — API binary + shared library
 │   │   ├── src/                # server crate source
 │   │   │   ├── api/                # HTTP presentation (axum handlers + routes)
-│   │   │   │   ├── routes/         # Audience route surfaces (app, admin, external)
+│   │   │   │   ├── routes/         # Audience + device route surfaces (app, admin, external, gateway)
 │   │   │   │   ├── middleware/     # Cross-cutting middleware (cors, request_id)
 │   │   │   │   └── catalog.rs      # GET /routes — route registry
 │   │   │   ├── domain/             # Framework-free business logic
@@ -83,12 +83,13 @@ The server crate enforces layering through visibility:
 
 ## 4. API surfaces
 
-Four API surfaces (see root `note.md`):
+Five API surfaces (see root `readme.md`):
 
 | Surface | Route prefix | Auth | Purpose |
 |---------|-------------|------|---------|
 | **Ops** | `/*` | none | Health, readiness, route catalog |
 | **External API** | `/v1/*` | API key (from M6) | Product API (empty until M2) |
+| **Gateway** | `/gateway/*` | Per-route secret key (no session) | Device message fetch — client apps hold these paths |
 | **App API** | `/app/*` | Session cookie (`CurrentUser`) | User dashboard backend |
 | **Admin API** | `/admin/*` | Admin session + 2FA (`CurrentAdmin`) | Platform administration |
 

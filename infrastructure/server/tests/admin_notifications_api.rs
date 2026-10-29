@@ -49,6 +49,7 @@ fn app_with_admin_notifications() -> Router {
         AppState {
             db: None,
             redis: None,
+            gateway: None,
             auth: Some(auth),
             oauth: None,
             admin: Some(admin),

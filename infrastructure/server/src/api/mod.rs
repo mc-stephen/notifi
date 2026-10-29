@@ -3,6 +3,8 @@
 //! API layout (`Readme.md`):
 //! * `/*` — ops routes (`/`, `/healthz`, `/readyz`, `/routes`).
 //! * `/v1/*` — external product API ([`routes::external`]); empty until M2.
+//! * `/gateway/*` — device-facing gateway ([`routes::gateway`]); secret-route
+//!   poll surface, no session.
 //! * `/app/*` — user dashboard backend ([`routes::app::app_router`]).
 //! * `/admin/*` — platform administration ([`routes::admin::admin_router`]).
 //! * `middleware/` — cross-cutting HTTP middleware (cors, request_id).
@@ -20,8 +22,9 @@ use axum::Router;
 
 use crate::infra::config::AppConfig;
 
-/// Builds the application router: ops routes at the root plus the three
-/// API surfaces — all wrapped in the global middleware chain.
+/// Builds the application router: ops routes at the root plus the audience
+/// surfaces and the device gateway — all wrapped in the global middleware
+/// chain.
 pub fn build_router(state: AppState, config: &AppConfig) -> Router {
     let router = Router::new()
         .route("/", axum::routing::get(handlers::root))
@@ -29,6 +32,7 @@ pub fn build_router(state: AppState, config: &AppConfig) -> Router {
         .route("/readyz", axum::routing::get(handlers::readyz))
         .route("/routes", axum::routing::get(handlers::catalog))
         .nest("/v1", routes::external::router(&state))
+        .nest("/gateway", routes::gateway::router(&state))
         .nest("/app", routes::app::app_router(&state))
         .nest("/admin", routes::admin::admin_router(&state))
         .fallback(handlers::not_found)
@@ -48,6 +52,7 @@ mod tests {
             AppState {
                 db: None,
                 redis: None,
+                gateway: None,
                 auth: None,
                 oauth: None,
                 admin: None,

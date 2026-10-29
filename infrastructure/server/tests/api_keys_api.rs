@@ -39,6 +39,7 @@ fn app_with_api_keys() -> (Router, Arc<FakeApiKeysStore>) {
             AppState {
                 db: None,
                 redis: None,
+                gateway: None,
                 auth: Some(auth),
                 oauth: None,
                 admin: None,

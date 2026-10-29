@@ -41,6 +41,7 @@ fn app() -> (Router, Arc<FakeAuthStore>) {
             AppState {
                 db: None,
                 redis: None,
+                gateway: None,
                 auth: Some(auth),
                 oauth: None,
                 admin: None,
@@ -81,6 +82,7 @@ fn app_without_auth() -> Router {
         AppState {
             db: None,
             redis: None,
+            gateway: None,
             auth: None,
             oauth: None,
             admin: None,
@@ -129,6 +131,7 @@ fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
             AppState {
                 db: None,
                 redis: None,
+                gateway: None,
                 auth: Some(auth),
                 oauth: Some(oauth),
                 admin: None,
@@ -938,6 +941,7 @@ fn app_with_projects() -> (Router, Arc<FakeAuthStore>) {
             AppState {
                 db: None,
                 redis: None,
+                gateway: None,
                 auth: Some(auth),
                 oauth: None,
                 admin: None,

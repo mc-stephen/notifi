@@ -5070,3 +5070,101 @@ impl server::ports::trigger_token_store::TriggerTokenStore for FakeTriggerTokenS
         Box::pin(async move { Ok(row) })
     }
 }
+
+// ---------------------------------------------------------------------------
+// Gateway queue (device fetch surface)
+// ---------------------------------------------------------------------------
+
+/// One queued message in the fake gateway route.
+#[derive(Debug, Clone)]
+struct FakeGatewayQueued {
+    topic: String,
+    key: String,
+    title: String,
+    body: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// In-memory gateway queue: pushes append; polls pop the route's oldest
+/// rows and delete them in the same stroke. The long-poll wait is honored
+/// with short re-checks, so a push queued mid-hold surfaces within ~20 ms.
+#[derive(Default)]
+pub struct FakeGatewayStore {
+    /// Serialized queue rows, oldest surfaced first (sort-by-seq at read).
+    rows: std::sync::Mutex<Vec<(u64, FakeGatewayQueued)>>,
+    /// Message-id outlet (monotonic across pushes).
+    seq: std::sync::atomic::AtomicU64,
+}
+
+impl FakeGatewayStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl server::ports::gateway::GatewayStore for FakeGatewayStore {
+    fn push(
+        &self,
+        topic: &str,
+        key: &str,
+        title: &str,
+        body: &str,
+    ) -> server::ports::gateway::BoxGatewayFuture<'_, ()> {
+        let seq = self.seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let row = FakeGatewayQueued {
+            topic: topic.to_string(),
+            key: key.to_string(),
+            title: title.to_string(),
+            body: body.to_string(),
+            created_at: chrono::Utc::now(),
+        };
+        self.rows.lock().unwrap().push((seq, row));
+        Box::pin(async move { Ok(()) })
+    }
+
+    fn poll(
+        &self,
+        topic: &str,
+        key: &str,
+        wait_secs: u64,
+    ) -> server::ports::gateway::BoxGatewayFuture<'_, Vec<server::ports::gateway::GatewayMessage>>
+    {
+        let topic = topic.to_string();
+        let key = key.to_string();
+        Box::pin(async move {
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(wait_secs);
+            loop {
+                let batch = {
+                    let mut rows = self.rows.lock().unwrap();
+                    rows.sort_by_key(|(seq, _)| *seq);
+                    let mut matched: Vec<(u64, FakeGatewayQueued)> = Vec::new();
+                    let mut rest: Vec<(u64, FakeGatewayQueued)> = Vec::new();
+                    for row in rows.iter() {
+                        if row.1.topic == topic && row.1.key == key && matched.len() < 50 {
+                            matched.push(row.clone());
+                        } else {
+                            rest.push(row.clone());
+                        }
+                    }
+                    *rows = rest;
+                    matched
+                };
+                if !batch.is_empty() {
+                    return Ok(batch
+                        .into_iter()
+                        .map(|(seq, row)| server::ports::gateway::GatewayMessage {
+                            id: seq.to_string(),
+                            title: row.title,
+                            body: row.body,
+                            received_at: row.created_at.to_rfc3339(),
+                        })
+                        .collect());
+                }
+                if tokio::time::Instant::now() >= deadline {
+                    return Ok(Vec::new());
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+    }
+}

@@ -41,6 +41,7 @@ fn app_with_recipients() -> (Router, Arc<FakeRecipientsStore>) {
             AppState {
                 db: None,
                 redis: None,
+                gateway: None,
                 auth: Some(auth),
                 oauth: None,
                 admin: None,

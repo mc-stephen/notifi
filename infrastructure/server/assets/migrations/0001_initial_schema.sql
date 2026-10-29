@@ -717,3 +717,23 @@ INSERT INTO billing_plans (id, name, price_cents, currency, interval, capabiliti
     ('enterprise', 'Enterprise', NULL, 'USD', 'custom',
      '{"notificationsPerMonth": null, "channels": ["all"], "teamMembers": null, "retentionDays": null, "support": "Dedicated", "branding": true, "apiCalls": null}',
      NULL, TRUE);
+
+-- ============================================================
+-- Gateway (device fetch surface)
+-- ============================================================
+
+-- Messages queued for one device route. The route is (topic, secret_key):
+-- the pair the user picked/generated when the recipe was saved, so no
+-- registry table is needed. Poll-and-delete: a fetch claims the oldest
+-- rows and removes them in the same transaction — a message leaves its
+-- route at first read (crash-window loss accepted at dev stage).
+CREATE TABLE gateway_messages (
+    id          BIGSERIAL   PRIMARY KEY,
+    topic       TEXT        NOT NULL,
+    secret_key  TEXT        NOT NULL,
+    title       TEXT        NOT NULL,
+    body        TEXT        NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_gateway_messages_route ON gateway_messages (topic, secret_key, id);

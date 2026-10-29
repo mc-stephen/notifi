@@ -31,6 +31,7 @@ fn app_with_notifications() -> (Router, Arc<FakeNotificationsStore>) {
             AppState {
                 db: None,
                 redis: None,
+                gateway: None,
                 auth: Some(auth),
                 oauth: None,
                 admin: None,

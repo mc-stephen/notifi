@@ -38,6 +38,7 @@ fn app_with_templates() -> (Router, Arc<FakeTemplatesStore>) {
             AppState {
                 db: None,
                 redis: None,
+                gateway: None,
                 auth: Some(auth),
                 oauth: None,
                 admin: None,

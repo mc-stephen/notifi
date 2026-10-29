@@ -43,6 +43,7 @@ fn app_with_billing() -> (Router, Arc<FakeBillingStore>) {
             AppState {
                 db: None,
                 redis: None,
+                gateway: None,
                 auth: Some(auth),
                 oauth: None,
                 admin: Some(admin),

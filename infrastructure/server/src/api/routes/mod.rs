@@ -6,3 +6,4 @@
 pub mod admin;
 pub mod app;
 pub mod external;
+pub mod gateway;

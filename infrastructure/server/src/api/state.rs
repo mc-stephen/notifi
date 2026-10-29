@@ -62,6 +62,9 @@ pub struct AppState {
     pub campaigns: Option<Arc<crate::domain::campaigns::CampaignService>>,
     /// In-app notifications (personal, per-user) — wired alongside auth/db.
     pub notifications: Option<Arc<crate::domain::notifications::NotificationService>>,
+    /// Device gateway queue (secret-route poll storage) — built only with
+    /// a database; `/gateway/*` answers 503 without it.
+    pub gateway: Option<Arc<dyn crate::ports::GatewayStore + Send + Sync>>,
     /// Provider connection tester — always available.
     pub provider_tester: Arc<dyn crate::ports::ProviderTester + Send + Sync>,
     /// Tenant project config storage (channel configs + template assets) —

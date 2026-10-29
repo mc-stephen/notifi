@@ -237,6 +237,10 @@ fn run_inner() -> Result<(), String> {
         }
         // AppState takes Option fields; the graph (built only with a
         // database) fills them all at once.
+        let gateway = db.as_ref().map(|pool| {
+            std::sync::Arc::new(infra::gateway_store::PgGatewayStore::new(pool.clone()))
+                as std::sync::Arc<dyn ports::gateway::GatewayStore + Send + Sync>
+        });
         let services = graph.as_ref();
         let app = api::build_router(
             api::AppState {
@@ -266,6 +270,7 @@ fn run_inner() -> Result<(), String> {
                 webhooks: services.map(|s| s.webhooks.clone()),
                 campaigns: services.map(|s| s.campaigns.clone()),
                 notifications: services.map(|s| s.notifications.clone()),
+                gateway,
                 provider_tester,
                 config_store,
             },

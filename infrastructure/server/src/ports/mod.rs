@@ -15,6 +15,7 @@ pub mod config_store;
 pub mod delivery;
 pub mod event_bus;
 pub mod flow_store;
+pub mod gateway;
 pub mod http_requester;
 pub mod mailer;
 pub mod notifications_store;
@@ -39,6 +40,7 @@ pub use delivery::{
     DeliveryReceipt,
 };
 pub use event_bus::{EventBus, EventBusError};
+pub use gateway::{GatewayError, GatewayMessage, GatewayStore};
 pub use http_requester::{HttpCall, HttpRequester, HttpResult};
 pub use mailer::{MailError, RenderedTemplate, SmtpMailer, SystemSender, SystemTemplates};
 pub use oauth::{AuthorizeStart, OAppError, OAuthIdentityProvider, OAuthProfile, OAuthRuntime};

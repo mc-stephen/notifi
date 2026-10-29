@@ -1,12 +1,13 @@
 //! Central route registry — every route the API exposes is declared here.
 //!
 //! Routes are grouped by **surface** ([`EXTERNAL_ROUTES`] — the external
-//! product API under `/v1` — [`APP_ROUTES`] — the user dashboard backend
-//! under `/app` — and [`ADMIN_ROUTES`] — platform administration under
+//! product API under `/v1` — [`GATEWAY_ROUTES`] — the device-facing gateway
+//! under `/gateway` — [`APP_ROUTES`] — the user dashboard backend under
+//! `/app` — and [`ADMIN_ROUTES`] — platform administration under
 //! `/admin`). To add a route: declare it in the matching const, then
-//! mount it in the surface's router (`external::router` / `app::app_router` /
-//! `admin::admin_router`). All parts live in this file, so drift is visible
-//! immediately.
+//! mount it in the surface's router (`external::router` / `gateway::router` /
+//! `app::app_router` / `admin::admin_router`). All parts live in this file,
+//! so drift is visible immediately.
 
 use serde::Serialize;
 
@@ -22,6 +23,9 @@ pub enum Surface {
     App,
     /// Platform administration under `/admin` (admin session + 2FA).
     Admin,
+    /// Device-facing gateway under `/gateway` (secret-route poll, no
+    /// session — the route key is the auth).
+    Gateway,
     /// Ops/infrastructure endpoints outside all surfaces.
     Core,
 }
@@ -47,6 +51,17 @@ pub const EXTERNAL_ROUTES: &[RouteInfo] = &[RouteInfo {
     surface: Surface::External,
     feature: "sends",
     description: "record-first notification send through the default flow",
+}];
+
+/// Device-facing gateway routes (`/gateway`). Client apps hold these paths —
+/// the route's per-topic secret is the auth, unattached to any session. Keep
+/// this list in lockstep with [`crate::api::routes::gateway::router`].
+pub const GATEWAY_ROUTES: &[RouteInfo] = &[RouteInfo {
+    method: "GET",
+    path: "/gateway/linux/{topic}",
+    surface: Surface::Gateway,
+    feature: "gateway",
+    description: "poll one secret route — long-poll with ?wait=N (cap 20s), else an instant check; queued rows leave the route at fetch (poll-and-delete)",
 }];
 
 /// User dashboard backend (`/app`). Mirrors
@@ -1024,6 +1039,7 @@ pub fn all_routes() -> Vec<RouteInfo> {
     CORE_ROUTES
         .iter()
         .chain(EXTERNAL_ROUTES.iter())
+        .chain(GATEWAY_ROUTES.iter())
         .chain(APP_ROUTES.iter())
         .chain(ADMIN_ROUTES.iter())
         .copied()

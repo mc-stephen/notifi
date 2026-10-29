@@ -9,6 +9,7 @@
    - https://api.base_url/v1/* (This is for external API)
    - https://api.base_url/app/* (This is for the User dashboard api)
    - https://api.base_url/admin/* (This is for the Admin dashboard api)
+   - https://api.base_url/gateway/* (This is for device routes — apps poll their secret route here)
 3.
 
 ---

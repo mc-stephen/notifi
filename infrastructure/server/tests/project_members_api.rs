@@ -50,6 +50,7 @@ fn app() -> (Router, Arc<FakeAuthStore>, Arc<FakeMailer>) {
             AppState {
                 db: None,
                 redis: None,
+                gateway: None,
                 auth: Some(auth),
                 oauth: None,
                 admin: None,

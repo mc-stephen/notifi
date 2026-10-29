@@ -28,6 +28,7 @@ fn app() -> Router {
         AppState {
             db: None,
             redis: None,
+            gateway: None,
             auth: Some(auth),
             oauth: None,
             admin: None,
