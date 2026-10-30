@@ -16,6 +16,7 @@ import { Check, Copy, RefreshCw } from "lucide-react";
 import type { ProviderDefinition } from "@/hooks/use-provider-registry";
 import { generateRouteSecret } from "@/lib/gateway";
 import { GATEWAY_MODE_LABELS } from "@/lib/gateway";
+import { FIELD_HINTS } from "@/lib/constants";
 
 export function toText(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -112,6 +113,11 @@ export function ProviderConfigFields({
                   ))}
                 </SelectContent>
               </Select>
+              {FIELD_HINTS[field.key] && (
+                <p className="text-xs text-muted-foreground">
+                  {FIELD_HINTS[field.key]}
+                </p>
+              )}
             </div>
           );
         }
@@ -172,6 +178,11 @@ export function ProviderConfigFields({
                 </Button>
               )}
             </div>
+            {FIELD_HINTS[field.key] && (
+              <p className="text-xs text-muted-foreground">
+                {FIELD_HINTS[field.key]}
+              </p>
+            )}
           </div>
         );
       })}

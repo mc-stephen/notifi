@@ -9,7 +9,12 @@ import {
   type ProviderDefinition,
 } from "@/hooks";
 import { useProjectStore } from "@/store/project-store";
-import { RECOMMENDED_PROVIDERS, isEnvelopeChannel, providerBlurb } from "@/lib/constants";
+import {
+  RECOMMENDED_PROVIDERS,
+  isEnvelopeChannel,
+  providerBlurb,
+  PAYLOAD_TEMPLATE_DEFAULT,
+} from "@/lib/constants";
 import { ApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/custom/page-header";
@@ -63,6 +68,10 @@ function freshConnectForm(definition: ProviderDefinition): Record<string, unknow
       form[field.key] = generateRouteTopic();
     } else if (field.key === "secret_key") {
       form[field.key] = generateRouteSecret();
+    } else if (field.key === "payload_template") {
+      // The relay's body starts from the default shape — the field's
+      // helper line names the placeholders.
+      form[field.key] = PAYLOAD_TEMPLATE_DEFAULT;
     } else {
       form[field.key] = "";
     }

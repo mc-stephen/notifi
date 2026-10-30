@@ -54,8 +54,10 @@ pub fn catalog() -> Vec<VendorEntry> {
                 },
                 VendorField {
                     key: "method",
-                    label: "HTTP Method (e.g. POST)",
-                    ty: FieldType::Text,
+                    // A dropdown, not a free text: a typo a receiver
+                    // cannot parse would silently fall back to POST.
+                    label: "HTTP method",
+                    ty: FieldType::Select(&["POST", "GET", "PUT", "PATCH", "DELETE"]),
                     required: true,
                 },
                 VendorField {
@@ -153,5 +155,17 @@ mod catalog_tests {
         );
         let mode = gateway.fields.last().expect("mode field");
         assert!(matches!(mode.ty, FieldType::Select(&["polling", "https"])));
+
+        // A free-typed method could silently misbehave — the relay's
+        // method is a dropdown over the body-carrying set.
+        let method = &entries[1]
+            .fields
+            .iter()
+            .find(|f| f.key == "method")
+            .expect("method field");
+        assert!(matches!(
+            method.ty,
+            FieldType::Select(&["POST", "GET", "PUT", "PATCH", "DELETE"])
+        ));
     }
 }

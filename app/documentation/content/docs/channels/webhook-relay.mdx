@@ -7,9 +7,12 @@ description: One connect posts your rendered payload anywhere you point it.
 
 The **Webhook relay** card (under the "Other" channel) delivers your
 notification by calling a URL of YOUR choosing, shaped however that receiver
-wants. It is the escape hatch for anything Notifi does not have a built-in
-card for yet — your own webhook target, a self-hosted tool, an internal
-service.
+wants: **we push to you** — Notifi POSTs (or GETs, or whatever the receiver
+expects) and your system receives. It is the counterpart of the gateway card
+next to it, which is the reverse direction: your system listens to us by
+polling a hosted route. The relay is the escape hatch for anything Notifi
+does not have a built-in card for yet — your own webhook target, a
+self-hosted tool, an internal service.
 
 ## What you set up on the card
 
@@ -17,12 +20,15 @@ Connecting the relay collects four things, and they are all saved into the
 card's recipe:
 
 1. **Target URL** — where the request goes.
-2. **Method** — the HTTP method to use (POST is the usual).
+2. **Method** — picked from a dropdown (POST, GET, PUT, PATCH, DELETE — no
+   mistypings; POST is the usual).
 3. **Headers** — optional request headers, e.g. an `Authorization` or a
    signature line your receiver wants (they can be given as an object, a JSON
    string, or left empty).
 4. **Payload template** — the body, written once and rendered per send with
-   Handlebars-style placeholders:
+   Handlebars-style placeholders. The form starts you from
+   `{"title": "{{title}}", "message": "{{body}}"}` — the helper line under
+   the field names the four placeholders:
 
    - `{{title}}` — the notification title
    - `{{body}}` — the notification text

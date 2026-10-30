@@ -441,7 +441,8 @@ export const PROVIDER_BLURBS: Record<string, string> = {
   "web:web_push": "Browser push notifications via Web Push.",
   "window:wns": "Windows push through Microsoft's notification service.",
   "other:onesignal": "One connect arms Android and Apple push together.",
-  "other:relay": "Post raw webhook payloads to anything we don't cover.",
+  "other:relay":
+    "Webhook Relay — we push to you: raw payloads posted to any URL you point at.",
 };
 
 /**
@@ -451,6 +452,25 @@ export const PROVIDER_BLURBS: Record<string, string> = {
  * read the tag to route a saved config to its vendor).
  */
 const ENVELOPE_CHANNELS = new Set(["chat", "other"]);
+
+/**
+ * One-line help under a connect/saved-config field, keyed by field key.
+ * Fields teach themselves through labels; these exist for the ones whose
+ * meaning genuinely needs a sentence (the relay's template is a body
+ * Notifi renders per send, not a credential).
+ */
+export const FIELD_HINTS: Record<string, string> = {
+  payload_template:
+    "The body we post to your URL — fill it with {{title}}, {{body}}, {{project}}, {{timestamp}}.",
+};
+
+/**
+ * The relay's starting payload template — prefilled at connect so nobody
+ * meets a blank Handlebars requirement; the field's helper line names
+ * the four placeholders and the docs page shows richer shapes.
+ */
+export const PAYLOAD_TEMPLATE_DEFAULT =
+  '{"title": "{{title}}", "message": "{{body}}"}';
 
 export function isEnvelopeChannel(channelId: string): boolean {
   return ENVELOPE_CHANNELS.has(channelId);
