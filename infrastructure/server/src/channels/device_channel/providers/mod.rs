@@ -142,7 +142,12 @@ mod device_dest_tests {
             DeviceProvider::Android(android::Provider::Fcm(fcm_like_config())).destination_name(),
             DeviceProvider::Apple(apple::Provider::Apns(apns_like_config())).destination_name(),
             DeviceProvider::Web(web::Provider::WebPush(web_push_like_config())).destination_name(),
-            DeviceProvider::Window(window::Provider::Webhook).destination_name(),
+            DeviceProvider::Window(window::Provider::Wns {
+                client_id: "c".to_string(),
+                client_secret: "s".to_string(),
+                package_sid: "p".to_string(),
+            })
+            .destination_name(),
         ]
         .to_vec();
         assert_eq!(names, ["android", "apple", "web", "window"]);
@@ -217,7 +222,6 @@ mod device_dest_tests {
                 "web",
                 web::Provider::WebPush(web_push_like_config()).provider_name(),
             ),
-            ("window", window::Provider::Webhook.provider_name()),
             (
                 "window",
                 window::Provider::Wns {

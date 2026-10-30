@@ -1,7 +1,7 @@
 //! Channel adapters for product sends (Phase A).
 //!
 //! Email (SMTP), android (fcm / pushy / onesignal), apple (apns /
-//! onesignal), window (webhook / WNS),
+//! onesignal), window (WNS),
 //! web push, the whole chat family (slack /
 //! telegram / whatsapp_business / discord / ms_teams), all nine
 //! SMS vendors and the other channel (onesignal wrapping both phone
@@ -36,7 +36,6 @@ use crate::channels::device_channel::providers::web::web_push::{
 };
 use crate::channels::device_channel::providers::window::{
     WindowSender,
-    webhook::WebhookProvider,
     wns::{WnsConfig, WnsProvider},
 };
 use crate::channels::email_channel::{
@@ -689,10 +688,6 @@ impl AdapterFactory for DefaultAdapterFactory {
             ("android", "onesignal") => onesignal_adapter(config, "android"),
             ("apple", "onesignal") => onesignal_adapter(config, "apple"),
             ("apple", "apns") => apns_from_config(config),
-            ("window", "webhook") => Some(Arc::new(WindowAdapter {
-                sender: Box::new(WebhookProvider::new()),
-                provider_id: "webhook",
-            })),
             ("window", "wns") => {
                 let cfg: WnsConfig = serde_json::from_value(config.clone()).ok()?;
                 if cfg.client_id.trim().is_empty() || cfg.client_secret.trim().is_empty() {
@@ -993,13 +988,6 @@ mod tests {
             )
             .is_none()
         );
-
-        // The window webhook arm carries no credentials either.
-        let webhook = f.adapter("proj-1", "window", "webhook", &serde_json::json!({}));
-        assert!(webhook.is_some());
-        let webhook = webhook.unwrap();
-        assert_eq!(webhook.channel(), "window");
-        assert_eq!(webhook.provider_name(), "webhook");
 
         // The WNS flavor arms from its credential pair; a blank one stays None.
         let wns = f.adapter(

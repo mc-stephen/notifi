@@ -439,7 +439,6 @@ export const PROVIDER_BLURBS: Record<string, string> = {
   "other:gateway":
     "Notifi Gateway — you pull from us: your app polls a hosted route. The counterpart of the webhook relay (we push to you).",
   "web:web_push": "Browser push notifications via Web Push.",
-  "window:webhook": "Windows notifications via your own webhook target.",
   "window:wns": "Windows push through Microsoft's notification service.",
   "other:onesignal": "One connect arms Android and Apple push together.",
   "other:relay": "Post raw webhook payloads to anything we don't cover.",

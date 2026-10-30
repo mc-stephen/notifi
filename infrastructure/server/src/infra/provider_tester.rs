@@ -62,11 +62,9 @@ impl ProviderTester for ConfigProviderTester {
 /// account for real (token exchange); Apple (`apns`) loads the `.p8`
 /// key and signs offline (APNs has no dry-run); Pushy does an
 /// authenticated device-info read; OneSignal shares the other
-/// channel's probe (gets reused); the relay honestly reports that a
-/// webhook cannot be read without posting to it; WNS exchanges with
-/// Microsoft login; web push signs its VAPID pair offline; the
-/// self-hosted flavors honestly carry nothing to prove. Unknown ids
-/// fall to the saved-without-check fallback.
+/// channel's probe (gets reused); WNS exchanges with Microsoft login;
+/// web push signs its VAPID pair offline; unknown ids fall to the
+/// saved-without-check fallback.
 async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> TestResult {
     match provider_id {
         "fcm" => {
@@ -147,12 +145,6 @@ async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> 
                 },
             }
         }
-        "webhook" => TestResult {
-            success: true,
-            message:
-                "Self-hosted webhook — nothing to verify; the registration URL arrives per device"
-                    .to_string(),
-        },
         "wns" => {
             let client_id = config
                 .get("client_id")

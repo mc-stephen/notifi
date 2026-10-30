@@ -1,12 +1,11 @@
-//! Window destination — Windows devices, webhook or WNS flavor.
+//! Window destination — Windows devices via WNS.
 
-pub mod webhook;
 pub mod wns;
 
 use futures::future::BoxFuture;
 
-/// Window's inner sender contract: the flavor (webhook or WNS) decides
-/// how `target` (webhook URL or WNS channel URI) is reached.
+/// Window's inner sender contract: the flavor decides how the WNS
+/// channel URI is reached.
 pub trait WindowSender: Send + Sync {
     fn send(&self, target: &str, title: &str, body: &str)
     -> BoxFuture<'static, Result<(), String>>;
@@ -27,9 +26,6 @@ pub struct WindowProvider {
 /// All supported Windows push providers. THIS IS THE SOURCE OF TRUTH.
 #[derive(Debug, Clone)]
 pub enum Provider {
-    /// Webhook flavor needs no credentials — the target URL carries the
-    /// machine's registration.
-    Webhook,
     /// WNS signs token requests against Microsoft's identity endpoint
     /// via client credentials.
     Wns {
@@ -42,7 +38,6 @@ pub enum Provider {
 impl Provider {
     pub fn provider_name(&self) -> &'static str {
         match self {
-            Self::Webhook => "webhook",
             Self::Wns { .. } => "wns",
         }
     }
@@ -50,7 +45,6 @@ impl Provider {
     /// Builds the flavor's concrete sender.
     pub(crate) fn into_sender(self) -> Box<dyn WindowSender> {
         match self {
-            Provider::Webhook => Box::new(webhook::WebhookProvider::new()),
             Provider::Wns {
                 client_id,
                 client_secret,
@@ -63,49 +57,35 @@ impl Provider {
 /// The destination's registry listing — kept in sync with `Provider`
 /// by the family's golden test (add a flavor in both places).
 pub fn vendors() -> Vec<super::VendorEntry> {
-    vec![
-        super::VendorEntry {
-            id: "webhook",
-            name: "Webhook (self-hosted)",
-            platforms: &["windows"],
-            icon_url: None,
-            docs_url: Some(
-                "https://learn.microsoft.com/en-us/windows/apps/develop/notifications/app-notifications/",
-            ),
-            fields: vec![],
-        },
-        super::VendorEntry {
-            id: "wns",
-            name: "Windows Notification Service (WNS)",
-            platforms: &["windows"],
-            icon_url: Some(
-                "https://cdn.brandfetch.io/microsoft.com/w/512/h/512/theme/dark/icon.jpeg",
-            ),
-            docs_url: Some(
-                "https://learn.microsoft.com/en-us/windows/apps/develop/notifications/push-notifications/wns-overview",
-            ),
-            fields: vec![
-                super::VendorField {
-                    key: "client_id",
-                    label: "Client ID",
-                    ty: super::FieldType::Text,
-                    required: true,
-                },
-                super::VendorField {
-                    key: "client_secret",
-                    label: "Client Secret",
-                    ty: super::FieldType::Password,
-                    required: true,
-                },
-                super::VendorField {
-                    key: "package_sid",
-                    label: "Package SID",
-                    ty: super::FieldType::Text,
-                    required: true,
-                },
-            ],
-        },
-    ]
+    vec![super::VendorEntry {
+        id: "wns",
+        name: "Windows Notification Service (WNS)",
+        platforms: &["windows"],
+        icon_url: Some("https://cdn.brandfetch.io/microsoft.com/w/512/h/512/theme/dark/icon.jpeg"),
+        docs_url: Some(
+            "https://learn.microsoft.com/en-us/windows/apps/develop/notifications/push-notifications/wns-overview",
+        ),
+        fields: vec![
+            super::VendorField {
+                key: "client_id",
+                label: "Client ID",
+                ty: super::FieldType::Text,
+                required: true,
+            },
+            super::VendorField {
+                key: "client_secret",
+                label: "Client Secret",
+                ty: super::FieldType::Password,
+                required: true,
+            },
+            super::VendorField {
+                key: "package_sid",
+                label: "Package SID",
+                ty: super::FieldType::Text,
+                required: true,
+            },
+        ],
+    }]
 }
 
 impl WindowProvider {
@@ -125,8 +105,7 @@ mod window_tests {
     use super::*;
 
     #[test]
-    fn provider_names_cover_both_flavors() {
-        assert_eq!(Provider::Webhook.provider_name(), "webhook");
+    fn provider_names_cover_the_family() {
         assert_eq!(
             Provider::Wns {
                 client_id: "c".to_string(),
@@ -136,38 +115,6 @@ mod window_tests {
             .provider_name(),
             "wns"
         );
-    }
-
-    #[tokio::test]
-    async fn webhook_flavor_posts_title_body_payload() {
-        let stub = crate::testing::http_stub::start(200, "OK", "").await;
-        WindowProvider::new(Provider::Webhook)
-            .send_notification(&WindowMessage {
-                target: format!("http://127.0.0.1:{}/wa", stub.port),
-                title: "Hi".to_string(),
-                body: "Body".to_string(),
-            })
-            .await
-            .expect("window webhook 200 delivers");
-        let raw = stub.request().await.expect("request captured");
-        assert!(raw.contains("POST /wa"), "target path: {raw}");
-        assert!(raw.contains(r#""title":"Hi""#), "payload: {raw}");
-        assert!(raw.contains(r#""body":"Body""#), "payload: {raw}");
-    }
-
-    #[tokio::test]
-    async fn webhook_flavor_surfaces_error_body() {
-        let stub = crate::testing::http_stub::start(404, "Not Found", "no such machine").await;
-        let err = WindowProvider::new(Provider::Webhook)
-            .send_notification(&WindowMessage {
-                target: format!("http://127.0.0.1:{}/wa", stub.port),
-                title: "t".to_string(),
-                body: "b".to_string(),
-            })
-            .await
-            .expect_err("404 is a failed window delivery");
-        assert!(err.starts_with("Webhook error:"), "prefix: {err}");
-        assert!(err.contains("no such machine"), "body surfaced: {err}");
     }
 
     #[tokio::test]
@@ -189,20 +136,5 @@ mod window_tests {
             })
             .await
             .expect("real WNS accepted the push");
-    }
-
-    #[tokio::test]
-    #[ignore = "live webhook delivery — needs NOTIFI_WEBHOOK_URL (a self-hosted receiver \
-                accepting {title, body} posts)"]
-    async fn live_webhook_delivery() {
-        let target = std::env::var("NOTIFI_WEBHOOK_URL").expect("NOTIFI_WEBHOOK_URL not set");
-        WindowProvider::new(Provider::Webhook)
-            .send_notification(&WindowMessage {
-                target,
-                title: "Notifi live-check".to_string(),
-                body: "Real webhook, real payload.".to_string(),
-            })
-            .await
-            .expect("real webhook accepted the payload");
     }
 }
