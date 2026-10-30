@@ -10,7 +10,6 @@
 
 pub mod android;
 pub mod apple;
-pub mod linux;
 pub mod web;
 pub mod window;
 
@@ -22,7 +21,6 @@ pub mod window;
 pub enum DeviceProvider {
     Android(android::Provider),
     Apple(apple::Provider),
-    Linux(linux::Provider),
     Web(web::Provider),
     Window(window::Provider),
 }
@@ -33,7 +31,6 @@ impl DeviceProvider {
         match self {
             Self::Android(_) => "android",
             Self::Apple(_) => "apple",
-            Self::Linux(_) => "linux",
             Self::Web(_) => "web",
             Self::Window(_) => "window",
         }
@@ -45,7 +42,6 @@ impl DeviceProvider {
         match self {
             Self::Android(p) => p.provider_name(),
             Self::Apple(p) => p.provider_name(),
-            Self::Linux(p) => p.provider_name(),
             Self::Web(p) => p.provider_name(),
             Self::Window(p) => p.provider_name(),
         }
@@ -124,11 +120,6 @@ pub fn catalog() -> Vec<DestCatalog> {
             vendors: apple::vendors(),
         },
         DestCatalog {
-            destination: "linux",
-            title: "Linux",
-            vendors: linux::vendors(),
-        },
-        DestCatalog {
             destination: "web",
             title: "Web Push",
             vendors: web::vendors(),
@@ -150,12 +141,11 @@ mod device_dest_tests {
         let names: Vec<&str> = [
             DeviceProvider::Android(android::Provider::Fcm(fcm_like_config())).destination_name(),
             DeviceProvider::Apple(apple::Provider::Apns(apns_like_config())).destination_name(),
-            DeviceProvider::Linux(linux::Provider::Gateway(Default::default())).destination_name(),
             DeviceProvider::Web(web::Provider::WebPush(web_push_like_config())).destination_name(),
             DeviceProvider::Window(window::Provider::Webhook).destination_name(),
         ]
         .to_vec();
-        assert_eq!(names, ["android", "apple", "linux", "web", "window"]);
+        assert_eq!(names, ["android", "apple", "web", "window"]);
     }
 
     fn fcm_like_config() -> android::fcm::FcmConfig {
@@ -222,10 +212,6 @@ mod device_dest_tests {
                     rest_api_key: None,
                 })
                 .provider_name(),
-            ),
-            (
-                "linux",
-                linux::Provider::Gateway(linux::GatewayRecipe::default()).provider_name(),
             ),
             (
                 "web",

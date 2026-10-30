@@ -176,7 +176,8 @@ pub fn compose(
         infra::PgFlowStore::new(pool.clone()),
     )));
 
-    // Device gateway queue: the linux gateway arm's write target (shared
+    // Device gateway queue: the other channel's gateway arm's write target
+    // (shared with unit-defaulted factories only when a database wires).
     // server route storage; the HTTP poll surface holds its own handle to
     // the same table).
     let gateway_queue = Arc::new(infra::gateway_store::PgGatewayStore::new(pool.clone()))

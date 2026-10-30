@@ -47,7 +47,7 @@ impl ProviderTester for ConfigProviderTester {
             // Device destinations: Firebase proves its service account
             // for real (token exchange); the rest stay house-fallback
             // until their controllers wire up.
-            "window" | "android" | "apple" | "linux" | "web" => {
+            "window" | "android" | "apple" | "web" => {
                 test_device_provider(provider_id, config).await
             }
             _ => TestResult {
@@ -145,32 +145,6 @@ async fn test_device_provider(provider_id: &str, config: &serde_json::Value) -> 
                     success: false,
                     message: format!("OneSignal rejected the credential: {e}"),
                 },
-            }
-        }
-        // Notifi gateway: no vendor API exists to shake hands with — the
-        // honest probe is house-side (the route recipe's shape here); the
-        // route proves itself once the user's app polls it.
-        "gateway" => {
-            let topic = config.get("topic").and_then(|v| v.as_str()).unwrap_or("");
-            let secret_key = config
-                .get("secret_key")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if topic.trim().is_empty() {
-                TestResult {
-                    success: false,
-                    message: "The gateway recipe needs its topic (the route path)".to_string(),
-                }
-            } else if secret_key.len() < 24 {
-                TestResult {
-                    success: false,
-                    message: "The route secret looks too short (regenerate it — the connect form makes 30+ characters)".to_string(),
-                }
-            } else {
-                TestResult {
-                    success: true,
-                    message: "Route recipe checks out (topic + secret key) — the route proves itself when your app polls".to_string(),
-                }
             }
         }
         "webhook" => TestResult {
@@ -1070,8 +1044,9 @@ async fn test_ms_teams(config: &serde_json::Value) -> TestResult {
 /// Other-channel probes. OneSignal shares the device family's real read
 /// (same vendor, same REST surface, handed the bare fields after the
 /// envelope parses); the relay recipe honestly reports that a webhook
-/// cannot be read without posting to it. The envelope parse pins the
-/// vendor tag against the arm — a flat save's fields parse to nothing.
+/// cannot be read without posting to it; the gateway checks its route
+/// recipe house-side. The envelope parse pins the vendor tag against
+/// the arm — a flat save's fields parse to nothing.
 async fn test_other_provider(provider_id: &str, config: &serde_json::Value) -> TestResult {
     match provider_id {
         "onesignal" => {
@@ -1130,6 +1105,44 @@ async fn test_other_provider(provider_id: &str, config: &serde_json::Value) -> T
                 message: "Relay saved — nothing to verify until it fires; relay webhooks \
                           only send"
                     .to_string(),
+            }
+        }
+        // The Notifi gateway: no vendor API exists to shake hands with —
+        // the honest probe is house-side (the route recipe's shape); the
+        // route proves itself once the user's app polls it.
+        "gateway" => {
+            let Ok(OtherChannelConfig::Gateway {
+                topic,
+                secret_key,
+                mode: _,
+            }) = serde_json::from_value::<OtherChannelConfig>(config.clone())
+            else {
+                return TestResult {
+                    success: false,
+                    message: "Config does not parse for the other channel's gateway (the \
+                              saved envelope carries the provider tag plus its fields)"
+                        .to_string(),
+                };
+            };
+            if topic.trim().is_empty() {
+                TestResult {
+                    success: false,
+                    message: "The gateway recipe needs its topic (the route path)".to_string(),
+                }
+            } else if secret_key.len() < 24 {
+                TestResult {
+                    success: false,
+                    message: "The route secret looks too short (regenerate it — the connect \
+                              form makes 30+ characters)"
+                        .to_string(),
+                }
+            } else {
+                TestResult {
+                    success: true,
+                    message: "Route recipe checks out (topic + secret key) — the route \
+                              proves itself when your app polls"
+                        .to_string(),
+                }
             }
         }
         _ => TestResult {
@@ -1273,9 +1286,12 @@ mod tests {
         // A recipe missing its topic fails before anything else.
         let t = ConfigProviderTester
             .test(
-                "linux",
+                "other",
                 "gateway",
-                &serde_json::json!({"secret_key": "0123456789abcdef0123456789"}),
+                &serde_json::json!({
+                    "provider": "gateway",
+                    "secret_key": "0123456789abcdef0123456789"
+                }),
             )
             .await;
         assert!(!t.success, "{}", t.message);
@@ -1284,9 +1300,13 @@ mod tests {
         // A stubbed-together key is refused (regenerated keys are 30+).
         let t = ConfigProviderTester
             .test(
-                "linux",
+                "other",
                 "gateway",
-                &serde_json::json!({"topic": "office-linux", "secret_key": "short"}),
+                &serde_json::json!({
+                    "provider": "gateway",
+                    "topic": "gw-xk4p2m9tq7v3",
+                    "secret_key": "short"
+                }),
             )
             .await;
         assert!(!t.success, "{}", t.message);
@@ -1295,10 +1315,11 @@ mod tests {
         // A full recipe passes — honestly, with a "your app proves it" line.
         let t = ConfigProviderTester
             .test(
-                "linux",
+                "other",
                 "gateway",
                 &serde_json::json!({
-                    "topic": "office-linux",
+                    "provider": "gateway",
+                    "topic": "gw-xk4p2m9tq7v3",
                     "secret_key": "0123456789abcdef0123456789",
                     "mode": "polling"
                 }),

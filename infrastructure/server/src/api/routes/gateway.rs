@@ -1,6 +1,6 @@
 //! Device-facing gateway surface — the paths client apps hold open.
 //!
-//! `GET /gateway/linux/{topic}` serves one secret route (topic + generated
+//! `GET /gateway/{topic}` serves one secret route (topic + generated
 //! key from the saved recipe): queued messages come back oldest-first and
 //! leave the queue at fetch time (poll-and-delete — no second read).
 //! Long-poll via `?wait=<seconds>` (cap 20; omitted = plain instant check).
@@ -31,7 +31,7 @@ const MAX_WAIT_SECS: u64 = 20;
 /// The `/gateway` router: device routes over the gateway queue. Without a
 /// store (no database) the routes answer 503 problem documents.
 pub fn router(state: &AppState) -> Router<AppState> {
-    let mut routes = Router::new().route("/linux/{topic}", axum::routing::get(poll_linux_topic));
+    let mut routes = Router::new().route("/{topic}", axum::routing::get(poll_topic));
     if let Some(store) = state.gateway.clone() {
         routes = routes.layer(axum::Extension(store));
     }
@@ -60,8 +60,8 @@ pub struct PollResponse {
     messages: Vec<GatewayMessage>,
 }
 
-/// `GET /gateway/linux/{topic}` — poll-and-delete read for one secret route.
-pub async fn poll_linux_topic(
+/// `GET /gateway/{topic}` — poll-and-delete read for one secret route.
+pub async fn poll_topic(
     Path(topic): Path<String>,
     Query(params): Query<PollParams>,
     store: MaybeGatewayStore,

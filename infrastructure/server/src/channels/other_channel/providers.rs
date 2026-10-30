@@ -72,6 +72,33 @@ pub fn catalog() -> Vec<VendorEntry> {
                 },
             ],
         },
+        VendorEntry {
+            id: "gateway",
+            name: "Notifi Gateway",
+            platforms: &[],
+            icon_url: None,
+            docs_url: Some("https://docs.notifi.dev/channels/gateway"),
+            fields: vec![
+                VendorField {
+                    key: "topic",
+                    label: "Route topic",
+                    ty: FieldType::Hidden,
+                    required: false,
+                },
+                VendorField {
+                    key: "secret_key",
+                    label: "Route secret",
+                    ty: FieldType::Text,
+                    required: true,
+                },
+                VendorField {
+                    key: "mode",
+                    label: "Delivery mode",
+                    ty: FieldType::Select(&["polling", "https"]),
+                    required: true,
+                },
+            ],
+        },
     ]
 }
 
@@ -83,7 +110,7 @@ mod catalog_tests {
     fn catalog_matches_the_wrapped_flavors() {
         let entries = catalog();
         let ids: Vec<&str> = entries.iter().map(|v| v.id).collect();
-        assert_eq!(ids, vec!["onesignal", "relay"]);
+        assert_eq!(ids, vec!["onesignal", "relay", "gateway"]);
 
         // One card serves both phone families — the whole point of the
         // other channel's onesignal wrapper.
@@ -111,5 +138,20 @@ mod catalog_tests {
                 ("payload_template", true),
             ]
         );
+
+        // The gateway: a cross-platform pull-route (platforms empty —
+        // any machine that can poll subscribes). Its recipe is static —
+        // the hidden topic generates at connect, the secret prefills,
+        // the mode dropdown is the one real choice.
+        let gateway = &entries[2];
+        assert!(gateway.platforms.is_empty());
+        let required: Vec<(&str, bool)> =
+            gateway.fields.iter().map(|f| (f.key, f.required)).collect();
+        assert_eq!(
+            required,
+            vec![("topic", false), ("secret_key", true), ("mode", true)]
+        );
+        let mode = gateway.fields.last().expect("mode field");
+        assert!(matches!(mode.ty, FieldType::Select(&["polling", "https"])));
     }
 }

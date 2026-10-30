@@ -33,6 +33,17 @@ pub enum OtherChannelConfig {
         headers: HashMap<String, String>,
         payload_template: String,
     },
+    #[serde(rename = "gateway")]
+    Gateway {
+        /// The secret-route topic (the poll URL's path piece) — filled
+        /// by the dashboard at connect, never typed by the user.
+        #[serde(default)]
+        topic: String,
+        #[serde(default)]
+        secret_key: String,
+        #[serde(default)]
+        mode: Option<String>,
+    },
     #[serde(rename = "function")]
     Function { function_id: String },
 }
@@ -54,6 +65,9 @@ impl OtherChannelConfig {
                 rest_api_key.as_deref().is_some_and(|k| !k.is_empty()) || !api_key.trim().is_empty()
             }
             Self::Relay { target_url, .. } => !target_url.trim().is_empty(),
+            Self::Gateway {
+                topic, secret_key, ..
+            } => !topic.trim().is_empty() && !secret_key.trim().is_empty(),
             Self::Function { function_id } => !function_id.trim().is_empty(),
         }
     }

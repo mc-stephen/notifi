@@ -58,7 +58,7 @@ pub const EXTERNAL_ROUTES: &[RouteInfo] = &[RouteInfo {
 /// this list in lockstep with [`crate::api::routes::gateway::router`].
 pub const GATEWAY_ROUTES: &[RouteInfo] = &[RouteInfo {
     method: "GET",
-    path: "/gateway/linux/{topic}",
+    path: "/gateway/{topic}",
     surface: Surface::Gateway,
     feature: "gateway",
     description: "poll one secret route — long-poll with ?wait=N (cap 20s), else an instant check; queued rows leave the route at fetch (poll-and-delete)",

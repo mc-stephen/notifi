@@ -1,14 +1,18 @@
 ---
 title: How the Notifi gateway works
-description: Notifi hosts the listening path — your Linux app polls its secret route.
+description: Notifi hosts the listening path — your app (any OS, any script) polls its secret route.
 ---
 
 ## The short version
 
-The Notifi gateway is a hosted push route for Linux apps. You connect the
-**Notifi Gateway** card in your project, send notifications through Notifi as
-usual, and your Linux app picks them up by polling one URL. Nobody runs a
-listener — your app is a client, not a server.
+The Notifi gateway is a hosted pull-route: Notifi queues your notifications,
+and your app collects them by polling one URL. No listener for you to run —
+your app is a client, not a server. It is the counterpart of our webhook
+relay (where we push to you): with the gateway, your system listens to ours.
+
+It lives on the **Other** section of the providers page, and it is not
+platform-specific — a Linux daemon, a Windows service, a macOS script, a cron
+job that can make an HTTPS call can all poll the same shape of route.
 
 ## What you set up on the card
 
@@ -33,7 +37,7 @@ choice, so you can switch behavior any time without reconnecting.
 After connecting, the form shows the subscribe line, e.g.:
 
 ```
-https://api.notifi.dev/gateway/linux/gw-xk4p2m9tq7v3?key=<generated secret>
+https://api.notifi.dev/gateway/gw-xk4p2m9tq7v3?key=<generated secret>
 ```
 
 - Poll it with an ordinary HTTPS GET.

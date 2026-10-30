@@ -77,7 +77,7 @@ fn build_registry() -> ProviderRegistry {
     channels.extend(build_device_channels());
     channels.push(build_other_channel());
     ProviderRegistry {
-        version: "1.3.3".to_string(),
+        version: "1.4.0".to_string(),
         last_updated: chrono::Utc::now().to_rfc3339(),
         channels,
     }
@@ -1312,7 +1312,7 @@ mod registry_tests {
     #[test]
     fn registry_sections_cover_every_family_with_other_last() {
         let registry = build_registry();
-        assert_eq!(registry.version, "1.3.3");
+        assert_eq!(registry.version, "1.4.0");
 
         let ids: Vec<&str> = registry
             .channels
@@ -1322,7 +1322,7 @@ mod registry_tests {
         assert_eq!(
             ids,
             vec![
-                "email", "sms", "chat", "android", "apple", "linux", "web", "window", "other"
+                "email", "sms", "chat", "android", "apple", "web", "window", "other"
             ]
         );
     }
@@ -1369,23 +1369,18 @@ mod registry_tests {
     }
 
     #[test]
-    fn linux_section_is_the_gateway_only() {
+    fn other_section_carries_the_relay_and_the_gateway() {
         let registry = build_registry();
-        let linux = registry
+        let gateway = registry
             .channels
             .iter()
-            .find(|c| c.channel_id == "linux")
-            .expect("linux section");
-        let ids: Vec<&str> = linux
+            .find(|c| c.channel_id == "other")
+            .expect("other section")
             .providers
             .iter()
-            .map(|p| p.provider_id.as_str())
-            .collect();
-        // The old self-hosted endpoint card was cut with the gateway's
-        // landing (dev stage, no life data) — the gateway is the family.
-        assert_eq!(ids, vec!["gateway"]);
+            .find(|p| p.provider_id == "gateway")
+            .expect("gateway card in the other section");
 
-        let gateway = &linux.providers[0];
         let mode = gateway
             .config_fields
             .iter()
@@ -1434,7 +1429,11 @@ mod registry_tests {
             .iter()
             .map(|p| p.provider_id.as_str())
             .collect();
-        assert_eq!(ids, vec!["onesignal", "relay"]);
+        // The pull-route gateway moved in from the old linux family —
+        // one section now carries both direction flavors: we post
+        // (relay), they poll (gateway); the cross-platform onesignal
+        // wrapper leads.
+        assert_eq!(ids, vec!["onesignal", "relay", "gateway"]);
 
         // The onesignal card serves both phone families from one
         // connect — the whole point of the other channel's wrapper.

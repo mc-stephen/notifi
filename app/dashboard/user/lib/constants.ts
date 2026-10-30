@@ -436,7 +436,8 @@ export const PROVIDER_BLURBS: Record<string, string> = {
   "android:onesignal": "Multi-channel engagement for Android.",
   "apple:apns": "Push notifications to iPhones, iPads and Macs.",
   "apple:onesignal": "Multi-channel engagement for Apple devices.",
-  "linux:gateway": "Hosted Linux push — Notifi holds the route, your app polls it.",
+  "other:gateway":
+    "Notifi Gateway — you pull from us: your app polls a hosted route. The counterpart of the webhook relay (we push to you).",
   "web:web_push": "Browser push notifications via Web Push.",
   "window:webhook": "Windows notifications via your own webhook target.",
   "window:wns": "Windows push through Microsoft's notification service.",

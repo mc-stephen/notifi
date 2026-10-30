@@ -6,7 +6,7 @@
     "sms",
     "push",
     "webhooks",
-    "linux-gateway",
+    "gateway",
     "webhook-relay"
   ]
 }

@@ -1,11 +1,12 @@
 //! Channel adapters for product sends (Phase A).
 //!
 //! Email (SMTP), android (fcm / pushy / onesignal), apple (apns /
-//! onesignal), linux (hosted Notifi gateway), window (webhook / WNS),
+//! onesignal), window (webhook / WNS),
 //! web push, the whole chat family (slack /
 //! telegram / whatsapp_business / discord / ms_teams), all nine
 //! SMS vendors and the other channel (onesignal wrapping both phone
-//! families at once / webhook relay) send for real — one adapter set
+//! families at once / webhook relay / the Notifi gateway pull-route)
+//! send for real — one adapter set
 //! serves every destination in the registry. Each adapter is built
 //! per-request from the project's own provider config JSON. Anything
 //! else still resolves to `None` so the send worker records a
@@ -30,7 +31,6 @@ use crate::channels::device_channel::providers::android::{
 use crate::channels::device_channel::providers::apple::apns::{
     ApnsMessage, ApnsProvider, IosConfig,
 };
-use crate::channels::device_channel::providers::linux::gateway::GatewayRecipe;
 use crate::channels::device_channel::providers::web::web_push::{
     WebConfig, WebMessage, WebProvider,
 };
@@ -546,12 +546,12 @@ fn sms_adapter<T: serde::de::DeserializeOwned + 'static>(
 }
 
 /// Production factory: SMTP + Firebase + Apple + SMS from project config, stubs nowhere else yet.
-/// Linux gateway (channel `linux`, provider `gateway`): queues the
-/// notification into Notifi's own device gateway — the user's Linux app
-/// polls its secret route (`GET /gateway/linux/{topic}?key=...`) and
-/// reads it away. No external provider at all: the store IS the
-/// vendor's listening path (see `ports::gateway`). The recipe carries
-/// the route's two halves, so the recipient contact is unused here.
+/// The Notifi gateway (channel `other`, provider `gateway`): queues the
+/// notification into Notifi's own gateway queue — the user's app polls
+/// its secret route (`GET /gateway/{topic}?key=...`) and reads it away.
+/// No external provider at all: the store IS the vendor's listening
+/// path (see `ports::gateway`). The recipe carries the route's two
+/// halves, so the recipient contact is unused here.
 pub struct GatewayAdapter {
     store: Arc<dyn GatewayStore + Send + Sync>,
     topic: String,
@@ -560,7 +560,7 @@ pub struct GatewayAdapter {
 
 impl DeliveryProvider for GatewayAdapter {
     fn channel(&self) -> &'static str {
-        "linux"
+        "other"
     }
 
     fn provider_name(&self) -> &'static str {
@@ -589,12 +589,12 @@ impl DeliveryProvider for GatewayAdapter {
 /// Builds channel adapters from per-project provider config.
 ///
 /// Most arms are self-contained (the recipe carries the credential); the
-/// linux gateway arm is the exception — its send writes into Notifi's own
+/// gateway arm is the exception — its send writes into Notifi's own
 /// device queue, so the factory holds the store when the server is wired
 /// with a database (unit-defaulted factories arm everything but it).
 #[derive(Default)]
 pub struct DefaultAdapterFactory {
-    /// Device gateway queue (`ports::gateway`) — the `("linux","gateway")`
+    /// Device gateway queue (`ports::gateway`) — the `("other","gateway")`
     /// arm's write target (`None` in store-less deployments/tests).
     gateway: Option<Arc<dyn GatewayStore + Send + Sync>>,
 }
@@ -689,18 +689,6 @@ impl AdapterFactory for DefaultAdapterFactory {
             ("android", "onesignal") => onesignal_adapter(config, "android"),
             ("apple", "onesignal") => onesignal_adapter(config, "apple"),
             ("apple", "apns") => apns_from_config(config),
-            ("linux", "gateway") => {
-                let parsed: GatewayRecipe = serde_json::from_value(config.clone()).ok()?;
-                if !parsed.carries_credentials() {
-                    return None;
-                }
-                let store = self.gateway.clone()?;
-                Some(Arc::new(GatewayAdapter {
-                    store,
-                    topic: parsed.topic,
-                    secret_key: parsed.secret_key,
-                }))
-            }
             ("window", "webhook") => Some(Arc::new(WindowAdapter {
                 sender: Box::new(WebhookProvider::new()),
                 provider_id: "webhook",
@@ -778,6 +766,24 @@ impl AdapterFactory for DefaultAdapterFactory {
                         },
                         project_id.to_string(),
                     ),
+                }))
+            }
+            ("other", "gateway") => {
+                let parsed: OtherChannelConfig = serde_json::from_value(config.clone()).ok()?;
+                if !parsed.carries_credentials() {
+                    return None;
+                }
+                let OtherChannelConfig::Gateway {
+                    topic, secret_key, ..
+                } = parsed
+                else {
+                    return None;
+                };
+                let store = self.gateway.clone()?;
+                Some(Arc::new(GatewayAdapter {
+                    store,
+                    topic,
+                    secret_key,
                 }))
             }
             // All nine SMS vendors arm from their own bare saved config.
@@ -1429,10 +1435,11 @@ yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
             factory_with_store()
                 .adapter(
                     "proj-1",
-                    "linux",
+                    "other",
                     "gateway",
                     &serde_json::json!({
-                        "topic": "office-linux", "secret_key": "gen-32chars-long-secret"
+                        "provider": "gateway",
+                        "topic": "gw-xk4p2m9tq7v3", "secret_key": "gen-32chars-long-secret"
                     })
                 )
                 .is_some()
@@ -1443,9 +1450,9 @@ yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
             factory_with_store()
                 .adapter(
                     "proj-1",
-                    "linux",
+                    "other",
                     "gateway",
-                    &serde_json::json!({"topic": "t"})
+                    &serde_json::json!({"provider": "gateway", "topic": "t"})
                 )
                 .is_none()
         );
@@ -1453,9 +1460,9 @@ yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
             factory_with_store()
                 .adapter(
                     "proj-1",
-                    "linux",
+                    "other",
                     "gateway",
-                    &serde_json::json!({"secret_key": "only-key"})
+                    &serde_json::json!({"provider": "gateway", "secret_key": "only-key"})
                 )
                 .is_none()
         );
@@ -1467,15 +1474,16 @@ yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
         let adapter = factory
             .adapter(
                 "proj-1",
-                "linux",
+                "other",
                 "gateway",
                 &serde_json::json!({
-                    "topic": "office-linux", "secret_key": "gen-32chars-long-secret",
+                    "provider": "gateway",
+                    "topic": "gw-xk4p2m9tq7v3", "secret_key": "gen-32chars-long-secret",
                     "mode": "polling"
                 }),
             )
             .unwrap();
-        assert_eq!(adapter.channel(), "linux");
+        assert_eq!(adapter.channel(), "other");
         assert_eq!(adapter.provider_name(), "gateway");
 
         let receipt = adapter.send(&message()).await.expect("gateway send queues");
@@ -1485,7 +1493,7 @@ yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
         let mut store = GATEWAY_LOG.lock().unwrap();
         assert_eq!(store.len(), 1, "exactly one row queued");
         let single = store.pop().unwrap();
-        assert_eq!(single.0, "office-linux");
+        assert_eq!(single.0, "gw-xk4p2m9tq7v3");
         assert_eq!(single.1, "gen-32chars-long-secret");
         assert_eq!(single.2, "Hi");
         assert_eq!(single.3, "Body");

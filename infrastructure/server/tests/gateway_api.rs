@@ -1,5 +1,5 @@
 //! End-to-end HTTP tests for the device gateway surface (`GET
-//! /gateway/linux/{topic}`) — fake-backed queue.
+//! /gateway/{topic}`) — fake-backed queue.
 
 mod common;
 
@@ -66,8 +66,8 @@ async fn body_json(response: axum::response::Response) -> Value {
 
 async fn poll_on(app: Router, topic: &str, query: Option<&str>) -> axum::response::Response {
     let uri = match query {
-        Some(query) => format!("/gateway/linux/{topic}?{query}"),
-        None => format!("/gateway/linux/{topic}"),
+        Some(query) => format!("/gateway/{topic}?{query}"),
+        None => format!("/gateway/{topic}"),
     };
     app.oneshot(
         Request::builder()

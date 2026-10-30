@@ -1,6 +1,7 @@
 /**
- * Linux Notifi Gateway helpers: the route-secret generator and the
- * subscribe-URL builder (the URL the user's Linux app polls).
+ * Notifi Gateway helpers: the route generators (topic + secret) and the
+ * subscribe-URL builder — the URL the user's app polls (the pull-route
+ * counterpart of the webhook relay's push direction).
  */
 
 /** URL-safe secret alphabet (base64url without padding). */
@@ -38,7 +39,7 @@ export function gatewaySubscribeUrl(
   topic: string,
   secretKey: string,
 ): string {
-  return `${apiBase}/gateway/linux/${topic}?key=${secretKey}`;
+  return `${apiBase}/gateway/${topic}?key=${secretKey}`;
 }
 
 /** Friendly labels for the mode dropdown's saved option ids. */
