@@ -71,7 +71,8 @@ async fn live_read_only_list_probe() {
 ///
 /// Destructive: it deletes everything under `projects/` before this test
 /// passes — lists first, deletes through the same [`factory::reset`]
-/// path `--reset-config` uses, then asserts the namespace holds only the
+/// store path the `--reset` flag runs after its DB half, then asserts
+/// the namespace holds only the
 /// folder markers back.
 #[tokio::test]
 #[ignore = "live R2 reset — deletes EVERY projects/ key in the bucket"]

@@ -70,8 +70,8 @@ pub trait ConfigStore: Send + Sync {
     /// directories; the object driver puts a tiny marker object inside
     /// each top-level prefix (object stores have no folder entities — a
     /// prefix becomes visible once anything lives under it). Idempotent
-    /// and cheap: every boot calls this and re-`--reset-config` marks the
-    /// folders again after wiping.
+    /// and cheap: every boot calls this, and the `--reset` store half
+    /// marks the folders again after wiping.
     async fn ensure_root_folders(&self) -> Result<(), String>;
 
     /// Materializes a fresh project's default files into this store — the

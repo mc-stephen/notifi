@@ -46,7 +46,8 @@ pub async fn connect(config: &AppConfig) -> Option<PgPool> {
 
 /// Drops the entire `public` schema and re-applies all migrations.
 ///
-/// Used by `cargo run -- --reset-db` for a clean dev start.
+/// Used by `cargo run -- --reset` for a clean dev start (the store half
+/// chains right after — see `infra::config_store_factory::reset`).
 pub async fn reset(config: &AppConfig) -> Result<(), String> {
     let url = config
         .database

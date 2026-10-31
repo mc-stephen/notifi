@@ -157,10 +157,12 @@ requests finish, logs say `api shutdown complete`.
 
 ## 10. Database reset
 
-Nuke the database and re-apply migrations from scratch:
+Nuke the database and re-apply migrations from scratch (then wipe the
+config store's `projects/` folder back to its markers — the store half
+only runs when the database reset succeeded):
 
 ```shell
-cargo run -p server -p server -- --reset-db    # drops public schema, re-applies 0001_initial_schema.sql, exits
+cargo run -p server -p server -- --reset    # DB + project configs wiped, exits
 cargo run -p server                  # normal server start
 ```
 
@@ -171,6 +173,6 @@ cargo run -p server                  # normal server start
 
 | Scenario | Command |
 |---|---|
-| Fresh dev start, no data to keep | `cargo run -p server -p server -- --reset-db` |
-| Migration history mismatch | `cargo run -p server -p server -- --reset-db` |
-| Want to wipe Docker volumes too | `docker compose down -v && cargo run -p server -p server -- --reset-db` |
+| Fresh dev start, no data to keep | `cargo run -p server -p server -- --reset` |
+| Migration history mismatch | `cargo run -p server -p server -- --reset` |
+| Want to wipe Docker volumes too | `docker compose down -v && cargo run -p server -p server -- --reset` |

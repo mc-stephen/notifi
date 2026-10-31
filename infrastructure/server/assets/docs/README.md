@@ -113,7 +113,8 @@ Project channel configs + templates live under `projects/{slug}/…` in a
 R2 bucket when `NOTIFI_R2_*` is set (bucket = root, same keys). One
 convention everywhere, cache (`cfg:` prefix, Redis) in between. Every
 boot lays the top-level folders down (`projects/`, `backup/`) via
-`build_ensured`; `--reset-config` wipes back to only those markers.
+`build_ensured`; `--reset` wipes `projects/` back to only those markers
+(its store half — the DB comes first).
 
 ### What boot does (§17, lib.rs)
 
@@ -235,16 +236,17 @@ configs API contract.
   project materializes its own `projects/{slug}/**` tree at creation. The
   root is overridable via `NOTIFI_CONFIG_ROOT` (`.cargo/config.toml`
   points dev at `./assets`), and all four `NOTIFI_R2_*` values switch to
-  the Cloudflare R2 bucket, which then *is* the root. `--reset-config`
-  wipes `projects/` back to only its folder markers; `--reset-db` chains it after the DB
-  reset.
+  the Cloudflare R2 bucket, which then *is* the root. `--reset` (one
+  clean-start flag) drops the DB and then — only on success — wipes
+  `projects/` back to only its folder markers.
 
 ## Database reset
 
-Nuke the database and re-apply migrations from scratch:
+Nuke the database and re-apply migrations from scratch (then chain the
+projects-folder wipe when the DB half succeeded):
 
 ```shell
-cargo run -- --reset-db    # drops public schema, re-applies all migrations, exits
+cargo run -- --reset    # DB re-applies, projects/ wiped back to markers, exits
 cargo run                  # normal server start
 ```
 

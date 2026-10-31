@@ -11,7 +11,7 @@
 //! object *inside* it (`{prefix}.keep`): the bucket visually "has" the
 //! folders on any dashboard from boot, before any real key arrives. The
 //! markers list under their prefix, so per-slug flows (purge, export)
-//! never see them, and `--reset-config` recreates them after wiping.
+//! never see them, and `--reset` re-lays them after wiping.
 //!
 //! Endpoint derives from the account id (`R2Config::endpoint`) rather than
 //! accepting a pasted URL — hand-copied R2 endpoints often end in a glued

@@ -1,7 +1,7 @@
 //! Picks and builds the active [`ConfigStore`], and the dev-facing reset.
 //!
 //! One home for the driver decision so composition (`lib.rs`) and ops
-//! (`--reset-db` / `--reset-config`) can never disagree about which
+//! (`--reset`) can never disagree about which
 //! storage backs the config. Delete idempotency (missing = success) lets
 //! a wiped-already store reset to a clean no-op.
 
