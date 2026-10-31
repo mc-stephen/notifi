@@ -7,7 +7,7 @@
 
 ## Board (agent-updated, Oct 31 2026 — the Other section's files live in other_channel)
 
-**Done — sitting local (60 commits, un-pushed; push on your word only):**
+**Done — sitting local (61 commits, un-pushed; push on your word only):**
 - Flows: template-node preset panel + validation; inbound/schedules render from node presets; webhook fallback panel
 - Device channels live in the provider registry: derived catalog, blurbs, brand icons, verified docs links
 - Old "push" channel retired — device rows own it now
@@ -26,5 +26,5 @@
 **Next up:**
 1. **devices-blob targeting** (before push can fan out per install) — sends today take raw addresses from the caller; walking a recipient's `devices` array into tokens needs a small targeting-design decision from you. With targeting, iPhone/iPad/Mac tokens all ride the one Apple recipe — and the gateway gets per-machine routes (two machines on one project share one stream today; first poller takes each message).
 2. **Dashboard recipients/devices nicety** (small, optional) — show the `devices` entries on the recipient detail view.
-3. **Parked:** a real websocket delivery mode once a second engine earns it. R2 token rotation → then the live `config_store_r2` test; push the 60 commits when you're ready.
+3. **Parked:** a real websocket delivery mode once a second engine earns it. R2 token rotation → then the live `config_store_r2` test; push the 61 commits when you're ready.
 

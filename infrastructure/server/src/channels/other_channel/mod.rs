@@ -9,8 +9,10 @@
 //! the push gateways' controllers live here (onesignal.rs, pushy.rs),
 //! the retired webhook family's relay.rs / function.rs moved in from
 //! their old folder, and the gateway has its only home here
-//! (`ports::gateway` queue + `src/api/routes/gateway.rs`). A provider
-//! that outgrows the wrapper earns a real channel of its own.
+//! (`ports::gateway` queue + `src/api/routes/gateway.rs`). The webhook
+//! relay and function flavors' integration guides live behind `docs/`
+//! (they moved with the controllers). A provider that outgrows the
+//! wrapper earns a real channel of its own.
 
 pub mod config;
 pub mod function;
