@@ -7,15 +7,15 @@
 //! natively integrate; the gateway is the hosted pull-route (your app
 //! polls a Notifi-hosted queue). This folder owns every card's file —
 //! the push gateways' controllers live here (onesignal.rs, pushy.rs),
-//! the retired webhook family's relay.rs / function.rs moved in from
-//! their old folder, and the gateway has its only home here
+//! the retired webhook family's relay.rs moved in from its old folder
+//! (the family's placeholder function flavor was removed with it —
+//! cardless means gone), and the gateway has its only home here
 //! (`ports::gateway` queue + `src/api/routes/gateway.rs`). The webhook
-//! relay and function flavors' integration guides live behind `docs/`
-//! (they moved with the controllers). A provider that outgrows the
+//! relay's integration guide lives behind `docs/` (moved with its
+//! controller). A provider that outgrows the
 //! wrapper earns a real channel of its own.
 
 pub mod config;
-pub mod function;
 pub mod onesignal;
 pub mod pushy;
 pub mod relay;

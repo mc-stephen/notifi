@@ -50,8 +50,6 @@ pub enum OtherChannelConfig {
         #[serde(default)]
         mode: Option<String>,
     },
-    #[serde(rename = "function")]
-    Function { function_id: String },
 }
 
 impl OtherChannelConfig {
@@ -75,7 +73,6 @@ impl OtherChannelConfig {
             Self::Gateway {
                 topic, secret_key, ..
             } => !topic.trim().is_empty() && !secret_key.trim().is_empty(),
-            Self::Function { function_id } => !function_id.trim().is_empty(),
         }
     }
 }
