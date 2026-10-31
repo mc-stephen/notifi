@@ -1,6 +1,5 @@
 pub mod africas_talking;
 pub mod bird;
-pub mod config;
 pub mod ebulksms;
 pub mod infobip;
 pub mod local_nigeria;
@@ -9,7 +8,47 @@ pub mod termii;
 pub mod twilio;
 pub mod vonage;
 
-pub use config::SmsConfig;
+use serde::Deserialize;
+
+/// Tagged enum for SMS provider configuration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "provider")]
+pub enum SmsConfig {
+    #[serde(rename = "twilio")]
+    Twilio(twilio::TwilioConfig),
+    #[serde(rename = "local_nigeria")]
+    LocalNigeria(local_nigeria::LocalNigeriaConfig),
+    #[serde(rename = "termii")]
+    Termii(termii::TermiiConfig),
+    #[serde(rename = "africas_talking")]
+    AfricasTalking(africas_talking::AfricasTalkingConfig),
+    #[serde(rename = "smslive247")]
+    SmsLive247(smslive247::SmsLive247Config),
+    #[serde(rename = "ebulksms")]
+    EbulkSms(ebulksms::EbulkSmsConfig),
+    #[serde(rename = "infobip")]
+    Infobip(infobip::InfobipConfig),
+    #[serde(rename = "vonage")]
+    Vonage(vonage::VonageConfig),
+    #[serde(rename = "bird")]
+    Bird(bird::BirdConfig),
+}
+
+impl SmsConfig {
+    pub fn to_provider(self) -> SmsProvider {
+        match self {
+            Self::Twilio(c) => SmsProvider::Twilio(c),
+            Self::LocalNigeria(c) => SmsProvider::LocalNigeria(c),
+            Self::Termii(c) => SmsProvider::Termii(c),
+            Self::AfricasTalking(c) => SmsProvider::AfricasTalking(c),
+            Self::SmsLive247(c) => SmsProvider::SmsLive247(c),
+            Self::EbulkSms(c) => SmsProvider::EbulkSms(c),
+            Self::Infobip(c) => SmsProvider::Infobip(c),
+            Self::Vonage(c) => SmsProvider::Vonage(c),
+            Self::Bird(c) => SmsProvider::Bird(c),
+        }
+    }
+}
 
 use futures::future::BoxFuture;
 
@@ -53,11 +92,11 @@ pub struct SmsMessage {
 }
 
 pub struct SmsSender2 {
-    config: config::SmsConfig,
+    config: SmsConfig,
 }
 
 impl SmsSender2 {
-    pub fn new(config: config::SmsConfig) -> Self {
+    pub fn new(config: SmsConfig) -> Self {
         Self { config }
     }
 

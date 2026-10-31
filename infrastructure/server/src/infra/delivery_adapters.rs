@@ -19,7 +19,7 @@
 
 use std::sync::Arc;
 
-use crate::channels::chat_channel::{ChatMessage, ChatSender2, config::ChatConfig};
+use crate::channels::chat_channel::{ChatConfig, ChatMessage, ChatSender2};
 use crate::channels::device_channel::android::{
     AndroidMessage,
     fcm::{FcmConfig, FcmProvider},
@@ -30,9 +30,7 @@ use crate::channels::device_channel::window::{
     WindowSender,
     wns::{WnsConfig, WnsProvider},
 };
-use crate::channels::email_channel::{
-    EmailMessage, EmailSender, config::EmailConfig, smtp::SmtpConfig,
-};
+use crate::channels::email_channel::{EmailConfig, EmailMessage, EmailSender, smtp::SmtpConfig};
 use crate::channels::other_channel::{
     OtherChannelConfig,
     onesignal::{OneSignalConfig, OneSignalMessage, OneSignalProvider},

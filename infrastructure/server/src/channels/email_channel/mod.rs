@@ -1,13 +1,71 @@
 pub mod aws_ses;
 pub mod brevo;
-pub mod config;
 pub mod mailgun;
 pub mod postmark;
 pub mod resend;
 pub mod sendgrid;
 pub mod smtp;
 
-pub use config::EmailConfig;
+use serde::Deserialize;
+
+/// Tagged enum for email provider configuration.
+/// The `provider` field in JSON dispatches to the correct config struct.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "provider")]
+pub enum EmailConfig {
+    #[serde(rename = "smtp")]
+    Smtp(smtp::SmtpConfig),
+    #[serde(rename = "sendgrid")]
+    SendGrid(sendgrid::SendGridConfig),
+    #[serde(rename = "resend")]
+    Resend(resend::ResendConfig),
+    #[serde(rename = "aws_ses")]
+    AwsSes(aws_ses::AwsSesConfig),
+    #[serde(rename = "postmark")]
+    Postmark(postmark::PostmarkConfig),
+    #[serde(rename = "mailgun")]
+    Mailgun(mailgun::MailgunConfig),
+    #[serde(rename = "brevo")]
+    Brevo(brevo::BrevoConfig),
+}
+
+impl EmailConfig {
+    pub fn to_provider(self) -> EmailProvider {
+        match self {
+            Self::Smtp(c) => EmailProvider::Smtp(c),
+            Self::SendGrid(c) => EmailProvider::SendGrid(c),
+            Self::Resend(c) => EmailProvider::Resend(c),
+            Self::AwsSes(c) => EmailProvider::AwsSes(c),
+            Self::Postmark(c) => EmailProvider::Postmark(c),
+            Self::Mailgun(c) => EmailProvider::Mailgun(c),
+            Self::Brevo(c) => EmailProvider::Brevo(c),
+        }
+    }
+
+    pub fn from_address(&self) -> &str {
+        match self {
+            Self::Smtp(c) => &c.from_email,
+            Self::SendGrid(c) => &c.from_email,
+            Self::Resend(c) => &c.from_email,
+            Self::AwsSes(c) => &c.from_email,
+            Self::Postmark(c) => &c.from_email,
+            Self::Mailgun(c) => &c.from_email,
+            Self::Brevo(c) => &c.from_email,
+        }
+    }
+
+    pub fn provider_name(&self) -> &'static str {
+        match self {
+            Self::Smtp(_) => "smtp",
+            Self::SendGrid(_) => "sendgrid",
+            Self::Resend(_) => "resend",
+            Self::AwsSes(_) => "aws_ses",
+            Self::Postmark(_) => "postmark",
+            Self::Mailgun(_) => "mailgun",
+            Self::Brevo(_) => "brevo",
+        }
+    }
+}
 
 /// All supported email providers. THIS IS THE SOURCE OF TRUTH.
 /// To add a new provider: create new_provider.rs, add variant here.
@@ -55,23 +113,23 @@ pub struct EmailMessage {
 }
 
 pub struct EmailSender {
-    config: config::EmailConfig,
+    config: EmailConfig,
 }
 
 impl EmailSender {
-    pub fn new(config: config::EmailConfig) -> Self {
+    pub fn new(config: EmailConfig) -> Self {
         Self { config }
     }
 
-    fn from_name(config: &config::EmailConfig) -> Option<String> {
+    fn from_name(config: &EmailConfig) -> Option<String> {
         match config {
-            config::EmailConfig::Smtp(c) => c.from_name.clone(),
-            config::EmailConfig::SendGrid(c) => c.from_name.clone(),
-            config::EmailConfig::Resend(c) => c.from_name.clone(),
-            config::EmailConfig::AwsSes(c) => c.from_name.clone(),
-            config::EmailConfig::Postmark(c) => c.from_name.clone(),
-            config::EmailConfig::Mailgun(c) => c.from_name.clone(),
-            config::EmailConfig::Brevo(c) => c.from_name.clone(),
+            EmailConfig::Smtp(c) => c.from_name.clone(),
+            EmailConfig::SendGrid(c) => c.from_name.clone(),
+            EmailConfig::Resend(c) => c.from_name.clone(),
+            EmailConfig::AwsSes(c) => c.from_name.clone(),
+            EmailConfig::Postmark(c) => c.from_name.clone(),
+            EmailConfig::Mailgun(c) => c.from_name.clone(),
+            EmailConfig::Brevo(c) => c.from_name.clone(),
         }
     }
 
@@ -81,7 +139,7 @@ impl EmailSender {
     /// relay refused NOOP; `Err` carries the SMTP error (e.g. 535 auth).
     pub async fn verify(&self) -> Result<bool, String> {
         match &self.config {
-            config::EmailConfig::Smtp(smtp_config) => Ok(Self::smtp_transport(smtp_config)?
+            EmailConfig::Smtp(smtp_config) => Ok(Self::smtp_transport(smtp_config)?
                 .test_connection()
                 .await
                 .map_err(|e| format!("SMTP verify failed: {e}"))?),
@@ -179,7 +237,7 @@ impl EmailSender {
         // STARTTLS upgrade (port 587 style); without it the
         // connection stays plaintext (local relays).
         match &self.config {
-            config::EmailConfig::Smtp(smtp_config) => Self::smtp_transport(smtp_config)?
+            EmailConfig::Smtp(smtp_config) => Self::smtp_transport(smtp_config)?
                 .send(email)
                 .await
                 .map(|response| response.message().collect::<Vec<_>>().join(" "))
