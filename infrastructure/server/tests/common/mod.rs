@@ -210,6 +210,21 @@ impl AuthStore for FakeAuthStore {
         })
     }
 
+    fn set_avatar_url(
+        &self,
+        user_id: server::domain::auth::entities::UserId,
+        avatar_url: Option<String>,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let users = &self.users;
+        Box::pin(async move {
+            let mut users = users.write().map_err(lock_err)?;
+            if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
+                user.avatar_url = avatar_url;
+            }
+            Ok(())
+        })
+    }
+
     fn touch_last_login(
         &self,
         user_id: server::domain::auth::entities::UserId,

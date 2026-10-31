@@ -374,6 +374,23 @@ impl AuthStore for PgAuthStore {
         })
     }
 
+    fn set_avatar_url(
+        &self,
+        user_id: UserId,
+        avatar_url: Option<String>,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let pool = self.pool.clone();
+        Box::pin(async move {
+            sqlx::query("UPDATE auth_users SET avatar_url = $2, updated_at = now() WHERE id = $1")
+                .bind(user_id.to_string())
+                .bind(avatar_url)
+                .execute(&pool)
+                .await
+                .map_err(map_err)?;
+            Ok(())
+        })
+    }
+
     fn list_users(
         &self,
         search: Option<&str>,

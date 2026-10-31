@@ -6,7 +6,8 @@
 //! `configs`); `infrastructure/.cargo/config.toml` points dev bootstraps
 //! at `server/assets`.
 //!
-//! `ensure_root_folders` creates the real directories (`projects/`) —
+//! `ensure_root_folders` creates the real directories (`projects/`,
+//! `users/`) —
 //! disk is honest about folders, so no marker files are involved.
 
 use std::path::PathBuf;
@@ -92,9 +93,12 @@ impl ConfigStore for FileConfigStore {
     async fn ensure_root_folders(&self) -> Result<(), String> {
         // Disk folders are the real thing, so "ensuring" means
         // `create_dir_all` — no marker files involved.
-        let dir = self.root.join("projects");
-        std::fs::create_dir_all(&dir)
-            .map_err(|e| format!("config root folder create failed for projects: {e}"))
+        for folder in ["projects", "users"] {
+            let dir = self.root.join(folder);
+            std::fs::create_dir_all(&dir)
+                .map_err(|e| format!("config root folder create failed for {folder}: {e}"))?;
+        }
+        Ok(())
     }
 
     async fn delete_raw(&self, key: &str) -> Result<(), String> {

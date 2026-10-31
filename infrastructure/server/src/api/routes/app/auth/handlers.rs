@@ -26,14 +26,14 @@ use crate::domain::auth::value_objects::new_token;
 use crate::domain::error::AppError;
 use crate::ports::oauth::{OAppError, OAuthRuntime};
 
-type MaybeService = Option<Extension<Arc<AuthService>>>;
+pub(super) type MaybeService = Option<Extension<Arc<AuthService>>>;
 type MaybeOAuth = Option<Extension<Arc<OAuthRuntime>>>;
 
 /// How long the CSRF-state / PKCE-verifier / mode cookies live — plenty for
 /// a consent detour, short enough to be useless for replay.
 const OAUTH_TEMP_COOKIE_MAX_AGE_SECONDS: i64 = 600;
 
-fn require_service(extension: MaybeService) -> Result<Arc<AuthService>, Problem> {
+pub(super) fn require_service(extension: MaybeService) -> Result<Arc<AuthService>, Problem> {
     extension
         .map(|Extension(service)| service)
         .ok_or_else(|| AppError::NotConfigured.into())
@@ -45,7 +45,7 @@ fn require_oauth(extension: MaybeOAuth) -> Result<Arc<OAuthRuntime>, Problem> {
         .ok_or_else(|| AppError::NotConfigured.into())
 }
 
-fn ok_json(body: Value) -> Response {
+pub(super) fn ok_json(body: Value) -> Response {
     (StatusCode::OK, Json(body)).into_response()
 }
 

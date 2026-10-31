@@ -1,5 +1,6 @@
 //! Auth HTTP surface (mounted at `/app/auth`).
 
+pub mod avatar;
 pub mod dto;
 pub mod handlers;
 pub mod middleware;

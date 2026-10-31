@@ -29,9 +29,10 @@ pub fn build(config: &AppConfig) -> Result<Arc<dyn ConfigStore + Send + Sync>, S
     }
 }
 
-/// Builds the store AND makes its top-level folders exist (`projects/`)
-/// — every boot flows through here, so the storage layout is visible in
-/// a fresh bucket or root before the first project arrives.
+/// Builds the store AND makes its top-level folders exist (`projects/`,
+/// `backup/`, `users/`) — every boot flows through here, so the storage
+/// layout is visible in a fresh bucket or root before the first project
+/// arrives.
 pub async fn build_ensured(
     config: &AppConfig,
 ) -> Result<Arc<dyn ConfigStore + Send + Sync>, String> {

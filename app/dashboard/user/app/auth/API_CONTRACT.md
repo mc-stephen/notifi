@@ -119,6 +119,16 @@ Response `200 { "status": "ok" }` — or `{ "status": "ok", "alreadyCompleted": 
 
 Called by the onboarding success page; flips the server-derived flag that unlocks the dashboard.
 
+### 5c. Avatar — `POST` / `GET` / `DELETE /app/auth/profile/avatar`
+
+Requires a valid session cookie. The image lives in the config store under `users/{id}/avatar.{ext}` (the boot-created `users/` folder — file store or R2 alike), referenced by the row's `avatar_url`; originals are kept as-is (no server-side resizing).
+
+- `POST` — body is the raw image bytes with `Content-Type: image/jpeg` (or `image/jpg`), `image/png`, or `image/webp`; body cap 2 MiB (axum's default limit), empty body rejected. Stores the file (replacing any previous one) and points `avatar_url` at it. Response `200 { "status": "ok" }`. Errors: `400` validation (wrong content type / empty / oversize).
+- `GET` — `200` image bytes (`Content-Type` matching the stored extension, `Cache-Control: public, max-age=3600`) when the reference is an app-stored key; `302` redirect to the URL when the reference is an external OAuth provider picture (imported at login). `404` problem when no avatar is set.
+- `DELETE` — clears `avatar_url` and removes the stored file when we hold it (external OAuth URLs are left to the provider; the picture returns on the next login). Response `200 { "status": "ok" }`.
+
+Called by the dashboard profile card (round preview + upload + remove).
+
 ### Project model
 
 The user account **is** the workspace: projects are owned by their creator

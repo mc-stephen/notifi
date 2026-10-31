@@ -28,10 +28,13 @@ use crate::api::state::AppState;
 /// notifications, logs). Nests feature routers under their path segments.
 pub fn app_router(state: &AppState) -> Router<AppState> {
     // Auth routes pull their service from a scoped Extension; without it
-    // (no database) they answer 503 problem documents.
+    // (no database) they answer 503 problem documents. The store rides
+    // along for the avatar routes (the user folder's files).
     let auth_routes = match state.auth.clone() {
-        Some(service) => auth::routes::router().layer(axum::Extension(service)),
-        None => auth::routes::router(),
+        Some(service) => {
+            auth::routes::router(Some(state.config_store.clone())).layer(axum::Extension(service))
+        }
+        None => auth::routes::router(Some(state.config_store.clone())),
     };
     // The OAuth runtime is optional independently of the service; without
     // it (no provider credentials) the /oauth routes answer 503. Layered

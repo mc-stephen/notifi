@@ -433,6 +433,18 @@ impl AuthService {
         Ok(())
     }
 
+    /// Persists the avatar reference — the service only tracks what the
+    /// row points at; the bytes themselves are the API surface's job
+    /// (it owns the config store).
+    pub async fn set_avatar_url(
+        &self,
+        user_id: UserId,
+        avatar_url: Option<String>,
+    ) -> Result<(), AppError> {
+        self.store.set_avatar_url(user_id, avatar_url).await?;
+        Ok(())
+    }
+
     /// Completes login for a TOTP-enabled account with email + code only
     /// (used after the OAuth detour, where no password exists to resend).
     /// Issues a short session on success.

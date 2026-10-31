@@ -7,7 +7,7 @@
 //!
 //! Object stores have no folder entities — a "folder" is just a key
 //! prefix. [`ConfigStore::ensure_root_folders`] materializes each
-//! top-level prefix (`projects/`, `backup/`) with a tiny empty marker
+//! top-level prefix (`projects/`, `backup/`, `users/`) with a tiny empty marker
 //! object *inside* it (`{prefix}.keep`): the bucket visually "has" the
 //! folders on any dashboard from boot, before any real key arrives. The
 //! markers list under their prefix, so per-slug flows (purge, export)
@@ -152,7 +152,7 @@ impl ConfigStore for R2ConfigStore {
         // rides the same bucket (the worker's dumps land there), so
         // marking it is safe from any process. Zero-byte objects inside
         // each prefix make dashboards display the folder.
-        for prefix in ["projects/", "backup/"] {
+        for prefix in ["projects/", "backup/", "users/"] {
             let marker = format!("{prefix}.keep");
             self.put_raw(&marker, Vec::new()).await?;
         }

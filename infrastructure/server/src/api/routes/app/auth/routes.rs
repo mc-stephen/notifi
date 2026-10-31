@@ -4,15 +4,21 @@
 //! Generic over the parent state: handlers pull their dependencies from
 //! request extensions (`Arc<AuthService>`), so no `AppState` coupling.
 
+use super::avatar;
 use super::handlers;
 use axum::Router;
 use axum::routing::{get, post};
 
-pub fn router<S>() -> Router<S>
+/// Builds the `/app/auth` router. `config_store` backs the avatar
+/// routes (the `users/` folder's files) — absent without a store, in
+/// which case they answer 503 like every other stored endpoint.
+pub fn router<S>(
+    config_store: Option<std::sync::Arc<dyn crate::ports::ConfigStore + Send + Sync>>,
+) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    Router::new()
+    let router = Router::new()
         .route("/signup", post(handlers::signup))
         .route("/login", post(handlers::login))
         .route("/logout", post(handlers::logout))
@@ -28,4 +34,14 @@ where
         .route("/totp/challenge", post(handlers::totp_challenge))
         .route("/oauth/{provider}", get(handlers::oauth_start))
         .route("/oauth/{provider}/callback", get(handlers::oauth_callback))
+        .route(
+            "/profile/avatar",
+            post(avatar::upload)
+                .get(avatar::fetch)
+                .delete(avatar::remove),
+        );
+    match config_store {
+        Some(store) => router.layer(axum::Extension(store)),
+        None => router,
+    }
 }

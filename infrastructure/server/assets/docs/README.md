@@ -112,7 +112,7 @@ Project channel configs + templates live under `projects/{slug}/…` in a
 `ConfigStore` driver: the file system (root `NOTIFI_CONFIG_ROOT`) or the
 R2 bucket when `NOTIFI_R2_*` is set (bucket = root, same keys). One
 convention everywhere, cache (`cfg:` prefix, Redis) in between. Every
-boot lays the top-level folders down (`projects/`, `backup/`) via
+boot lays the top-level folders down (`projects/`, `backup/`, `users/`) via
 `build_ensured`; `--reset` wipes `projects/` back to only those markers
 (its store half — the DB comes first).
 
@@ -186,7 +186,7 @@ cargo run
 | `GET /readyz` | ops | Readiness — Postgres + Redis reachable (503 problem doc otherwise) |
 | `GET /routes` | ops | Route catalog — every endpoint across all surfaces |
 | `/v1/*` | external | *(empty until M2 — product endpoints mount under /v1)* |
-| `/app/auth/*` | app | Auth: signup, login, logout, me, OAuth, password flows, verify-email, onboarding-complete |
+| `/app/auth/*` | app | Auth: signup, login, logout, me, OAuth, password flows, verify-email, onboarding-complete; the avatar trio (`POST`/`GET`/`DELETE` `/profile/avatar`) rides the `users/` folder — one image per user (`users/{id}/avatar.{ext}`, jpeg/png/webp ≤ 2 MiB; also 302-redirects external OAuth-imported URLs) |
 | `/app/providers` | app | Provider registry — all channels + providers + config fields (GET) |
 | `/app/projects/{id}/channel-configs` | app | Channel configs CRUD (list, create, update, delete) |
 | `/app/projects/{id}/recipients` | app | Recipients CRUD — the contacts blob carries the `devices` token array (§25) |

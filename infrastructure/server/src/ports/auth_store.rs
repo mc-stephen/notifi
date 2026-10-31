@@ -73,6 +73,14 @@ pub trait AuthStore: Send + Sync {
     fn enable_totp(&self, user_id: UserId) -> BoxFut<'_, Result<(), StoreError>>;
     /// Disables TOTP 2FA and clears the secret.
     fn disable_totp(&self, user_id: UserId) -> BoxFut<'_, Result<(), StoreError>>;
+    /// Persists the avatar reference: a `users/{id}/avatar.{ext}`
+    /// storage key (app-stored image) or an external provider URL
+    /// (OAuth imports). `None` clears it.
+    fn set_avatar_url(
+        &self,
+        user_id: UserId,
+        avatar_url: Option<String>,
+    ) -> BoxFut<'_, Result<(), StoreError>>;
     /// Lists users (newest first) with optional search/status filters.
     /// `search` matches name or email (case-insensitive, substring).
     /// Returns the page plus the total matching count.
