@@ -5,8 +5,8 @@
 //! web push, the whole chat family (slack /
 //! telegram / whatsapp_business / discord / ms_teams), all nine
 //! SMS vendors and the other channel (onesignal wrapping both phone
-//! families at once / webhook relay / the Notifi gateway pull-route)
-//! send for real — one adapter set
+//! families at once, pushy wrapping phone families plus web / webhook
+//! relay / the Notifi gateway pull-route) send for real — one adapter set
 //! serves every destination in the registry. Each adapter is built
 //! per-request from the project's own provider config JSON. Anything
 //! else still resolves to `None` so the send worker records a
@@ -206,17 +206,20 @@ fn apns_from_config(config: &serde_json::Value) -> Option<Arc<dyn DeliveryProvid
     }))
 }
 
-/// Pushy (channel `android`): posts the notification to Pushy's push
-/// endpoint; the recipient is the device registration token. Same
-/// shape as the Firebase adapter — one vendor, one controller file,
-/// the warhead is the config.
+/// Pushy: posts the notification to Pushy's push endpoint; the
+/// recipient is the device registration token. Same shape as the
+/// Firebase adapter — one vendor, one controller file, the warhead is
+/// the config. The card lives in the other channel's section (Pushy
+/// serves android, apple and web from one key), and legacy android
+/// saves keep delivering through their own arm.
 pub struct PushyAdapter {
     provider: PushyProvider,
+    channel: &'static str,
 }
 
 impl DeliveryProvider for PushyAdapter {
     fn channel(&self) -> &'static str {
-        "android"
+        self.channel
     }
 
     fn provider_name(&self) -> &'static str {
@@ -683,6 +686,7 @@ impl AdapterFactory for DefaultAdapterFactory {
                 }
                 Some(Arc::new(PushyAdapter {
                     provider: PushyProvider::new(cfg),
+                    channel: "android",
                 }))
             }
             ("android", "onesignal") => onesignal_adapter(config, "android"),
@@ -734,6 +738,19 @@ impl AdapterFactory for DefaultAdapterFactory {
                         api_key,
                         rest_api_key,
                     }),
+                    channel: "other",
+                }))
+            }
+            ("other", "pushy") => {
+                let parsed: OtherChannelConfig = serde_json::from_value(config.clone()).ok()?;
+                if !parsed.carries_credentials() {
+                    return None;
+                }
+                let OtherChannelConfig::Pushy { api_key, app_id } = parsed else {
+                    return None;
+                };
+                Some(Arc::new(PushyAdapter {
+                    provider: PushyProvider::new(PushyConfig { api_key, app_id }),
                     channel: "other",
                 }))
             }
@@ -1248,6 +1265,28 @@ mod tests {
         let onesignal = onesignal.unwrap();
         assert_eq!(onesignal.channel(), "other");
         assert_eq!(onesignal.provider_name(), "onesignal");
+
+        // Pushy's wrapper does the same — one api key serves phone
+        // families plus web, tagged behind the "other" channel name.
+        let pushy = f.adapter(
+            "proj-1",
+            "other",
+            "pushy",
+            &serde_json::json!({"provider": "pushy", "api_key": "k"}),
+        );
+        assert!(pushy.is_some());
+        let pushy = pushy.unwrap();
+        assert_eq!(pushy.channel(), "other");
+        assert_eq!(pushy.provider_name(), "pushy");
+        assert!(
+            f.adapter(
+                "proj-1",
+                "other",
+                "pushy",
+                &serde_json::json!({"provider": "pushy"})
+            )
+            .is_none()
+        );
 
         // Blanks stay None, and an envelope whose tag disagrees with
         // the arm resolves to None (never a wrong-vendor adapter).

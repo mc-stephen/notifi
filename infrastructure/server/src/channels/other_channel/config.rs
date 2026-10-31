@@ -25,6 +25,12 @@ pub enum OtherChannelConfig {
         #[serde(default)]
         rest_api_key: Option<String>,
     },
+    #[serde(rename = "pushy")]
+    Pushy {
+        api_key: String,
+        #[serde(default)]
+        app_id: Option<String>,
+    },
     #[serde(rename = "relay")]
     Relay {
         target_url: String,
@@ -64,6 +70,7 @@ impl OtherChannelConfig {
                 }
                 rest_api_key.as_deref().is_some_and(|k| !k.is_empty()) || !api_key.trim().is_empty()
             }
+            Self::Pushy { api_key, .. } => !api_key.trim().is_empty(),
             Self::Relay { target_url, .. } => !target_url.trim().is_empty(),
             Self::Gateway {
                 topic, secret_key, ..

@@ -432,7 +432,8 @@ export const PROVIDER_BLURBS: Record<string, string> = {
   "chat:discord": "Post updates to Discord servers.",
   "chat:ms_teams": "Notify Microsoft Teams channels.",
   "android:fcm": "Push to Android devices via Firebase.",
-  "android:pushy": "Reliable Android push delivery at scale.",
+  "other:pushy":
+    "Pushy — cross-platform push to Android, Apple and Web from one key.",
   "android:onesignal": "Multi-channel engagement for Android.",
   "apple:apns": "Push notifications to iPhones, iPads and Macs.",
   "apple:onesignal": "Multi-channel engagement for Apple devices.",

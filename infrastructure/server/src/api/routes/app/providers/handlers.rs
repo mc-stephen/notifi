@@ -77,7 +77,7 @@ fn build_registry() -> ProviderRegistry {
     channels.extend(build_device_channels());
     channels.push(build_other_channel());
     ProviderRegistry {
-        version: "1.4.1".to_string(),
+        version: "1.5.0".to_string(),
         last_updated: chrono::Utc::now().to_rfc3339(),
         channels,
     }
@@ -91,11 +91,13 @@ fn build_device_channels() -> Vec<ChannelDefinition> {
     device_channel::providers::catalog()
         .into_iter()
         .map(|mut dest| {
-            // OneSignal serves both phone families at once — its single
-            // card lives in the "other" channel's section, so the family
-            // rows stop offering it. Projects that saved it under
+            // Cross-platform vendors serve both phone families (and web,
+            // for pushy) from one key — their single cards live in the
+            // "other" channel's section, so the family rows stop
+            // offering them. Projects that saved them under
             // android/apple keep delivering through their own arms.
-            dest.vendors.retain(|v| v.id != "onesignal");
+            dest.vendors
+                .retain(|v| v.id != "onesignal" && v.id != "pushy");
             ChannelDefinition {
                 channel_id: dest.destination.to_string(),
                 channel_name: dest.title.to_string(),
@@ -1312,7 +1314,7 @@ mod registry_tests {
     #[test]
     fn registry_sections_cover_every_family_with_other_last() {
         let registry = build_registry();
-        assert_eq!(registry.version, "1.4.1");
+        assert_eq!(registry.version, "1.5.0");
 
         let ids: Vec<&str> = registry
             .channels
@@ -1328,7 +1330,7 @@ mod registry_tests {
     }
 
     #[test]
-    fn device_sections_stop_offering_the_onesignal_card() {
+    fn device_sections_stop_offering_the_cross_platform_cards() {
         let registry = build_registry();
         for channel in &registry.channels {
             if channel.channel_id == "android" || channel.channel_id == "apple" {
@@ -1336,8 +1338,8 @@ mod registry_tests {
                     !channel
                         .providers
                         .iter()
-                        .any(|p| p.provider_id == "onesignal"),
-                    "oneSignal leaked into the {} section",
+                        .any(|p| p.provider_id == "onesignal" || p.provider_id == "pushy"),
+                    "a cross-platform vendor leaked into the {} section",
                     channel.channel_id
                 );
             }
@@ -1354,7 +1356,7 @@ mod registry_tests {
             .iter()
             .map(|p| p.provider_id.as_str())
             .collect();
-        assert!(android_ids.contains(&"fcm") && android_ids.contains(&"pushy"));
+        assert!(android_ids.contains(&"fcm"));
         let apple = registry
             .channels
             .iter()
@@ -1429,11 +1431,12 @@ mod registry_tests {
             .iter()
             .map(|p| p.provider_id.as_str())
             .collect();
-        // The pull-route gateway moved in from the old linux family —
-        // one section now carries both direction flavors: we post
-        // (relay), they poll (gateway); the cross-platform onesignal
-        // wrapper leads.
-        assert_eq!(ids, vec!["onesignal", "relay", "gateway"]);
+        // The cross-platform wrappers lead (onesignal, pushy — one key
+        // serves phone families, pushy adds web), then the two
+        // direction flavors: we post (relay), they poll (gateway).
+        // The gateway moved in from the old linux family — its route is
+        // `/gateway/{topic}` now.
+        assert_eq!(ids, vec!["onesignal", "pushy", "relay", "gateway"]);
 
         // The onesignal card serves both phone families from one
         // connect — the whole point of the other channel's wrapper.

@@ -1035,10 +1035,11 @@ async fn test_ms_teams(config: &serde_json::Value) -> TestResult {
 
 /// Other-channel probes. OneSignal shares the device family's real read
 /// (same vendor, same REST surface, handed the bare fields after the
-/// envelope parses); the relay recipe honestly reports that a webhook
-/// cannot be read without posting to it; the gateway checks its route
-/// recipe house-side. The envelope parse pins the vendor tag against
-/// the arm — a flat save's fields parse to nothing.
+/// envelope parses); pushy does the same hand-off (device-info read);
+/// the relay recipe honestly reports that a webhook cannot be read
+/// without posting to it; the gateway checks its route recipe
+/// house-side. The envelope parse pins the vendor tag against the arm —
+/// a flat save's fields parse to nothing.
 async fn test_other_provider(provider_id: &str, config: &serde_json::Value) -> TestResult {
     match provider_id {
         "onesignal" => {
@@ -1072,6 +1073,27 @@ async fn test_other_provider(provider_id: &str, config: &serde_json::Value) -> T
                 "rest_api_key": rest_api_key
             });
             test_device_provider("onesignal", &bare).await
+        }
+        "pushy" => {
+            let Ok(OtherChannelConfig::Pushy { api_key, app_id }) =
+                serde_json::from_value::<OtherChannelConfig>(config.clone())
+            else {
+                return TestResult {
+                    success: false,
+                    message: "Config does not parse for the other channel's pushy (the \
+                              saved envelope carries the provider tag plus its fields)"
+                        .to_string(),
+                };
+            };
+            if api_key.trim().is_empty() {
+                return TestResult {
+                    success: false,
+                    message: "Pushy needs an api key".to_string(),
+                };
+            }
+            // The device arm owns the read — hand it the bare fields.
+            let bare = serde_json::json!({ "api_key": api_key, "app_id": app_id });
+            test_device_provider("pushy", &bare).await
         }
         "relay" => {
             let Ok(OtherChannelConfig::Relay { target_url, .. }) =
@@ -1198,6 +1220,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn other_pushy_probe_asks_at_least_for_the_key() {
+        // Blank keys fail pre-network with the vendor's ask.
+        let t = ConfigProviderTester
+            .test(
+                "other",
+                "pushy",
+                &serde_json::json!({"provider": "pushy", "api_key": " "}),
+            )
+            .await;
+        assert!(!t.success, "{}", t.message);
+        assert!(t.message.contains("api key"), "{}", t.message);
+    }
+
+    #[tokio::test]
     async fn other_onesignal_probe_rides_the_device_read() {
         // Blank keys fail pre-network with the vendor's ask.
         let t = ConfigProviderTester
@@ -1225,6 +1261,12 @@ mod tests {
                 "onesignal",
                 &serde_json::json!({"app_id": "a", "api_key": "k"}),
             )
+            .await;
+        assert!(!t.success, "{}", t.message);
+        assert!(t.message.contains("does not parse"), "{}", t.message);
+
+        let t = ConfigProviderTester
+            .test("other", "pushy", &serde_json::json!({"api_key": "k"}))
             .await;
         assert!(!t.success, "{}", t.message);
         assert!(t.message.contains("does not parse"), "{}", t.message);

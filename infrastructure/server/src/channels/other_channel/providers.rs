@@ -40,6 +40,27 @@ pub fn catalog() -> Vec<VendorEntry> {
             ],
         },
         VendorEntry {
+            id: "pushy",
+            name: "Pushy",
+            platforms: &["android", "apple", "web"],
+            icon_url: Some("https://cdn.brandfetch.io/pushy.me/w/512/h/512/theme/dark/icon.jpeg"),
+            docs_url: Some("https://pushy.me/docs"),
+            fields: vec![
+                VendorField {
+                    key: "api_key",
+                    label: "API key",
+                    ty: FieldType::Password,
+                    required: true,
+                },
+                VendorField {
+                    key: "app_id",
+                    label: "App ID",
+                    ty: FieldType::Text,
+                    required: false,
+                },
+            ],
+        },
+        VendorEntry {
             id: "relay",
             name: "Webhook (Relay)",
             platforms: &[],
@@ -112,21 +133,24 @@ mod catalog_tests {
     fn catalog_matches_the_wrapped_flavors() {
         let entries = catalog();
         let ids: Vec<&str> = entries.iter().map(|v| v.id).collect();
-        assert_eq!(ids, vec!["onesignal", "relay", "gateway"]);
+        assert_eq!(ids, vec!["onesignal", "pushy", "relay", "gateway"]);
 
         // One card serves both phone families — the whole point of the
-        // other channel's onesignal wrapper.
+        // other channel's onesignal wrapper; pushy joins it serving
+        // phone plus web from one key.
         let onesignal = &entries[0];
         assert_eq!(onesignal.platforms, &["android", "apple"]);
+        let pushy = &entries[1];
+        assert_eq!(pushy.platforms, &["android", "apple", "web"]);
 
         // The relay recipe carries every render knob the webhook
         // family's provider takes; headers stay optional.
-        let relay_fields: Vec<&str> = entries[1].fields.iter().map(|f| f.key).collect();
+        let relay_fields: Vec<&str> = entries[2].fields.iter().map(|f| f.key).collect();
         assert_eq!(
             relay_fields,
             vec!["target_url", "method", "headers", "payload_template"]
         );
-        let required: Vec<(&str, bool)> = entries[1]
+        let required: Vec<(&str, bool)> = entries[2]
             .fields
             .iter()
             .map(|f| (f.key, f.required))
@@ -145,7 +169,7 @@ mod catalog_tests {
         // any machine that can poll subscribes). Its recipe is static —
         // the hidden topic generates at connect, the secret prefills,
         // the mode dropdown is the one real choice.
-        let gateway = &entries[2];
+        let gateway = &entries[3];
         assert!(gateway.platforms.is_empty());
         let required: Vec<(&str, bool)> =
             gateway.fields.iter().map(|f| (f.key, f.required)).collect();
@@ -158,7 +182,7 @@ mod catalog_tests {
 
         // A free-typed method could silently misbehave — the relay's
         // method is a dropdown over the body-carrying set.
-        let method = &entries[1]
+        let method = &entries[2]
             .fields
             .iter()
             .find(|f| f.key == "method")
