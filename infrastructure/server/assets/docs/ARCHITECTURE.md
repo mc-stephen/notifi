@@ -219,10 +219,11 @@ its three sweep services from the same graph — new services wire once.
 Channel modules group by channel family; the provider lives inside its
 family, never as its own `{name}_channel`:
 - Lives in `src/channels/{family}_channel/` (email, sms, chat, device,
-  other, webhook) — e.g. `chat_channel/slack.rs`, and one
-  `device_channel/` tree holds android, apple, window, and web as
-  destination flavors (declared inline in the family's `mod.rs`, with
-  the vendor files grouped in the destination's folder)
+  other) — e.g. `chat_channel/slack.rs`; the device family's tree
+  holds android, apple, window, and web as destination flavors, and
+  the other family owns the cross-platform sorts (the retired webhook
+  family dissolved into it — its relay / function controllers are
+  `other_channel` files now)
 - Defines provider config structs in the provider file
 - Has a provider enum in `{family}_channel/mod.rs` (the family's source
   of truth); providers whose flows permit it also carry controller
@@ -285,7 +286,11 @@ rows. OneSignal and Pushy live across now: their controllers
 single cross-platform cards (one connect, both phone families served —
 pushy adds web) sit in the other channel's tree, and old saves under
 android/apple keep delivering through their device arms, pointed at
-those controllers.
+those controllers. The retired webhook family dissolved into the other
+channel the same way — its relay and function controllers live as
+`other_channel/relay.rs` / `function.rs`, one envelope
+(`OtherChannelConfig`) instead of two, and the adapter builds straight
+from that envelope.
 
 ### Architecture
 

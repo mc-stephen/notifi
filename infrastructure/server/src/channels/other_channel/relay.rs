@@ -1,4 +1,3 @@
-use super::WebhookSender;
 use chrono::Utc;
 use futures::future::BoxFuture;
 use handlebars::Handlebars;
@@ -32,10 +31,9 @@ impl RelayProvider {
             hb,
         }
     }
-}
-
-impl WebhookSender for RelayProvider {
-    fn send(
+    /// The other channel's relay flow: render the payload template
+    /// (title, body, project, timestamp) and post it to the target.
+    pub fn send(
         &self,
         title: &str,
         body: &str,

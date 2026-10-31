@@ -37,16 +37,13 @@ use crate::channels::other_channel::{
     OtherChannelConfig,
     onesignal::{OneSignalConfig, OneSignalMessage, OneSignalProvider},
     pushy::{PushyConfig, PushyMessage, PushyProvider},
+    relay::RelayProvider,
 };
 use crate::channels::sms_channel::{SmsConfig, SmsMessage, SmsSender2};
 use crate::channels::sms_channel::{
     africas_talking::AfricasTalkingConfig, bird::BirdConfig, ebulksms::EbulkSmsConfig,
     infobip::InfobipConfig, local_nigeria::LocalNigeriaConfig, smslive247::SmsLive247Config,
     termii::TermiiConfig, twilio::TwilioConfig, vonage::VonageConfig,
-};
-use crate::channels::webhook_channel::{
-    WebhookMessage as RelayWebhookMessage, WebhookProvider as RelayWebhookProvider,
-    config::WebhookConfig as RelayWebhookConfig,
 };
 use crate::ports::gateway::GatewayStore;
 use crate::ports::{
@@ -609,10 +606,11 @@ impl DefaultAdapterFactory {
 /// Webhook relay (channel `other`): posts the rendered payload to the
 /// target URL saved at connect time — the recipe carries url, method,
 /// headers and the payload template, so the per-send address is
-/// informational only. The webhook family's provider does the HTTP
-/// work; this adapter is the other channel's arm around it.
+/// informational only. The relay controller does the HTTP work; this
+/// adapter is the other channel's arm around it.
 pub struct WebhookRelayAdapter {
-    provider: RelayWebhookProvider,
+    provider: RelayProvider,
+    project: String,
 }
 
 impl DeliveryProvider for WebhookRelayAdapter {
@@ -626,13 +624,12 @@ impl DeliveryProvider for WebhookRelayAdapter {
 
     fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_> {
         let provider = &self.provider;
-        let msg = RelayWebhookMessage {
-            title: message.title.clone(),
-            body: message.body.clone(),
-        };
+        let title = message.title.clone();
+        let body = message.body.clone();
+        let project = self.project.clone();
         Box::pin(async move {
             provider
-                .send_notification(&msg)
+                .send(&title, &body, &project)
                 .await
                 .map(|_| DeliveryReceipt {
                     provider: "relay".to_string(),
@@ -765,15 +762,8 @@ impl AdapterFactory for DefaultAdapterFactory {
                     return None;
                 };
                 Some(Arc::new(WebhookRelayAdapter {
-                    provider: RelayWebhookProvider::new(
-                        RelayWebhookConfig::Relay {
-                            target_url,
-                            method,
-                            headers,
-                            payload_template,
-                        },
-                        project_id.to_string(),
-                    ),
+                    provider: RelayProvider::new(target_url, method, headers, payload_template),
+                    project: project_id.to_string(),
                 }))
             }
             ("other", "gateway") => {
