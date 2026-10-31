@@ -9,8 +9,9 @@
 //! only translates wait seconds.
 //!
 //! Production driver: [`crate::infra::gateway_store::PgGatewayStore`].
-//! Route surface: `src/api/routes/gateway.rs`. Proven by
-//! `tests/gateway_api.rs`.
+//! Route surface: `src/api/routes/gateway.rs` — the thin door; the
+//! card's logic (send adapter + the poll read) lives in
+//! `other_channel/gateway.rs`. Proven by `tests/gateway_api.rs`.
 
 use serde::Deserialize;
 use serde::Serialize;

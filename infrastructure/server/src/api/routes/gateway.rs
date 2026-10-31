@@ -1,15 +1,17 @@
-//! Device-facing gateway surface — the paths client apps hold open.
+//! Device-facing gateway surface — the route door only.
 //!
-//! `GET /gateway/{topic}` serves one secret route (topic + generated
-//! key from the saved recipe): queued messages come back oldest-first and
-//! leave the queue at fetch time (poll-and-delete — no second read).
-//! Long-poll via `?wait=<seconds>` (cap 20; omitted = plain instant check).
-//! The key arrives as `?key=`; a missing key is refused with 401; a wrong
-//! key pairs with the topic to the same harmless empty queue, so no
-//! route-existence signal leaks.
+//! `GET /gateway/{topic}` is the door client apps hold open: this file
+//! registers the path, parses the request shape, and maps the read's
+//! verdicts onto HTTP problems. The read's rules live in
+//! `other_channel::gateway` — the key check, the 1-200 topic bound, the
+//! 20-second long-poll cap, and the poll-and-delete queue call
+//! (one secret route; queued messages come back oldest-first and leave
+//! the queue at fetch time). The key arrives as `?key=`; a missing key
+//! is refused with 401; a wrong key pairs with the topic to the same
+//! harmless empty queue, so no route-existence signal leaks.
 //!
-//! No session middleware here: the route's secret is the auth. Catalog row:
-//! [`crate::api::catalog::GATEWAY_ROUTES`]. Proven by
+//! No session middleware here: the route's secret is the auth. Catalog
+//! row: [`crate::api::catalog::GATEWAY_ROUTES`]. Proven by
 //! `tests/gateway_api.rs`.
 
 use std::sync::Arc;
@@ -22,11 +24,9 @@ use serde::Serialize;
 
 use crate::api::routes::app::auth::Problem;
 use crate::api::state::AppState;
+use crate::channels::other_channel::gateway::{PollRouteError, poll_route};
 use crate::domain::error::AppError;
 use crate::ports::gateway::{GatewayMessage, GatewayStore};
-
-/// Long-poll hold cap, in seconds.
-const MAX_WAIT_SECS: u64 = 20;
 
 /// The `/gateway` router: device routes over the gateway queue. Without a
 /// store (no database) the routes answer 503 problem documents.
@@ -50,7 +50,7 @@ fn require_store(store: MaybeGatewayStore) -> Result<Arc<dyn GatewayStore + Send
 pub struct PollParams {
     /// Route secret (the generated recipe key).
     key: Option<String>,
-    /// Long-poll hold in seconds (capped at [`MAX_WAIT_SECS`]; omitted = 0).
+    /// Long-poll hold in seconds (capped inside the read core; omitted = 0).
     wait: Option<u64>,
 }
 
@@ -60,28 +60,22 @@ pub struct PollResponse {
     messages: Vec<GatewayMessage>,
 }
 
-/// `GET /gateway/{topic}` — poll-and-delete read for one secret route.
+/// `GET /gateway/{topic}` — the door: hand the poll read to
+/// `other_channel::gateway` and translate its verdicts to problems.
 pub async fn poll_topic(
     Path(topic): Path<String>,
     Query(params): Query<PollParams>,
     store: MaybeGatewayStore,
 ) -> Result<Json<PollResponse>, Problem> {
     let store = require_store(store)?;
-
-    let key = params.key.as_deref().unwrap_or("").trim().to_string();
-    if key.is_empty() {
-        return Err(AppError::Unauthorized.into());
-    }
-
-    let topic = topic.trim().to_string();
-    if topic.is_empty() || topic.len() > 200 {
-        return Err(AppError::Validation("route topic must be 1-200 characters".into()).into());
-    }
-
-    let wait = params.wait.unwrap_or(0).min(MAX_WAIT_SECS);
-    let messages = store
-        .poll(&topic, &key, wait)
+    let key = params.key.as_deref().unwrap_or("");
+    let wait = params.wait.unwrap_or(0);
+    let messages = poll_route(store, &topic, key, wait)
         .await
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+        .map_err(|e| match e {
+            PollRouteError::MissingKey => Problem::from(AppError::Unauthorized),
+            PollRouteError::BadTopic(msg) => Problem::from(AppError::Validation(msg.to_string())),
+            PollRouteError::Storage(msg) => Problem::from(AppError::Storage(msg)),
+        })?;
     Ok(Json(PollResponse { messages }))
 }

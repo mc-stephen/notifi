@@ -33,6 +33,7 @@ use crate::channels::device_channel::window::{
 use crate::channels::email_channel::{EmailConfig, EmailMessage, EmailSender, smtp::SmtpConfig};
 use crate::channels::other_channel::{
     OtherChannelConfig,
+    gateway::GatewayAdapter,
     onesignal::{OneSignalConfig, OneSignalMessage, OneSignalProvider},
     pushy::{PushyConfig, PushyMessage, PushyProvider},
     relay::RelayProvider,
@@ -538,47 +539,6 @@ fn sms_adapter<T: serde::de::DeserializeOwned + 'static>(
     }))
 }
 
-/// Production factory: SMTP + Firebase + Apple + SMS from project config, stubs nowhere else yet.
-/// The Notifi gateway (channel `other`, provider `gateway`): queues the
-/// notification into Notifi's own gateway queue — the user's app polls
-/// its secret route (`GET /gateway/{topic}?key=...`) and reads it away.
-/// No external provider at all: the store IS the vendor's listening
-/// path (see `ports::gateway`). The recipe carries the route's two
-/// halves, so the recipient contact is unused here.
-pub struct GatewayAdapter {
-    store: Arc<dyn GatewayStore + Send + Sync>,
-    topic: String,
-    secret_key: String,
-}
-
-impl DeliveryProvider for GatewayAdapter {
-    fn channel(&self) -> &'static str {
-        "other"
-    }
-
-    fn provider_name(&self) -> &'static str {
-        "gateway"
-    }
-
-    fn send(&self, message: &DeliveryMessage) -> BoxSendFuture<'_> {
-        let store = self.store.clone();
-        let topic = self.topic.clone();
-        let secret_key = self.secret_key.clone();
-        let title = message.title.clone();
-        let body = message.body.clone();
-        Box::pin(async move {
-            store
-                .push(&topic, &secret_key, &title, &body)
-                .await
-                .map(|_| DeliveryReceipt {
-                    provider: "gateway".to_string(),
-                    provider_message_id: None,
-                })
-                .map_err(|e| DeliveryError::Provider(e.to_string()))
-        })
-    }
-}
-
 /// Builds channel adapters from per-project provider config.
 ///
 /// Most arms are self-contained (the recipe carries the credential); the
@@ -776,11 +736,7 @@ impl AdapterFactory for DefaultAdapterFactory {
                     return None;
                 };
                 let store = self.gateway.clone()?;
-                Some(Arc::new(GatewayAdapter {
-                    store,
-                    topic,
-                    secret_key,
-                }))
+                Some(Arc::new(GatewayAdapter::new(store, topic, secret_key)))
             }
             // All nine SMS vendors arm from their own bare saved config.
             ("sms", "twilio") => sms_adapter::<TwilioConfig>(config, "twilio", SmsConfig::Twilio),

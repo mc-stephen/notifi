@@ -9,12 +9,14 @@
 //! the push gateways' controllers live here (onesignal.rs, pushy.rs),
 //! the retired webhook family's relay.rs moved in from its old folder
 //! (the family's placeholder function flavor was removed with it —
-//! cardless means gone), and the gateway has its only home here
-//! (`ports::gateway` queue + `src/api/routes/gateway.rs`). The webhook
-//! relay's integration guide lives behind `docs/` (moved with its
-//! controller). A provider that outgrows the
-//! wrapper earns a real channel of its own.
+//! cardless means gone), and the gateway lives here too: gateway.rs
+//! holds its send and the poll read behind the secret route, while the
+//! queue contract stays `ports::gateway` and the route door is
+//! `src/api/routes/gateway.rs`. The webhook relay's integration guide
+//! lives behind `docs/` (moved with its controller). A provider that
+//! outgrows the wrapper earns a real channel of its own.
 
+pub mod gateway;
 pub mod onesignal;
 pub mod pushy;
 pub mod relay;
