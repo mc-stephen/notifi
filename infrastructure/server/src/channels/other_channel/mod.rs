@@ -14,6 +14,8 @@
 //! earns a real channel of its own.
 
 pub mod config;
+pub mod onesignal;
+pub mod pushy;
 
 pub use config::OtherChannelConfig;
 

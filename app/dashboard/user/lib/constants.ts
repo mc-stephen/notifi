@@ -434,9 +434,7 @@ export const PROVIDER_BLURBS: Record<string, string> = {
   "android:fcm": "Push to Android devices via Firebase.",
   "other:pushy":
     "Pushy — cross-platform push to Android, Apple and Web from one key.",
-  "android:onesignal": "Multi-channel engagement for Android.",
   "apple:apns": "Push notifications to iPhones, iPads and Macs.",
-  "apple:onesignal": "Multi-channel engagement for Apple devices.",
   "other:gateway":
     "Notifi Gateway — you pull from us: your app polls a hosted route. The counterpart of the webhook relay (we push to you).",
   "web:web_push": "Browser push notifications via Web Push.",

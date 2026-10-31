@@ -90,14 +90,11 @@ fn build_registry() -> ProviderRegistry {
 fn build_device_channels() -> Vec<ChannelDefinition> {
     device_channel::catalog()
         .into_iter()
-        .map(|mut dest| {
-            // Cross-platform vendors serve both phone families (and web,
-            // for pushy) from one key — their single cards live in the
-            // "other" channel's section, so the family rows stop
-            // offering them. Projects that saved them under
-            // android/apple keep delivering through their own arms.
-            dest.vendors
-                .retain(|v| v.id != "onesignal" && v.id != "pushy");
+        .map(|dest| {
+            // Device rows are destination natives only — the
+            // cross-platform vendors (OneSignal, Pushy) have their
+            // single cards, and their controllers, in the other
+            // channel's tree.
             ChannelDefinition {
                 channel_id: dest.destination.to_string(),
                 channel_name: dest.title.to_string(),
@@ -1330,44 +1327,28 @@ mod registry_tests {
     }
 
     #[test]
-    fn device_sections_stop_offering_the_cross_platform_cards() {
+    fn device_sections_list_only_the_destination_natives() {
+        // The cross-platform wrappers (OneSignal, Pushy) left the device
+        // families — each section pins to exactly its natives now.
         let registry = build_registry();
-        for channel in &registry.channels {
-            if channel.channel_id == "android" || channel.channel_id == "apple" {
-                assert!(
-                    !channel
-                        .providers
-                        .iter()
-                        .any(|p| p.provider_id == "onesignal" || p.provider_id == "pushy"),
-                    "a cross-platform vendor leaked into the {} section",
-                    channel.channel_id
-                );
-            }
-        }
-
-        // The rest of each family survived — never an empty section.
-        let android = registry
-            .channels
-            .iter()
-            .find(|c| c.channel_id == "android")
-            .expect("android section");
-        let android_ids: Vec<&str> = android
-            .providers
-            .iter()
-            .map(|p| p.provider_id.as_str())
-            .collect();
-        assert!(android_ids.contains(&"fcm"));
-        let apple = registry
-            .channels
-            .iter()
-            .find(|c| c.channel_id == "apple")
-            .expect("apple section");
-        assert!(
-            apple
+        for (channel_id, ids) in [
+            ("android", vec!["fcm"]),
+            ("apple", vec!["apns"]),
+            ("web", vec!["web_push"]),
+            ("window", vec!["wns"]),
+        ] {
+            let channel = registry
+                .channels
+                .iter()
+                .find(|c| c.channel_id == channel_id)
+                .unwrap_or_else(|| panic!("device section {channel_id} missing"));
+            let got: Vec<&str> = channel
                 .providers
                 .iter()
-                .any(|p| p.provider_id.starts_with("apns"))
-        );
+                .map(|p| p.provider_id.as_str())
+                .collect();
+            assert_eq!(got, ids, "device section {channel_id} drifted");
+        }
     }
 
     #[test]

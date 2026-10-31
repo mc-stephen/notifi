@@ -7,12 +7,12 @@ use crate::channels::chat_channel::{
     whatsapp_business::{WhatsAppBusinessConfig, WhatsAppBusinessProvider},
 };
 use crate::channels::device_channel::android::fcm::{FcmConfig, FcmProvider};
-use crate::channels::device_channel::android::onesignal::{OneSignalConfig, OneSignalProvider};
-use crate::channels::device_channel::android::pushy::{PushyConfig, PushyProvider};
 use crate::channels::device_channel::apple::apns::{ApnsProvider, IosConfig};
 use crate::channels::device_channel::web::web_push::{WebConfig, WebProvider};
 use crate::channels::device_channel::window::wns::WnsAuthenticator;
 use crate::channels::other_channel::OtherChannelConfig;
+use crate::channels::other_channel::onesignal::{OneSignalConfig, OneSignalProvider};
+use crate::channels::other_channel::pushy::{PushyConfig, PushyProvider};
 use crate::ports::provider_tester::{ProviderTester, TestResult};
 
 pub struct ConfigProviderTester;

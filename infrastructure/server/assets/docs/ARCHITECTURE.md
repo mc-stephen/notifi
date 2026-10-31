@@ -277,11 +277,15 @@ defines a config struct. The channel's `mod.rs` enum lists all
 providers — this is the source of truth.
 The device family (android, apple, web, window) additionally derives
 its registry rows from its own `device_channel::catalog()` (see the
-derived-families subsection below), and the other channel pushes its
-wrapper cards the same way; the vendor-first `push` channel was retired in
-favor of those destination rows — its FCM/APNS/OneSignal controllers live
-there still, while OneSignal's and Pushy's single cards (cross-platform,
-served from one connect) ride the other channel's section instead.
+derived-families subsection below) — its rows list destination natives
+only — and the other channel pushes its cards the same way; the
+vendor-first `push` channel was retired in favor of those destination
+rows. OneSignal and Pushy live across now: their controllers
+(`other_channel/onesignal.rs`, `other_channel/pushy.rs`) and their
+single cross-platform cards (one connect, both phone families served —
+pushy adds web) sit in the other channel's tree, and old saves under
+android/apple keep delivering through their device arms, pointed at
+those controllers.
 
 ### Architecture
 

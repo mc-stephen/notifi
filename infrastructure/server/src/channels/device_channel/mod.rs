@@ -17,23 +17,23 @@
 //! device rows from [`catalog()`] — adding a vendor is its provider
 //! file plus the destination's `Provider` enum and `vendors()` listing
 //! (golden test `catalog_pins_every_family_variant` pins both lists to
-//! each other). Cross-platform vendors (OneSignal, Pushy) register
-//! under the other channel's section instead — their single cards sit
-//! there, and legacy android/apple saves keep delivering through the
-//! device arms. Device tokens are recipient data — the recipient's
+//! each other). Cross-platform vendors (OneSignal, Pushy) belong to
+//! no single destination — their cards and their controllers live in
+//! `other_channel`, and legacy android/apple saves keep delivering
+//! through their device arms, pointed at those controllers. Device
+//! tokens are recipient data — the recipient's
 //! contacts blob carries a `devices` array (§25); delivery is
 //! adapter-wired in `infra::delivery_adapters` (every registry card
 //! sends), and the blob walker that fans that array out per install is
 //! still the send layer's pending job.
 
 pub mod android {
-    //! Android destination — everything that can push to an Android
-    //! device. Third-party gateways beyond FCM serve the same
-    //! registration-token shape from their own APIs.
+    //! Android destination — its native vendor is FCM. The
+    //! cross-platform gateways (Pushy, OneSignal) are the other
+    //! channel's cards, with their controllers in that folder; gateway
+    //! saves under android keep their delivery arms, pointed there.
 
     pub mod fcm;
-    pub mod onesignal;
-    pub mod pushy;
 
     /// The Android destination's own message shape: an FCM-style
     /// registration token plus the notification copy.
@@ -47,16 +47,12 @@ pub mod android {
     #[derive(Debug, Clone)]
     pub enum Provider {
         Fcm(fcm::FcmConfig),
-        Pushy(pushy::PushyConfig),
-        OneSignal(onesignal::OneSignalConfig),
     }
 
     impl Provider {
         pub fn provider_name(&self) -> &'static str {
             match self {
                 Self::Fcm(_) => "fcm",
-                Self::Pushy(_) => "pushy",
-                Self::OneSignal(_) => "onesignal",
             }
         }
     }
@@ -64,77 +60,19 @@ pub mod android {
     /// The destination's registry listing — kept in sync with `Provider`
     /// by the family's golden test (add a vendor in both places).
     pub fn vendors() -> Vec<super::VendorEntry> {
-        vec![
-            super::VendorEntry {
-                id: "fcm",
-                name: "Firebase Cloud Messaging",
-                platforms: &["android"],
-                icon_url: Some("https://api.iconify.design/logos/firebase-icon.svg"),
-                docs_url: Some("https://firebase.google.com/docs/cloud-messaging"),
-                fields: vec![super::VendorField {
-                    key: "service_account_path",
-                    label: "Service account key path (JSON)",
-                    ty: super::FieldType::Text,
-                    required: true,
-                }],
-            },
-            super::VendorEntry {
-                id: "pushy",
-                name: "Pushy",
-                platforms: &["android"],
-                icon_url: Some(
-                    "https://cdn.brandfetch.io/pushy.me/w/512/h/512/theme/dark/icon.jpeg",
-                ),
-                docs_url: Some("https://pushy.me/docs"),
-                fields: vec![
-                    super::VendorField {
-                        key: "api_key",
-                        label: "API key",
-                        ty: super::FieldType::Password,
-                        required: true,
-                    },
-                    super::VendorField {
-                        key: "app_id",
-                        label: "App ID",
-                        ty: super::FieldType::Text,
-                        required: false,
-                    },
-                ],
-            },
-            super::VendorEntry {
-                id: "onesignal",
-                name: "OneSignal",
-                platforms: &["android"],
-                icon_url: Some(
-                    "https://cdn.brandfetch.io/onesignal.com/w/512/h/512/theme/dark/icon.jpeg",
-                ),
-                docs_url: Some("https://documentation.onesignal.com/"),
-                fields: one_signal_fields(),
-            },
-        ]
-    }
-
-    fn one_signal_fields() -> Vec<super::VendorField> {
-        vec![
-            super::VendorField {
-                key: "app_id",
-                label: "App ID",
+        vec![super::VendorEntry {
+            id: "fcm",
+            name: "Firebase Cloud Messaging",
+            platforms: &["android"],
+            icon_url: Some("https://api.iconify.design/logos/firebase-icon.svg"),
+            docs_url: Some("https://firebase.google.com/docs/cloud-messaging"),
+            fields: vec![super::VendorField {
+                key: "service_account_path",
+                label: "Service account key path (JSON)",
                 ty: super::FieldType::Text,
                 required: true,
-            },
-            super::VendorField {
-                key: "api_key",
-                label: "API key",
-                ty: super::FieldType::Password,
-                required: true,
-            },
-            super::VendorField {
-                key: "rest_api_key",
-                label: "REST API key",
-                ty: super::FieldType::Password,
-                required: false,
-            },
-        ]
+            }],
+        }]
     }
 
     #[cfg(test)]
@@ -147,17 +85,6 @@ pub mod android {
                 service_account_path: std::path::PathBuf::from("/x/sa.json"),
             });
             assert_eq!(fcm.provider_name(), "fcm");
-            let pushy = Provider::Pushy(pushy::PushyConfig {
-                api_key: "k".to_string(),
-                app_id: None,
-            });
-            assert_eq!(pushy.provider_name(), "pushy");
-            let onesignal = Provider::OneSignal(onesignal::OneSignalConfig {
-                app_id: "a".to_string(),
-                api_key: "k".to_string(),
-                rest_api_key: None,
-            });
-            assert_eq!(onesignal.provider_name(), "onesignal");
         }
     }
 }
@@ -173,20 +100,17 @@ pub mod apple {
     //! recipe earns its place back.
 
     pub mod apns;
-    pub mod onesignal;
 
     /// All supported Apple push providers. THIS IS THE SOURCE OF TRUTH.
     #[derive(Debug, Clone)]
     pub enum Provider {
         Apns(apns::IosConfig),
-        OneSignal(onesignal::OneSignalConfig),
     }
 
     impl Provider {
         pub fn provider_name(&self) -> &'static str {
             match self {
                 Self::Apns(_) => "apns",
-                Self::OneSignal(_) => "onesignal",
             }
         }
     }
@@ -194,28 +118,14 @@ pub mod apple {
     /// The destination's registry listing — kept in sync with `Provider`
     /// by the family's golden test (add a vendor in both places).
     pub fn vendors() -> Vec<super::VendorEntry> {
-        vec![
-            super::VendorEntry {
-                id: "apns",
-                name: "Apple Push (iPhone, iPad & Mac)",
-                platforms: &["ios", "ipados", "macos"],
-                icon_url: Some(
-                    "https://cdn.brandfetch.io/apple.com/w/512/h/512/theme/dark/icon.jpeg",
-                ),
-                docs_url: Some("https://developer.apple.com/documentation/usernotifications"),
-                fields: apns_fields(),
-            },
-            super::VendorEntry {
-                id: "onesignal",
-                name: "OneSignal",
-                platforms: &["ios", "macos"],
-                icon_url: Some(
-                    "https://cdn.brandfetch.io/onesignal.com/w/512/h/512/theme/dark/icon.jpeg",
-                ),
-                docs_url: Some("https://documentation.onesignal.com/"),
-                fields: one_signal_fields(),
-            },
-        ]
+        vec![super::VendorEntry {
+            id: "apns",
+            name: "Apple Push (iPhone, iPad & Mac)",
+            platforms: &["ios", "ipados", "macos"],
+            icon_url: Some("https://cdn.brandfetch.io/apple.com/w/512/h/512/theme/dark/icon.jpeg"),
+            docs_url: Some("https://developer.apple.com/documentation/usernotifications"),
+            fields: apns_fields(),
+        }]
     }
 
     /// The APNs recipe's connect-form fields — they match
@@ -250,29 +160,6 @@ pub mod apple {
                 key: "sandbox",
                 label: "Sandbox mode",
                 ty: super::FieldType::Boolean,
-                required: false,
-            },
-        ]
-    }
-
-    fn one_signal_fields() -> Vec<super::VendorField> {
-        vec![
-            super::VendorField {
-                key: "app_id",
-                label: "App ID",
-                ty: super::FieldType::Text,
-                required: true,
-            },
-            super::VendorField {
-                key: "api_key",
-                label: "API key",
-                ty: super::FieldType::Password,
-                required: true,
-            },
-            super::VendorField {
-                key: "rest_api_key",
-                label: "REST API key",
-                ty: super::FieldType::Password,
                 required: false,
             },
         ]
@@ -765,34 +652,8 @@ mod device_dest_tests {
                 android::Provider::Fcm(fcm_like_config()).provider_name(),
             ),
             (
-                "android",
-                android::Provider::Pushy(android::pushy::PushyConfig {
-                    api_key: "k".to_string(),
-                    app_id: None,
-                })
-                .provider_name(),
-            ),
-            (
-                "android",
-                android::Provider::OneSignal(android::onesignal::OneSignalConfig {
-                    app_id: "a".to_string(),
-                    api_key: "k".to_string(),
-                    rest_api_key: None,
-                })
-                .provider_name(),
-            ),
-            (
                 "apple",
                 apple::Provider::Apns(apns_like_config()).provider_name(),
-            ),
-            (
-                "apple",
-                apple::Provider::OneSignal(apple::onesignal::OneSignalConfig {
-                    app_id: "a".to_string(),
-                    api_key: "k".to_string(),
-                    rest_api_key: None,
-                })
-                .provider_name(),
             ),
             (
                 "web",

@@ -20,13 +20,9 @@
 use std::sync::Arc;
 
 use crate::channels::chat_channel::{ChatMessage, ChatSender2, config::ChatConfig};
-use crate::channels::device_channel::android::onesignal::{
-    OneSignalConfig, OneSignalMessage, OneSignalProvider,
-};
 use crate::channels::device_channel::android::{
     AndroidMessage,
     fcm::{FcmConfig, FcmProvider},
-    pushy::{PushyConfig, PushyMessage, PushyProvider},
 };
 use crate::channels::device_channel::apple::apns::{ApnsMessage, ApnsProvider, IosConfig};
 use crate::channels::device_channel::web::web_push::{WebConfig, WebMessage, WebProvider};
@@ -37,7 +33,11 @@ use crate::channels::device_channel::window::{
 use crate::channels::email_channel::{
     EmailMessage, EmailSender, config::EmailConfig, smtp::SmtpConfig,
 };
-use crate::channels::other_channel::OtherChannelConfig;
+use crate::channels::other_channel::{
+    OtherChannelConfig,
+    onesignal::{OneSignalConfig, OneSignalMessage, OneSignalProvider},
+    pushy::{PushyConfig, PushyMessage, PushyProvider},
+};
 use crate::channels::sms_channel::{SmsConfig, SmsMessage, SmsSender2};
 use crate::channels::sms_channel::{
     africas_talking::AfricasTalkingConfig, bird::BirdConfig, ebulksms::EbulkSmsConfig,
