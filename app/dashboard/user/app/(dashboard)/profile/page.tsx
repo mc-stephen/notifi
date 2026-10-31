@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { PageHeader } from "@/components/custom/page-header";
 import { useAuthStore } from "@/store/auth-store";
 import { useProjectStore } from "@/store/project-store";
@@ -63,6 +63,61 @@ export default function ProfilePage() {
 
   const userInitials = initials(user?.name);
 
+  // Avatar — the profile card's round preview drives the whole trio:
+  // upload raw bytes, remove; both re-sync from /me and bump the
+  // cache-busting ?v so the image refetches.
+  const [avatarVersion, setAvatarVersion] = useState(0);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  const avatarProblem = async (res: Response, fallback: string) => {
+    const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+    return body?.detail ?? `${fallback} (${res.status}).`;
+  };
+
+  const handleAvatarUpload = async (file: File) => {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setAvatarError("Use a JPEG, PNG or WebP image.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setAvatarError("Image must be 2 MiB or smaller.");
+      return;
+    }
+    setAvatarBusy(true);
+    setAvatarError(null);
+    try {
+      const res = await fetch("/app/auth/profile/avatar", {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!res.ok) throw new Error(await avatarProblem(res, "Upload failed"));
+      setAvatarVersion((v) => v + 1);
+      await useAuthStore.getState().fetchMe();
+    } catch (err) {
+      setAvatarError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    setAvatarBusy(true);
+    setAvatarError(null);
+    try {
+      const res = await fetch("/app/auth/profile/avatar", { method: "DELETE" });
+      if (!res.ok) throw new Error(await avatarProblem(res, "Remove failed"));
+      setAvatarVersion((v) => v + 1);
+      await useAuthStore.getState().fetchMe();
+    } catch (err) {
+      setAvatarError(err instanceof Error ? err.message : "Remove failed.");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
     setSavingProfile(true);
     setProfileSuccess(false);
@@ -89,6 +144,12 @@ export default function ProfilePage() {
       <Card>
         <CardContent className="flex flex-wrap items-center gap-4 py-6">
           <Avatar className="size-16">
+            {user.avatar && (
+              <AvatarImage
+                src={`/app/auth/profile/avatar?v=${avatarVersion}`}
+                alt={user.name}
+              />
+            )}
             <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold">
               {userInitials}
             </AvatarFallback>
@@ -116,6 +177,40 @@ export default function ProfilePage() {
               )}
             </div>
             <div className="truncate text-sm text-muted-foreground">{user.email}</div>
+          </div>
+          <div className="flex flex-col items-start gap-1.5">
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = ""; // let the same file be re-picked
+                if (file) void handleAvatarUpload(file);
+              }}
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={avatarBusy}
+                onClick={() => avatarInputRef.current?.click()}
+              >
+                {avatarBusy ? "Working..." : user.avatar ? "Change" : "Upload"}
+              </Button>
+              {user.avatar && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={avatarBusy}
+                  onClick={() => void handleAvatarRemove()}
+                >
+                  Remove
+                </Button>
+              )}
+            </div>
+            {avatarError && <span className="text-xs text-destructive">{avatarError}</span>}
           </div>
         </CardContent>
       </Card>
