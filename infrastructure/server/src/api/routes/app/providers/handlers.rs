@@ -65,8 +65,8 @@ pub async fn get_providers() -> Json<ProvidersResponse> {
 
 /// Build the provider registry from Rust types. The three base channels
 /// are defined here; the device family's rows derive from
-/// `device_channel::providers::catalog()` and the other channel's from
-/// `other_channel::providers::catalog()` — the compiler enforces
+/// `device_channel::catalog()` and the other channel's from
+/// `other_channel::catalog()` — the compiler enforces
 /// structural correctness on all of them.
 fn build_registry() -> ProviderRegistry {
     let mut channels = vec![
@@ -88,7 +88,7 @@ fn build_registry() -> ProviderRegistry {
 /// vendor lands on the dashboard with its provider file and enum
 /// registration alone; nothing is typed out here.
 fn build_device_channels() -> Vec<ChannelDefinition> {
-    device_channel::providers::catalog()
+    device_channel::catalog()
         .into_iter()
         .map(|mut dest| {
             // Cross-platform vendors serve both phone families (and web,
@@ -137,13 +137,13 @@ fn build_device_channels() -> Vec<ChannelDefinition> {
 /// The other channel's registry rows — vendors that belong to no single
 /// platform family (wrapped controllers from their owning families),
 /// derived from the channel's own catalog
-/// (`channels/other_channel::providers::catalog()`), so nothing is
+/// (`channels/other_channel::catalog()`), so nothing is
 /// typed out here twice.
 fn build_other_channel() -> ChannelDefinition {
     ChannelDefinition {
         channel_id: "other".to_string(),
         channel_name: "Other".to_string(),
-        providers: other_channel::providers::catalog()
+        providers: other_channel::catalog()
             .into_iter()
             .map(|v| ProviderDefinition {
                 provider_id: v.id.to_string(),
@@ -176,8 +176,8 @@ fn build_other_channel() -> ChannelDefinition {
 /// Maps the vendor catalogs' connect-form field types onto the
 /// registry's enum. The device family and the other channel share the
 /// vocabulary; compiler-exhaustive both ways.
-fn vendor_field_type(ty: device_channel::providers::FieldType) -> (ConfigFieldType, Vec<String>) {
-    use device_channel::providers::FieldType;
+fn vendor_field_type(ty: device_channel::FieldType) -> (ConfigFieldType, Vec<String>) {
+    use device_channel::FieldType;
     match ty {
         FieldType::Text => (ConfigFieldType::Text, Vec::new()),
         FieldType::Password => (ConfigFieldType::Password, Vec::new()),
@@ -1423,7 +1423,7 @@ mod registry_tests {
             .channels
             .iter()
             .find(|c| c.channel_id == "other")
-            .expect("other section built from other_channel::providers::catalog");
+            .expect("other section built from other_channel::catalog");
         assert_eq!(other.channel_name, "Other");
 
         let ids: Vec<&str> = other

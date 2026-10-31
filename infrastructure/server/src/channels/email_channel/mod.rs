@@ -1,7 +1,40 @@
+pub mod aws_ses;
+pub mod brevo;
 pub mod config;
-pub mod providers;
+pub mod mailgun;
+pub mod postmark;
+pub mod resend;
+pub mod sendgrid;
+pub mod smtp;
 
 pub use config::EmailConfig;
+
+/// All supported email providers. THIS IS THE SOURCE OF TRUTH.
+/// To add a new provider: create new_provider.rs, add variant here.
+#[derive(Debug, Clone)]
+pub enum EmailProvider {
+    Smtp(smtp::SmtpConfig),
+    SendGrid(sendgrid::SendGridConfig),
+    Resend(resend::ResendConfig),
+    AwsSes(aws_ses::AwsSesConfig),
+    Postmark(postmark::PostmarkConfig),
+    Mailgun(mailgun::MailgunConfig),
+    Brevo(brevo::BrevoConfig),
+}
+
+impl EmailProvider {
+    pub fn provider_name(&self) -> &'static str {
+        match self {
+            Self::Smtp(_) => "smtp",
+            Self::SendGrid(_) => "sendgrid",
+            Self::Resend(_) => "resend",
+            Self::AwsSes(_) => "aws_ses",
+            Self::Postmark(_) => "postmark",
+            Self::Mailgun(_) => "mailgun",
+            Self::Brevo(_) => "brevo",
+        }
+    }
+}
 
 use lettre::{
     Address, AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
@@ -60,7 +93,7 @@ impl EmailSender {
     }
 
     fn smtp_transport(
-        smtp_config: &providers::smtp::SmtpConfig,
+        smtp_config: &smtp::SmtpConfig,
     ) -> Result<AsyncSmtpTransport<Tokio1Executor>, String> {
         let creds = Credentials::new(smtp_config.username.clone(), smtp_config.password.clone());
 

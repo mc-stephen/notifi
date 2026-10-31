@@ -129,7 +129,7 @@ impl SmsSender for InfobipProvider {
 #[cfg(test)]
 mod infobip_tests {
     use super::*;
-    use crate::channels::sms_channel::providers::SmsSender;
+    use crate::channels::sms_channel::SmsSender;
 
     const KEY: &str = "infobip-key-1";
     const BASE: &str = "https://acct.api.infobip.com";

@@ -76,7 +76,7 @@ impl SmsSender for AfricasTalkingProvider {
 #[cfg(test)]
 mod africas_talking_tests {
     use super::*;
-    use crate::channels::sms_channel::providers::SmsSender;
+    use crate::channels::sms_channel::SmsSender;
     use crate::testing::http_stub;
 
     const KEY: &str = "at_live_test_key";

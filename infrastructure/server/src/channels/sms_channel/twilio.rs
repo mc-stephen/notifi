@@ -81,7 +81,7 @@ impl SmsSender for TwilioProvider {
 #[cfg(test)]
 mod twilio_tests {
     use super::*;
-    use crate::channels::sms_channel::providers::SmsSender;
+    use crate::channels::sms_channel::SmsSender;
     use crate::testing::http_stub;
 
     const SID: &str = "AC1234567890abcdef";

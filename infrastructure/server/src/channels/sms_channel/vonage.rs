@@ -111,7 +111,7 @@ impl SmsSender for VonageProvider {
 #[cfg(test)]
 mod vonage_tests {
     use super::*;
-    use crate::channels::sms_channel::providers::SmsSender;
+    use crate::channels::sms_channel::SmsSender;
 
     const KEY: &str = "vkey1";
     const SECRET: &str = "vsecret1";

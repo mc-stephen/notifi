@@ -133,7 +133,7 @@ impl SmsSender for BirdProvider {
 #[cfg(test)]
 mod bird_tests {
     use super::*;
-    use crate::channels::sms_channel::providers::SmsSender;
+    use crate::channels::sms_channel::SmsSender;
 
     const KEY: &str = "access-key-1";
     const SENDER: &str = "Notifi";

@@ -218,15 +218,16 @@ its three sweep services from the same graph — new services wire once.
 
 Channel modules group by channel family; the provider lives inside its
 family, never as its own `{name}_channel`:
-- Lives in `src/channels/{family}_channel/` (email, sms, push, chat,
-  device, webhook) — e.g. `chat_channel/providers/slack.rs`, and one
-  `device_channel/providers/` tree holds android, ios, macos, linux,
-  window, and web as provider flavors
+- Lives in `src/channels/{family}_channel/` (email, sms, chat, device,
+  other, webhook) — e.g. `chat_channel/slack.rs`, and one
+  `device_channel/` tree holds android, apple, window, and web as
+  destination flavors (declared inline in the family's `mod.rs`, with
+  the vendor files grouped in the destination's folder)
 - Defines provider config structs in the provider file
-- Has a provider enum in `providers/mod.rs` (the family's source of
-  truth); providers whose flows permit it also carry controller structs
-  implementing the family trait plus tests (stub requests + env-gated
-  live sends)
+- Has a provider enum in `{family}_channel/mod.rs` (the family's source
+  of truth); providers whose flows permit it also carry controller
+  structs implementing the family trait plus tests (stub requests +
+  env-gated live sends)
 
 ## 17. Configuration
 
@@ -270,36 +271,36 @@ Each domain is a crate with its own aggregate, outbox, schema namespace, event c
 
 ### Pattern
 
-Each base channel (email, sms, chat) has a `providers/` directory with one
-file per provider. Each file defines a config struct. The channel's
-`providers/mod.rs` enum lists all providers — this is the source of truth.
-The device family (android, apple, linux, web, window) additionally derives
-its registry rows from its own `providers::catalog()` (see the
+Each base channel (email, sms, chat) keeps its vendor files beside the
+family's `mod.rs` — `email_channel/sendgrid.rs` and friends. Each file
+defines a config struct. The channel's `mod.rs` enum lists all
+providers — this is the source of truth.
+The device family (android, apple, web, window) additionally derives
+its registry rows from its own `device_channel::catalog()` (see the
 derived-families subsection below), and the other channel pushes its
 wrapper cards the same way; the vendor-first `push` channel was retired in
 favor of those destination rows — its FCM/APNS/OneSignal controllers live
-there still, while OneSignal's one card (both phone families served from
-one connect) rides the other channel's section instead.
+there still, while OneSignal's and Pushy's single cards (cross-platform,
+served from one connect) ride the other channel's section instead.
 
 ### Architecture
 
 ```
 src/channels/email_channel/
-├── providers/
-│   ├── mod.rs           # EmailProvider enum + EmailChannel definition
-│   ├── smtp.rs          # SmtpConfig struct
-│   ├── sendgrid.rs      # SendGridConfig struct
-│   ├── resend.rs        # ResendConfig struct
-│   ├── aws_ses.rs       # AwsSesConfig struct
-│   ├── postmark.rs      # PostmarkConfig struct
-│   ├── mailgun.rs       # MailgunConfig struct
-│   └── brevo.rs         # BrevoConfig struct
-└── mod.rs               # Channel implementation
+├── config.rs            # EmailConfig envelope (per-send sender id)
+├── smtp.rs              # SmtpConfig struct
+├── sendgrid.rs          # SendGridConfig struct
+├── resend.rs            # ResendConfig struct
+├── aws_ses.rs           # AwsSesConfig struct
+├── postmark.rs          # PostmarkConfig struct
+├── mailgun.rs           # MailgunConfig struct
+├── brevo.rs             # BrevoConfig struct
+└── mod.rs               # EmailProvider enum + channel implementation
 ```
 
 ### Adding a new provider
 
-1. **Create config file**: `providers/new_provider.rs` with a config struct:
+1. **Create config file**: `{family}_channel/new_provider.rs` with a config struct:
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -311,7 +312,7 @@ pub struct NewProviderConfig {
 }
 ```
 
-2. **Add enum variant** to `providers/mod.rs`:
+2. **Add enum variant** to `{family}_channel/mod.rs`:
 
 ```rust
 #[derive(Debug, Clone)]
@@ -359,14 +360,15 @@ fn build_email_channel() -> ChannelDefinition {
 
 #### Derived families — device and other, not hand-built
 
-The device destinations (android, apple, linux, web, window) and the
-other channel ("Other", the wrappers that hold the OneSignal card both
-phone families share) skip the registry builder: `GET /app/providers`
-assembles their rows from each family's own `providers::catalog()`.
+The device destinations (android, apple, web, window) and the
+other channel (the cross-platform wrapper cards — OneSignal, Pushy —
+plus the direction flavors relay and gateway) skip the registry
+builder: `GET /app/providers`
+assembles their rows from each family's own `catalog()`.
 Adding a vendor there is still the vendor's file plus its catalog
 block, with the listing pinned to the code by golden tests — the device
 family's `catalog_pins_every_family_variant`, the other channel's
-`other_channel::providers` test `catalog_matches_the_wrapped_flavors`.
+`catalog_matches_the_wrapped_flavors`.
 Delivery wiring is the adapter factory's gate, and both families' arms
 are landed (`factory_arms_email_and_fcm_only` covers the chat family's,
 `factory_arms_the_other_channel_wrappers` the other channel's). The

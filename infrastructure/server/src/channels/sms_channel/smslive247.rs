@@ -135,7 +135,7 @@ impl SmsSender for SmsLive247Provider {
 #[cfg(test)]
 mod smslive247_tests {
     use super::*;
-    use crate::channels::sms_channel::providers::SmsSender;
+    use crate::channels::sms_channel::SmsSender;
 
     const KEY: &str = "MA-key-1";
     const SENDER: &str = "Notifi";

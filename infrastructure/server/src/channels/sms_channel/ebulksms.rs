@@ -144,7 +144,7 @@ impl SmsSender for EbulkSmsProvider {
 #[cfg(test)]
 mod ebulksms_tests {
     use super::*;
-    use crate::channels::sms_channel::providers::SmsSender;
+    use crate::channels::sms_channel::SmsSender;
 
     const USER: &str = "ada@example.com";
     const KEY: &str = "ebulk-key-1";

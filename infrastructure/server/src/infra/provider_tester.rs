@@ -1,19 +1,17 @@
 use async_trait::async_trait;
 
-use crate::channels::chat_channel::providers::{
+use crate::channels::chat_channel::{
     discord::{DiscordConfig, DiscordProvider},
     slack::{SlackConfig, SlackProvider},
     telegram::{TelegramConfig, TelegramProvider},
     whatsapp_business::{WhatsAppBusinessConfig, WhatsAppBusinessProvider},
 };
-use crate::channels::device_channel::providers::android::fcm::{FcmConfig, FcmProvider};
-use crate::channels::device_channel::providers::android::onesignal::{
-    OneSignalConfig, OneSignalProvider,
-};
-use crate::channels::device_channel::providers::android::pushy::{PushyConfig, PushyProvider};
-use crate::channels::device_channel::providers::apple::apns::{ApnsProvider, IosConfig};
-use crate::channels::device_channel::providers::web::web_push::{WebConfig, WebProvider};
-use crate::channels::device_channel::providers::window::wns::WnsAuthenticator;
+use crate::channels::device_channel::android::fcm::{FcmConfig, FcmProvider};
+use crate::channels::device_channel::android::onesignal::{OneSignalConfig, OneSignalProvider};
+use crate::channels::device_channel::android::pushy::{PushyConfig, PushyProvider};
+use crate::channels::device_channel::apple::apns::{ApnsProvider, IosConfig};
+use crate::channels::device_channel::web::web_push::{WebConfig, WebProvider};
+use crate::channels::device_channel::window::wns::WnsAuthenticator;
 use crate::channels::other_channel::OtherChannelConfig;
 use crate::ports::provider_tester::{ProviderTester, TestResult};
 

@@ -1,8 +1,21 @@
 pub mod config;
-pub mod providers;
+pub mod function;
+pub mod relay;
 
 pub use config::WebhookConfig;
-use providers::{WebhookSender, function::FunctionProvider, relay::RelayProvider};
+use function::FunctionProvider;
+use relay::RelayProvider;
+
+use futures::future::BoxFuture;
+
+pub trait WebhookSender: Send + Sync {
+    fn send(
+        &self,
+        title: &str,
+        body: &str,
+        project: &str,
+    ) -> BoxFuture<'static, Result<(), String>>;
+}
 
 pub struct WebhookMessage {
     pub title: String,

@@ -1,43 +1,41 @@
 use serde::Deserialize;
 
-use super::providers;
-
 /// Tagged enum for SMS provider configuration.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "provider")]
 pub enum SmsConfig {
     #[serde(rename = "twilio")]
-    Twilio(providers::twilio::TwilioConfig),
+    Twilio(super::twilio::TwilioConfig),
     #[serde(rename = "local_nigeria")]
-    LocalNigeria(providers::local_nigeria::LocalNigeriaConfig),
+    LocalNigeria(super::local_nigeria::LocalNigeriaConfig),
     #[serde(rename = "termii")]
-    Termii(providers::termii::TermiiConfig),
+    Termii(super::termii::TermiiConfig),
     #[serde(rename = "africas_talking")]
-    AfricasTalking(providers::africas_talking::AfricasTalkingConfig),
+    AfricasTalking(super::africas_talking::AfricasTalkingConfig),
     #[serde(rename = "smslive247")]
-    SmsLive247(providers::smslive247::SmsLive247Config),
+    SmsLive247(super::smslive247::SmsLive247Config),
     #[serde(rename = "ebulksms")]
-    EbulkSms(providers::ebulksms::EbulkSmsConfig),
+    EbulkSms(super::ebulksms::EbulkSmsConfig),
     #[serde(rename = "infobip")]
-    Infobip(providers::infobip::InfobipConfig),
+    Infobip(super::infobip::InfobipConfig),
     #[serde(rename = "vonage")]
-    Vonage(providers::vonage::VonageConfig),
+    Vonage(super::vonage::VonageConfig),
     #[serde(rename = "bird")]
-    Bird(providers::bird::BirdConfig),
+    Bird(super::bird::BirdConfig),
 }
 
 impl SmsConfig {
-    pub fn to_provider(self) -> providers::SmsProvider {
+    pub fn to_provider(self) -> super::SmsProvider {
         match self {
-            Self::Twilio(c) => providers::SmsProvider::Twilio(c),
-            Self::LocalNigeria(c) => providers::SmsProvider::LocalNigeria(c),
-            Self::Termii(c) => providers::SmsProvider::Termii(c),
-            Self::AfricasTalking(c) => providers::SmsProvider::AfricasTalking(c),
-            Self::SmsLive247(c) => providers::SmsProvider::SmsLive247(c),
-            Self::EbulkSms(c) => providers::SmsProvider::EbulkSms(c),
-            Self::Infobip(c) => providers::SmsProvider::Infobip(c),
-            Self::Vonage(c) => providers::SmsProvider::Vonage(c),
-            Self::Bird(c) => providers::SmsProvider::Bird(c),
+            Self::Twilio(c) => super::SmsProvider::Twilio(c),
+            Self::LocalNigeria(c) => super::SmsProvider::LocalNigeria(c),
+            Self::Termii(c) => super::SmsProvider::Termii(c),
+            Self::AfricasTalking(c) => super::SmsProvider::AfricasTalking(c),
+            Self::SmsLive247(c) => super::SmsProvider::SmsLive247(c),
+            Self::EbulkSms(c) => super::SmsProvider::EbulkSms(c),
+            Self::Infobip(c) => super::SmsProvider::Infobip(c),
+            Self::Vonage(c) => super::SmsProvider::Vonage(c),
+            Self::Bird(c) => super::SmsProvider::Bird(c),
         }
     }
 }

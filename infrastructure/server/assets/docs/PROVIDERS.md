@@ -272,7 +272,7 @@ checklist for you:
    provider's API needs; the dashboard renders them automatically (see
    "Config Field Types" above).
 2. **Controller file** — create
-   `server/src/channels/<channel>/providers/<provider>.rs`: one struct
+   `server/src/channels/<channel>/<provider>.rs`: one struct
    holding its own config + HTTP client, implementing the channel's
    sender trait. It must know nothing about other providers — content
    and config arrive as parameters (the "standalone but not really" rule).

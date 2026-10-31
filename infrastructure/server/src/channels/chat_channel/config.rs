@@ -1,31 +1,29 @@
 use serde::Deserialize;
 
-use super::providers;
-
 /// Tagged enum for chat provider configuration.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "provider")]
 pub enum ChatConfig {
     #[serde(rename = "slack")]
-    Slack(providers::slack::SlackConfig),
+    Slack(super::slack::SlackConfig),
     #[serde(rename = "telegram")]
-    Telegram(providers::telegram::TelegramConfig),
+    Telegram(super::telegram::TelegramConfig),
     #[serde(rename = "whatsapp_business")]
-    WhatsAppBusiness(providers::whatsapp_business::WhatsAppBusinessConfig),
+    WhatsAppBusiness(super::whatsapp_business::WhatsAppBusinessConfig),
     #[serde(rename = "discord")]
-    Discord(providers::discord::DiscordConfig),
+    Discord(super::discord::DiscordConfig),
     #[serde(rename = "ms_teams")]
-    MsTeams(providers::ms_teams::MsTeamsConfig),
+    MsTeams(super::ms_teams::MsTeamsConfig),
 }
 
 impl ChatConfig {
-    pub fn to_provider(self) -> providers::ChatProvider {
+    pub fn to_provider(self) -> super::ChatProvider {
         match self {
-            Self::Slack(c) => providers::ChatProvider::Slack(c),
-            Self::Telegram(c) => providers::ChatProvider::Telegram(c),
-            Self::WhatsAppBusiness(c) => providers::ChatProvider::WhatsAppBusiness(c),
-            Self::Discord(c) => providers::ChatProvider::Discord(c),
-            Self::MsTeams(c) => providers::ChatProvider::MsTeams(c),
+            Self::Slack(c) => super::ChatProvider::Slack(c),
+            Self::Telegram(c) => super::ChatProvider::Telegram(c),
+            Self::WhatsAppBusiness(c) => super::ChatProvider::WhatsAppBusiness(c),
+            Self::Discord(c) => super::ChatProvider::Discord(c),
+            Self::MsTeams(c) => super::ChatProvider::MsTeams(c),
         }
     }
 
@@ -36,22 +34,18 @@ impl ChatConfig {
     pub fn carries_credentials(&self) -> bool {
         match self {
             Self::Slack(c) => match &c.auth {
-                providers::slack::SlackAuth::Webhook { webhook_url } => {
-                    !webhook_url.trim().is_empty()
-                }
-                providers::slack::SlackAuth::BotApi { bot_token, .. } => {
-                    !bot_token.trim().is_empty()
-                }
+                super::slack::SlackAuth::Webhook { webhook_url } => !webhook_url.trim().is_empty(),
+                super::slack::SlackAuth::BotApi { bot_token, .. } => !bot_token.trim().is_empty(),
             },
             Self::Telegram(c) => !c.bot_token.trim().is_empty() && !c.chat_id.trim().is_empty(),
             Self::WhatsAppBusiness(c) => {
                 !c.phone_number_id.trim().is_empty() && !c.access_token.trim().is_empty()
             }
             Self::Discord(c) => match &c.auth {
-                providers::discord::DiscordAuth::Webhook { webhook_url } => {
+                super::discord::DiscordAuth::Webhook { webhook_url } => {
                     !webhook_url.trim().is_empty()
                 }
-                providers::discord::DiscordAuth::BotApi { bot_token, .. } => {
+                super::discord::DiscordAuth::BotApi { bot_token, .. } => {
                     !bot_token.trim().is_empty()
                 }
             },
