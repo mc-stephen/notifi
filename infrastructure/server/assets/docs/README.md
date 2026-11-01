@@ -88,7 +88,7 @@ the same). Proven by `system_templates::tests`.
 
 ### The life of a backup (§23)
 
-Self-contained block in `worker/src/db_backup.rs` on its **own clock** (never
+Self-contained block in `worker/src/jobs/db_backup.rs` on its **own clock** (never
 the queue): daily `pg_dump --format=plain` streamed in 8 MiB parts into
 the **same bucket as the config store**, under `backup/`, as one
 restorable `.sql` object. Temp file deleted. **Nothing is ever
@@ -102,9 +102,9 @@ fires; the domain turns it into a `SendRecord`, delivery goes through
 `ports::DeliveryProvider` → the channel module for that medium
 (`channels/{email,sms,push,chat,webhook}/…`), each channel resolving its
 per-project config through the same `ConfigStore` the lifecycle uses. The
-worker keeps sweeps ticking from its own clock (`worker::sweep_once` —
-one call per job file: `broadcasts.rs`, `schedules.rs`, `campaigns.rs`,
-`purge.rs` — optionally RabbitMQ-driven). Provider identities, keys and
+The worker's sweep loop calls one job file each, under `jobs/`
+(`broadcasts.rs`, `schedules.rs`, `campaigns.rs`, `purge.rs`), from its
+own clock, optionally RabbitMQ-driven. Provider identities, keys and
 the registry: §21 + `channels/*/AUTHENTICATION.md`.
 
 ### Where tenant storage lives (§18)
@@ -147,8 +147,8 @@ assets/               # server-owned data & docs
 ├── projects/         # runtime tree in the R2 bucket; a test's file store lands here only
 ├── docs/             # ARCHITECTURE.md, SERVER.md, this README, COMMANDS.md
 └── migrations/       # sqlx migration (0001: the complete schema — dev-stage squash)
-worker/               # background binary — one file per job (broadcasts,
-                      # schedules, campaigns, purge) + db_backup
+worker/               # main.rs (wiring) + jobs/ — one file per job
+                      # (broadcasts, schedules, campaigns, purge, db_backup)
 ```
 
 Other root files: `Cargo.toml` (package + workspace index), `rust-toolchain.toml`

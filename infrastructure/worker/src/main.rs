@@ -1,11 +1,12 @@
-//! The sweep loop is pure wiring — every job owns its own file:
+//! The sweep loop is pure wiring — every job owns its own file under
+//! [`jobs`]:
 //!
-//! * [`broadcasts`] — due admin broadcasts (scheduled notifications)
-//! * [`schedules`] — due flow schedules
-//! * [`campaigns`] — campaign drains
-//! * [`purge`] — fully erasing expired project deletions
-//! * [`db_backup`] — the self-contained daily database dump-and-upload,
-//!   on its own clock (never the queue). Off unless
+//! * [`jobs::broadcasts`] — due admin broadcasts (scheduled notifications)
+//! * [`jobs::schedules`] — due flow schedules
+//! * [`jobs::campaigns`] — campaign drains
+//! * [`jobs::purge`] — fully erasing expired project deletions
+//! * [`jobs::db_backup`] — the self-contained daily database
+//!   dump-and-upload, on its own clock (never the queue). Off unless
 //!   `NOTIFI_BACKUP_ENABLED`; `cargo run -p worker -- --backup-now`
 //!   runs one dump immediately.
 //!
@@ -26,11 +27,7 @@ use std::time::Duration;
 
 use lapin::options::BasicAckOptions;
 
-mod broadcasts;
-mod campaigns;
-mod db_backup;
-mod purge;
-mod schedules;
+mod jobs;
 
 use server::compose::ServiceGraph;
 use server::infra::config::AppConfig;
@@ -70,7 +67,7 @@ async fn run() -> i32 {
 
     // One-shot backup: dump + upload + exit, no sweeps, no queue.
     if std::env::args().any(|a| a == "--backup-now") {
-        return db_backup::one_shot(&config).await;
+        return jobs::db_backup::one_shot(&config).await;
     }
 
     let pool = match server::infra::db::connect(&config).await {
@@ -110,8 +107,8 @@ async fn run() -> i32 {
     // Database backups: the self-contained block on its own clock. Off
     // unless NOTIFI_BACKUP_ENABLED is on — `from_env` itself logs why
     // when the pieces it got were incomplete.
-    if let Some(settings) = db_backup::BackupSettings::from_env(&config) {
-        tokio::spawn(db_backup::schedule(settings));
+    if let Some(settings) = jobs::db_backup::BackupSettings::from_env(&config) {
+        tokio::spawn(jobs::db_backup::schedule(settings));
     } else if !std::env::args().any(|a| a == "--backup-now") {
         tracing::info!("worker: database backups off (NOTIFI_BACKUP_ENABLED not on)");
     }
@@ -146,10 +143,10 @@ async fn run() -> i32 {
 /// campaigns, then purges. Overlapping sweeps are harmless by
 /// construction (atomic claims) — each job's module header says how.
 async fn sweep_once(graph: &ServiceGraph) {
-    broadcasts::run(graph).await;
-    schedules::run(graph).await;
-    campaigns::run(graph).await;
-    purge::run(graph).await;
+    jobs::broadcasts::run(graph).await;
+    jobs::schedules::run(graph).await;
+    jobs::campaigns::run(graph).await;
+    jobs::purge::run(graph).await;
 }
 
 /// Consumes sweep ticks forever, reconnecting after transport failures with
