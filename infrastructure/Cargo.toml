@@ -1,5 +1,9 @@
 [workspace]
 resolver = "2"
+# Plain `cargo run` (and flag-less build/test) targets the server — the
+# worker is an always-explicit `-p worker` (its runs are deliberate,
+# `--backup-now` especially).
+default-members = ["server"]
 members = [
   "server",
   "worker",
