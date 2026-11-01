@@ -1,5 +1,13 @@
-//! Notifi worker — executes due flow schedules, due admin broadcasts, and
-//! due campaign drains.
+//! The sweep loop is pure wiring — every job owns its own file:
+//!
+//! * [`broadcasts`] — due admin broadcasts (scheduled notifications)
+//! * [`schedules`] — due flow schedules
+//! * [`campaigns`] — campaign drains
+//! * [`purge`] — fully erasing expired project deletions
+//! * [`db_backup`] — the self-contained daily database dump-and-upload,
+//!   on its own clock (never the queue). Off unless
+//!   `NOTIFI_BACKUP_ENABLED`; `cargo run -p worker -- --backup-now`
+//!   runs one dump immediately.
 //!
 //! Triggering: the worker owns its own clock — a local sweep every 30s —
 //! plus, when RabbitMQ is configured, ticks from the durable `notifi.sweep`
@@ -8,11 +16,6 @@
 //! (`claim_due`), so local sweeps, tick sweeps, the API's degraded sweeps,
 //! and extra worker processes can all overlap without ever double-running
 //! a job.
-//!
-//! Also living here: the self-contained [`backup`] block — a daily
-//! database dump-and-upload on its own clock (never the queue). Off
-//! unless `NOTIFI_BACKUP_ENABLED` is switched on; `cargo run -p worker --
-//! --backup-now` runs one dump immediately.
 //!
 //! Useful with plain `cargo run -p worker` and no extra services: RabbitMQ
 //! being unset, down, or never published-to changes nothing — the local
@@ -23,7 +26,11 @@ use std::time::Duration;
 
 use lapin::options::BasicAckOptions;
 
-mod backup;
+mod broadcasts;
+mod campaigns;
+mod db_backup;
+mod purge;
+mod schedules;
 
 use server::compose::ServiceGraph;
 use server::infra::config::AppConfig;
@@ -63,7 +70,7 @@ async fn run() -> i32 {
 
     // One-shot backup: dump + upload + exit, no sweeps, no queue.
     if std::env::args().any(|a| a == "--backup-now") {
-        return backup::one_shot(&config).await;
+        return db_backup::one_shot(&config).await;
     }
 
     let pool = match server::infra::db::connect(&config).await {
@@ -103,8 +110,8 @@ async fn run() -> i32 {
     // Database backups: the self-contained block on its own clock. Off
     // unless NOTIFI_BACKUP_ENABLED is on — `from_env` itself logs why
     // when the pieces it got were incomplete.
-    if let Some(settings) = backup::BackupSettings::from_env(&config) {
-        tokio::spawn(backup::schedule(settings));
+    if let Some(settings) = db_backup::BackupSettings::from_env(&config) {
+        tokio::spawn(db_backup::schedule(settings));
     } else if !std::env::args().any(|a| a == "--backup-now") {
         tracing::info!("worker: database backups off (NOTIFI_BACKUP_ENABLED not on)");
     }
@@ -135,34 +142,14 @@ async fn run() -> i32 {
     0
 }
 
-/// Runs one sweep of due broadcasts, due schedules, and campaign drains.
+/// One sweep, every job file in sequence: broadcasts, schedules,
+/// campaigns, then purges. Overlapping sweeps are harmless by
+/// construction (atomic claims) — each job's module header says how.
 async fn sweep_once(graph: &ServiceGraph) {
-    match graph
-        .admin_notifications
-        .run_due_worker(chrono::Utc::now())
-        .await
-    {
-        Ok(0) => {}
-        Ok(n) => tracing::info!(sent = n, "scheduled notification worker sent broadcasts"),
-        Err(e) => tracing::error!(error = %e, "scheduled notification worker failed"),
-    }
-    match graph.schedules.run_due(chrono::Utc::now()).await {
-        Ok(0) => {}
-        Ok(n) => tracing::info!(ran = n, "schedule worker fired due schedules"),
-        Err(e) => tracing::error!(error = %e, "schedule worker failed"),
-    }
-    match graph.campaigns.tick(chrono::Utc::now()).await {
-        Ok(0) => {}
-        Ok(n) => tracing::info!(ran = n, "campaign worker processed campaigns"),
-        Err(e) => tracing::error!(error = %e, "campaign worker failed"),
-    }
-    // Project deletion purge: expired tombstones lose their project folder
-    // first (retry-able), then the row (cascades wipe the children).
-    match graph.projects.purge_due(chrono::Utc::now()).await {
-        Ok(0) => {}
-        Ok(n) => tracing::info!(purged = n, "deleted projects fully erased"),
-        Err(e) => tracing::error!(error = %e, "project purge worker failed"),
-    }
+    broadcasts::run(graph).await;
+    schedules::run(graph).await;
+    campaigns::run(graph).await;
+    purge::run(graph).await;
 }
 
 /// Consumes sweep ticks forever, reconnecting after transport failures with
