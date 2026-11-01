@@ -27,9 +27,14 @@ pub mod testing;
 
 use crate::infra::config::AppConfig;
 
-/// Process entry point: config → database → redis → router → serve.
+/// Process entry point: config → the four boot gates (Postgres, Redis,
+/// SMTP-when-enabled, the object store) → router → serve. An incomplete
+/// system aborts with the reason; nothing limps on degraded.
 pub fn run() {
-    let _ = run_inner();
+    if let Err(e) = run_inner() {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
 }
 
 fn run_inner() -> Result<(), String> {
@@ -64,9 +69,25 @@ fn run_inner() -> Result<(), String> {
         .build()
         .expect("failed to build tokio runtime");
 
-    rt.block_on(async move {
-        let db = infra::db::connect(&config).await;
-        let redis_conn = infra::redis::connect(&config);
+    let boot: Result<(), String> = rt.block_on(async move {
+        // Gate 1 — Postgres: connection AND schema. Not a single honest
+        // action is possible without it.
+        let db = Some(
+            infra::db::connect(&config).await.ok_or_else(|| {
+                "postgres boot failed: NOTIFI_DATABASE_URL unset, unreachable, or migrations failed (the specific error is logged above)".to_string()
+            })?,
+        );
+
+        // Gate 2 — Redis: the URL must parse and the machine must answer.
+        let redis_client = infra::redis::connect(&config)?;
+        let redis_conn = match redis_client.clone().get_connection_manager().await {
+            Ok(conn) => conn,
+            Err(e) => {
+                return Err(format!(
+                    "redis boot failed: {e} — the machine must be reachable (NOTIFI_REDIS_URL)"
+                ));
+            }
+        };
 
         let mailer: Option<std::sync::Arc<dyn ports::SmtpMailer>> =
             config.mail.enabled().then(|| {
@@ -78,68 +99,57 @@ fn run_inner() -> Result<(), String> {
             tracing::info!("system mail configured (verifying at boot)");
         }
 
-        // SMTP tripwire: handshake + auth now, not at the first send. A
-        // dead relay logs loud but never blocks boot (mail stays optional).
+        // Gate 3 — SMTP, only when mail is switched on (unset mail is a
+        // legitimate choice; dev-token mode carries the flows): the
+        // relay must answer the handshake, or boot aborts.
         if let Some(mailer) = mailer.as_ref() {
             match tokio::time::timeout(std::time::Duration::from_secs(5), mailer.verify()).await {
                 Ok(Ok(true)) => {
                     tracing::info!("system mail verified (smtp handshake + auth ok)")
                 }
                 Ok(Ok(false)) => {
-                    tracing::warn!("system mail CONFIGURED BUT BROKEN: relay refused NOOP")
+                    return Err("smtp boot failed: relay refused the NOOP probe".to_string());
                 }
-                Ok(Err(e)) => {
-                    tracing::warn!(error = %e, "system mail CONFIGURED BUT BROKEN")
+                Ok(Err(e)) => return Err(format!("smtp boot failed: {e}")),
+                Err(_) => {
+                    return Err("smtp boot failed: the verify probe timed out after 5s".to_string())
                 }
-                Err(_) => tracing::warn!("system mail check timed out after 5s"),
             }
         }
 
-        // Tenant project config storage: the factory picks the driver and
-        // logs the choice (R2 when NOTIFI_R2_* is all set, filesystem
-        // otherwise), so ops flags and boot can never pick differently.
-        // Boot also lays the top-level folders down (`projects/`) so the
-        // storage layout exists before the first project arrives.
-        // Read-through config cache when Redis is reachable: warm keys
-        // answer at Redis speed and the store behind sees nothing, so
-        // R2 request counts (and per-delivery latency) stay near zero.
-        // Writes invalidate through the wrapper, never fail the send path.
-        // Built before `compose` so the project service (creation seeding,
-        // deletion purge) shares this exact instance — cache invalidation
-        // only works if every writer goes through the same wrapper.
+        // Tenant project config storage: the factory demands the full
+        // `NOTIFI_R2_*` quartet and refuses otherwise — R2-or-nothing,
+        // no fallback driver. Boot lays the top-level folders down
+        // (`projects/`, `backup/`, `users/`) so the layout exists before
+        // the first project arrives. Read-through config cache: warm
+        // keys answer at Redis speed and the store behind sees nothing,
+        // so R2 request counts (and per-delivery latency) stay near
+        // zero. Writes invalidate through the wrapper, never fail the
+        // send path. Built before `compose` so the project service
+        // (creation seeding, deletion purge) shares this exact instance
+        // — cache invalidation only works if every writer goes through
+        // the same wrapper.
         let config_store: std::sync::Arc<dyn ports::ConfigStore + Send + Sync> =
             infra::config_store_factory::build_ensured(&config)
                 .await
-                .expect("config store builds");
+                .map_err(|e| format!("object store boot failed: {e}"))?;
 
         // System mail (transactional emails): bodies live in the store's
         // `templates/` folder — put there by ops, the server never
         // writes them. Boot reads the folder into forever-keys in Redis
         // (`cfg:templates/…`, no expiry); renders answer from the cache;
         // POST /admin/templates/warm re-reads after an edit in the
-        // bucket. No Redis = direct store reads (dev only).
-        let template_cache: Option<std::sync::Arc<dyn infra::config_cache::CacheBackend + Send + Sync>> =
-            match &redis_conn {
-                Some(client) => match client.clone().get_connection_manager().await {
-                    Ok(conn) => {
-                        tracing::info!("system template cache: redis (forever keys)");
-                        Some(std::sync::Arc::new(
-                            infra::RedisCacheBackend::new(conn).without_ttl(),
-                        ))
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "system template cache unavailable; renders read the store directly");
-                        None
-                    }
-                },
-                None => {
-                    tracing::info!("system template cache: none (redis unset); renders read the store directly");
-                    None
-                }
-            };
+        // bucket. (A warm miss still falls back to direct store reads —
+        // Redis being required, a miss is an empty folder, not a cache
+        // outage.)
+        let template_cache: std::sync::Arc<dyn infra::config_cache::CacheBackend + Send + Sync> =
+            std::sync::Arc::new(
+                infra::RedisCacheBackend::new(redis_conn.clone()).without_ttl(),
+            );
+        tracing::info!("system template cache: redis (forever keys)");
         let system_templates: Option<std::sync::Arc<dyn ports::SystemTemplates>> = {
             let reader =
-                infra::StoreSystemTemplates::new(config_store.clone(), template_cache);
+                infra::StoreSystemTemplates::new(config_store.clone(), Some(template_cache));
             match reader.warm_from_store().await {
                 Ok(count) => tracing::info!(warmed = count, "system templates warm"),
                 Err(e) => tracing::warn!(error = %e, "system templates unavailable; renders will read the store directly"),
@@ -148,28 +158,14 @@ fn run_inner() -> Result<(), String> {
         };
 
         let config_store: std::sync::Arc<dyn ports::ConfigStore + Send + Sync> =
-            match &redis_conn {
-                Some(client) => match client.clone().get_connection_manager().await {
-                    Ok(conn) => {
-                        tracing::info!(
-                            ttl_secs = infra::config_cache::CONFIG_CACHE_TTL.as_secs(),
-                            "config cache: redis"
-                        );
-                        std::sync::Arc::new(infra::CachedConfigStore::new(
-                            config_store,
-                            std::sync::Arc::new(infra::RedisCacheBackend::new(conn)),
-                        ))
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "config cache unavailable; reads hit the store directly");
-                        config_store
-                    }
-                },
-                None => {
-                    tracing::info!("config cache: none (redis unset); reads hit the store directly");
-                    config_store
-                }
-            };
+            std::sync::Arc::new(infra::CachedConfigStore::new(
+                config_store,
+                std::sync::Arc::new(infra::RedisCacheBackend::new(redis_conn)),
+            ));
+        tracing::info!(
+            ttl_secs = infra::config_cache::CONFIG_CACHE_TTL.as_secs(),
+            "config cache: redis"
+        );
 
         // Composition root: every database-backed service, built exactly
         // once — the worker binary calls the same `compose`, so a new
@@ -190,51 +186,56 @@ fn run_inner() -> Result<(), String> {
         let provider_tester: std::sync::Arc<dyn ports::ProviderTester + Send + Sync> =
             std::sync::Arc::new(infra::ConfigProviderTester::new());
 
-        // OAuth sign-in is wired when at least one provider has credentials.
-        let github = match (
+        // Gate 4 — OAuth: sign-in cannot be half-configured or absent.
+        // A missing runtime would promise login buttons that answer 503;
+        // a half-paired provider is a broken config. Both abort here.
+        fn oauth_pair(
+            client_id: Option<String>,
+            client_secret: Option<String>,
+            id_env: &str,
+            secret_env: &str,
+            provider: &str,
+        ) -> Result<Option<infra::ProviderCredentials>, String> {
+            match (client_id, client_secret) {
+                (Some(client_id), Some(client_secret)) => Ok(Some(infra::ProviderCredentials {
+                    client_id,
+                    client_secret,
+                })),
+                (None, None) => Ok(None),
+                (Some(_), None) => Err(format!(
+                    "oauth boot failed: {provider} credentials half-paired — {id_env} set without {secret_env}"
+                )),
+                (None, Some(_)) => Err(format!(
+                    "oauth boot failed: {provider} credentials half-paired — {secret_env} set without {id_env}"
+                )),
+            }
+        }
+        let github = oauth_pair(
             config.oauth.github_client_id.clone(),
             config.oauth.github_client_secret.clone(),
-        ) {
-            (Some(client_id), Some(client_secret)) => Some(infra::ProviderCredentials {
-                client_id,
-                client_secret,
-            }),
-            _ => None,
-        };
-        let google = match (
+            "NOTIFI_OAUTH_GITHUB_CLIENT_ID",
+            "NOTIFI_OAUTH_GITHUB_CLIENT_SECRET",
+            "github",
+        )?;
+        let google = oauth_pair(
             config.oauth.google_client_id.clone(),
             config.oauth.google_client_secret.clone(),
-        ) {
-            (Some(client_id), Some(client_secret)) => Some(infra::ProviderCredentials {
-                client_id,
-                client_secret,
-            }),
-            _ => None,
-        };
-        let oauth = if github.is_some() || google.is_some() {
-            Some(std::sync::Arc::new(ports::OAuthRuntime {
-                provider: infra::http_oauth_provider(
-                    github,
-                    google,
-                    config.oauth.api_base_url.clone(),
-                ),
-                dashboard_url: config.oauth.dashboard_url.clone(),
-            }))
-        } else {
-            None
-        };
+            "NOTIFI_OAUTH_GOOGLE_CLIENT_ID",
+            "NOTIFI_OAUTH_GOOGLE_CLIENT_SECRET",
+            "google",
+        )?;
+        if github.is_none() && google.is_none() {
+            return Err("oauth boot failed: no provider configured — OAuth sign-in is a boot requirement; set NOTIFI_OAUTH_GITHUB_CLIENT_ID/_CLIENT_SECRET and/or NOTIFI_OAUTH_GOOGLE_CLIENT_ID/_CLIENT_SECRET".to_string());
+        }
+        let oauth = Some(std::sync::Arc::new(ports::OAuthRuntime {
+            provider: infra::http_oauth_provider(
+                github,
+                google,
+                config.oauth.api_base_url.clone(),
+            ),
+            dashboard_url: config.oauth.dashboard_url.clone(),
+        }));
 
-        if db.is_none() {
-            tracing::warn!("database unavailable/disabled; readiness will report 503");
-        }
-        if redis_conn.is_none() {
-            tracing::warn!("redis unavailable/disabled; readiness will report 503");
-        }
-        if oauth.is_none() {
-            tracing::warn!(
-                "oauth disabled (no provider credentials); /app/auth/oauth routes will answer 503"
-            );
-        }
         // AppState takes Option fields; the graph (built only with a
         // database) fills them all at once.
         let gateway = db.as_ref().map(|pool| {
@@ -245,7 +246,7 @@ fn run_inner() -> Result<(), String> {
         let app = api::build_router(
             api::AppState {
                 db,
-                redis: redis_conn,
+                redis: Some(redis_client),
                 auth: services.map(|s| s.auth.clone()),
                 oauth,
                 admin: services.map(|s| s.admin.clone()),
@@ -277,21 +278,20 @@ fn run_inner() -> Result<(), String> {
             &config,
         );
 
-        let listener =
-            match tokio::net::TcpListener::bind((config.server.host.as_str(), config.server.port))
-                .await
-            {
-                Ok(listener) => listener,
-                Err(e) => {
-                    tracing::error!(
-                        host = %config.server.host,
-                        port = config.server.port,
-                        error = %e,
-                        "failed to bind listener"
-                    );
-                    return;
-                }
-            };
+        let listener = match tokio::net::TcpListener::bind((
+            config.server.host.as_str(),
+            config.server.port,
+        ))
+        .await
+        {
+            Ok(listener) => listener,
+            Err(e) => {
+                return Err(format!(
+                    "bind failed on {}:{}: {e} — the port is taken or the address is unavailable",
+                    config.server.host, config.server.port
+                ));
+            }
+        };
 
         tracing::info!(
             host = %config.server.host,
@@ -335,17 +335,15 @@ fn run_inner() -> Result<(), String> {
             let admin = services.map(|s| s.admin_notifications.clone());
             let sched = services.map(|s| s.schedules.clone());
             let camps = services.map(|s| s.campaigns.clone());
-            if admin.is_some() || sched.is_some() || camps.is_some() {
-                tokio::spawn(async move {
-                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(
-                        infra::rabbit::SWEEP_INTERVAL_SECS,
-                    ));
-                    loop {
-                        interval.tick().await;
-                        run_sweep_once(&admin, &sched, &camps).await;
-                    }
-                });
-            }
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(
+                    std::time::Duration::from_secs(infra::rabbit::SWEEP_INTERVAL_SECS),
+                );
+                loop {
+                    interval.tick().await;
+                    run_sweep_once(&admin, &sched, &camps).await;
+                }
+            });
         }
 
         if let Err(e) = axum::serve(listener, app)
@@ -356,7 +354,14 @@ fn run_inner() -> Result<(), String> {
         }
 
         tracing::info!("api shutdown complete");
+        Ok(())
     });
+
+    if let Err(e) = boot {
+        tracing::error!("boot refused: {e}");
+        eprintln!("boot refused: {e}");
+        std::process::exit(1);
+    }
 
     Ok(())
 }

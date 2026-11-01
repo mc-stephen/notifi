@@ -153,7 +153,16 @@ fn parse_template(text: &str) -> Vec<(String, bool)> {
 /// stays commented out with its placeholder/example in place (system
 /// mail, OAuth, R2… are optional at boot and documented as effectively
 /// required for real deployments right above their own sections).
-const REQUIRED_OPEN: [&str; 1] = ["NOTIFI_DATABASE_URL"];
+/// Every required key sits uncommented with a placeholder — a fresh copy
+/// boots nothing by accident because the fakes cannot connect.
+const REQUIRED_OPEN: [&str; 6] = [
+    "NOTIFI_DATABASE_URL",
+    "NOTIFI_REDIS_URL",
+    "NOTIFI_R2_ACCOUNT_ID",
+    "NOTIFI_R2_ACCESS_KEY_ID",
+    "NOTIFI_R2_SECRET_ACCESS_KEY",
+    "NOTIFI_R2_BUCKET",
+];
 
 #[test]
 fn template_lists_every_consumed_name_and_nothing_else() {

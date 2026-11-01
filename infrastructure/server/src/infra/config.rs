@@ -58,10 +58,10 @@ pub struct RedisConfig {
     pub url: Option<String>,
 }
 
-/// Cloudflare R2 (S3-compatible) object storage for tenant project config —
-/// where the file driver reads `NOTIFI_CONFIG_ROOT` in dev, deployed
-/// instances read this bucket. Active for the config store when all four
-/// values are set; otherwise the file driver stays in charge.
+/// Cloudflare R2 (S3-compatible) object storage for the tenant project
+/// config — the only driver the runtime boots with. All four values are
+/// a boot requirement: anything missing aborts the start (the factory
+/// reports exactly which).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
 pub struct R2Config {
     /// R2 account id — the S3 endpoint derives from it as

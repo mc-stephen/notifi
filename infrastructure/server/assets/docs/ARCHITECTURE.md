@@ -236,7 +236,7 @@ Env vars with `NOTIFI_` prefix. See `src/infra/config.rs`.
 
 ## 18. Runtime configuration
 
-Project channel configs and template assets address through the [`ports::ConfigStore`] port (§6). Top-level storage folders are laid down at every boot (`infra::config_store_factory::build_ensured` → `ensure_root_folders`: the file driver creates real directories; the object driver puts a tiny `projects/.keep` / `backup/.keep` marker object so dashboards show the folders on a fresh bucket). Keys are relative to the convention root; kernel key-builders (`ConfigResolver::channel_key` / `template_key`) share one home with the path helpers, and `ConfigResolver::project_prefix` is the single home of the `projects/{slug}/` folder convention so purge/export never hand-build it twice:
+Project channel configs and template assets address through the [`ports::ConfigStore`] port (§6). Top-level storage folders are laid down at every boot (`infra::config_store_factory::build_ensured` → `ensure_root_folders`: the object driver puts a tiny `projects/.keep` / `backup/.keep` / `users/.keep` marker object so dashboards show the folders on a fresh bucket). Keys are relative to the convention root; kernel key-builders (`ConfigResolver::channel_key` / `template_key`) share one home with the path helpers, and `ConfigResolver::project_prefix` is the single home of the `projects/{slug}/` folder convention so purge/export never hand-build it twice:
 
 ```text
 projects/{slug}/config/{channel_name}/{file_name}
@@ -251,10 +251,10 @@ Verb set: `load_raw` (missing key errors), `put_raw`, `delete_raw` (idempotent, 
 
 Driver selection lives in `infra/config_store_factory.rs` — one home for both boot (`AppState.config_store`) and ops (`--reset`), so they can never disagree:
 
-* `infra/file_config_store.rs` — baseline; reads `{NOTIFI_CONFIG_ROOT}` (dev points it at `server/assets` via `.cargo/config.toml`).
+* `infra/file_config_store.rs` — test-only driver (an explicit root, no env coupling); the runtime boots the object store or nothing.
 * `infra/r2_config_store.rs` — Cloudflare R2 (S3-compatible, zero egress); active when all four `NOTIFI_R2_ACCOUNT_ID / _ACCESS_KEY_ID / _SECRET_ACCESS_KEY / _BUCKET` are set. The bucket **is** the root: the same key addresses either driver, so no folder scheme becomes a special case.
 
-Reset (`--reset` — one clean-start flag: the database first, then the store half chains only when the database succeeded, since the projects folder relies on what the database holds): `infra::config_store_factory::reset` lists `projects/` and `delete_raw`s each key through the active driver (the `.keep` folder marker included), then re-lays the top-level markers via `ensure_root_folders` — defaults are code, so nothing is preserved or re-seeded and the namespace ends with just the layout markers. The store's other prefixes (`templates/`, `backup/`) are outside the sweep by construction. `server/tests/config_store_r2.rs` runs the live reset and the `report_projects_tree` look-book (`--ignored`); `config_store_file.rs` covers the file driver, materialize round-trip included.
+Reset (`--reset` — one clean-start flag: the database first, then the store half chains only when the database succeeded, since the projects folder relies on what the database holds): `infra::config_store_factory::reset` lists `projects/` and `delete_raw`s each key through the active driver (the `.keep` folder marker included), then re-lays the top-level markers via `ensure_root_folders` — defaults are code, so nothing is preserved or re-seeded and the namespace ends with just the layout markers. The store's other prefixes (`templates/`, `backup/`) are outside the sweep by construction. `server/tests/config_store_r2.rs` runs the live reset and the `report_projects_tree` look-book (`--ignored`); `config_store_file.rs` covers the test-only file driver, materialize round-trip included.
 
 Caching: `infra/config_cache.rs` wraps the active store in a Redis read-through (`infra::RedisCacheBackend` behind the same `NOTIFI_REDIS_URL`; `cfg:` key namespace, 10 min TTL, invalidate-on-write, delete also invalidates). When Redis is unset the store passes through unchanged — caching is composition, never a port concern. `server/tests/config_cache_redis.rs` covers the live roundtrips (gated on `NOTIFI_TEST_REDIS_URL`).
 

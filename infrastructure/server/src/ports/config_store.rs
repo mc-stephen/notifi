@@ -6,7 +6,7 @@
 //! from disk or a bucket:
 //!
 //! ```text
-//! file driver  → {NOTIFI_CONFIG_ROOT}/{key}
+//! file driver  → {root handed at construction}/{key}   (tests only)
 //! object store → {bucket}/{key}          (the bucket IS the root)
 //! ```
 //!

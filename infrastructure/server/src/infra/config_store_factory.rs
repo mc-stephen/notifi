@@ -4,35 +4,62 @@
 //! (`--reset`) can never disagree about which
 //! storage backs the config. Delete idempotency (missing = success) lets
 //! a wiped-already store reset to a clean no-op.
+//!
+//! The decision is now absolute: the object store is a boot requirement,
+//! not a fallback ladder. All four `NOTIFI_R2_*` values must be set or
+//! there is nothing to run — boot aborts naming what is missing.
 
 use std::sync::Arc;
 
-use crate::infra::config::AppConfig;
-use crate::infra::{FileConfigStore, R2ConfigStore};
+use crate::infra::R2ConfigStore;
+use crate::infra::config::{AppConfig, R2Config};
 use crate::ports::config_store::ConfigStore;
 
-/// Builds the store the runtime addresses projects through:
-/// * R2 object store when all four `NOTIFI_R2_*` values are set — the
-///   bucket is the convention root;
-/// * the file driver otherwise (`NOTIFI_CONFIG_ROOT`, dev points it at
-///   `server/assets` via `.cargo/config.toml`).
+/// The env names the object store needs, in reporting order.
+const R2_ENV_NAMES: [&str; 4] = [
+    "NOTIFI_R2_ACCOUNT_ID",
+    "NOTIFI_R2_ACCESS_KEY_ID",
+    "NOTIFI_R2_SECRET_ACCESS_KEY",
+    "NOTIFI_R2_BUCKET",
+];
+
+/// The R2 values, as optional strings, in the same order as [`R2_ENV_NAMES`].
+fn r2_parts(r2: &R2Config) -> [Option<&String>; 4] {
+    [
+        r2.account_id.as_ref(),
+        r2.access_key_id.as_ref(),
+        r2.secret_access_key.as_ref(),
+        r2.bucket.as_ref(),
+    ]
+}
+
+/// Builds the store the runtime addresses projects through. The object
+/// store (R2 cloudflare family, S3-compatible) is mandatory: anything
+/// missing returns an error naming the unset variable — callers refuse
+/// to boot on it.
 pub fn build(config: &AppConfig) -> Result<Arc<dyn ConfigStore + Send + Sync>, String> {
-    if config.r2.configured() {
-        tracing::info!(
-            bucket = %config.r2.bucket.clone().expect("configured() checked"),
-            "config store: R2 object storage"
-        );
-        Ok(Arc::new(R2ConfigStore::from_config(&config.r2)?))
-    } else {
-        tracing::info!("config store: filesystem (NOTIFI_CONFIG_ROOT)");
-        Ok(Arc::new(FileConfigStore::from_root_env()))
+    let missing: Vec<&str> = R2_ENV_NAMES
+        .iter()
+        .zip(r2_parts(&config.r2))
+        .filter_map(|(name, part)| part.is_none().then_some(*name))
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "object store not configured — the runtime boots R2-or-nothing; set all of {} (missing: {})",
+            R2_ENV_NAMES.join(", "),
+            missing.join(", "),
+        ));
     }
+    tracing::info!(
+        bucket = %config.r2.bucket.as_ref().expect("all values checked above"),
+        "config store: R2 object storage"
+    );
+    Ok(Arc::new(R2ConfigStore::from_config(&config.r2)?))
 }
 
 /// Builds the store AND makes its top-level folders exist (`projects/`,
 /// `backup/`, `users/`) — every boot flows through here, so the storage
-/// layout is visible in a fresh bucket or root before the first project
-/// arrives.
+/// layout is visible in a fresh bucket before the first project arrives.
 pub async fn build_ensured(
     config: &AppConfig,
 ) -> Result<Arc<dyn ConfigStore + Send + Sync>, String> {
@@ -72,11 +99,34 @@ mod factory_tests {
     use super::*;
 
     #[test]
-    fn file_store_is_the_default_when_r2_is_unset() {
+    fn missing_r2_values_refuse_to_build_and_name_themselves() {
         let config = AppConfig::default();
-        // Building never touches the filesystem for the file driver —
-        // the root resolves from env.
-        let _store = build(&config).expect("file store builds");
+        let err = match build(&config) {
+            Err(err) => err,
+            Ok(_) => panic!("nothing configured must refuse"),
+        };
+        assert!(err.starts_with("object store not configured"));
+        for name in R2_ENV_NAMES {
+            assert!(err.contains(name), "error must name {name}");
+        }
+    }
+
+    #[test]
+    fn partially_configured_r2_refuses_too() {
+        let config = AppConfig {
+            r2: crate::infra::config::R2Config {
+                account_id: Some("a".to_string()),
+                access_key_id: Some("k".to_string()),
+                secret_access_key: None,
+                bucket: Some("notifi".to_string()),
+            },
+            ..AppConfig::default()
+        };
+        let err = match build(&config) {
+            Err(err) => err,
+            Ok(_) => panic!("a partial set must refuse"),
+        };
+        assert!(err.contains("NOTIFI_R2_SECRET_ACCESS_KEY"), "got: {err}");
     }
 
     #[test]

@@ -3,72 +3,22 @@
 //!
 //! * [`project_slug`] — the ONE slug: DB-assigned at creation, unique,
 //!   rename-proof; every storage key under `projects/{slug}/…` uses it.
-//! * [`ConfigResolver`] — the home of the key/path convention:
+//! * [`ConfigResolver`] — the home of the key convention:
 //!   `project_prefix` (the folder convention itself, reused by purge,
-//!   export, and tests), `channel_key`/`template_key` (storage keys),
-//!   `channel_dir`/`template_dir` (their disk equivalents), `load_json`.
+//!   export, and tests) plus `channel_key`/`template_key` (storage keys).
 //! * [`DefaultProjectLayout`] — the default file set a fresh project
 //!   materializes on creation; storage holds no defaults, so reshaping
 //!   the layout is purely a code change here.
 //!
 //! Proven by the unit tests below and the file-driver roundtrip in
-//! `server/tests/config_store_file.rs` (store keys must equal kernel
-//! paths).
+//! `server/tests/config_store_file.rs`.
 
-use serde::de::DeserializeOwned;
-use std::fs;
-use std::path::PathBuf;
-use thiserror::Error;
-/// Errors that can occur when loading a tenant channel configuration.
-#[derive(Error, Debug)]
-pub enum ConfigError {
-    #[error("config directory not found for project '{project}' channel '{channel}' at {path}")]
-    DirectoryNotFound {
-        project: String,
-        channel: String,
-        path: PathBuf,
-    },
-    #[error("I/O error reading config for project '{project}' channel '{channel}': {source}")]
-    Io {
-        project: String,
-        channel: String,
-        #[source]
-        source: std::io::Error,
-    },
-    #[error("failed to parse config for project '{project}' channel '{channel}': {message}")]
-    Parse {
-        project: String,
-        channel: String,
-        message: String,
-    },
-}
-
-/// Resolves the filesystem path for a tenant's channel configuration.
-///
-/// Canonical layout under the config root (`NOTIFI_CONFIG_ROOT`, defaults to
-/// `configs`):
-///
-/// ```text
-/// {root}/projects/{slug}/config/{channel_name}/...      channel configs
-/// {root}/projects/{slug}/templates/{template_name}/...   project-scoped templates
-/// ```
-///
-/// The root is the assets root: `projects/` sits directly under it; the
-/// `{slug}` segment is the project's stored slug.
+/// The home of the storage-key convention: `projects/{slug}/…`, where
+/// `{slug}` is the project's stored slug. Every object-store namespace
+/// and test fake addresses the same relative keys.
 pub struct ConfigResolver;
 
 impl ConfigResolver {
-    /// Returns the root directory under which all project dirs live.
-    /// Override with the `NOTIFI_CONFIG_ROOT` env var (defaults to `configs`).
-    ///
-    /// `infra` config-store drivers resolve their base from here too, so
-    /// the file driver and the kernel paths can never drift apart.
-    pub fn root() -> PathBuf {
-        std::env::var("NOTIFI_CONFIG_ROOT")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("configs"))
-    }
-
     /// Storage-key convention root for one project:
     /// `projects/{slug}/` — the single home of the folder convention,
     /// reused by emulation (purge, export) and tests so the prefix is
@@ -77,30 +27,13 @@ impl ConfigResolver {
         format!("projects/{slug}/")
     }
 
-    /// Builds the channel config path: `{root}/projects/{slug}/config/{channel_name}/`.
-    pub fn channel_dir(slug: &str, channel_name: &str) -> PathBuf {
-        Self::root()
-            .join("projects")
-            .join(slug)
-            .join("config")
-            .join(channel_name)
-    }
-
-    /// Builds the template path: `{root}/projects/{slug}/templates/{template_name}/`.
-    pub fn template_dir(slug: &str, template_name: &str) -> PathBuf {
-        Self::root()
-            .join("projects")
-            .join(slug)
-            .join("templates")
-            .join(template_name)
-    }
-
     /// Storage key for a channel config file:
     /// `projects/{slug}/config/{channel_name}/{file_name}`.
     ///
     /// Relative to whichever [`crate::ports::ConfigStore`] is active (the
-    /// file driver prepends the same root these path helpers use), so the
-    /// same key addresses disk, Redis-cached copies, and R2 buckets alike.
+    /// file driver prepends the root it is constructed with, the object
+    /// store the bucket), so the same key addresses disk, Redis-cached
+    /// copies, and R2 buckets alike.
     pub fn channel_key(slug: &str, channel_name: &str, file_name: &str) -> String {
         format!("projects/{slug}/config/{channel_name}/{file_name}")
     }
@@ -109,41 +42,6 @@ impl ConfigResolver {
     /// `projects/{slug}/templates/{template_name}/{file_name}`.
     pub fn template_key(slug: &str, template_name: &str, file_name: &str) -> String {
         format!("projects/{slug}/templates/{template_name}/{file_name}")
-    }
-
-    /// Reads and parses a JSON config file for a tenant channel.
-    ///
-    /// Path: `{root}/projects/{slug}/config/{channel_name}/{file_name}`.
-    ///
-    /// Returns [`ConfigError::DirectoryNotFound`] when the directory does not
-    /// exist, which lets channels distinguish "no config installed for this
-    /// tenant" from a broken config.
-    pub fn load_json<T: DeserializeOwned>(
-        slug: &str,
-        channel_name: &str,
-        file_name: &str,
-    ) -> Result<T, ConfigError> {
-        let dir = Self::channel_dir(slug, channel_name);
-        if !dir.is_dir() {
-            return Err(ConfigError::DirectoryNotFound {
-                project: slug.to_string(),
-                channel: channel_name.to_string(),
-                path: dir,
-            });
-        }
-
-        let path = dir.join(file_name);
-        let bytes = fs::read(&path).map_err(|source| ConfigError::Io {
-            project: slug.to_string(),
-            channel: channel_name.to_string(),
-            source,
-        })?;
-
-        serde_json::from_slice(&bytes).map_err(|e| ConfigError::Parse {
-            project: slug.to_string(),
-            channel: channel_name.to_string(),
-            message: e.to_string(),
-        })
     }
 }
 
@@ -277,25 +175,6 @@ const DEFAULT_WELCOME_SMS_TEXT: &str =
 mod tests {
     use super::*;
 
-    /// Serializes tests that mutate process env vars.
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn set_env(key: &str, value: &str) {
-        // SAFETY: process-local mutation, guarded by ENV_LOCK so tests never race.
-        unsafe { std::env::set_var(key, value) };
-    }
-
-    fn clear_env(key: &str) {
-        // SAFETY: process-local mutation, guarded by ENV_LOCK so tests never race.
-        unsafe { std::env::remove_var(key) };
-    }
-
-    #[derive(serde::Deserialize, PartialEq, Debug)]
-    struct StubConfig {
-        port: u16,
-        host: String,
-    }
-
     #[test]
     fn channel_key_matches_path_convention() {
         assert_eq!(
@@ -343,64 +222,5 @@ mod tests {
         assert!(
             keys.contains(&ConfigResolver::template_key("acme", "welcome", "sms.txt").as_str())
         );
-    }
-
-    #[test]
-    fn resolves_channel_dir_from_env_root() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        set_env("NOTIFI_CONFIG_ROOT", "/tmp/notifi-configs");
-        let dir = ConfigResolver::channel_dir("acme", "email");
-        assert_eq!(
-            dir,
-            PathBuf::from("/tmp/notifi-configs/projects/acme/config/email")
-        );
-        clear_env("NOTIFI_CONFIG_ROOT");
-    }
-
-    #[test]
-    fn resolves_template_dir_from_env_root() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        set_env("NOTIFI_CONFIG_ROOT", "/tmp/notifi-configs");
-        let dir = ConfigResolver::template_dir("acme", "welcome");
-        assert_eq!(
-            dir,
-            PathBuf::from("/tmp/notifi-configs/projects/acme/templates/welcome")
-        );
-        clear_env("NOTIFI_CONFIG_ROOT");
-    }
-
-    #[test]
-    fn load_json_reports_missing_directory() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        set_env("NOTIFI_CONFIG_ROOT", "/nonexistent/notifi");
-        let err = ConfigResolver::load_json::<StubConfig>("acme", "email", "config.json")
-            .expect_err("should fail");
-        assert!(matches!(err, ConfigError::DirectoryNotFound { .. }));
-        clear_env("NOTIFI_CONFIG_ROOT");
-    }
-
-    #[test]
-    fn load_json_parses_file() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let root = std::env::temp_dir().join("notifi-test-root");
-        set_env("NOTIFI_CONFIG_ROOT", root.to_str().unwrap());
-        let dir = root
-            .join("projects")
-            .join("acme")
-            .join("config")
-            .join("email");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("config.json"),
-            r#"{"port": 587, "host": "smtp.example.com"}"#,
-        )
-        .unwrap();
-
-        let cfg = ConfigResolver::load_json::<StubConfig>("acme", "email", "config.json").unwrap();
-        assert_eq!(cfg.host, "smtp.example.com");
-        assert_eq!(cfg.port, 587);
-
-        std::fs::remove_dir_all(&root).unwrap();
-        clear_env("NOTIFI_CONFIG_ROOT");
     }
 }

@@ -21,7 +21,8 @@ fn pool_options(config: &AppConfig) -> PgPoolOptions {
 /// Connects to Postgres and applies pending migrations, if configured.
 ///
 /// Returns `None` when `NOTIFI_DATABASE_URL` is unset or the connection/migration
-/// fails — the API keeps booting and readiness reports the gap.
+/// fails — the server and worker refuse to boot on that (an incomplete
+/// system logs the reason and exits instead of limping on).
 pub async fn connect(config: &AppConfig) -> Option<PgPool> {
     let url = config.database.url.as_deref()?;
 

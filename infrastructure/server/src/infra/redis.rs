@@ -2,21 +2,17 @@
 
 use crate::infra::config::AppConfig;
 
-/// Builds a Redis client, if configured.
+/// Builds a Redis client — required: the runtime boots with it or not at
+/// all.
 ///
-/// Returns `None` when `NOTIFI_REDIS_URL` is unset or the URL is invalid —
-/// the API keeps booting and readiness reports the gap.
-pub fn connect(config: &AppConfig) -> Option<redis::Client> {
-    let url = config.redis.url.as_deref()?;
+/// Returns an error naming the gap when the URL is unset or invalid.
+/// The machine must be reachable too — boot performs the real handshake
+/// and aborts on failure.
+pub fn connect(config: &AppConfig) -> Result<redis::Client, String> {
+    let url = config.redis.url.as_deref().ok_or_else(|| {
+        "redis not configured — set NOTIFI_REDIS_URL (sessions and the config cache ride it)"
+            .to_string()
+    })?;
 
-    match redis::Client::open(url) {
-        Ok(client) => {
-            tracing::info!("redis configured");
-            Some(client)
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "invalid redis url; continuing without redis");
-            None
-        }
-    }
+    redis::Client::open(url).map_err(|e| format!("invalid redis url: {e}"))
 }

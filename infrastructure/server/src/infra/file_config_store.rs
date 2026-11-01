@@ -1,10 +1,12 @@
-//! Filesystem-backed config store — the local-dev baseline driver.
+//! Filesystem-backed config store — TEST helper only.
 //!
-//! Reads/writes/lists under `kernel`'s convention root directly, i.e.
-//! exactly what [`crate::kernel::config::ConfigResolver`] did when it was
-//! the only path. `NOTIFI_CONFIG_ROOT` selects the root (defaults to
-//! `configs`); `infrastructure/.cargo/config.toml` points dev bootstraps
-//! at `server/assets`.
+//! The runtime boots R2-or-nothing (the factory refuses anything less),
+//! so this driver never runs in a real boot — the integration suites use
+//! it to exercise real file semantics without cloud credentials, and the
+//! system-templates unit test reads real bytes without a live bucket.
+//!
+//! Reads/writes/lists under whatever root it is handed, exactly one
+//! convention (`kernel`'s `projects/{slug}/…` tree).
 //!
 //! `ensure_root_folders` creates the real directories (`projects/`,
 //! `users/`) —
@@ -23,12 +25,6 @@ pub struct FileConfigStore {
 impl FileConfigStore {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
-    }
-
-    /// The same root the kernel path helpers resolve, so file keys and
-    /// config paths stay interchangeable.
-    pub fn from_root_env() -> Self {
-        Self::new(crate::kernel::config::ConfigResolver::root())
     }
 
     fn path_for(&self, key: &str) -> PathBuf {

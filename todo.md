@@ -7,7 +7,8 @@
 
 ## Board (agent-updated, Oct 31 2026 — other_channel now reads exactly like the Other section)
 
-**Done — sitting local (69 commits, un-pushed; push on your word only):**
+**Done — sitting local (70 commits, un-pushed; push on your word only):**
+- **Boot refuses an incomplete system (your four-gates call + R2-or-nothing)** — Postgres (connection AND migrations), Redis (unset or unreachable), SMTP-when-enabled (the boot NOOP probe now aborts instead of warning) and the object store must all pass or the process logs exactly what failed and exits 1 (the silent swallow inside `block_on` is gone — even a port-bind failure reports honestly now). **The file-driver fallback died**: the factory demands the full `NOTIFI_R2_*` quartet and names the missing vars otherwise; `NOTIFI_CONFIG_ROOT` is retired (factory env-arm, `ConfigResolver::root`, `.cargo/config.toml` entry, `.env.example`), the kernel's disk-emulation layer (`channel_dir`/`template_dir`/`load_json`/`ConfigError` + its four env tests) went with it, and `file_config_store.rs` survives only as a test helper given an explicit root. OAuth per your option (a): no provider configured or a half-paired pair aborts boot. Template warm stays soft. `.env.example` marks the required keys in its uncomment-with-placeholder style. Gates: fmt/clippy green; backend test count moved honestly to **419** (the deleted disk-layer tests + the factory's new refuse-tests).
 - Flows: template-node preset panel + validation; inbound/schedules render from node presets; webhook fallback panel
 - Device channels live in the provider registry: derived catalog, blurbs, brand icons, verified docs links
 - Old "push" channel retired — device rows own it now

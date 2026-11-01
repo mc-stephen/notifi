@@ -108,10 +108,9 @@ optionally RabbitMQ-driven). Provider identities, keys and the registry:
 
 ### Where tenant storage lives (§18)
 
-Project channel configs + templates live under `projects/{slug}/…` in a
-`ConfigStore` driver: the file system (root `NOTIFI_CONFIG_ROOT`) or the
-R2 bucket when `NOTIFI_R2_*` is set (bucket = root, same keys). One
-convention everywhere, cache (`cfg:` prefix, Redis) in between. Every
+Project channel configs + templates live under `projects/{slug}/…` in the
+R2-backed `ConfigStore` (the bucket IS the root; keys are store-relative).
+One convention everywhere, cache (`cfg:` prefix, Redis) in between. Every
 boot lays the top-level folders down (`projects/`, `backup/`, `users/`) via
 `build_ensured`; `--reset` wipes `projects/` back to only those markers
 (its store half — the DB comes first).
@@ -119,12 +118,14 @@ boot lays the top-level folders down (`projects/`, `backup/`, `users/`) via
 ### What boot does (§17, lib.rs)
 
 Config layering (defaults → optional `NOTIFI_CONFIG_FILE` → env
-overrides) → telemetry → pool → optional Redis (sessions + config cache)
-→ optional RabbitMQ → the config store driver pick (`build_ensured`) →
-`compose()` wires the service graph → routers mount on three API
-surfaces (`/`, `/app`, `/admin`; `/v1` when M2 arrives). Missing pieces
-degrade explicitly rather than crash: no DB = auth answers 503, no mail
-= auth flows ride dev tokens, no Redis = direct store reads.
+overrides) → telemetry → then the four boot gates, each one a hard
+requirement where it is switched on: Postgres (connection + migrations),
+Redis (reachable), SMTP (only when mail is on — unset mail is a choice),
+the object store (the full `NOTIFI_R2_*` quartet, `build_ensured`) →
+OAuth credentials (some provider fully paired — absent or half-paired
+refuses boot) → `compose()` wires the service graph → routers mount on
+three API surfaces (`/`, `/app`, `/admin`; `/v1` when M2 arrives). An
+incomplete system aborts with the reason instead of limping on.
 
 ## Layout
 
@@ -142,14 +143,14 @@ src/
 ├── infra/            # concrete drivers: Postgres repos, OAuth client, config, telemetry
 └── testing.rs        # in-memory fakes shared with integration tests
 assets/               # server-owned data & docs
-├── projects/         # tenant channel configs + templates (NOTIFI_CONFIG_ROOT)
+├── projects/         # runtime tree in the R2 bucket; a test's file store lands here only
 ├── docs/             # ARCHITECTURE.md, SERVER.md, this README, COMMANDS.md
 └── migrations/       # sqlx migration (0001: the complete schema — dev-stage squash)
 worker/               # background binary — RabbitMQ sweep-tick consumer
 ```
 
 Other root files: `Cargo.toml` (package + workspace index), `rust-toolchain.toml`
-(pinned toolchain), `.cargo/config.toml` (dev env: `NOTIFI_CONFIG_ROOT → ./assets`),
+(pinned toolchain), `.cargo/config.toml` (dev env: `NOTIFI_EXPOSE_DEV_TOKENS`),
 `target/` (build output, gitignored).
 
 ### API surfaces (see [`note.md`](./note.md))
@@ -203,8 +204,10 @@ configs API contract.
 - Application config: `NOTIFI_HOST`, `NOTIFI_PORT`, `NOTIFI_LOG`,
   optional `NOTIFI_CONFIG_FILE` (JSON).
 - Database: `NOTIFI_DATABASE_URL` (e.g. `postgres://user:pass@localhost:5432/notifi`).
-  When set, the API connects and applies the `assets/migrations/` folder at boot.
-- Redis: `NOTIFI_REDIS_URL` (e.g. `redis://:password@localhost:6379`).
+  **Required**: the server connects and applies the `assets/migrations/` folder
+  at boot, and refuses to start without it.
+- Redis: `NOTIFI_REDIS_URL` (e.g. `redis://:password@localhost:6379`). **Required**
+  the same way — sessions and the config cache ride it.
 - Auth: `NOTIFI_EXPOSE_DEV_TOKENS=true|false` — puts raw one-time tokens in
   auth responses (local dev until email delivery lands; the checked-in
   `.cargo/config.toml` enables it for `cargo run`/`cargo test`).
@@ -216,11 +219,11 @@ configs API contract.
   `NOTIFI_BACKUP_DB_URL` (defaults to `NOTIFI_DATABASE_URL`). Nothing is
   ever auto-deleted. One-shot test: `cargo run -p worker -- --backup-now`.
   Full story: ARCHITECTURE §23.
-- Database and Redis are **optional**: without them the API still boots and
-  serves `/healthz`; `/readyz` reports 503. `docker-compose.yml` provides both
-  locally (edit the `CHANGE_ME` values first, then `docker compose up -d`).
-  A **remote** database works too: put its URL in a gitignored `.env` file
-  next to `Cargo.toml` (`NOTIFI_DATABASE_URL=...`) — loaded automatically at
+- Database and Redis are **required for boot** — an incomplete system exits
+  with the reason. `docker-compose.yml` provides both locally (edit the
+  `CHANGE_ME` values first, then `docker compose up -d`). A **remote**
+  database works too: put its URL in a gitignored `.env` file next to
+  `Cargo.toml` (`NOTIFI_DATABASE_URL=...`) — loaded automatically at
   boot; real environment variables still win over file values.
 - Telemetry filter: `NOTIFI_LOG` (falls back to `RUST_LOG`, then `info`).
 - **Project assets** (tenant channel configs + templates) live in the
@@ -234,9 +237,8 @@ configs API contract.
 
   The default layout is code (`kernel::config::DefaultProjectLayout`) — a
   project materializes its own `projects/{slug}/**` tree at creation. The
-  root is overridable via `NOTIFI_CONFIG_ROOT` (`.cargo/config.toml`
-  points dev at `./assets`), and all four `NOTIFI_R2_*` values switch to
-  the Cloudflare R2 bucket, which then *is* the root. `--reset` (one
+  store IS the Cloudflare R2 bucket (all four `NOTIFI_R2_*` values are a
+  boot requirement — R2-or-nothing, no fallback driver). `--reset` (one
   clean-start flag) drops the DB and then — only on success — wipes
   `projects/` back to only its folder markers.
 
