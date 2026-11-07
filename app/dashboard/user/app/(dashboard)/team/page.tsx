@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/custom/page-header";
 import { cn, initials } from "@/lib/utils";
 import { RoleBadge } from "@/components/custom/role-badge";
@@ -14,7 +15,6 @@ import { DetailPanel } from "@/components/custom/detail-panel";
 import type { ColumnDef } from "@tanstack/react-table";
 import { format } from "date-fns";
 import {
-  UserCog,
   Plus,
   Mail,
   Trash2,
@@ -26,13 +26,14 @@ import {
   CreditCard,
   ShieldCheck,
   ShieldOff,
+  LogOut,
 } from "lucide-react";
+import { useAuthStore } from "@/store/auth-store";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { useProjectStore } from "@/store/project-store";
 import { useTeamMembers } from "@/hooks/use-team";
@@ -51,7 +52,39 @@ const ROLE_ICONS: Record<
   billing: CreditCard,
 };
 
-function MemberRowActions({ member }: { member: TeamMemberRecord }) {
+function MemberRowActions({
+  member,
+  projectId,
+  meId,
+  refresh,
+  onTransfer,
+}: {
+  member: TeamMemberRecord;
+  projectId: string;
+  meId: string | null;
+  refresh: () => Promise<void>;
+  onTransfer: (member: TeamMemberRecord) => void;
+}) {
+  const toMessage = (e: unknown, fallback: string) =>
+    e instanceof Error ? e.message : fallback;
+
+  async function act(request: () => Promise<unknown>, success: string) {
+    try {
+      await request();
+      toast.success(success);
+      void refresh();
+    } catch (e) {
+      toast.error(success === "Left the project" ? "Couldn't leave" : "Couldn't remove member", {
+        description: toMessage(e, "Check your connection and try again."),
+      });
+    }
+  }
+
+  const isSelf = meId !== null && member.userId === meId;
+  // The server holds the real rules: nobody removes the owner, admins
+  // only remove plain members — the menu only hides what can never work.
+  const removable = !isSelf && member.role !== "owner";
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
@@ -65,13 +98,38 @@ function MemberRowActions({ member }: { member: TeamMemberRecord }) {
         >
           <Mail className="size-3.5" /> Send email
         </DropdownMenuItem>
-        <DropdownMenuItem>
-          <UserCog className="size-3.5" /> Change role
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem className="text-destructive">
-          <Trash2 className="size-3.5" /> Remove
-        </DropdownMenuItem>
+        {!isSelf && member.role !== "owner" && (
+          <DropdownMenuItem onClick={() => onTransfer(member)}>
+            <Crown className="size-3.5" /> Transfer ownership
+          </DropdownMenuItem>
+        )}
+        {removable && (
+          <DropdownMenuItem
+            className="text-destructive"
+            onClick={() =>
+              act(
+                () =>
+                  api(
+                    `/app/projects/${projectId}/members/${member.userId}`,
+                    { method: "DELETE" },
+                  ),
+                `${member.name} removed from the team`,
+              )
+            }
+          >
+            <Trash2 className="size-3.5" /> Remove
+          </DropdownMenuItem>
+        )}
+        {isSelf && (
+          <DropdownMenuItem
+            className="text-destructive"
+            onClick={() =>
+              act(() => api(`/app/projects/${projectId}/members/me`, { method: "DELETE" }), "Left the project")
+            }
+          >
+            <LogOut className="size-3.5" /> Leave project
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -139,11 +197,15 @@ export default function TeamPage() {
   const { members, loading, error, refresh } = useTeamMembers();
   // Invite panel open state (form lives in InviteTeamMemberPanel).
   const [inviteDialog, setInviteDialog] = useState(false);
+  // Ownership-transfer panel target (the picked roster row).
+  const [transferTarget, setTransferTarget] =
+    useState<TeamMemberRecord | null>(null);
   const [require2fa, setRequire2fa] = useState<boolean | null>(null);
   const [toggling2fa, setToggling2fa] = useState(false);
   const [flagError, setFlagError] = useState<string | null>(null);
   const project = useProjectStore((s) => s.currentProject);
   const updateProject = useProjectStore((s) => s.updateProject);
+  const user = useAuthStore((s) => s.user);
 
   const require2faOn = require2fa ?? project?.require2fa ?? false;
 
@@ -262,7 +324,15 @@ export default function TeamPage() {
           searchPlaceholder="Search members..."
           pageSize={10}
           emptyMessage="No members yet — invite your first team member to get started."
-          rowActions={(member) => <MemberRowActions member={member} />}
+          rowActions={(member) => (
+            <MemberRowActions
+              member={member}
+              projectId={project?.id ?? ""}
+              meId={user?.id ?? null}
+              refresh={refresh}
+              onTransfer={setTransferTarget}
+            />
+          )}
         />
       )}
       {/* Invite member panel */}
@@ -272,6 +342,15 @@ export default function TeamPage() {
           require2faOn={require2faOn}
           refresh={refresh}
           onClose={() => setInviteDialog(false)}
+        />
+      )}
+      {/* Ownership transfer panel */}
+      {transferTarget && project && (
+        <TransferOwnershipPanel
+          project={project.id}
+          member={transferTarget}
+          refresh={refresh}
+          onClose={() => setTransferTarget(null)}
         />
       )}
     </div>
@@ -285,6 +364,90 @@ const ROLE_OPTIONS: { value: Role; label: string }[] = [
   { value: "admin", label: "Admin" },
   { value: "billing", label: "Billing" },
 ];
+
+/** Ownership moves to an accepted member — the one roof the server
+ * honors. The previous owner lands as admin, and from there they can
+ * stay, leave, or be kicked like anyone else. */
+function TransferOwnershipPanel({
+  project,
+  member,
+  refresh,
+  onClose,
+}: {
+  project: string;
+  member: TeamMemberRecord;
+  refresh: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const [transferring, setTransferring] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
+
+  const handleTransfer = async () => {
+    setTransferError(null);
+    setTransferring(true);
+    try {
+      await api(`/app/projects/${project}/ownership`, {
+        method: "POST",
+        body: JSON.stringify({ receiver: member.userId }),
+      });
+      toast.success("Ownership transferred", {
+        description: `${member.name} is now the project owner — you stay on as admin.`,
+      });
+      onClose();
+      void refresh();
+    } catch (e) {
+      setTransferError(
+        e instanceof Error ? e.message : "Could not transfer ownership.",
+      );
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  return (
+    <DetailPanel
+      onClose={onClose}
+      headerClassName="p-4"
+      header={
+        <h3 className="truncate font-medium text-base text-foreground">
+          Transfer ownership
+        </h3>
+      }
+    >
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+        <p className="text-xs text-muted-foreground">
+          One owner at a time, and this is the only door: the receiver must
+          already be an accepted team member.
+        </p>
+        <div className="flex items-center gap-3 rounded-md border border-border p-3">
+          <div className="flex size-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
+            {initials(member.name)}
+          </div>
+          <div>
+            <div className="text-sm font-medium">{member.name}</div>
+            <div className="text-xs text-muted-foreground">{member.email}</div>
+          </div>
+        </div>
+        <div className="text-xs text-muted-foreground">
+          They get the crown and every owner power (deletion, further
+          transfers). You stay on the team as <strong>admin</strong> — free to
+          stay, leave, or be kicked according to your agreement with them.
+        </div>
+        {transferError && (
+          <p className="text-xs text-destructive">{transferError}</p>
+        )}
+      </div>
+      <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 px-4 pb-4 pt-3">
+        <Button variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button onClick={handleTransfer} disabled={transferring}>
+          {transferring ? "Transferring..." : "Transfer ownership"}
+        </Button>
+      </div>
+    </DetailPanel>
+  );
+}
 
 function InviteTeamMemberPanel({
   projectId,
