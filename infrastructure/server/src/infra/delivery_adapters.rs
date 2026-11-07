@@ -772,13 +772,16 @@ mod tests {
     use crate::ports::ProviderTester;
     use crate::testing::http_stub;
 
-    /// Gateway-arm spied routes: (topic, key, title, body) per push.
-    static GATEWAY_LOG: std::sync::Mutex<Vec<(String, String, String, String)>> =
-        std::sync::Mutex::new(Vec::new());
+    /// Shared handle for the per-test gateway log.
+    type GatewayLog = Arc<std::sync::Mutex<Vec<(String, String, String, String)>>>;
 
-    /// In-file gateway queue fake — records pushes in GATEWAY_LOG; poll
-    /// stays memoryless (factory tests only prove the write-through).
-    struct RecordingGatewayStore;
+    /// In-file gateway queue fake — records pushes in a per-factory log;
+    /// poll stays memoryless (factory tests only prove the write-through).
+    /// Carried per instance instead of a global so parallel tests can't
+    /// race or poison each other's log.
+    struct RecordingGatewayStore {
+        log: GatewayLog,
+    }
 
     impl GatewayStore for RecordingGatewayStore {
         fn push(
@@ -788,7 +791,7 @@ mod tests {
             title: &str,
             body: &str,
         ) -> crate::ports::gateway::BoxGatewayFuture<'_, ()> {
-            GATEWAY_LOG.lock().unwrap().push((
+            self.log.lock().unwrap().push((
                 topic.to_string(),
                 key.to_string(),
                 title.to_string(),
@@ -808,10 +811,13 @@ mod tests {
         }
     }
 
-    /// Factory wired with the recording store (fresh log each call).
-    fn factory_with_store() -> DefaultAdapterFactory {
-        GATEWAY_LOG.lock().unwrap().clear();
-        DefaultAdapterFactory::new(Arc::new(RecordingGatewayStore))
+    /// Factory wired with the recording store (test-fresh log each call).
+    fn gateway_log() -> GatewayLog {
+        Arc::new(std::sync::Mutex::new(Vec::new()))
+    }
+
+    fn factory_with_store(log: GatewayLog) -> DefaultAdapterFactory {
+        DefaultAdapterFactory::new(Arc::new(RecordingGatewayStore { log }))
     }
 
     fn message() -> DeliveryMessage {
@@ -1395,11 +1401,12 @@ yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
 
     #[test]
     fn gateway_factory_arms_store_only() {
+        let log = gateway_log();
         // An un-wired factory has nothing for gateway; a wired one arms the
         // full recipe. The unit-defaulted factory holds no store, so the
         // full-recipe case is the only one that lands here.
         assert!(
-            factory_with_store()
+            factory_with_store(log.clone())
                 .adapter(
                     "proj-1",
                     "other",
@@ -1414,7 +1421,7 @@ yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
 
         // A recipe missing either route half refuses even with the store.
         assert!(
-            factory_with_store()
+            factory_with_store(log.clone())
                 .adapter(
                     "proj-1",
                     "other",
@@ -1424,7 +1431,7 @@ yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
                 .is_none()
         );
         assert!(
-            factory_with_store()
+            factory_with_store(log)
                 .adapter(
                     "proj-1",
                     "other",
@@ -1437,7 +1444,8 @@ yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
 
     #[tokio::test]
     async fn gateway_send_queues_onto_the_route() {
-        let factory = factory_with_store();
+        let log = gateway_log();
+        let factory = factory_with_store(log.clone());
         let adapter = factory
             .adapter(
                 "proj-1",
@@ -1457,7 +1465,7 @@ yENpstWvcb6awsO3MAoGba0Pn8uhRANCAASxuCOWXWK5YDSIdF73DthFO6YashYD
         assert_eq!(receipt.provider, "gateway");
         assert!(receipt.provider_message_id.is_none());
 
-        let mut store = GATEWAY_LOG.lock().unwrap();
+        let mut store = log.lock().unwrap();
         assert_eq!(store.len(), 1, "exactly one row queued");
         let single = store.pop().unwrap();
         assert_eq!(single.0, "gw-xk4p2m9tq7v3");
