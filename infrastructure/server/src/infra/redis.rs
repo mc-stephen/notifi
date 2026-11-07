@@ -2,6 +2,13 @@
 
 use crate::infra::config::AppConfig;
 
+/// The one label everything this platform writes on a Redis pad starts
+/// with (`app:feature:key` read left to right: `notifi:` is the app,
+/// each feature adds its own page label — e.g. the config cache keys
+/// `notifi:cfg:…`). Shared-pad etiquette: any sweeper that only knows
+/// this label can never erase a neighbour's notes.
+pub const APP_KEY_PREFIX: &str = "notifi:";
+
 /// Builds a Redis client — required: the runtime boots with it or not at
 /// all.
 ///

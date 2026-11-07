@@ -1,9 +1,9 @@
 //! Live `RedisCacheBackend` check: warm key roundtrip + invalidation
 //! against a real Redis.
 //!
-//! Gated on `NOTIFI_TEST_REDIS_URL` (a scratch `cfg:` key with a short
-//! TTL; local dev redis via docker-compose works). Nothing runs unless
-//! the variable is explicit.
+//! Gated on `NOTIFI_TEST_REDIS_URL` (a scratch `notifi:cfg:`-labeled key
+//! with a short TTL; local dev redis via docker-compose works). Nothing
+//! runs unless the variable is explicit.
 //!
 //! ```shell
 //! NOTIFI_TEST_REDIS_URL=redis://:...@localhost:6379 \
@@ -29,7 +29,10 @@ async fn live_redis_cache_roundtrip() {
 
     let backend = RedisCacheBackend::new(conn).with_ttl(Duration::from_secs(30));
 
-    let scratch = "cfg:_redis-smoke/roundtrip.json";
+    // Label-free raw key: the backend composes `notifi:cfg:` itself, so
+    // the stored form is `notifi:cfg:_redis-smoke/roundtrip.json` — and
+    // any leftover rides exactly the namespace the reset eraser sweeps.
+    let scratch = "_redis-smoke/roundtrip.json";
     let bytes = b"{\"smoke\":true}".to_vec();
 
     backend.set(scratch, bytes.clone()).await;

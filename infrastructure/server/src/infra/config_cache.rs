@@ -23,7 +23,9 @@ use crate::ports::config_store::ConfigStore;
 /// invalidate-on-write path makes edits visible immediately.
 pub const CONFIG_CACHE_TTL: Duration = Duration::from_secs(600);
 
-/// Key prefix so config bytes never collide with other tenants of Redis.
+/// This feature's page label under [`crate::infra::redis::APP_KEY_PREFIX`]
+/// — keys compose to `notifi:cfg:{store key}` at every use site, so the
+/// brand label stays one edit one place.
 const CACHE_PREFIX: &str = "cfg:";
 
 /// Pluggable cache surface — the seam only `infra` knows about.
@@ -39,10 +41,14 @@ pub trait CacheBackend: Send + Sync {
     async fn clear(&self);
 }
 
-/// Emits the prefixed key string for both directions.
+/// Emits the fully-labeled key string for both directions.
 macro_rules! cache_key {
     ($key:expr) => {
-        format!("{CACHE_PREFIX}{}", $key)
+        format!(
+            "{}{CACHE_PREFIX}{}",
+            crate::infra::redis::APP_KEY_PREFIX,
+            $key
+        )
     };
 }
 
@@ -107,10 +113,11 @@ impl CacheBackend for RedisCacheBackend {
     }
 
     /// SCAN walks the keyspace in cursor batches; DEL frees each batch
-    /// found. Only this cache's namespace matches, so other tenants of
-    /// the shared Redis keep their keys. Best-effort like every cache
-    /// write: a mid-wipe failure loses nothing durable (entries re-read
-    /// through the store, TTL'd ones self-heal within ten minutes).
+    /// found. Only this cache's fully-labeled namespace matches, so other
+    /// tenants of the shared Redis keep their keys. Best-effort like
+    /// every cache write: a mid-wipe failure loses nothing durable
+    /// (entries re-read through the store, TTL'd ones self-heal within
+    /// ten minutes).
     async fn clear(&self) {
         let mut connection = self.conn.clone();
         let mut cursor: u64 = 0;
@@ -118,7 +125,10 @@ impl CacheBackend for RedisCacheBackend {
             let (next, keys): (u64, Vec<String>) = match redis::cmd("SCAN")
                 .arg(cursor)
                 .arg("MATCH")
-                .arg(format!("{CACHE_PREFIX}*"))
+                .arg(format!(
+                    "{}{CACHE_PREFIX}*",
+                    crate::infra::redis::APP_KEY_PREFIX
+                ))
                 .arg("COUNT")
                 .arg(1000)
                 .query_async(&mut connection)
@@ -395,7 +405,7 @@ mod config_cache_tests {
     fn cache_key_prefix_isolates_the_namespace() {
         assert_eq!(
             cache_key!("projects/acme/config/email/config.json"),
-            "cfg:projects/acme/config/email/config.json"
+            "notifi:cfg:projects/acme/config/email/config.json"
         );
     }
 

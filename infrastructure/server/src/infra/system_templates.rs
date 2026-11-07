@@ -3,8 +3,8 @@
 //! by ops (dashboard drag-drop) — the server never writes templates,
 //! it only reads them.
 //!
-//! The cache is Redis forever-keys (`cfg:templates/{name}.html`, no
-//! expiry): boot reads the folder into Redis, renders answer from
+//! The cache is Redis forever-keys (`notifi:cfg:templates/{name}.html`,
+//! no expiry): boot reads the folder into Redis, renders answer from
 //! Redis, and a cold name does one store fetch and is cached for good
 //! (a template dropped into the bucket later is live without a
 //! restart). A warm pass — `POST /admin/templates/warm` — re-reads the

@@ -28,7 +28,7 @@ fn main() {
                         }
                     }
                     match server::infra::wipe_config_cache(&config).await {
-                        Ok(()) => println!("Config cache reset complete (cfg: namespace dropped)"),
+                        Ok(()) => println!("Config cache reset complete (notifi:cfg: namespace dropped)"),
                         Err(e) => eprintln!(
                             "Config cache NOT reset — stale bytes self-heal within ten minutes: {e}"
                         ),
