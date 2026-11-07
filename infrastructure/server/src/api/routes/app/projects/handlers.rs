@@ -16,8 +16,9 @@ use axum::response::{IntoResponse, Response};
 use super::super::auth::{CurrentUser, Problem};
 use super::dto::{
     AddMemberRequest, CreateProjectRequest, ProjectDto, ProjectInviteDto, ProjectMemberDto,
-    SetRequire2faRequest, UpdateActiveRequest,
+    SetRequire2faRequest, TransferOwnershipRequest, UpdateActiveRequest,
 };
+use crate::domain::auth::entities::UserId;
 use crate::domain::error::AppError;
 use crate::domain::projects::{ProjectExportService, ProjectMembersService, ProjectService};
 
@@ -181,4 +182,55 @@ pub async fn list_members(
     let members = service.list_members(user.id, &project_id).await?;
     let dtos: Vec<ProjectMemberDto> = members.into_iter().map(ProjectMemberDto::from).collect();
     Ok((StatusCode::OK, Json(serde_json::json!({ "members": dtos }))))
+}
+
+/// `POST /app/projects/{id}/ownership` — hand the project to an accepted
+/// member. The current owner only; the previous owner stays as admin and
+/// afterwards may stay, leave, or be kicked like any other member.
+pub async fn transfer_ownership(
+    CurrentUser(user): CurrentUser,
+    service: MaybeMembersService,
+    Path(project_id): Path<String>,
+    Json(body): Json<TransferOwnershipRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
+    let service = require_members_service(service)?;
+    let receiver = body
+        .receiver
+        .parse::<UserId>()
+        .map_err(|_| Problem::from(AppError::Validation("not a valid user id".to_string())))?;
+    let owner = service
+        .transfer_ownership(user.id, &project_id, receiver)
+        .await?;
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "owner": ProjectMemberDto::from(owner) })),
+    ))
+}
+
+/// `DELETE /app/projects/{id}/members/me` — leave the project. The owner
+/// must transfer ownership first.
+pub async fn leave_project(
+    CurrentUser(user): CurrentUser,
+    service: MaybeMembersService,
+    Path(project_id): Path<String>,
+) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
+    let service = require_members_service(service)?;
+    service.leave_project(user.id, &project_id).await?;
+    Ok((StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))))
+}
+
+/// `DELETE /app/projects/{id}/members/{user_id}` — remove a member.
+/// Owner removes anyone; admins remove plain members only; the owner
+/// cannot be removed short of a transfer.
+pub async fn remove_member(
+    CurrentUser(user): CurrentUser,
+    service: MaybeMembersService,
+    Path((project_id, target_id)): Path<(String, String)>,
+) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
+    let service = require_members_service(service)?;
+    let target = target_id
+        .parse::<UserId>()
+        .map_err(|_| Problem::from(AppError::Validation("not a valid user id".to_string())))?;
+    service.remove_member(user.id, &project_id, target).await?;
+    Ok((StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))))
 }

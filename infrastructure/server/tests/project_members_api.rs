@@ -150,6 +150,63 @@ fn current_code(secret_base32: &str) -> String {
     TOTP::from_rfc6238(rfc).unwrap().generate_current().unwrap()
 }
 
+/// Signs up and returns the fresh user's id alongside the session token
+/// (some tests need the account id, not just the cookie).
+async fn signup_with_id(app: Router, name: &str, email: &str) -> (String, String) {
+    let res = request(
+        app,
+        "POST",
+        "/app/auth/signup",
+        Some(json!({"name": name, "email": email, "password": "Sup3rSecret!"})),
+        None,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let body = body_json(res).await;
+    (
+        body["user"]["id"].as_str().unwrap().to_string(),
+        body["session"]["token"].as_str().unwrap().to_string(),
+    )
+}
+
+/// Invites an existing email and accepts with that member's own token.
+/// Returns the new member's user id.
+async fn onboard_member(
+    app: Router,
+    owner_token: &str,
+    member_token: &str,
+    member_email: &str,
+    project: &str,
+    role: &str,
+) -> String {
+    let res = request(
+        app.clone(),
+        "POST",
+        &format!("/app/projects/{project}/members"),
+        Some(json!({"email": member_email, "role": role})),
+        Some(owner_token),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let token = body_json(res).await["inviteToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let res = request(
+        app.clone(),
+        "POST",
+        &format!("/app/invites/{token}/accept"),
+        None,
+        Some(member_token),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    body_json(res).await["member"]["userId"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
 async fn enable_totp(app: Router, token: &str) {
     let res = request(
         app.clone(),
@@ -390,7 +447,7 @@ async fn expired_invites_are_rejected() {
 }
 
 #[tokio::test]
-async fn only_owners_grant_owner_role() {
+async fn owner_role_is_never_inviteable() {
     let (app, _, _) = app();
     let owner = signup(app.clone(), "Owner", "o2@x.dev").await;
     let admin = signup(app.clone(), "Admin", "a2@x.dev").await;
@@ -422,16 +479,334 @@ async fn only_owners_grant_owner_role() {
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    // The admin cannot invite another owner.
+    // No one — not even the owner — invites the owner role in; the
+    // crown moves only through the ownership transfer.
     let res = request(
         app.clone(),
         "POST",
         &format!("/app/projects/{project}/members"),
-        Some(json!({"email": "o2@x.dev", "role": "owner"})),
+        Some(json!({"email": "third@x.dev", "role": "owner"})),
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    let res = request(
+        app.clone(),
+        "POST",
+        &format!("/app/projects/{project}/members"),
+        Some(json!({"email": "third@x.dev", "role": "owner"})),
         Some(&admin),
     )
     .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn ownership_transfer_moves_the_crown() {
+    let (app, _, _) = app();
+    let owner = signup(app.clone(), "Owner", "transfer-owner@x.dev").await;
+    let member = signup(app.clone(), "Member", "transfer-member@x.dev").await;
+    let project = create_project(app.clone(), &owner, "Handover").await;
+
+    let member_id = onboard_member(
+        app.clone(),
+        &owner,
+        &member,
+        "transfer-member@x.dev",
+        &project,
+        "developer",
+    )
+    .await;
+
+    // The transfer lands on the accepted member.
+    let res = request(
+        app.clone(),
+        "POST",
+        &format!("/app/projects/{project}/ownership"),
+        Some(json!({"receiver": member_id})),
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert_eq!(body["owner"]["role"], "owner");
+    assert_eq!(body["owner"]["userId"], member_id.as_str());
+
+    // The roster shows the receiver crowned and the previous owner
+    // demoted to admin.
+    let res = request(
+        app.clone(),
+        "GET",
+        &format!("/app/projects/{project}/members"),
+        None,
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let members = body_json(res).await["members"].clone();
+    let members = members.as_array().unwrap();
+    let owner_role = |uid: &Value| uid["userId"].as_str().unwrap().to_string();
+    let crowned = members
+        .iter()
+        .find(|m| owner_role(m) == member_id)
+        .expect("new owner on roster");
+    assert_eq!(crowned["role"], "owner");
+    let demoted = members
+        .iter()
+        .find(|m| owner_role(m) != member_id)
+        .expect("previous owner still on roster");
+    assert_eq!(demoted["role"], "admin");
+    let former_owner_id = owner_role(demoted);
+
+    // The new owner (member token) sees the same roster.
+    let res = request(
+        app.clone(),
+        "GET",
+        &format!("/app/projects/{project}/members"),
+        None,
+        Some(&member),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res).await["members"].as_array().unwrap().len(), 2);
+
+    // Everyone else — including the demoted former owner — is refused
+    // the transfer power.
+    let res = request(
+        app.clone(),
+        "POST",
+        &format!("/app/projects/{project}/ownership"),
+        Some(json!({"receiver": former_owner_id})),
+        Some(&owner),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn transfer_requires_an_accepted_member() {
+    let (app, _, _) = app();
+    let (owner_id, owner) = signup_with_id(app.clone(), "Owner", "hands@x.dev").await;
+    let (outsider_id, outsider) = signup_with_id(app.clone(), "Outsider", "outsider1@x.dev").await;
+    let project = create_project(app.clone(), &owner, "Gate").await;
+
+    // A signed-up account that never accepted an invite holds no crown.
+    let res = request(
+        app.clone(),
+        "POST",
+        &format!("/app/projects/{project}/ownership"),
+        Some(json!({"receiver": outsider_id})),
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // Transferring to yourself is a validation error.
+    let res = request(
+        app.clone(),
+        "POST",
+        &format!("/app/projects/{project}/ownership"),
+        Some(json!({"receiver": owner_id})),
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    // ...and a garbage receiver id never parses (id parse precedes the
+    // owner check in the handler).
+    let res = request(
+        app.clone(),
+        "POST",
+        &format!("/app/projects/{project}/ownership"),
+        Some(json!({"receiver": "not-a-user-id"})),
+        Some(&outsider),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn the_owner_leaves_only_after_a_transfer() {
+    let (app, _, _) = app();
+    let owner = signup(app.clone(), "Owner", "leaver@x.dev").await;
+    let member = signup(app.clone(), "Member", "leaver-m1@x.dev").await;
+    let project = create_project(app.clone(), &owner, "Exit").await;
+
+    let member_id = onboard_member(
+        app.clone(),
+        &owner,
+        &member,
+        "leaver-m1@x.dev",
+        &project,
+        "developer",
+    )
+    .await;
+
+    // The owner cannot leave before handing over the crown.
+    let res = request(
+        app.clone(),
+        "DELETE",
+        &format!("/app/projects/{project}/members/me"),
+        None,
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // A member leaves freely.
+    let res = request(
+        app.clone(),
+        "DELETE",
+        &format!("/app/projects/{project}/members/me"),
+        None,
+        Some(&member),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // ...and vanishes from the owner's roster.
+    let res = request(
+        app.clone(),
+        "GET",
+        &format!("/app/projects/{project}/members"),
+        None,
+        Some(&owner),
+    )
+    .await;
+    let member_ids = body_json(res).await["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["userId"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    assert!(!member_ids.contains(&member_id));
+
+    // Leaving twice changes nothing but the story: 404 now.
+    let res = request(
+        app.clone(),
+        "DELETE",
+        &format!("/app/projects/{project}/members/me"),
+        None,
+        Some(&member),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn kick_rules_owner_and_admin() {
+    let (app, _, _) = app();
+    let (owner_id, owner) = signup_with_id(app.clone(), "Owner", "kick-owner@x.dev").await;
+    let admin1 = signup(app.clone(), "Admin1", "kick-admin1@x.dev").await;
+    let admin2 = signup(app.clone(), "Admin2", "kick-admin2@x.dev").await;
+    let plain = signup(app.clone(), "Plain", "kick-plain@x.dev").await;
+    let viewer = signup(app.clone(), "Viewer", "kick-viewer@x.dev").await;
+    let project = create_project(app.clone(), &owner, "Kicks").await;
+
+    let admin_id = onboard_member(
+        app.clone(),
+        &owner,
+        &admin1,
+        "kick-admin1@x.dev",
+        &project,
+        "admin",
+    )
+    .await;
+    let second_admin = onboard_member(
+        app.clone(),
+        &owner,
+        &admin2,
+        "kick-admin2@x.dev",
+        &project,
+        "admin",
+    )
+    .await;
+    let plain_id = onboard_member(
+        app.clone(),
+        &owner,
+        &plain,
+        "kick-plain@x.dev",
+        &project,
+        "developer",
+    )
+    .await;
+    let _viewer_id = onboard_member(
+        app.clone(),
+        &owner,
+        &viewer,
+        "kick-viewer@x.dev",
+        &project,
+        "viewer",
+    )
+    .await;
+
+    // A viewer has no removal power.
+    let res = request(
+        app.clone(),
+        "DELETE",
+        &format!("/app/projects/{project}/members/{plain_id}"),
+        None,
+        Some(&viewer),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // An admin removes a plain member...
+    let res = request(
+        app.clone(),
+        "DELETE",
+        &format!("/app/projects/{project}/members/{plain_id}"),
+        None,
+        Some(&admin1),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // ...but never another admin.
+    let res = request(
+        app.clone(),
+        "DELETE",
+        &format!("/app/projects/{project}/members/{second_admin}"),
+        None,
+        Some(&admin1),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // ...and the owner is untouchable short of a transfer.
+    let res = request(
+        app.clone(),
+        "DELETE",
+        &format!("/app/projects/{project}/members/{owner_id}"),
+        None,
+        Some(&admin1),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // The owner removes anyone, including an admin.
+    let res = request(
+        app.clone(),
+        "DELETE",
+        &format!("/app/projects/{project}/members/{admin_id}"),
+        None,
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // The owner removing themselves through the kick door is rejected:
+    // leaving has its own endpoint.
+    let res = request(
+        app.clone(),
+        "DELETE",
+        &format!("/app/projects/{project}/members/{owner_id}"),
+        None,
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

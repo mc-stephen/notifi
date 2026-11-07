@@ -833,6 +833,87 @@ impl ProjectsStore for FakeAuthStore {
         })
     }
 
+    fn transfer_ownership(
+        &self,
+        project_id: &str,
+        actor: UserId,
+        receiver: UserId,
+    ) -> BoxFut<'_, Result<Option<server::ports::projects_store::TeamMemberRecord>, StoreError>>
+    {
+        use server::ports::projects_store::TeamMemberRecord;
+        let project_id = project_id.to_string();
+        let actor_id = actor.to_string();
+        let receiver_id = receiver.to_string();
+        let members = &self.members;
+        let projects = &self.projects;
+        let users = self.users.read().unwrap().clone();
+        Box::pin(async move {
+            let mut members = members.write().map_err(lock_err)?;
+            let Some(slot) = members
+                .iter_mut()
+                .find(|(pid, uid, _)| *pid == project_id && *uid == receiver_id)
+            else {
+                return Ok(None);
+            };
+            slot.2 = "owner".to_string();
+            // Demote the previous owner's row and any other lingering
+            // owner rows; the receiver keeps the crown alone.
+            for (pid, uid, role) in members.iter_mut() {
+                if pid == &project_id
+                    && uid != &receiver_id
+                    && (role == "owner" || uid == &actor_id)
+                {
+                    *role = "admin".to_string();
+                }
+            }
+            // A creator-only previous owner (no member row yet) gains
+            // one as admin so stay/leave/kick remain possible.
+            if !members
+                .iter()
+                .any(|(pid, uid, _)| pid == &project_id && uid == &actor_id)
+            {
+                members.push((project_id.clone(), actor_id.clone(), "admin".to_string()));
+            }
+            {
+                let mut projects = projects.write().map_err(lock_err)?;
+                for (owner, summary) in projects.iter_mut() {
+                    // The fake's owner tuple is the canonical created_by.
+                    if summary.id == project_id && *owner != receiver_id {
+                        *owner = receiver_id.clone();
+                        break;
+                    }
+                }
+            }
+            Ok(users
+                .iter()
+                .find(|u| u.id.to_string() == receiver_id)
+                .map(|u| TeamMemberRecord {
+                    user_id: receiver_id.clone(),
+                    name: u.name.clone(),
+                    email: u.email.as_str().to_string(),
+                    role: "owner".to_string(),
+                    has_2fa: u.totp_enabled,
+                    last_active_at: u.last_login_at,
+                }))
+        })
+    }
+
+    fn remove_member(
+        &self,
+        project_id: &str,
+        user_id: UserId,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let project_id = project_id.to_string();
+        let member_id = user_id.to_string();
+        let members = &self.members;
+        Box::pin(async move {
+            let mut members = members.write().map_err(lock_err)?;
+            let before = members.len();
+            members.retain(|(pid, uid, _)| !(pid == &project_id && uid == &member_id));
+            Ok(members.len() < before)
+        })
+    }
+
     fn create_invite(
         &self,
         project_id: &str,

@@ -1278,6 +1278,131 @@ impl ProjectsStore for PgAuthStore {
         })
     }
 
+    fn transfer_ownership(
+        &self,
+        project_id: &str,
+        actor: UserId,
+        receiver: UserId,
+    ) -> BoxFut<'_, Result<Option<TeamMemberRecord>, StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        let actor = actor.to_string();
+        let receiver = receiver.to_string();
+        Box::pin(async move {
+            #[derive(sqlx::FromRow)]
+            struct MemberRow {
+                user_id: String,
+                name: String,
+                email: String,
+                role: String,
+                has_2fa: bool,
+                last_active_at: Option<DateTime<Utc>>,
+            }
+            let mut tx = pool.begin().await.map_err(map_err)?;
+            // Single owner guarantee: the receiver gains the role, every
+            // other row carrying it (including the previous owner's)
+            // drops to admin, and created_by — the marker every
+            // owner-only power checks — moves with the crown.
+            let claimed = sqlx::query(
+                "UPDATE platform_project_members pm
+                 SET role = 'owner', updated_at = now()
+                 WHERE pm.project_id = $1 AND pm.user_id = $2 AND pm.deleted_at IS NULL",
+            )
+            .bind(&project_id)
+            .bind(&receiver)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_err)?
+            .rows_affected();
+            if claimed == 0 {
+                return Ok(None);
+            }
+            sqlx::query(
+                "UPDATE platform_project_members
+                 SET role = 'admin', updated_at = now()
+                 WHERE project_id = $1 AND deleted_at IS NULL
+                   AND (user_id = $3 OR (role = 'owner' AND user_id <> $2))",
+            )
+            .bind(&project_id)
+            .bind(&receiver)
+            .bind(&actor)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_err)?;
+            // The previous owner stays on the team even when they held
+            // only created_by and never a member row: upsert their row
+            // as admin so stay/leave/kick all remain possible.
+            sqlx::query(
+                "INSERT INTO platform_project_members
+                     (id, project_id, user_id, role)
+                 VALUES ($4, $1, $3, 'admin')
+                 ON CONFLICT (project_id, user_id) DO UPDATE
+                   SET role = 'admin', deleted_at = NULL, updated_at = now()
+                 WHERE platform_project_members.deleted_at IS NOT NULL",
+            )
+            .bind(&project_id)
+            .bind(&receiver)
+            .bind(&actor)
+            .bind(Ulid::new().to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(map_err)?;
+            sqlx::query("UPDATE platform_projects SET created_by = $2 WHERE id = $1")
+                .bind(&project_id)
+                .bind(&receiver)
+                .execute(&mut *tx)
+                .await
+                .map_err(map_err)?;
+            let record = sqlx::query_as::<_, MemberRow>(
+                "SELECT u.id AS user_id, u.name, u.email, pm.role,
+                        u.totp_enabled AS has_2fa, u.last_login_at AS last_active_at
+                 FROM platform_project_members pm
+                 JOIN auth_users u ON u.id = pm.user_id AND u.deleted_at IS NULL
+                 WHERE pm.project_id = $1 AND pm.user_id = $2 AND pm.deleted_at IS NULL",
+            )
+            .bind(&project_id)
+            .bind(&receiver)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(map_err)?;
+            tx.commit().await.map_err(map_err)?;
+            Ok(record.map(|r| TeamMemberRecord {
+                user_id: r.user_id,
+                name: r.name,
+                email: r.email,
+                role: r.role,
+                has_2fa: r.has_2fa,
+                last_active_at: r.last_active_at,
+            }))
+        })
+    }
+
+    fn remove_member(
+        &self,
+        project_id: &str,
+        user_id: UserId,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let pool = self.pool.clone();
+        let project_id = project_id.to_string();
+        let member_id = user_id.to_string();
+        Box::pin(async move {
+            // Soft delete mirrors insert_member's reactivation: the unique
+            // (project_id, user_id) pair stays intact for future invites.
+            let gone = sqlx::query(
+                "UPDATE platform_project_members
+                 SET deleted_at = now(), updated_at = now()
+                 WHERE project_id = $1 AND user_id = $2 AND deleted_at IS NULL",
+            )
+            .bind(&project_id)
+            .bind(&member_id)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?
+            .rows_affected();
+            Ok(gone > 0)
+        })
+    }
+
     fn create_invite(
         &self,
         project_id: &str,

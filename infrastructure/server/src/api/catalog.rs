@@ -217,6 +217,27 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         description: "team roster with 2FA standing",
     },
     RouteInfo {
+        method: "POST",
+        path: "/app/projects/{id}/ownership",
+        surface: Surface::App,
+        feature: "projects",
+        description: "move ownership to an accepted member (owner only)",
+    },
+    RouteInfo {
+        method: "DELETE",
+        path: "/app/projects/{id}/members/me",
+        surface: Surface::App,
+        feature: "projects",
+        description: "leave the project (owner must transfer first)",
+    },
+    RouteInfo {
+        method: "DELETE",
+        path: "/app/projects/{id}/members/{user_id}",
+        surface: Surface::App,
+        feature: "projects",
+        description: "remove a team member (owner: anyone; admin: plain members)",
+    },
+    RouteInfo {
         method: "GET",
         path: "/app/invites/{token}",
         surface: Surface::App,

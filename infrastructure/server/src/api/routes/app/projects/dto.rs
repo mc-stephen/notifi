@@ -79,6 +79,13 @@ pub struct CreateProjectRequest {
     pub description: Option<String>,
 }
 
+/// `POST /app/projects/{id}/ownership` — the receiving member's user id.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferOwnershipRequest {
+    pub receiver: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectDto {

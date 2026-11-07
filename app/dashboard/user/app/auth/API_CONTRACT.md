@@ -134,6 +134,10 @@ Called by the dashboard profile card (round preview + upload + remove).
 The user account **is** the workspace: projects are owned by their creator
 (`created_by`) and can be shared via per-project membership
 (`platform_project_members` with roles `owner | admin | editor | viewer`).
+Ownership is exactly one account at a time and moves only by transfer
+(`POST /app/projects/:id/ownership` to an accepted member) — never by
+invite. The previous owner demotes to `admin` and may stay, leave, or be
+kicked by the new owner like any other member.
 User-level "folders" (`platform_user_groups` + `platform_user_group_projects`)
 group projects for UI organization only — no auth/billing semantics. The
 onboarding flag means *owns or belongs to ≥1 project*.
@@ -203,7 +207,7 @@ Owner or admin only. Request: `{ "enabled": true }`. Response `200 { "require2fa
 
 #### `POST /app/projects/:id/members` — invite an existing account (GitHub-style)
 
-Owner or admin only (granting `owner` additionally requires being the creator). Request: `{ "email": "string", "role": "owner|admin|developer|viewer|billing" }`. Creates a **pending invite** (7-day expiry, supersedes prior pending ones for the pair) and emails an accept link — no membership yet. Response `201 { "invite": { "id", "projectId", "projectName", "email", "role", "expiresAt" }[, "inviteToken": "dev mode"] }`. Errors: `400` bad role/email, `404` unknown account or project, `409` already on the team, `403` suspended target or insufficient caller role. The 2FA gate is deliberately NOT checked here (invitees may enable 2FA before accepting). Wired to the team page invite dialog.
+Owner or admin only. Request: `{ "email": "string", "role": "admin|developer|viewer|billing" }` — `owner` is refused with `400`: the owner role moves only through ownership transfer (`POST /app/projects/:id/ownership`), never through an invite. Creates a **pending invite** (7-day expiry, supersedes prior pending ones for the pair) and emails an accept link — no membership yet. Response `201 { "invite": { "id", "projectId", "projectName", "email", "role", "expiresAt" }[, "inviteToken": "dev mode"] }`. Errors: `400` bad role/email, `404` unknown account or project, `409` already on the team, `403` suspended target or insufficient caller role. The 2FA gate is deliberately NOT checked here (invitees may enable 2FA before accepting). Wired to the team page invite dialog.
 
 #### `GET /app/invites/:token` — preview a pending invite
 
@@ -216,6 +220,18 @@ Requires session as the invited address. Enforces the project 2FA gate (`403` wi
 #### `POST /app/invites/:token/decline` — decline quietly
 
 Always `200 {status:"ok"}` on unknown tokens (no enumeration).
+
+#### `POST /app/projects/:id/ownership` — transfer ownership to a team member
+
+Owner only. Request: `{ "receiver": "userId" }` — the receiver must be an **accepted** member of this project (a pending invite or an outside account gets `404`). One atomic move: the receiver's membership becomes `owner`, the previous owner's row (if any) becomes `admin`, any other lingering `owner` rows demote to `admin`, and the project's creator marker moves with it — ownership is always exactly one account. The previous owner stays on the team afterwards: free to leave, be kicked by the new owner, or stay. Response `200 { "owner": {…member dto…, "role": "owner" } }`. Errors: `400` self-transfer/invalid id, `403` non-owner, `404` receiver not a member. Wired to the team page (transfer dialog).
+
+#### `DELETE /app/projects/:id/members/me` — leave the project
+
+Any member may leave; the current owner cannot (`403` — transfer ownership first). Response `200 { "status": "ok" }`; already-not-a-member → `404`.
+
+#### `DELETE /app/projects/:id/members/:userId` — remove a member
+
+The owner removes anyone; admins remove plain members only (developer/viewer/billing); nobody removes the owner (`403` — transfer first). Removing yourself through this endpoint is a `400` (use leave). Response `200 { "status": "ok" }`. Wired to the team page roster (remove buttons).
 
 ### 6. Forgot password — `POST /app/auth/password/forgot`
 

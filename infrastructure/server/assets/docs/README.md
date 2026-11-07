@@ -58,6 +58,19 @@ is the route a reviewer walks when they open an unfamiliar file mid-flow.*
    folder keys under `projects/{slug}/` deleted **first**, then the row
    (15 FK cascades wipe every child table). Retry-safe on storage failure.
 
+**Team & ownership** — invites move by email (`POST …/members` →
+`POST /app/invites/{token}/accept`), and the 2FA gate fires at accept
+time. Ownership itself is exactly one account: it moves only through
+`POST /app/projects/{id}/ownership` to an **accepted** member — invites
+can never carry the `owner` role (`400`). One transaction re-crowns the
+receiver, demotes the previous owner (and any legacy co-owner rows) to
+`admin`, and slides `created_by` with it, so every owner-only power
+(deletion, transfer) follows the marker (`ports/projects_store.rs::
+transfer_ownership`). The previous owner stays on the team: they may
+leave (`DELETE …/members/me` — the owner cannot until they transfer),
+be kicked by the new owner (`DELETE …/members/{user_id}` — owner takes
+anyone, admins take plain members only), or stay pro tem.
+
 Routes/handlers: `api/routes/app/projects/`; SQL + fake stores:
 `ports/projects_store.rs` (trait), `infra` (Postgres), `tests/common`
 (fakes). Proven by `server/tests/projects_lifecycle.rs` end to end.
@@ -193,6 +206,7 @@ cargo run
 | `/app/providers` | app | Provider registry — all channels + providers + config fields (GET) |
 | `/app/projects/{id}/channel-configs` | app | Channel configs CRUD (list, create, update, delete) |
 | `/app/projects/{id}/recipients` | app | Recipients CRUD — the contacts blob carries the `devices` token array (§25) |
+| `/app/projects/{id}/members` · `{id}/ownership` | app | Team: invites → accept/decline (`/app/invites/{token}/*`), roster; ownership transfer to an accepted member (owner only, atomic); self-leave; owner/admin removal |
 | any other path | — | RFC 9457 `application/problem+json` 404 |
 
 Every response carries a `x-request-id` header for log correlation.

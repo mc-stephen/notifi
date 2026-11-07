@@ -161,6 +161,27 @@ pub trait ProjectsStore: Send + Sync {
         project_id: &str,
     ) -> BoxFut<'_, Result<Vec<TeamMemberRecord>, StoreError>>;
 
+    /// Moves ownership to an accepted member in one transaction: the
+    /// receiver's row becomes `owner`, the actor's row (if any) and every
+    /// other lingering `owner` row demote to `admin`, and the project's
+    /// `created_by` marker moves to the receiver. `None` when the receiver
+    /// has no membership row (caller validates first; `None` is the
+    /// raced-away case).
+    fn transfer_ownership(
+        &self,
+        project_id: &str,
+        actor: UserId,
+        receiver: UserId,
+    ) -> BoxFut<'_, Result<Option<TeamMemberRecord>, StoreError>>;
+
+    /// Removes one membership row (leaving or kick). Returns false when
+    /// the row does not exist.
+    fn remove_member(
+        &self,
+        project_id: &str,
+        user_id: UserId,
+    ) -> BoxFut<'_, Result<bool, StoreError>>;
+
     /// Creates a pending invite, superseding any prior pending invite for
     /// the same project + email. Returns the row id.
     fn create_invite(

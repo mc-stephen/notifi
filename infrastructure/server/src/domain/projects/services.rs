@@ -497,9 +497,11 @@ impl ProjectMembersService {
                 "only project owners and admins can invite members".into(),
             ));
         }
-        if role == "owner" && !is_owner {
-            return Err(AppError::Forbidden(
-                "only the project owner can grant the owner role".into(),
+        // The hatch closes here: ownership moves only by transfer, never
+        // through an invite (`POST /{id}/ownership` is the one door).
+        if role == "owner" {
+            return Err(AppError::Validation(
+                "the owner role moves only by transferring ownership".to_string(),
             ));
         }
 
@@ -947,5 +949,235 @@ impl ProjectMembersService {
                 last_active_at: record.last_active_at,
             })
             .collect())
+    }
+
+    /// Moves ownership to an accepted member. The current owner only;
+    /// the receiver must already be on the team, and the previous owner
+    /// stays as `admin` (free to leave or be kicked like any other).
+    pub async fn transfer_ownership(
+        &self,
+        actor: UserId,
+        project_id: &str,
+        receiver: UserId,
+    ) -> Result<crate::domain::projects::entities::ProjectMember, AppError> {
+        let access = self
+            .projects
+            .get_project_access(actor, project_id)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
+            })?
+            .ok_or_else(|| AppError::NotFound("project not found".to_string()))?;
+        let is_owner = access.created_by.as_deref() == Some(actor.to_string().as_str())
+            || access.member_role.as_deref() == Some("owner");
+        if !is_owner {
+            return Err(AppError::Forbidden(
+                "only the project owner can transfer ownership".into(),
+            ));
+        }
+        if receiver == actor {
+            return Err(AppError::Validation(
+                "you already own this project".to_string(),
+            ));
+        }
+        // The receiver must be an accepted member — a pending invite or
+        // an outside account is not enough to hold the crown.
+        let membership = self
+            .projects
+            .get_project_access(receiver, project_id)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
+            })?
+            .ok_or_else(|| AppError::NotFound("project not found".to_string()))?;
+        if membership.created_by.as_deref() == Some(receiver.to_string().as_str())
+            || membership.member_role.as_deref() == Some("owner")
+        {
+            return Err(AppError::Validation(
+                "that user already owns this project".to_string(),
+            ));
+        }
+        if membership.member_role.is_none() {
+            return Err(AppError::NotFound(
+                "that user is not a member of this project — invite them first".to_string(),
+            ));
+        }
+        let record = self
+            .projects
+            .transfer_ownership(project_id, actor, receiver)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AppError::Conflict("conflicting transfer".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
+            })?
+            .ok_or_else(|| {
+                AppError::NotFound(
+                    "that user is not a member of this project — invite them first".to_string(),
+                )
+            })?;
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::ProjectOwnershipTransferred,
+                    Some(&actor.to_string()),
+                    None,
+                    Some(project_id),
+                    format!("{} is now the project owner", record.email),
+                    Some(serde_json::json!({
+                        "from": actor.to_string(),
+                        "to": receiver.to_string(),
+                    })),
+                ),
+            )
+            .await;
+        Ok(crate::domain::projects::entities::ProjectMember {
+            user_id: record.user_id,
+            name: record.name,
+            email: record.email,
+            role: record.role,
+            has_2fa: record.has_2fa,
+            last_active_at: record.last_active_at,
+        })
+    }
+
+    /// Self-removal. Any member may leave; the owner cannot (transfer
+    /// ownership first).
+    pub async fn leave_project(&self, actor: UserId, project_id: &str) -> Result<(), AppError> {
+        let access = self
+            .projects
+            .get_project_access(actor, project_id)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
+            })?
+            .ok_or_else(|| AppError::NotFound("project not found".to_string()))?;
+        let is_owner = access.created_by.as_deref() == Some(actor.to_string().as_str())
+            || access.member_role.as_deref() == Some("owner");
+        if is_owner {
+            return Err(AppError::Forbidden(
+                "transfer ownership before leaving this project".into(),
+            ));
+        }
+        if access.member_role.is_none() {
+            return Err(AppError::NotFound("project not found".to_string()));
+        }
+        let removed = self
+            .projects
+            .remove_member(project_id, actor)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AppError::Conflict("conflicting removal".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
+            })?;
+        if !removed {
+            return Err(AppError::NotFound("you are not a member".to_string()));
+        }
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::ProjectMemberRemoved,
+                    Some(&actor.to_string()),
+                    None,
+                    Some(project_id),
+                    format!("{} left the project", actor),
+                    Some(serde_json::json!({ "user_id": actor.to_string(), "left": true })),
+                ),
+            )
+            .await;
+        Ok(())
+    }
+
+    /// Removes a member. The owner removes anyone; admins remove plain
+    /// members only; nobody removes the owner short of a transfer.
+    pub async fn remove_member(
+        &self,
+        actor: UserId,
+        project_id: &str,
+        target: UserId,
+    ) -> Result<(), AppError> {
+        let access = self
+            .projects
+            .get_project_access(actor, project_id)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
+            })?
+            .ok_or_else(|| AppError::NotFound("project not found".to_string()))?;
+        let is_owner = access.created_by.as_deref() == Some(actor.to_string().as_str())
+            || access.member_role.as_deref() == Some("owner");
+        let is_admin = access.member_role.as_deref() == Some("admin");
+        if !is_owner && !is_admin {
+            return Err(AppError::Forbidden(
+                "only project owners and admins can remove members".into(),
+            ));
+        }
+        if target == actor {
+            return Err(AppError::Validation(
+                "leaving is done through the leave endpoint, not member removal".to_string(),
+            ));
+        }
+        let membership = self
+            .projects
+            .get_project_access(target, project_id)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
+            })?
+            .ok_or_else(|| AppError::NotFound("project not found".to_string()))?;
+        let target_role = membership.member_role.as_deref();
+        if membership.created_by.as_deref() == Some(target.to_string().as_str())
+            || target_role == Some("owner")
+        {
+            return Err(AppError::Forbidden(
+                "the owner cannot be removed — transfer ownership first".into(),
+            ));
+        }
+        if target_role.is_none() {
+            return Err(AppError::NotFound(
+                "that user is not a member of this project".to_string(),
+            ));
+        }
+        if is_admin && matches!(target_role, Some("admin")) {
+            return Err(AppError::Forbidden(
+                "admins can only remove regular members".into(),
+            ));
+        }
+        let removed = self
+            .projects
+            .remove_member(project_id, target)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AppError::Conflict("conflicting removal".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
+            })?;
+        if !removed {
+            return Err(AppError::NotFound(
+                "that user is not a member of this project".to_string(),
+            ));
+        }
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new(
+                    AuditAction::ProjectMemberRemoved,
+                    Some(&actor.to_string()),
+                    None,
+                    Some(project_id),
+                    format!("member {target} removed"),
+                    Some(serde_json::json!({
+                        "user_id": target.to_string(),
+                        "removed_by": actor.to_string(),
+                    })),
+                ),
+            )
+            .await;
+        Ok(())
     }
 }

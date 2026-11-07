@@ -19,6 +19,11 @@ where
             "/{id}/members",
             post(handlers::add_member).get(handlers::list_members),
         )
+        // Ownership only ever moves through the transfer door; members
+        // leave themselves, and owners/admins remove others.
+        .route("/{id}/ownership", post(handlers::transfer_ownership))
+        .route("/{id}/members/me", delete(handlers::leave_project))
+        .route("/{id}/members/{user_id}", delete(handlers::remove_member))
         // Deletion lifecycle: request (freeze + countdown), cancel inside
         // the window, and the always-available data export.
         .route("/{id}", delete(handlers::request_deletion))
