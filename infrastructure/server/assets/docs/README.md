@@ -136,7 +136,7 @@ R2-backed `ConfigStore` (the bucket IS the root; keys are store-relative).
 One convention everywhere, cache (`cfg:` prefix, Redis) in between. Every
 boot lays the top-level folders down (`projects/`, `backup/`, `users/`) via
 `build_ensured`; `--reset` wipes `projects/` back to only those markers
-(its store half — the DB comes first).
+(its store half — the DB comes first, the `cfg:` cache drop third).
 
 ### What boot does (§17, lib.rs)
 
@@ -266,7 +266,8 @@ configs API contract.
   store IS the Cloudflare R2 bucket (all four `NOTIFI_R2_*` values are a
   boot requirement — R2-or-nothing, no fallback driver). `--reset` (one
   clean-start flag) drops the DB and then — only on success — wipes
-  `projects/` back to only its folder markers.
+  `projects/` back to only its folder markers, and finally drops the
+  Redis `cfg:` cache namespace best-effort (nothing durable rides it).
 
 ## Database reset
 
@@ -274,7 +275,7 @@ Nuke the database and re-apply migrations from scratch (then chain the
 projects-folder wipe when the DB half succeeded):
 
 ```shell
-cargo run -- --reset    # DB re-applies, projects/ wiped back to markers, exits
+cargo run -- --reset    # DB re-applies, projects/ wiped back to markers, cfg: cache dropped, exits
 cargo run                  # normal server start
 ```
 

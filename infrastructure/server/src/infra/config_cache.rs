@@ -34,6 +34,9 @@ pub trait CacheBackend: Send + Sync {
     async fn get(&self, key: &str) -> Option<Vec<u8>>;
     async fn set(&self, key: &str, bytes: Vec<u8>);
     async fn invalidate(&self, key: &str);
+    /// Drops every key this backend holds — the reset half for the cache:
+    /// nothing survives the wipe, TTL'd or forever.
+    async fn clear(&self);
 }
 
 /// Emits the prefixed key string for both directions.
@@ -102,6 +105,40 @@ impl CacheBackend for RedisCacheBackend {
             .query_async(&mut connection)
             .await;
     }
+
+    /// SCAN walks the keyspace in cursor batches; DEL frees each batch
+    /// found. Only this cache's namespace matches, so other tenants of
+    /// the shared Redis keep their keys. Best-effort like every cache
+    /// write: a mid-wipe failure loses nothing durable (entries re-read
+    /// through the store, TTL'd ones self-heal within ten minutes).
+    async fn clear(&self) {
+        let mut connection = self.conn.clone();
+        let mut cursor: u64 = 0;
+        loop {
+            let (next, keys): (u64, Vec<String>) = match redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg(format!("{CACHE_PREFIX}*"))
+                .arg("COUNT")
+                .arg(1000)
+                .query_async(&mut connection)
+                .await
+            {
+                Ok(pair) => pair,
+                Err(_) => return,
+            };
+            if !keys.is_empty() {
+                let _: Result<(), _> = redis::cmd("DEL")
+                    .arg(keys)
+                    .query_async(&mut connection)
+                    .await;
+            }
+            cursor = next;
+            if cursor == 0 {
+                break;
+            }
+        }
+    }
 }
 
 /// In-memory cache for tests (and a reference for what Redis does).
@@ -141,6 +178,29 @@ impl CacheBackend for MemoryCacheBackend {
     async fn invalidate(&self, key: &str) {
         self.entries.lock().expect("cache lock").remove(key);
     }
+
+    async fn clear(&self) {
+        self.entries.lock().expect("cache lock").clear();
+    }
+}
+
+/// Dev-reset third half: drop the config cache namespace so no stale
+/// pre-reset bytes outlive the database + store wipe. Best-effort — the
+/// cache self-heals within ten minutes and the reset must not fail
+/// because an ephemeral layer did, so only connection failures surface
+/// here and the caller warns instead of aborting.
+pub async fn wipe_config_cache(config: &crate::AppConfig) -> Result<(), String> {
+    if config.redis.url.is_none() {
+        // Redis not configured — nothing the cache could hold.
+        return Ok(());
+    }
+    let client = crate::infra::redis::connect(config)?;
+    let manager = client
+        .get_connection_manager()
+        .await
+        .map_err(|e| format!("redis unreachable during cache wipe: {e}"))?;
+    RedisCacheBackend::new(manager).clear().await;
+    Ok(())
 }
 
 /// The port-facing wrapper: every consumer keeps [`ConfigStore`]
@@ -336,6 +396,34 @@ mod config_cache_tests {
         assert_eq!(
             cache_key!("projects/acme/config/email/config.json"),
             "cfg:projects/acme/config/email/config.json"
+        );
+    }
+
+    #[tokio::test]
+    async fn clear_drops_every_warm_entry_including_forever_keys() {
+        let backend = MemoryCacheBackend::new(Duration::from_secs(60));
+        backend
+            .set("projects/acme/config/email/config.json", b"a".to_vec())
+            .await;
+        backend
+            .set("projects/acme/templates/welcome/sms.txt", b"b".to_vec())
+            .await;
+
+        backend.clear().await;
+
+        assert!(
+            backend
+                .get("projects/acme/config/email/config.json")
+                .await
+                .is_none(),
+            "the wipe leaves no TTL'd key"
+        );
+        assert!(
+            backend
+                .get("projects/acme/templates/welcome/sms.txt")
+                .await
+                .is_none(),
+            "the wipe leaves no warm key behind"
         );
     }
 }

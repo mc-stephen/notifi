@@ -39,7 +39,7 @@ pub use api_keys_repository_pg::PgApiKeysStore;
 pub use billing_repository_pg::PgBillingStore;
 pub use campaign_repository_pg::PgCampaignStore;
 pub use channel_provider_repository_pg::PgChannelProviderStore;
-pub use config_cache::{CachedConfigStore, RedisCacheBackend};
+pub use config_cache::{CachedConfigStore, RedisCacheBackend, wipe_config_cache};
 pub use file_config_store::FileConfigStore;
 pub use flow_repository_pg::PgFlowStore;
 pub use gateway_store::PgGatewayStore;

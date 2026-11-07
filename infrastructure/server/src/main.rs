@@ -15,7 +15,8 @@ fn main() {
         rt.block_on(async {
             // One clean-start flag, DB first: the projects folder in the
             // config store relies on what the database holds, so the store
-            // half only runs when the database reset succeeded.
+            // half only runs when the database reset succeeded. The cache
+            // half is third and best-effort — it holds nothing durable.
             match server::infra::db::reset(&config).await {
                 Ok(()) => {
                     println!("Database reset complete");
@@ -25,6 +26,12 @@ fn main() {
                             eprintln!("Config store reset failed: {e}");
                             std::process::exit(1);
                         }
+                    }
+                    match server::infra::wipe_config_cache(&config).await {
+                        Ok(()) => println!("Config cache reset complete (cfg: namespace dropped)"),
+                        Err(e) => eprintln!(
+                            "Config cache NOT reset — stale bytes self-heal within ten minutes: {e}"
+                        ),
                     }
                 }
                 Err(e) => {
