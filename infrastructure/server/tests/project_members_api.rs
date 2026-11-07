@@ -585,6 +585,87 @@ async fn ownership_transfer_moves_the_crown() {
 }
 
 #[tokio::test]
+async fn ownership_transfer_requires_2fa_when_the_flag_is_on() {
+    let (app, _, _) = app();
+    let owner = signup(app.clone(), "Owner", "2fa-transfer-owner@x.dev").await;
+    let member = signup(app.clone(), "Member", "2fa-transfer-member@x.dev").await;
+    let project = create_project(app.clone(), &owner, "Gated Handover").await;
+
+    let member_id = onboard_member(
+        app.clone(),
+        &owner,
+        &member,
+        "2fa-transfer-member@x.dev",
+        &project,
+        "developer",
+    )
+    .await;
+
+    // Owner flips the require-2FA flag on after the member already
+    // joined — the join gate only lives at accept time, so the roster
+    // keeps them; the handover is what gets gated now.
+    let res = request(
+        app.clone(),
+        "PATCH",
+        &format!("/app/projects/{project}/require-2fa"),
+        Some(json!({"enabled": true})),
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // The handover is refused while the receiving account flies without
+    // 2FA — receiving the crown is the strongest way to join.
+    let res = request(
+        app.clone(),
+        "POST",
+        &format!("/app/projects/{project}/ownership"),
+        Some(json!({"receiver": member_id})),
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    let body = body_json(res).await;
+    assert!(
+        body["detail"].as_str().unwrap().contains("2FA"),
+        "unexpected detail: {body}"
+    );
+
+    // The crown never moved: the roster still crowns the caller.
+    let res = request(
+        app.clone(),
+        "GET",
+        &format!("/app/projects/{project}/members"),
+        None,
+        Some(&owner),
+    )
+    .await;
+    let members = body_json(res).await["members"].clone();
+    assert!(
+        members
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["role"] == "owner"),
+        "an owner still exists on the roster"
+    );
+
+    // Once the receiver enables 2FA on their own account, the handover
+    // goes through.
+    enable_totp(app.clone(), &member).await;
+    let res = request(
+        app.clone(),
+        "POST",
+        &format!("/app/projects/{project}/ownership"),
+        Some(json!({"receiver": member_id})),
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res).await["owner"]["userId"], member_id.as_str());
+}
+
+#[tokio::test]
 async fn transfer_requires_an_accepted_member() {
     let (app, _, _) = app();
     let (owner_id, owner) = signup_with_id(app.clone(), "Owner", "hands@x.dev").await;

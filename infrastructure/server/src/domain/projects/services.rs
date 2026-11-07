@@ -1034,6 +1034,31 @@ impl ProjectMembersService {
                 "that user is not a member of this project — invite them first".to_string(),
             ));
         }
+        // When the project requires 2FA, the next owner must hold it too:
+        // the same flag that gates every new member at accept-time also
+        // gates the handover. Receiving the crown is joining the project
+        // in the strongest possible way.
+        if access.project.require_2fa {
+            let receiver_user = self
+                .auth
+                .find_user_by_id(receiver)
+                .await
+                .map_err(|e| match e {
+                    StoreError::Conflict => AppError::Conflict("conflicting lookup".into()),
+                    StoreError::Storage(m) => AppError::Storage(m),
+                })?
+                .ok_or_else(|| {
+                    AppError::NotFound(
+                        "that user is not a member of this project — invite them first".to_string(),
+                    )
+                })?;
+            if !receiver_user.totp_enabled {
+                return Err(AppError::Forbidden(
+                    "this project requires 2FA — enable it on the receiving account before ownership can move"
+                        .to_string(),
+                ));
+            }
+        }
         let record = self
             .projects
             .transfer_ownership(project_id, actor, receiver)
