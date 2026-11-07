@@ -39,7 +39,10 @@ is the route a reviewer walks when they open an unfamiliar file mid-flow.*
 ### The life of a project (§24)
 
 1. **Create** — `POST /app/projects` → `ProjectService::create`
-   (`domain/projects/services.rs`): the `projects` row lands with a unique
+   (`domain/projects/services.rs`): the user's ceiling (5 by default,
+   admin-raised `project_limit`) is checked first — tombstones included,
+   so delete-and-remake never dodges it, and the admin console's import
+   rides the same guard. Then the `projects` row lands with a unique
    stored slug (`kernel::config::project_slug`), then storage seeds
    `projects/{slug}/` with the code-owned defaults
    (`DefaultProjectLayout` through `materialize_project`, §18). Storage
@@ -69,7 +72,13 @@ receiver, demotes the previous owner (and any legacy co-owner rows) to
 transfer_ownership`). The previous owner stays on the team: they may
 leave (`DELETE …/members/me` — the owner cannot until they transfer),
 be kicked by the new owner (`DELETE …/members/{user_id}` — owner takes
-anyone, admins take plain members only), or stay pro tem.
+anyone, admins take plain members only), or stay pro tem. Creation is
+ceiling-gated: each user owns at most `project_limit` projects (5 by
+default, admin-raised via `PATCH /admin/users/{id}/project-limit`,
+audited `user.project_limit_changed`) — the same guard covers the
+admin dashboard's import. Proven by `project_members_api.rs`,
+`admin_users_api.rs::admin_sets_the_project_ceiling`, and
+`projects_lifecycle.rs::the_project_ceiling_gates_create_until_transfer`.
 
 Routes/handlers: `api/routes/app/projects/`; SQL + fake stores:
 `ports/projects_store.rs` (trait), `infra` (Postgres), `tests/common`
@@ -206,6 +215,7 @@ cargo run
 | `/app/providers` | app | Provider registry — all channels + providers + config fields (GET) |
 | `/app/projects/{id}/channel-configs` | app | Channel configs CRUD (list, create, update, delete) |
 | `/app/projects/{id}/recipients` | app | Recipients CRUD — the contacts blob carries the `devices` token array (§25) |
+| `/app/projects` (POST) | app | Create — ceiling-gated (`project_limit`, default 5, admin-raised; imports ride the same guard) |
 | `/app/projects/{id}/members` · `{id}/ownership` | app | Team: invites → accept/decline (`/app/invites/{token}/*`), roster; ownership transfer to an accepted member (owner only, atomic); self-leave; owner/admin removal |
 | any other path | — | RFC 9457 `application/problem+json` 404 |
 

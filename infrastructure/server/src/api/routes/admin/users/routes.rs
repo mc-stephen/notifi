@@ -11,6 +11,10 @@ where
         .route("/{user_id}", get(handlers::get_user))
         .route("/{user_id}/status", patch(handlers::set_user_status))
         .route(
+            "/{user_id}/project-limit",
+            patch(handlers::set_project_limit),
+        )
+        .route(
             "/{user_id}/sessions/revoke",
             post(handlers::revoke_user_sessions),
         )

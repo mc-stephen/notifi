@@ -453,6 +453,27 @@ impl AuthStore for PgAuthStore {
         })
     }
 
+    fn set_project_limit(
+        &self,
+        user_id: UserId,
+        limit: i64,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let pool = self.pool.clone();
+        let user_id_str = user_id.to_string();
+        Box::pin(async move {
+            let result = sqlx::query(
+                "UPDATE auth_users SET project_limit = $2, updated_at = now()
+                 WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(&user_id_str)
+            .bind(limit)
+            .execute(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(result.rows_affected() > 0)
+        })
+    }
+
     fn list_all_user_ids(
         &self,
         status: Option<crate::domain::auth::entities::UserStatus>,
@@ -827,10 +848,44 @@ impl ProjectsStore for PgAuthStore {
             .fetch_all(&pool)
             .await
             .map_err(map_err)?;
-
             rows.into_iter()
                 .map(ProjectSummary::try_from)
                 .collect::<Result<Vec<_>, _>>()
+        })
+    }
+
+    fn count_owned_projects(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>> {
+        let pool = self.pool.clone();
+        let member = user_id.to_string();
+        Box::pin(async move {
+            // Tombstones (pre-purge) count: the ceiling can't be dodged
+            // by deleting into the grace window and remaking.
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM platform_projects WHERE created_by = $1",
+            )
+            .bind(&member)
+            .fetch_one(&pool)
+            .await
+            .map_err(map_err)
+        })
+    }
+
+    fn project_limit(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>> {
+        let pool = self.pool.clone();
+        let member = user_id.to_string();
+        Box::pin(async move {
+            // Every user starts at 5; the column exists for the admin
+            // knob. A vanished account reads as bare-default, and the
+            // caller's own existence check governs the flow.
+            let row: Option<i64> = sqlx::query_scalar(
+                "SELECT project_limit FROM auth_users
+                 WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(&member)
+            .fetch_optional(&pool)
+            .await
+            .map_err(map_err)?;
+            Ok(row.unwrap_or(5))
         })
     }
 

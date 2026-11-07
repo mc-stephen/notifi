@@ -884,6 +884,13 @@ pub const ADMIN_ROUTES: &[RouteInfo] = &[
         description: "suspend or restore a platform user",
     },
     RouteInfo {
+        method: "PATCH",
+        path: "/admin/users/{user_id}/project-limit",
+        surface: Surface::Admin,
+        feature: "users",
+        description: "raise a user's project ceiling (default 5)",
+    },
+    RouteInfo {
         method: "POST",
         path: "/admin/users/{user_id}/sessions/revoke",
         surface: Surface::Admin,

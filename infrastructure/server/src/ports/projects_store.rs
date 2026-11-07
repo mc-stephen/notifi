@@ -56,6 +56,15 @@ pub trait ProjectsStore: Send + Sync {
     fn list_projects(&self, user_id: UserId)
     -> BoxFut<'_, Result<Vec<ProjectSummary>, StoreError>>;
 
+    /// How many projects the user still owns — the 5-each ceiling's
+    /// counter. Soft-deleted (tombstone) projects keep occupying their
+    /// slot while the grace window runs; only the purge frees it.
+    fn count_owned_projects(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>>;
+
+    /// The user's project ceiling (5 for everyone unless an admin raised
+    /// it). Read-only here; admins change it through `AuthStore`.
+    fn project_limit(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>>;
+
     /// Creates a new project owned by the user.
     fn create_project(
         &self,

@@ -49,6 +49,8 @@ pub struct FakeAuthStore {
     /// Data-export downloads: (project_id, requested_by, when) — the rate
     /// limit counter and audit trail in one list.
     exports: RwLock<Vec<(String, String, chrono::DateTime<chrono::Utc>)>>,
+    /// Per-user project ceilings (admin-raised); unset ids read as 5.
+    project_limits: RwLock<HashMap<String, i64>>,
 }
 
 impl FakeAuthStore {
@@ -342,6 +344,20 @@ impl AuthStore for FakeAuthStore {
                 return Ok(true);
             }
             Ok(false)
+        })
+    }
+
+    fn set_project_limit(
+        &self,
+        user_id: server::domain::auth::entities::UserId,
+        limit: i64,
+    ) -> BoxFut<'_, Result<bool, StoreError>> {
+        let member = user_id.to_string();
+        let project_limits = &self.project_limits;
+        Box::pin(async move {
+            let mut limits = project_limits.write().map_err(lock_err)?;
+            limits.insert(member, limit);
+            Ok(true)
         })
     }
 
@@ -1071,6 +1087,33 @@ impl ProjectsStore for FakeAuthStore {
             rest.sort_by(|a, b| a.name.cmp(&b.name));
             out.extend(rest);
             Ok(out)
+        })
+    }
+
+    /// Owned-and-still-on-disk count (tombstones included — only the
+    /// purge's erasure frees a slot).
+    fn count_owned_projects(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>> {
+        let member = user_id.to_string();
+        let projects = self.projects.read().unwrap().clone();
+        Box::pin(async move {
+            Ok(projects
+                .iter()
+                .filter(|(owner, _)| *owner == member)
+                .count() as i64)
+        })
+    }
+
+    /// Every user starts at 5 unless an admin raised their ceiling.
+    fn project_limit(&self, user_id: UserId) -> BoxFut<'_, Result<i64, StoreError>> {
+        let member = user_id.to_string();
+        let project_limits = &self.project_limits;
+        Box::pin(async move {
+            Ok(project_limits
+                .read()
+                .map_err(lock_err)?
+                .get(&member)
+                .copied()
+                .unwrap_or(5))
         })
     }
 

@@ -39,6 +39,7 @@ pub struct AdminUserDetailDto {
     #[serde(flatten)]
     pub user: AdminUserDto,
     pub project_count: i64,
+    pub project_limit: i64,
     pub ticket_total: i64,
     pub tickets_open: i64,
     pub notification_count: i64,
@@ -49,6 +50,7 @@ impl From<UserDetail> for AdminUserDetailDto {
         Self {
             user: AdminUserDto::from(detail.user),
             project_count: detail.project_count,
+            project_limit: detail.project_limit,
             ticket_total: detail.ticket_total,
             tickets_open: detail.tickets_open,
             notification_count: detail.notification_count,
@@ -60,4 +62,11 @@ impl From<UserDetail> for AdminUserDetailDto {
 #[serde(rename_all = "camelCase")]
 pub struct SetUserStatusRequest {
     pub status: String,
+}
+
+/// `PATCH /admin/users/{id}/project-limit` — raised ceilings per account.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetProjectLimitRequest {
+    pub limit: i64,
 }

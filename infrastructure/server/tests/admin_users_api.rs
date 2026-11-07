@@ -581,3 +581,83 @@ async fn admin_users_endpoints_validate_input_and_auth() {
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn admin_sets_the_project_ceiling() {
+    let app = app_with_admin_users();
+    let admin_cookie = bootstrap_admin(app.clone()).await;
+    let (user_cookie, user_id) = signup(app.clone(), "Capped", "capped@x.dev").await;
+
+    // The ceiling is the default 5: five creations pass, the sixth is
+    // refused with the raise-the-limit hint.
+    for n in 0..5 {
+        let res = request_with_cookie(
+            app.clone(),
+            "POST",
+            "/app/projects",
+            Some(json!({"name": format!("Deck {n}")})),
+            "session_token",
+            &user_cookie,
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::CREATED, "project {n} ok");
+    }
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        "/app/projects",
+        Some(json!({"name": "Deck 6"})),
+        "session_token",
+        &user_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert!(body_json(res).await.to_string().contains("5-project limit"));
+
+    // A zero or absurd limit never sticks.
+    let res = request_with_cookie(
+        app.clone(),
+        "PATCH",
+        &format!("/admin/users/{user_id}/project-limit"),
+        Some(json!({"limit": 0})),
+        "admin_session",
+        &admin_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let res = request_with_cookie(
+        app.clone(),
+        "PATCH",
+        &format!("/admin/users/{user_id}/project-limit"),
+        Some(json!({"limit": 1001})),
+        "admin_session",
+        &admin_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    // The admin raises the ceiling — the spot check reads back the new
+    // number, and the user's next creation sails through.
+    let res = request_with_cookie(
+        app.clone(),
+        "PATCH",
+        &format!("/admin/users/{user_id}/project-limit"),
+        Some(json!({"limit": 7})),
+        "admin_session",
+        &admin_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res).await["user"]["projectLimit"], 7);
+
+    let res = request_with_cookie(
+        app.clone(),
+        "POST",
+        "/app/projects",
+        Some(json!({"name": "Deck 6"})),
+        "session_token",
+        &user_cookie,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::CREATED);
+}

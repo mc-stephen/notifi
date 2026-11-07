@@ -75,6 +75,31 @@ impl ProjectService {
         if name.trim().is_empty() {
             return Err(AppError::Validation("project name is required".into()));
         }
+        // The ceiling gates every road that puts a project on this user —
+        // the dashboard's create AND the admin console's import (both flow
+        // through here). Tombstones keep occupying their slot until the
+        // purge erases the row, so delete-and-remake never dodges.
+        let limit = self
+            .store
+            .project_limit(user_id)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
+            })?;
+        let owned = self
+            .store
+            .count_owned_projects(user_id)
+            .await
+            .map_err(|e| match e {
+                StoreError::Conflict => AppError::Conflict("conflicting read".into()),
+                StoreError::Storage(m) => AppError::Storage(m),
+            })?;
+        if owned >= limit {
+            return Err(AppError::Forbidden(format!(
+                "you've reached your {limit}-project limit — ask an admin to raise it"
+            )));
+        }
         let record = self
             .store
             .create_project(user_id, name, description)

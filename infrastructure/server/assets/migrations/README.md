@@ -11,6 +11,8 @@ Single-file dev-stage squash, applied automatically at server boot (`src/infra/d
   `project_subscriptions` (pricing catalog + per-project subscriptions),
   `gateway_messages` (device-route poll queue — poll-and-delete),
   `audit_logs` (append-only audit trail), `event_outbox` (transactional outbox).
+- `0002_user_project_limit.sql` — per-user project ceiling (`auth_users.project_limit`,
+  default 5, admin-raised; tombstones occupy the slot until purge).
 - Plus: `project_invites` (team invites), `key_ip_allowlist` (per-key IP
   allowlists), `notification_sends` + `flows` (record-first sends; no `kind`
   column — "default" is emergent, not stored), `schedules` (once/recurring/

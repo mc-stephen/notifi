@@ -7,7 +7,7 @@ use axum::extract::{Extension, Path, Query};
 use axum::http::StatusCode;
 
 use super::super::handlers::CurrentAdmin;
-use super::dto::{AdminUserDetailDto, AdminUserDto, SetUserStatusRequest};
+use super::dto::{AdminUserDetailDto, AdminUserDto, SetProjectLimitRequest, SetUserStatusRequest};
 use crate::api::routes::app::auth::Problem;
 use crate::domain::admin::users::AdminUsersService;
 use crate::domain::auth::entities::{UserId, UserStatus};
@@ -120,4 +120,23 @@ pub async fn revoke_user_sessions(
         .revoke_user_sessions(&admin, parse_user_id(&user_id)?)
         .await?;
     Ok((StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))))
+}
+
+/// `PATCH /admin/users/:id/project-limit` — how many projects the
+/// account may own (5 for everyone by default) — the raise an admin
+/// grants when a user asks in.
+pub async fn set_project_limit(
+    CurrentAdmin(admin): CurrentAdmin,
+    service: MaybeUsersService,
+    Path(user_id): Path<String>,
+    Json(body): Json<SetProjectLimitRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
+    let service = require_users_service(service)?;
+    let detail = service
+        .set_project_limit(&admin, parse_user_id(&user_id)?, body.limit)
+        .await?;
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "user": AdminUserDetailDto::from(detail) })),
+    ))
 }

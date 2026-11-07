@@ -97,6 +97,14 @@ pub trait AuthStore: Send + Sync {
         user_id: UserId,
         status: UserStatus,
     ) -> BoxFut<'_, Result<bool, StoreError>>;
+
+    /// Sets a user's project ceiling. Returns false when unknown/deleted;
+    /// the service validates the 1..=1000 range before calling.
+    fn set_project_limit(
+        &self,
+        user_id: UserId,
+        limit: i64,
+    ) -> BoxFut<'_, Result<bool, StoreError>>;
     /// All non-deleted user ids, optionally filtered by status (admin broadcast).
     fn list_all_user_ids(
         &self,

@@ -19,6 +19,7 @@ use crate::ports::tickets_store::TicketsStore;
 pub struct UserDetail {
     pub user: User,
     pub project_count: i64,
+    pub project_limit: i64,
     pub ticket_total: i64,
     pub tickets_open: i64,
     pub notification_count: i64,
@@ -118,6 +119,46 @@ impl AdminUsersService {
             .ok_or_else(|| AppError::NotFound("user not found".into()))
     }
 
+    pub async fn set_project_limit(
+        &self,
+        admin: &AdminUser,
+        user_id: UserId,
+        limit: i64,
+    ) -> Result<UserDetail, AppError> {
+        // Deliberate range, not a nitpick: 0 would lock the account out
+        // entirely and a million invites a spreadsheet mistake.
+        if !(1..=1000).contains(&limit) {
+            return Err(AppError::Validation(
+                "project limit must be between 1 and 1000".to_string(),
+            ));
+        }
+        let user = self
+            .auth
+            .find_user_by_id(user_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("user not found".into()))?;
+        if !self.auth.set_project_limit(user_id, limit).await? {
+            return Err(AppError::NotFound("user not found".into()));
+        }
+        self.audit
+            .record(
+                chrono::Utc::now(),
+                &AuditEvent::new_admin(
+                    AuditAction::UserProjectLimitChanged,
+                    &admin.id.to_string(),
+                    Some(&admin.name),
+                    None,
+                    format!(
+                        "admin '{}' set user '{}' project limit to {limit}",
+                        admin.email, user.email
+                    ),
+                    Some(json!({ "user_id": user_id.to_string(), "limit": limit })),
+                ),
+            )
+            .await;
+        self.detail_for(user).await
+    }
+
     pub async fn revoke_user_sessions(
         &self,
         admin: &AdminUser,
@@ -149,7 +190,10 @@ impl AdminUsersService {
     }
 
     async fn detail_for(&self, user: User) -> Result<UserDetail, AppError> {
+        // Owned + member projects; the ceiling rides along so the admin
+        // console can read "owned / limit" from one record.
         let projects = self.projects.list_projects(user.id).await?;
+        let project_limit = self.projects.project_limit(user.id).await?;
         let tickets = self
             .tickets
             .count_tickets_for_user(&user.id.to_string())
@@ -158,6 +202,7 @@ impl AdminUsersService {
         Ok(UserDetail {
             user,
             project_count: projects.len() as i64,
+            project_limit,
             ticket_total: tickets.total,
             tickets_open: tickets.open,
             notification_count,

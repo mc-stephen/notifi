@@ -14,9 +14,12 @@ use common::{
     FakeApiKeysStore, FakeAuditStore, FakeAuthStore, FakeFlowStore, FakeRecipientsStore,
     FakeScheduleStore, FakeSendStore, FakeTemplatesStore, FakeWebhookStore,
 };
-use server::domain::auth::entities::UserId;
+use server::domain::auth::entities::{User, UserId, UserStatus};
+use server::domain::auth::value_objects::Email;
 use server::domain::error::AppError;
-use server::domain::projects::{PURGE_GRACE, ProjectExportService, ProjectService};
+use server::domain::projects::{
+    PURGE_GRACE, ProjectExportService, ProjectMembersService, ProjectService,
+};
 use server::infra::FileConfigStore;
 use server::ports::ProjectsStore;
 use server::ports::config_store::ConfigStore;
@@ -403,4 +406,74 @@ async fn export_of_an_unknown_project_reads_as_missing() {
         .await
         .expect_err("non-member / unknown project");
     assert!(matches!(err, AppError::NotFound(_)), "got: {err:?}");
+}
+
+#[tokio::test]
+async fn the_project_ceiling_gates_create_until_transfer() {
+    let store = Arc::new(FakeAuthStore::new());
+    let service = project_service(store.clone(), None, audit());
+    let members = Arc::new(ProjectMembersService::new(
+        store.clone(),
+        store.clone(),
+        audit(),
+    ));
+
+    let owner = UserId::new();
+    for n in 0..5 {
+        service
+            .create(owner, &format!("Project {n}"), None)
+            .await
+            .expect("the first five creations pass");
+    }
+
+    // Six is refused, and the message tells the user where to go.
+    match service.create(owner, "Project 6", None).await {
+        Err(AppError::Forbidden(msg)) => {
+            assert!(
+                msg.contains("5-project limit"),
+                "message names the ceiling: {msg}"
+            );
+        }
+        other => panic!("expected the ceiling refusal, got {other:?}"),
+    }
+
+    // Handing a crown away frees the slot: the receiver joins the team,
+    // the ownership moves, and the next creation sails through.
+    let member = UserId::new();
+    store.seed_user(User {
+        id: member,
+        name: "Pat Doe".into(),
+        email: Email::parse("pat@example.com").unwrap(),
+        password_hash: String::new(),
+        avatar_url: None,
+        email_verified_at: None,
+        oauth_provider: None,
+        oauth_subject: None,
+        totp_secret: None,
+        totp_enabled: false,
+        status: UserStatus::Active,
+        created_at: chrono::Utc::now(),
+        last_login_at: None,
+    });
+    let first_id = store
+        .list_projects(owner)
+        .await
+        .expect("owned list readable")
+        .first()
+        .unwrap()
+        .id
+        .clone();
+    store
+        .insert_member(&first_id, member, "developer")
+        .await
+        .expect("member row inserted");
+    members
+        .transfer_ownership(owner, &first_id, member)
+        .await
+        .expect("transfer frees the slot");
+
+    service
+        .create(owner, "Project 6", None)
+        .await
+        .expect("the transfer freed a slot");
 }

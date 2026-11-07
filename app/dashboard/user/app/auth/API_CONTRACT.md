@@ -137,7 +137,10 @@ The user account **is** the workspace: projects are owned by their creator
 Ownership is exactly one account at a time and moves only by transfer
 (`POST /app/projects/:id/ownership` to an accepted member) — never by
 invite. The previous owner demotes to `admin` and may stay, leave, or be
-kicked by the new owner like any other member.
+kicked by the new owner like any other member. Every user may own at most
+their `projectLimit` — **5** by default, raised per account from the admin
+console when they ask in; soft-deleted (pre-purge) projects still occupy
+their slot.
 User-level "folders" (`platform_user_groups` + `platform_user_group_projects`)
 group projects for UI organization only — no auth/billing semantics. The
 onboarding flag means *owns or belongs to ≥1 project*.
@@ -150,6 +153,10 @@ project on deliberately via the topbar switch, Settings → Project
 state, or the dashboard banner's "Resume delivery".
 
 ### Project endpoints
+
+#### `POST /app/projects` — create a project
+
+Requires a valid session cookie. Request: `{ "name": "string", "description": "string|null" }`. Response `201 { "project": {…} }` (same shape as list). Errors: `400` blank name/duplicate, `403` **the ceiling**: every user may own at most their `projectLimit` (**5** by default; the admin console raises it per account via `PATCH /admin/users/:id/project-limit` when they ask in). The message names the limit and tells them to ask an admin. Soft-deleted projects keep occupying a slot until their purge, so delete-and-remake doesn't dodge it — moving ownership to someone else frees a slot. The admin console's project import rides the same guard (no bypass).
 
 #### `GET /app/projects` — list projects
 
