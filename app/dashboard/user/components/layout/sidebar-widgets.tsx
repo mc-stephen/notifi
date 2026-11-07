@@ -36,6 +36,7 @@ import {
   ShieldCheck,
   User,
   Loader2,
+  Power,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -116,22 +117,22 @@ export function CompactActiveSwitch() {
           type="button"
           role="radio"
           aria-checked={true}
-          title="Active — notifications deliver normally"
-          aria-label="Active"
+          title="On — notifications deliver normally"
+          aria-label="On"
           className={cn(
             "flex min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-2 py-1 text-xs font-medium transition-colors disabled:opacity-60",
             "bg-white text-sidebar-primary-foreground shadow-sm",
           )}
         >
-          <span className="size-1.5 shrink-0 rounded-full bg-success" />
-          <span className="truncate">Active</span>
+          <Power className="size-1.5 shrink-0 text-success" aria-hidden />
+          <span className="truncate">On</span>
         </button>
         <button
           type="button"
           role="radio"
           aria-checked={false}
-          title="Inactive — all delivery stopped"
-          aria-label="Inactive"
+          title="Off — all delivery stopped"
+          aria-label="Off"
           className={cn(
             "flex min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-2 py-1 text-xs font-medium transition-colors disabled:opacity-60",
             "text-white/75 hover:text-white",
@@ -154,12 +155,12 @@ export function CompactActiveSwitch() {
         const selected = value === active;
         return (
           <button
-            key={value ? "active" : "inactive"}
+            key={value ? "on" : "off"}
             type="button"
             role="radio"
             aria-checked={selected}
-            title={value ? "Active — notifications deliver normally" : "Inactive — all delivery stopped"}
-            aria-label={value ? "Active" : "Inactive"}
+            title={value ? "On — notifications deliver normally" : "Off — all delivery stopped"}
+            aria-label={value ? "On" : "Off"}
             disabled={pending || !currentProject}
             onClick={() => {
               void setActive(value);
@@ -174,14 +175,15 @@ export function CompactActiveSwitch() {
             {pending && selected ? (
               <Loader2 className="size-1.5 shrink-0 animate-spin" />
             ) : (
-              <span
+              <Power
                 className={cn(
-                  "size-1.5 shrink-0 rounded-full",
-                  value ? "bg-success" : "bg-destructive",
+                  "size-1.5 shrink-0",
+                  value ? "text-success" : "text-destructive",
                 )}
+                aria-hidden
               />
             )}
-            <span className="truncate">{value ? "Active" : "Off"}</span>
+            <span className="truncate">{value ? "On" : "Off"}</span>
           </button>
         );
       })}
