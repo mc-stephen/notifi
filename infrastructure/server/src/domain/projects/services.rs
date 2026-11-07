@@ -102,7 +102,7 @@ impl ProjectService {
             })?;
         if owned >= limit {
             return Err(AppError::Forbidden(format!(
-                "you've reached your {limit}-project limit — ask an admin to raise it"
+                "you've reached your {limit}-project limit — message support from the dashboard to raise it"
             )));
         }
         let record = self

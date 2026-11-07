@@ -156,7 +156,7 @@ state, or the dashboard banner's "Resume delivery".
 
 #### `POST /app/projects` — create a project
 
-Requires a valid session cookie. Request: `{ "name": "string", "description": "string|null" }`. Response `201 { "project": {…} }` (same shape as list). Errors: `400` blank name/duplicate, `403` **the ceiling**: every user may own at most their `projectLimit` (**5** by default; the admin console raises it per account via `PATCH /admin/users/:id/project-limit` when they ask in). The message names the limit and tells them to ask an admin. Soft-deleted projects keep occupying a slot until their purge, so delete-and-remake doesn't dodge it — moving ownership to someone else frees a slot. The admin console's project import rides the same guard (no bypass).
+Requires a valid session cookie. Request: `{ "name": "string", "description": "string|null" }`. Response `201 { "project": {…} }` (same shape as list). Errors: `400` blank name/duplicate, `403` **the ceiling**: every user may own at most their `projectLimit` (**5** by default; an internal admin console user raises it per account via `PATCH /admin/users/:id/project-limit` when the user asks in). The message names the limit and tells the user to message support from the dashboard — "admin" never appears to them. Soft-deleted projects keep occupying a slot until their purge, so delete-and-remake doesn't dodge it — moving ownership to someone else frees a slot. The admin console's project import rides the same guard (no bypass).
 
 #### `GET /app/projects` — list projects
 
