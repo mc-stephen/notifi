@@ -108,7 +108,7 @@ function initials(name: string) {
                 </div>
                 <div>
                   <p class="text-xs text-muted-foreground">Projects</p>
-                  <p class="text-sm font-medium text-foreground mt-1">{user.projectCount}</p>
+                  <p class="text-sm font-medium text-foreground mt-1">{user.projectCount} of {user.projectLimit}</p>
                 </div>
                 <div>
                   <p class="text-xs text-muted-foreground">Support tickets</p>
@@ -144,6 +144,37 @@ function initials(name: string) {
                 </button>
                 <p class="text-xs text-muted-foreground pt-1">
                   Suspending blocks sign-in immediately and revokes all sessions.
+                </p>
+              </div>
+            </div>
+
+            <div class="rounded-xl border bg-card">
+              <div class="p-5 border-b border-border">
+                <h2 class="font-semibold text-foreground">Project ceiling</h2>
+              </div>
+              <div class="p-5 space-y-2">
+                <p class="text-sm text-muted-foreground">
+                  How many projects this account may own. Every user starts at 5 — raise it here when they ask in; the dashboard's create and the project import both respect it.
+                </p>
+                <form id="limit-form" class="flex gap-2 pt-1">
+                  <input
+                    id="limit-input"
+                    type="number"
+                    min="1"
+                    max="1000"
+                    value={user.projectLimit}
+                    class="w-24 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium text-foreground"
+                    aria-label="Project limit"
+                  />
+                  <button
+                    type="submit"
+                    class="rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted transition-colors"
+                  >
+                    Set limit
+                  </button>
+                </form>
+                <p class="text-xs text-muted-foreground pt-1">
+                  They currently own {user.projectCount} — soft-deleted projects count toward the ceiling until their end-of-life purge.
                 </p>
               </div>
             </div>
@@ -204,6 +235,21 @@ function initials(name: string) {
       showSuccess("All sessions revoked. The user must sign in again.");
     } catch (err) {
       showError(err instanceof ApiError ? err.message : "Action failed. Please try again.");
+    }
+  });
+
+  // The ceiling knob: validated server-side too (1–1000), so a bad
+  // number just rounds back as the API's validation message.
+  document.getElementById("limit-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearMessages();
+    const input = document.getElementById("limit-input");
+    if (!(input instanceof HTMLInputElement)) return;
+    try {
+      await users.setProjectLimit(userId, Number(input.value));
+      showSuccess("Project ceiling updated.");
+    } catch (err) {
+      showError(err instanceof ApiError ? err.message : "Could not set the ceiling. Please try again.");
     }
   });
 </script>

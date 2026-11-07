@@ -231,6 +231,12 @@ export const users = {
       `/admin/users/${encodeURIComponent(id)}/sessions/revoke`,
       { method: "POST" },
     ),
+
+  setProjectLimit: (id: string, limit: number) =>
+    request<{ user: AdminUserDetail }>(
+      `/admin/users/${encodeURIComponent(id)}/project-limit`,
+      { method: "PATCH", body: JSON.stringify({ limit }) },
+    ),
 };
 
 // ── Platform projects (admin view) ──────────────────────────────────────────

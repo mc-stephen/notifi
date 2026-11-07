@@ -32,6 +32,7 @@ export type AdminUserDetail = {
   createdAt: string;
   lastLoginAt?: string | null;
   projectCount: number;
+  projectLimit: number;
   ticketTotal: number;
   ticketsOpen: number;
   notificationCount: number;
