@@ -35,13 +35,6 @@ impl From<StoreError> for crate::domain::error::AppError {
     }
 }
 
-/// Data collected by the dashboard onboarding flow (first project).
-#[derive(Debug, Clone)]
-pub struct OnboardingInput {
-    pub project_name: String,
-    pub project_description: Option<String>,
-}
-
 pub trait AuthStore: Send + Sync {
     // -- users ------------------------------------------------------------
     fn create_user(&self, user: &User) -> BoxFut<'_, Result<(), StoreError>>;
@@ -155,10 +148,4 @@ pub trait AuthStore: Send + Sync {
     /// Whether `user_id` owns or belongs to at least one project — the "can
     /// skip onboarding" test.
     fn has_project(&self, user_id: UserId) -> BoxFut<'_, Result<bool, StoreError>>;
-    /// Creates the first project atomically.
-    fn complete_onboarding(
-        &self,
-        user_id: UserId,
-        input: OnboardingInput,
-    ) -> BoxFut<'_, Result<(), StoreError>>;
 }

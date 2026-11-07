@@ -19,7 +19,7 @@ use crate::domain::auth::entities::{AuthToken, Session, SessionId, TokenPurpose,
 use crate::domain::auth::value_objects::{Email, hash_token, new_token, validate_password};
 use crate::domain::error::AppError;
 use crate::domain::notifications::{NotificationService, NotificationType};
-use crate::ports::auth_store::{AuthStore, OnboardingInput};
+use crate::ports::auth_store::AuthStore;
 use crate::ports::oauth::OAuthProfile;
 
 /// How long a login cookie stays valid.
@@ -858,38 +858,6 @@ impl AuthService {
     /// signing up for the first time).
     pub async fn onboarding_completed(&self, user_id: UserId) -> Result<bool, AppError> {
         Ok(self.store.has_project(user_id).await?)
-    }
-
-    /// Persists the first project collected by the dashboard onboarding
-    /// flow. New projects start active (schema default).
-    pub async fn complete_onboarding(
-        &self,
-        user_id: UserId,
-        input: OnboardingInput,
-    ) -> Result<(), AppError> {
-        let project_name = input.project_name.trim();
-        if project_name.is_empty() || project_name.len() > 100 {
-            return Err(AppError::Validation(
-                "project name must be between 1 and 100 characters".to_string(),
-            ));
-        }
-
-        self.store.complete_onboarding(user_id, input).await?;
-
-        self.audit
-            .record(
-                Utc::now(),
-                &AuditEvent::new(
-                    AuditAction::UserOnboardingCompleted,
-                    Some(&user_id.to_string()),
-                    None,
-                    None,
-                    "completed onboarding".to_string(),
-                    None,
-                ),
-            )
-            .await;
-        Ok(())
     }
 
     // ------------------------------------------------------------------

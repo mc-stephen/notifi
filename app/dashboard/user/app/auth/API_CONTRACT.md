@@ -115,7 +115,7 @@ Request:
 }
 ```
 
-Response `200 { "status": "ok" }` — or `{ "status": "ok", "alreadyCompleted": true }` when the flag was already set (idempotent). Creates the project (owned by the session user). New projects start in **development mode** (schema default). Errors: `400` validation (name 1–100 chars).
+Response `200 { "status": "ok" }` — or `{ "status": "ok", "alreadyCompleted": true }` when the account already owns or belongs to at least one project (idempotent replay writes nothing — the flag is server-derived, so revisiting onboarding can never mint a project past the first). The project is created through the shared creation door (`ProjectService::create`): the 5-project ceiling applies, the config folder is seeded, and the audit trail records `project.created`. New projects start in **development mode** (schema default). Errors: `400` validation (name 1–100 chars).
 
 Called by the onboarding success page; flips the server-derived flag that unlocks the dashboard.
 

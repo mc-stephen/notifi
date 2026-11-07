@@ -90,16 +90,6 @@ pub struct OnboardingProjectDto {
     pub description: Option<String>,
 }
 
-impl CompleteOnboardingRequest {
-    /// Flattens into the storage-level input.
-    pub fn into_input(self) -> crate::ports::auth_store::OnboardingInput {
-        crate::ports::auth_store::OnboardingInput {
-            project_name: self.project.name,
-            project_description: self.project.description,
-        }
-    }
-}
-
 /// The user as seen by the dashboard — never includes the password hash.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

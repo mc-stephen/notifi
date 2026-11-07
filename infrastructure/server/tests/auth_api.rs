@@ -36,6 +36,7 @@ fn app() -> (Router, Arc<FakeAuthStore>) {
     let store = Arc::new(FakeAuthStore::new());
     let audit = Arc::new(AuditService::new(Arc::new(FakeAuditStore::new())));
     let auth = Arc::new(AuthService::new(store.clone(), true, audit.clone()));
+    let projects = Arc::new(ProjectService::new(store.clone(), audit.clone()));
     (
         build_router(
             AppState {
@@ -48,7 +49,7 @@ fn app() -> (Router, Arc<FakeAuthStore>) {
                 admin_users: None,
                 admin_projects: None,
                 admin_notifications: None,
-                projects: None,
+                projects: Some(projects),
                 project_exports: None,
                 project_imports: None,
                 project_members: None,
@@ -122,6 +123,7 @@ fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
     let store = Arc::new(FakeAuthStore::new());
     let audit = Arc::new(AuditService::new(Arc::new(FakeAuditStore::new())));
     let auth = Arc::new(AuthService::new(store.clone(), true, audit.clone()));
+    let projects = Arc::new(ProjectService::new(store.clone(), audit.clone()));
     let oauth = Arc::new(OAuthRuntime {
         provider: Arc::new(StubOAuthProvider),
         dashboard_url: "http://localhost:3000".to_string(),
@@ -138,7 +140,7 @@ fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
                 admin_users: None,
                 admin_projects: None,
                 admin_notifications: None,
-                projects: None,
+                projects: Some(projects),
                 project_exports: None,
                 project_imports: None,
                 project_members: None,
@@ -416,6 +418,66 @@ async fn invited_member_of_existing_project_skips_onboarding() {
     )
     .await;
     assert_eq!(body_json(res).await["session"]["onboardingCompleted"], true);
+}
+
+#[tokio::test]
+async fn onboarding_completion_counts_toward_the_project_ceiling() {
+    let (app, _store) = app();
+    let (token, _uid) = signup_and_login_on(app.clone(), "ceiling@example.com").await;
+
+    // Onboarding creates only the FIRST project (it answers
+    // `alreadyCompleted` once the account owns/belongs to one), and that
+    // first project rides the same creation door as everywhere else.
+    let res = post_json_with_cookie(
+        app.clone(),
+        "/app/auth/onboarding/complete",
+        json!({"project": {"name": "First"}}),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // The onboarding-created row occupies a ceiling slot: four more via
+    // the dashboard's own door fill the account…
+    for i in 0..4 {
+        let res = post_json_with_cookie(
+            app.clone(),
+            "/app/projects",
+            json!({"name": format!("P{i}")}),
+            &token,
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::CREATED);
+    }
+
+    // …and the ceiling refuses the sixth with the same message on both
+    // roads.
+    let res = post_json_with_cookie(
+        app.clone(),
+        "/app/projects",
+        json!({"name": "Sixth"}),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert!(
+        body_json(res).await["detail"]
+            .as_str()
+            .unwrap()
+            .contains("5-project limit")
+    );
+
+    // Revisiting onboarding can never mint its way past the ceiling — it
+    // answers `alreadyCompleted` and writes nothing.
+    let res = post_json_with_cookie(
+        app,
+        "/app/auth/onboarding/complete",
+        json!({"project": {"name": "Sixth"}}),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res).await["alreadyCompleted"], true);
 }
 
 #[tokio::test]

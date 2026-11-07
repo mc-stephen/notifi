@@ -46,6 +46,14 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
         None => auth_routes,
     };
 
+    // The onboarding-complete handler also creates through the one door —
+    // layered only when present, so its `MaybeProjects` extractor answers
+    // 503 cleanly when the store (database) is absent.
+    let auth_routes = match state.projects.clone() {
+        Some(projects) => auth_routes.layer(axum::Extension(projects)),
+        None => auth_routes,
+    };
+
     let mut project_routes = projects::routes::router();
     // Project routes require session auth via `CurrentUser`, which needs the
     // auth service extension.

@@ -24,16 +24,26 @@ use crate::domain::auth::AuthService;
 use crate::domain::auth::entities::User;
 use crate::domain::auth::value_objects::new_token;
 use crate::domain::error::AppError;
+use crate::domain::projects::ProjectService;
 use crate::ports::oauth::{OAppError, OAuthRuntime};
 
 pub(super) type MaybeService = Option<Extension<Arc<AuthService>>>;
 type MaybeOAuth = Option<Extension<Arc<OAuthRuntime>>>;
+type MaybeProjects = Option<Extension<Arc<ProjectService>>>;
 
 /// How long the CSRF-state / PKCE-verifier / mode cookies live — plenty for
 /// a consent detour, short enough to be useless for replay.
 const OAUTH_TEMP_COOKIE_MAX_AGE_SECONDS: i64 = 600;
 
 pub(super) fn require_service(extension: MaybeService) -> Result<Arc<AuthService>, Problem> {
+    extension
+        .map(|Extension(service)| service)
+        .ok_or_else(|| AppError::NotConfigured.into())
+}
+
+/// The one creation door onboarding completion walks: projects' service
+/// answers 503 the same way when the store (database) is absent.
+fn require_projects(extension: MaybeProjects) -> Result<Arc<ProjectService>, Problem> {
     extension
         .map(|Extension(service)| service)
         .ok_or_else(|| AppError::NotConfigured.into())
@@ -377,15 +387,19 @@ pub async fn me(current_user: CurrentUser, service: MaybeService) -> Result<Resp
     })))
 }
 
-/// `POST /app/auth/onboarding/complete` — persists the first organization +
-/// project collected by the dashboard flow. Idempotent: completing again
-/// answers 200 with `alreadyCompleted`.
+/// `POST /app/auth/onboarding/complete` — creates the project collected by
+/// the dashboard flow through the one creation door (`ProjectService::create`
+/// owns the ceiling, folder seeding, validation, and audit; there is no
+/// separate onboarding write to drift out of step). Idempotent: completing
+/// again answers 200 with `alreadyCompleted`.
 pub async fn complete_onboarding(
     current_user: CurrentUser,
     service: MaybeService,
+    projects: MaybeProjects,
     Json(request): Json<CompleteOnboardingRequest>,
 ) -> Result<Response, Problem> {
     let service = require_service(service)?;
+    let projects = require_projects(projects)?;
     let user = current_user.0;
 
     if service
@@ -396,8 +410,12 @@ pub async fn complete_onboarding(
         return Ok(ok_json(json!({ "status": "ok", "alreadyCompleted": true })));
     }
 
-    service
-        .complete_onboarding(user.id, request.into_input())
+    projects
+        .create(
+            user.id,
+            &request.project.name,
+            request.project.description.as_deref(),
+        )
         .await
         .map_err(Problem::from)?;
 

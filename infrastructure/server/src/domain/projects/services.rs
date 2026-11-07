@@ -75,6 +75,11 @@ impl ProjectService {
         if name.trim().is_empty() {
             return Err(AppError::Validation("project name is required".into()));
         }
+        if name.trim().chars().count() > 100 {
+            return Err(AppError::Validation(
+                "project name must be between 1 and 100 characters".into(),
+            ));
+        }
         // The ceiling gates every road that puts a project on this user —
         // the dashboard's create AND the admin console's import (both flow
         // through here). Tombstones keep occupying their slot until the

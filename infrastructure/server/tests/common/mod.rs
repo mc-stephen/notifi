@@ -544,42 +544,25 @@ impl AuthStore for FakeAuthStore {
         &self,
         user_id: server::domain::auth::entities::UserId,
     ) -> BoxFut<'_, Result<bool, StoreError>> {
-        let onboarded = &self.onboarded;
-        Box::pin(async move {
-            Ok(onboarded
-                .read()
-                .map_err(lock_err)?
-                .iter()
-                .any(|id| *id == user_id.to_string()))
-        })
-    }
-
-    fn complete_onboarding(
-        &self,
-        user_id: server::domain::auth::entities::UserId,
-        input: server::ports::auth_store::OnboardingInput,
-    ) -> BoxFut<'_, Result<(), StoreError>> {
-        let onboarded = &self.onboarded;
         let id = user_id.to_string();
-        let name = input.project_name;
-        let description = input.project_description;
+        let onboarded = &self.onboarded;
+        let projects = &self.projects;
+        let members = &self.members;
         Box::pin(async move {
-            {
-                let mut list = onboarded.write().map_err(lock_err)?;
-                if !list.contains(&id) {
-                    list.push(id);
-                }
-            }
-            // Delegate project creation to the ProjectsStore implementation —
-            // single source of truth for the fake's project-seeding logic.
-            server::ports::projects_store::ProjectsStore::create_project(
-                self,
-                user_id,
-                &name,
-                description.as_deref(),
-            )
-            .await?;
-            Ok(())
+            // Owns (fixture list or created projects) or belongs to (member
+            // rows — the fake removes them outright, so any row is live),
+            // mirroring the Postgres implementation.
+            Ok(onboarded.read().map_err(lock_err)?.contains(&id)
+                || projects
+                    .read()
+                    .map_err(lock_err)?
+                    .iter()
+                    .any(|(owner, _)| owner == &id)
+                || members
+                    .read()
+                    .map_err(lock_err)?
+                    .iter()
+                    .any(|(_, uid, _)| uid == &id))
         })
     }
 }

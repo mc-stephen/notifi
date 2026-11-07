@@ -101,7 +101,7 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         path: "/app/auth/onboarding/complete",
         surface: Surface::App,
         feature: "auth",
-        description: "persist the first project (ends onboarding)",
+        description: "create the first project through the shared creation door (ceiling, folder seeding, audit)",
     },
     RouteInfo {
         method: "GET",

@@ -15,7 +15,7 @@ use crate::domain::auth::entities::{
     AuthToken, AuthTokenId, Session, SessionId, TokenPurpose, User, UserId,
 };
 use crate::domain::auth::value_objects::Email;
-use crate::ports::auth_store::{AuthStore, BoxFut, OnboardingInput, StoreError};
+use crate::ports::auth_store::{AuthStore, BoxFut, StoreError};
 use crate::ports::projects_store::{
     InviteRecord, ProjectAccess, ProjectSummary, ProjectsStore, PurgeDueProject, TeamMemberRecord,
 };
@@ -165,9 +165,8 @@ async fn unique_project_slug(tx: &mut PgConnection, base: &str) -> Result<String
 
 /// Insert a new project and return the created record.
 ///
-/// Called by both `AuthStore::complete_onboarding` and
-/// `ProjectsStore::create_project` to avoid duplicating the
-/// slug-unique + INSERT logic.
+/// Called by `ProjectsStore::create_project` — the one creation door
+/// every road (dashboard, admin import, onboarding completion) walks.
 async fn insert_project(
     conn: &mut PgConnection,
     name: &str,
@@ -721,26 +720,6 @@ impl AuthStore for PgAuthStore {
             .await
             .map_err(map_err)?;
             Ok(has)
-        })
-    }
-
-    fn complete_onboarding(
-        &self,
-        user_id: UserId,
-        input: OnboardingInput,
-    ) -> BoxFut<'_, Result<(), StoreError>> {
-        let pool = self.pool.clone();
-        Box::pin(async move {
-            let mut tx = pool.begin().await.map_err(map_err)?;
-            let _ = insert_project(
-                &mut tx,
-                input.project_name.trim(),
-                input.project_description.as_deref(),
-                &user_id.to_string(),
-            )
-            .await?;
-            tx.commit().await.map_err(map_err)?;
-            Ok(())
         })
     }
 }

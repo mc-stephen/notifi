@@ -32,7 +32,7 @@ pub mod trigger_token_store;
 pub mod webhook_store;
 
 pub use audit_store::{AdminAuditFilters, AuditFilters, AuditStore};
-pub use auth_store::{AuthStore, BoxFut, OnboardingInput, StoreError};
+pub use auth_store::{AuthStore, BoxFut, StoreError};
 pub use channel_provider_store::ChannelProviderStore;
 pub use config_store::ConfigStore;
 pub use delivery::{
