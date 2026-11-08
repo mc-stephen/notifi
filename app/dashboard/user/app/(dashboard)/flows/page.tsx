@@ -38,9 +38,9 @@ import { useTemplates } from "@/hooks/use-templates";
 
 // Row trigger classification — the same read the canvas does: find the
 // definition's trigger node and read its `kind` (legacy docs without one
-// fall back to "event"). Triggerless flows compare as "none" and only
-// ever show under the All filter.
+// fall back to "event").
 type RowTriggerKind = "schedule" | "webhook" | "event" | "none";
+type TriggerGroup = "schedule" | "webhook" | "others";
 
 function rowTriggerKind(flow: ServerFlow): RowTriggerKind {
   const node = asFlowDoc(flow.definition)?.nodes.find((n) => n.type === "trigger");
@@ -48,22 +48,17 @@ function rowTriggerKind(flow: ServerFlow): RowTriggerKind {
   return triggerKindOf((node.data ?? {}) as TriggerData);
 }
 
-const TRIGGER_FILTER_OPTIONS: { value: "all" | "schedule" | "webhook"; label: string }[] = [
+/** The user-facing three: schedule, webhook, everything else. */
+function triggerGroup(kind: RowTriggerKind): TriggerGroup {
+  return kind === "event" || kind === "none" ? "others" : kind;
+}
+
+const TRIGGER_FILTER_OPTIONS: { value: "all" | TriggerGroup; label: string }[] = [
   { value: "all", label: "All triggers" },
   { value: "schedule", label: "Schedule" },
   { value: "webhook", label: "Webhook" },
+  { value: "others", label: "Others" },
 ];
-
-function TriggerBadge({ kind }: { kind: RowTriggerKind }) {
-  if (kind === "none") return null;
-  const label =
-    kind === "schedule" ? "Schedule" : kind === "webhook" ? "Webhook" : "Event";
-  return (
-    <Badge variant="secondary" className="text-[10px] font-medium">
-      {label}
-    </Badge>
-  );
-}
 
 const columns: ColumnDef<ServerFlow>[] = [
   {
@@ -72,7 +67,6 @@ const columns: ColumnDef<ServerFlow>[] = [
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium">{row.original.name}</span>
-        <TriggerBadge kind={rowTriggerKind(row.original)} />
         {handlesSendEvent(row.original.definition) && (
           <Badge variant="secondary" className="text-[10px] font-medium">
             Handles sends
@@ -80,6 +74,22 @@ const columns: ColumnDef<ServerFlow>[] = [
         )}
       </div>
     ),
+  },
+  {
+    id: "triggerType",
+    accessorFn: (flow) => rowTriggerKind(flow),
+    header: "Trigger type",
+    cell: ({ row }) => {
+      const kind = rowTriggerKind(row.original);
+      if (kind === "none") {
+        return <span className="text-xs tabular-nums text-muted-foreground">—</span>;
+      }
+      return (
+        <Badge variant="secondary" className="text-[10px] font-medium">
+          {triggerGroup(kind) === "schedule" ? "Schedule" : triggerGroup(kind) === "webhook" ? "Webhook" : "Others"}
+        </Badge>
+      );
+    },
   },
   {
     accessorKey: "updatedAt",
@@ -178,7 +188,7 @@ export default function FlowsPage() {
   const [deleting, setDeleting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [triggerFilter, setTriggerFilter] = useState<"all" | "schedule" | "webhook">("all");
+  const [triggerFilter, setTriggerFilter] = useState<"all" | TriggerGroup>("all");
   const importedRef = useRef(false);
   const mounted = useSyncExternalStore(
     () => () => {},
@@ -236,7 +246,7 @@ export default function FlowsPage() {
     () =>
       triggerFilter === "all"
         ? flows
-        : flows.filter((flow) => rowTriggerKind(flow) === triggerFilter),
+        : flows.filter((flow) => triggerGroup(rowTriggerKind(flow)) === triggerFilter),
     [flows, triggerFilter],
   );
 
@@ -353,7 +363,7 @@ export default function FlowsPage() {
               <Select
                 value={triggerFilter}
                 onValueChange={(v) => {
-                  if (v === "all" || v === "schedule" || v === "webhook") setTriggerFilter(v);
+                  if (v === "all" || v === "schedule" || v === "webhook" || v === "others") setTriggerFilter(v);
                 }}
               >
                 <SelectTrigger size="sm" className="w-36" aria-label="Filter by trigger type">

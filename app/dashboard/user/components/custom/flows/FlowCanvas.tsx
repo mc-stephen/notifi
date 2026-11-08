@@ -169,9 +169,14 @@ function FlowEditor({
 
   // Autosave (500ms trailing). Skips the very first paint so opening a
   // flow never writes. Timestamp lands on success; failures toast.
+  // Triggerless flows are held instead: a flow without a trigger can
+  // never run, so holding the save beats persisting an already-dead doc
+  // (the flush still refuses them, so leaving the page never writes one).
   const firstPaint = useRef(true);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingRef = useRef<FlowDoc | null>(null);
+  type PendingSave = { doc: FlowDoc; canSave: boolean };
+  const pendingRef = useRef<PendingSave | null>(null);
+  const heldToastRef = useRef(false);
   const onSaveRef = useRef(onSave);
   useEffect(() => {
     onSaveRef.current = onSave;
@@ -182,14 +187,24 @@ function FlowEditor({
       return;
     }
     const doc: FlowDoc = { version: 1, nodes, edges };
-    pendingRef.current = doc;
+    const canSave = nodes.some((n) => n.type === "trigger");
+    pendingRef.current = { doc, canSave };
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    if (!canSave) {
+      if (!heldToastRef.current) {
+        heldToastRef.current = true;
+        toast.error("Save held — every flow starts with exactly one trigger.");
+      }
+      return;
+    }
     saveTimer.current = setTimeout(() => {
       saveTimer.current = null;
       onSaveRef
         .current(doc)
         .then(() => {
           pendingRef.current = null;
+          heldToastRef.current = false;
           setSavedAt(new Date());
         })
         .catch(() => {
@@ -204,8 +219,8 @@ function FlowEditor({
       if (saveTimer.current) clearTimeout(saveTimer.current);
       const pending = pendingRef.current;
       pendingRef.current = null;
-      if (pending) {
-        onSaveRef.current?.(pending).catch(() => {});
+      if (pending?.canSave) {
+        onSaveRef.current?.(pending.doc).catch(() => {});
       }
     };
   }, []);
