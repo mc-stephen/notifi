@@ -9,6 +9,7 @@
 mod common;
 
 use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use crate::common::{
@@ -221,10 +222,16 @@ async fn request_with_cookie(
     body: Option<Value>,
     cookie: &str,
 ) -> axum::response::Response {
+    // ConnectInfo feeds the webhook IP allow-list; the loopback default
+    // keeps plain requests outside any 403 path.
     let mut builder = Request::builder()
         .method(method)
         .uri(uri)
-        .header("content-type", "application/json");
+        .header("content-type", "application/json")
+        .extension(axum::extract::ConnectInfo(SocketAddr::from((
+            [127, 0, 0, 1],
+            41234,
+        ))));
     if !cookie.is_empty() {
         builder = builder.header("cookie", format!("session_token={cookie}"));
     }

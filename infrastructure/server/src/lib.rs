@@ -346,9 +346,14 @@ fn run_inner() -> Result<(), String> {
             });
         }
 
-        if let Err(e) = axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_signal())
-            .await
+        // ConnectInfo feeds the inbound webhook IP allow-list (peer
+        // address extraction on `POST /v1/hooks/{token}`).
+        if let Err(e) = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown_signal())
+        .await
         {
             tracing::error!("server error: {e}");
         }

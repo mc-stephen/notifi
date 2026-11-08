@@ -2,11 +2,14 @@
 //!
 //! Covers token sync on flow saves, firing with full payloads,
 //! caller-wins/fallback resolution, unknown-token 404s, fail-closed
-//! validation, and token rotation on flow updates.
+//! validation, token rotation on flow updates, and the door's own auth:
+//! `x-notifi-secret` checks (401) and IP allow-list checks (403) with
+//! the open-door default when neither is configured.
 
 mod common;
 
 use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use crate::common::{
@@ -15,6 +18,7 @@ use crate::common::{
 };
 use axum::Router;
 use axum::body::Body;
+use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
 use serde_json::{Value, json};
 use server::api::build_router;
@@ -182,10 +186,13 @@ async fn post_json(
     body: Option<Value>,
     cookie: &str,
 ) -> axum::response::Response {
+    // ConnectInfo feeds the webhook IP allow-list; the loopback default
+    // keeps plain requests outside any 403 path.
     let mut builder = Request::builder()
         .method("POST")
         .uri(uri)
-        .header("content-type", "application/json");
+        .header("content-type", "application/json")
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 41234))));
     if !cookie.is_empty() {
         builder = builder.header("cookie", format!("session_token={cookie}"));
     }
@@ -193,6 +200,29 @@ async fn post_json(
         .map(|b| Body::from(b.to_string()))
         .unwrap_or_else(Body::empty);
     app.oneshot(builder.body(body).unwrap()).await.unwrap()
+}
+
+/// Fire with the two door inputs a test controls: the `x-notifi-secret`
+/// header and the caller's socket address (via the ConnectInfo
+/// extension — the real serve line supplies it from the connection).
+async fn post_fire(
+    app: Router,
+    token: &str,
+    body: Value,
+    secret: Option<&str>,
+    ip: [u8; 4],
+) -> axum::response::Response {
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri(format!("/v1/hooks/{token}"))
+        .header("content-type", "application/json")
+        .extension(ConnectInfo(SocketAddr::from((ip, 41234))));
+    if let Some(secret) = secret {
+        builder = builder.header("x-notifi-secret", secret);
+    }
+    app.oneshot(builder.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap()
 }
 
 async fn put_json(app: Router, uri: &str, body: Value, cookie: &str) -> axum::response::Response {
@@ -356,6 +386,96 @@ async fn missing_recipients_fails_closed() {
     )
     .await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+fn door_body() -> Value {
+    json!({
+        "channel": "email", "recipients": ["user-1"],
+        "title": "Order shipped", "body": "On its way",
+    })
+}
+
+#[tokio::test]
+async fn webhook_fire_open_door_without_config() {
+    // No secrets, no IP rules, no header — the pre-auth default holds.
+    let (app, fakes) = app_with_inbound();
+    let (token, project) = setup_project(app.clone(), &fakes, "door@x.com", "P").await;
+    create_flow(
+        app.clone(),
+        &token,
+        &project,
+        webhook_flow_definition(TOKEN_A),
+    )
+    .await;
+    let res = post_fire(app, TOKEN_A, door_body(), None, [127, 0, 0, 1]).await;
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn webhook_fire_secret_header_passes() {
+    let (app, fakes) = app_with_inbound();
+    let (token, project) = setup_project(app.clone(), &fakes, "key@x.com", "P").await;
+    let mut definition = webhook_flow_definition(TOKEN_A);
+    definition["nodes"][0]["data"]["secrets"] = json!(["whsk_4420aaaa", "whsk_bbbbbbbb"]);
+    create_flow(app.clone(), &token, &project, definition).await;
+
+    // Either listed key passes (rotation), with any caller address.
+    for (secret, ip) in [
+        ("whsk_4420aaaa", [8, 8, 8, 8]),
+        ("whsk_bbbbbbbb", [1, 1, 1, 1]),
+    ] {
+        let res = post_fire(app.clone(), TOKEN_A, door_body(), Some(secret), ip).await;
+        assert_eq!(res.status(), StatusCode::OK, "key failed for {ip:?}");
+    }
+}
+
+#[tokio::test]
+async fn webhook_fire_missing_secret_header_is_unauthorized() {
+    let (app, fakes) = app_with_inbound();
+    let (token, project) = setup_project(app.clone(), &fakes, "lock1@x.com", "P").await;
+    let mut definition = webhook_flow_definition(TOKEN_A);
+    definition["nodes"][0]["data"]["secrets"] = json!(["whsk_4420aaaa"]);
+    create_flow(app.clone(), &token, &project, definition).await;
+
+    let res = post_fire(app, TOKEN_A, door_body(), None, [8, 8, 8, 8]).await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn webhook_fire_wrong_secret_header_is_unauthorized() {
+    let (app, fakes) = app_with_inbound();
+    let (token, project) = setup_project(app.clone(), &fakes, "lock2@x.com", "P").await;
+    let mut definition = webhook_flow_definition(TOKEN_A);
+    definition["nodes"][0]["data"]["secrets"] = json!(["whsk_4420aaaa"]);
+    create_flow(app.clone(), &token, &project, definition).await;
+
+    let res = post_fire(app, TOKEN_A, door_body(), Some("whsk_wrong"), [8, 8, 8, 8]).await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn webhook_fire_ip_allowlist_admits_inside_caller() {
+    // CIDR + plain-IP rules both pass for their own and block others.
+    let (app, fakes) = app_with_inbound();
+    let (token, project) = setup_project(app.clone(), &fakes, "net@x.com", "P").await;
+    let mut definition = webhook_flow_definition(TOKEN_A);
+    definition["nodes"][0]["data"]["allowedIps"] = json!(["10.0.0.0/8"]);
+    create_flow(app.clone(), &token, &project, definition).await;
+
+    let res = post_fire(app, TOKEN_A, door_body(), None, [10, 1, 2, 3]).await;
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn webhook_fire_ip_allowlist_denies_outside_caller() {
+    let (app, fakes) = app_with_inbound();
+    let (token, project) = setup_project(app.clone(), &fakes, "net2@x.com", "P").await;
+    let mut definition = webhook_flow_definition(TOKEN_A);
+    definition["nodes"][0]["data"]["allowedIps"] = json!(["10.0.0.0/8"]);
+    create_flow(app.clone(), &token, &project, definition).await;
+
+    let res = post_fire(app, TOKEN_A, door_body(), None, [8, 8, 8, 8]).await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]

@@ -18,12 +18,19 @@ pub struct InboundPayload {
 /// `values` are the trigger's stored presets for its fallback template's
 /// declared `{{refs}}` — the same node-level-preset doctrine the flow's
 /// template node follows ([`crate::domain::flows::template_node_values`]).
+///
+/// `secrets` and `allowed_ips` are the door's own auth: any listed secret
+/// requires a matching `x-notifi-secret` header, any listed rule (plain
+/// IP or CIDR) requires the caller inside it. Empty lists keep the door
+/// open — the documented, pre-auth default.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WebhookNodeConfig {
     pub template_id: Option<String>,
     pub channel: Option<String>,
     pub recipients: Vec<String>,
     pub values: std::collections::HashMap<String, String>,
+    pub secrets: Vec<String>,
+    pub allowed_ips: Vec<String>,
 }
 
 /// Tokens are 128-bit hex (see `newTriggerToken` on the frontend).
@@ -78,12 +85,8 @@ pub fn webhook_node_data(
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
-    Some(WebhookNodeConfig {
-        template_id: non_empty(data.get("templateId")),
-        channel: non_empty(data.get("channel")),
-        recipients: data
-            .get("recipients")
-            .and_then(|r| r.as_array())
+    let string_list = |v: Option<&serde_json::Value>| -> Vec<String> {
+        v.and_then(|v| v.as_array())
             .map(|a| {
                 a.iter()
                     .filter_map(|v| v.as_str())
@@ -91,8 +94,30 @@ pub fn webhook_node_data(
                     .filter(|s| !s.is_empty())
                     .collect()
             })
-            .unwrap_or_default(),
+            .unwrap_or_default()
+    };
+    Some(WebhookNodeConfig {
+        template_id: non_empty(data.get("templateId")),
+        channel: non_empty(data.get("channel")),
+        recipients: string_list(data.get("recipients")),
         values: crate::domain::flows::node_data_values(data),
+        secrets: string_list(data.get("secrets")),
+        allowed_ips: string_list(data.get("allowedIps")),
+    })
+}
+
+/// Does the caller's address pass the node's IP rules? Entries are plain
+/// IPs (`203.0.113.9`) or CIDR blocks (`10.0.0.0/8`); an unparseable
+/// entry never passes — a malformed rule can't widen the door.
+pub fn ip_allowed(allowed_ips: &[String], ip: std::net::IpAddr) -> bool {
+    use std::str::FromStr;
+    allowed_ips.iter().any(|rule| {
+        if let Ok(net) = ipnet::IpNet::from_str(rule) {
+            return net.contains(&ip);
+        }
+        std::net::IpAddr::from_str(rule.trim())
+            .map(|parsed| parsed == ip)
+            .unwrap_or(false)
     })
 }
 
@@ -135,8 +160,41 @@ mod inbound_entities_tests {
         assert_eq!(config.channel.as_deref(), Some("email"));
         assert_eq!(config.recipients, vec!["u1".to_string(), "u2".to_string()]);
         assert!(config.values.is_empty(), "no values key reads as none");
+        assert!(config.secrets.is_empty(), "no secrets key reads as none");
+        assert!(
+            config.allowed_ips.is_empty(),
+            "no allowedIps key reads as none"
+        );
         assert!(webhook_node_data(&definition(), "t2").is_none());
         assert!(webhook_node_data(&definition(), "nope").is_none());
+    }
+
+    #[test]
+    fn reads_node_secrets_and_ip_rules() {
+        let mut def = definition();
+        def["nodes"][0]["data"]["secrets"] =
+            serde_json::json!(["whsk_4420aaaa", " whsk_bbbb ", ""]);
+        def["nodes"][0]["data"]["allowedIps"] =
+            serde_json::json!(["203.0.113.9", " 10.0.0.0/8 ", ""]);
+        let config = webhook_node_data(&def, "t1").unwrap();
+        assert_eq!(
+            config.secrets,
+            vec!["whsk_4420aaaa".to_string(), "whsk_bbbb".to_string()]
+        );
+        assert_eq!(
+            config.allowed_ips,
+            vec!["203.0.113.9".to_string(), "10.0.0.0/8".to_string()]
+        );
+
+        let ip: std::net::IpAddr = "10.1.2.3".parse().unwrap();
+        assert!(ip_allowed(&config.allowed_ips, ip), "inside the CIDR");
+        let flip: std::net::IpAddr = "198.51.100.1".parse().unwrap();
+        assert!(!ip_allowed(&config.allowed_ips, flip), "outside every rule");
+        assert!(
+            !ip_allowed(&["garbage".to_string()], ip),
+            "bad rule never passes"
+        );
+        assert!(!ip_allowed(&[], ip), "empty list passes nobody");
     }
 
     #[test]

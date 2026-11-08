@@ -19,7 +19,9 @@ use crate::domain::error::AppError;
 use crate::domain::flows::{
     collect_http_steps, deliver_through_chain, fire_http_steps, provider_chain,
 };
-use crate::domain::inbound::entities::{InboundPayload, extract_trigger_tokens, webhook_node_data};
+use crate::domain::inbound::entities::{
+    InboundPayload, extract_trigger_tokens, ip_allowed, webhook_node_data,
+};
 use crate::domain::schedules::entities::render_template_content;
 use crate::domain::sends::entities::Send;
 use crate::ports::auth_store::StoreError;
@@ -94,7 +96,21 @@ impl InboundService {
     /// Fires the flow owning `token` with caller-wins/fallback resolution.
     /// Unknown tokens read as missing; delivery failures still return the
     /// recorded (failed) send, mirroring ad-hoc sends.
-    pub async fn fire(&self, token: &str, payload: InboundPayload) -> Result<Send, AppError> {
+    ///
+    /// Door auth lives on the node: any configured secret demands a
+    /// matching `x-notifi-secret` header (401 when missing/wrong) and
+    /// any configured IP rule demands the caller inside it (403
+    /// otherwise). Empty lists keep the door open — the pre-auth
+    /// default, unchanged behavior. Proofs:
+    /// `webhook_fire_secret_*` + `webhook_fire_ip_allowlist_*` +
+    /// `webhook_fire_open_door_without_config` in `tests/inbound_api.rs`.
+    pub async fn fire(
+        &self,
+        token: &str,
+        secret: Option<String>,
+        client_ip: Option<std::net::IpAddr>,
+        payload: InboundPayload,
+    ) -> Result<Send, AppError> {
         let record = self
             .tokens
             .lookup(token)
@@ -103,6 +119,30 @@ impl InboundService {
             .ok_or_else(|| AppError::NotFound("unknown webhook trigger".into()))?;
         let node = webhook_node_data(&record.flow_definition, &record.node_id)
             .ok_or_else(|| AppError::NotFound("webhook trigger no longer configured".into()))?;
+
+        // The door's own checks run before any template/recipients work.
+        if !node.secrets.is_empty() {
+            let presented = secret.as_deref().unwrap_or("");
+            let ok = node.secrets.iter().any(|key| {
+                // Full-entropy generated keys; a timing leak can't walk
+                // 128-bit space.
+                key == presented
+            });
+            if !ok {
+                return Err(AppError::Unauthorized);
+            }
+        }
+        if !node.allowed_ips.is_empty() {
+            let ip = client_ip.ok_or_else(|| {
+                AppError::Forbidden("caller address unavailable for this webhook's IP rules".into())
+            })?;
+            if !ip_allowed(&node.allowed_ips, ip) {
+                return Err(AppError::Forbidden(
+                    "caller address outside this webhook's IP allow-list".into(),
+                ));
+            }
+        }
+
         let project_id = record.project_id.clone();
 
         // Template: caller pick wins, else the node's pick, then render.

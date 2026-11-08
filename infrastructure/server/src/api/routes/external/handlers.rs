@@ -7,8 +7,8 @@
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Extension, Path};
-use axum::http::StatusCode;
+use axum::extract::{ConnectInfo, Extension, Path};
+use axum::http::{HeaderMap, StatusCode};
 
 use super::dto::{InboundFireRequest, SendDto, SendRequest};
 use crate::api::routes::app::auth::{CurrentUser, Problem};
@@ -62,15 +62,26 @@ fn require_inbound(extension: MaybeInboundService) -> Result<Arc<InboundService>
 /// `POST /v1/hooks/{token}` — inbound webhook fire. The token in the URL
 /// is the credential (no session): unknown tokens read as missing.
 /// Caller fields win; the trigger node's config and template fill gaps.
+/// The node can also demand door auth: a matching `x-notifi-secret`
+/// header (401 when wrong/missing) and caller IP inside its allow-list
+/// (403) — proof in `webhook_fire_secret_*` / `webhook_fire_ip_*`
+/// integration tests, open door otherwise.
 pub async fn fire_webhook(
     service: MaybeInboundService,
     Path(token): Path<String>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<InboundFireRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let service = require_inbound(service)?;
     let send = service
         .fire(
             &token,
+            headers
+                .get("x-notifi-secret")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string),
+            Some(peer.ip()),
             InboundPayload {
                 channel: body.channel,
                 recipients: body.recipients,
