@@ -12,6 +12,8 @@ import type { FlowNodeKind } from "./flow-types";
 export const DRAG_MIME = "application/notifi-flow-node";
 /** Trigger group carried alongside the node kind on drag. */
 export const TRIGGER_PRESET_MIME = "application/notifi-trigger-preset";
+/** Trigger kind (webhook) carried alongside the node kind on drag. */
+export const TRIGGER_KIND_MIME = "application/notifi-trigger-kind";
 /** Provider channel carried alongside the node kind on drag. */
 export const PROVIDER_CHANNEL_MIME = "application/notifi-provider-channel";
 
@@ -46,7 +48,13 @@ const ITEMS: { kind: FlowNodeKind; title: string; blurb: string; icon: typeof Za
   { kind: "stop", title: "Stop", blurb: "End this branch", icon: OctagonX },
 ];
 
-const TRIGGER_PARTS: { preset: TriggerPreset; title: string; blurb: string; icon: typeof Zap }[] = [
+const TRIGGER_PARTS: {
+  preset?: TriggerPreset;
+  triggerKind?: "webhook";
+  title: string;
+  blurb: string;
+  icon: typeof Zap;
+}[] = [
   ...WEBHOOK_EVENTS.map((g) => {
     const singular = g.label.replace(/s$/, "");
     return {
@@ -56,6 +64,12 @@ const TRIGGER_PARTS: { preset: TriggerPreset; title: string; blurb: string; icon
       icon: GROUP_ICONS[g.label] ?? Zap,
     };
   }),
+  {
+    triggerKind: "webhook",
+    title: "Inbound webhook",
+    blurb: "Start when something POSTs to this flow's URL",
+    icon: Webhook,
+  },
 ];
 
 /** Word-prefix match so stray substrings (e.g. "art" in "start") don't hit. */
@@ -73,6 +87,7 @@ function DraggableRow({
   icon: Icon,
   kind,
   preset,
+  triggerKind,
   channel,
   indent,
 }: {
@@ -81,6 +96,7 @@ function DraggableRow({
   icon: typeof Zap;
   kind: FlowNodeKind;
   preset?: TriggerPreset;
+  triggerKind?: "webhook";
   channel?: string;
   indent?: boolean;
 }) {
@@ -90,6 +106,7 @@ function DraggableRow({
       onDragStart={(e) => {
         e.dataTransfer.setData(DRAG_MIME, kind);
         if (preset) e.dataTransfer.setData(TRIGGER_PRESET_MIME, preset);
+        if (triggerKind) e.dataTransfer.setData(TRIGGER_KIND_MIME, triggerKind);
         if (channel) e.dataTransfer.setData(PROVIDER_CHANNEL_MIME, channel);
         e.dataTransfer.effectAllowed = "move";
       }}
@@ -178,12 +195,13 @@ export function FlowPalette({ hideTriggers = false }: { hideTriggers?: boolean }
             {triggersOpen &&
               (query ? visibleParts : TRIGGER_PARTS).map((p) => (
                 <DraggableRow
-                  key={p.preset}
+                  key={p.triggerKind ?? p.preset}
                   title={p.title}
                   blurb={p.blurb}
                   icon={p.icon}
                   kind="trigger"
                   preset={p.preset}
+                  triggerKind={p.triggerKind}
                   indent
                 />
               ))}

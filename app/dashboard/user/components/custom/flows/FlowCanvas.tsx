@@ -24,10 +24,11 @@ import { cn } from "@/lib/utils";
 import { WEBHOOK_EVENTS } from "@/lib/constants";
 import { useTemplates } from "@/hooks/use-templates";
 import { FLOW_NODE_TYPES } from "./nodes/flow-nodes";
-import { FlowPalette, DRAG_MIME, TRIGGER_PRESET_MIME, PROVIDER_CHANNEL_MIME, type TriggerPreset } from "./FlowPalette";
+import { FlowPalette, DRAG_MIME, TRIGGER_PRESET_MIME, TRIGGER_KIND_MIME, PROVIDER_CHANNEL_MIME, type TriggerPreset } from "./FlowPalette";
 import { NodeConfigPanel } from "./NodeConfigPanel";
 import {
   HANDLE,
+  mintWebhookToken,
   triggerKindOf,
   type FlowDoc,
   type FlowIssue,
@@ -41,11 +42,16 @@ function defaultDataFor(
   kind: FlowNodeKind,
   triggerPreset?: TriggerPreset,
   providerChannel?: string,
+  triggerKind?: string,
 ): FlowNode["data"] {
   switch (kind) {
     case "trigger": {
-      // Webhook triggers are owner-born (the Webhooks page mints the
-      // token); the palette only offers event-kind starts.
+      // Hand-placed webhook triggers mint their own full-entropy token
+      // (the server's spec: exactly 32 hex chars). The definition is the
+      // source of truth — the token index syncs on every save and the
+      // same /v1/hooks door fires it as any owner-page webhook. The
+      // builder panel then fills in the fallback channel + recipients.
+      if (triggerKind === "webhook") return { kind: "webhook", token: mintWebhookToken() };
       const group = WEBHOOK_EVENTS.find((g) => g.label === triggerPreset);
       const event =
         triggerPreset === "Notifications" || !group
@@ -126,9 +132,9 @@ function FlowEditor({
   // Owner data is undeletable: owner-managed flows lock their trigger
   // everywhere (drag-select + Backspace included), and any schedule-kind
   // trigger is locked too — schedules are only ever born on the
-  // Schedules page, never placed by hand. Webhook-kind triggers outside
-  // owner-managed flows stay deletable on purpose: they are stale
-  // hand-placed data that can never fire (no owner token).
+  // Schedules page, never placed by hand. Hand-placed webhook triggers
+  // stay deletable on purpose: deleting one drops its token row on the
+  // next save (the definition is the source of truth).
   const onNodesChangeSafe = useCallback(
     (changes: Parameters<typeof onNodesChangeBase>[0]) => {
       const lockedTriggerIds = new Set(
@@ -262,6 +268,7 @@ function FlowEditor({
       const kind = e.dataTransfer.getData(DRAG_MIME) as FlowNodeKind | "";
       if (!kind) return;
       const triggerPreset = e.dataTransfer.getData(TRIGGER_PRESET_MIME) as TriggerPreset | "";
+      const triggerKind = e.dataTransfer.getData(TRIGGER_KIND_MIME) || undefined;
       const providerChannel = e.dataTransfer.getData(PROVIDER_CHANNEL_MIME) || undefined;
       idCounter.current += 1;
       const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
@@ -269,7 +276,7 @@ function FlowEditor({
         id: `node-${Date.now().toString(36)}-${idCounter.current}`,
         type: kind,
         position: { x: position.x - 128, y: position.y - 40 },
-        data: defaultDataFor(kind, triggerPreset || undefined, providerChannel),
+        data: defaultDataFor(kind, triggerPreset || undefined, providerChannel, triggerKind),
       };
       setNodes((ns) => [...ns, node]);
       // Click-only panels: dropping a palette item places it without

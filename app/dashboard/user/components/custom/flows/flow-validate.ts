@@ -108,7 +108,7 @@ export function validateFlow(
           issues.push({ severity: "error", nodeId: n.id, message: "Pick an event for the trigger." });
         }
         if (kind === "webhook" && !data.token) {
-          issues.push({ severity: "error", nodeId: n.id, message: "No token on this webhook trigger — start the flow from the Webhooks page instead of placing the trigger by hand." });
+          issues.push({ severity: "error", nodeId: n.id, message: "No token on this webhook trigger — delete it and place a fresh webhook trigger from the palette." });
         }
         // The fallback template's declared refs ride the trigger's
         // values presets — the backend renders them at fire time,

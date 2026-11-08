@@ -77,9 +77,12 @@ function EventChips({ events }: { events: string[] }) {
 function TriggerForm({
   data,
   onChange,
+  lockedTrigger,
 }: {
   data: TriggerData;
   onChange: (d: TriggerData) => void;
+  /** Owner flows: the trigger is owned data (schedule/webhook page). */
+  lockedTrigger?: boolean;
 }) {
   const kind = triggerKindOf(data);
   const [copied, setCopied] = useState(false);
@@ -120,11 +123,13 @@ function TriggerForm({
     );
   }
 
-  // Owner identity: the webhook page mints the token and picks the
-  // events; the builder only inspects. Webhook triggers are never
-  // placed by hand — a hand-placed one carries no owner token and can
-  // never fire. Fallback fields below are the flow's own config.
+  // Webhook triggers come in two flavors: owner-born (the Webhooks page
+  // mints the token and picks the events — this panel only inspects
+  // those) and hand-placed from the palette (the builder minted its own
+  // full-entropy token at drop time, so it fires through the same
+  // /v1/hooks door; the fallback fields below are its whole config).
   if (kind === "webhook") {
+    const ownerWebhook = lockedTrigger === true;
     return (
       <div className="space-y-4">
         <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-3">
@@ -132,9 +137,9 @@ function TriggerForm({
             <Webhook className="size-4 text-primary" /> Webhook trigger
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            This flow belongs to a webhook and fires on its inbound HTTP
-            call. The trigger itself is owned data — manage the webhook on
-            the Webhooks page.
+            {ownerWebhook
+              ? "This flow belongs to a webhook and fires on its inbound HTTP call. The trigger itself is owned data — manage the webhook on the Webhooks page."
+              : "Fires whenever something POSTs to its inbound URL. Fill in the fallback channel and recipients below to route the call."}
           </p>
         </div>
         <Field label="Inbound URL">
@@ -158,17 +163,19 @@ function TriggerForm({
           </div>
           {!webhookUrl && (
             <p className="text-xs text-warning">
-              No token — this trigger was placed by hand and can never
-              fire. Delete it and start the flow from the Webhooks page.
+              No token on this trigger — delete it and place a fresh
+              webhook trigger (or start the flow from the Webhooks page).
             </p>
           )}
         </Field>
         {(data.events?.length ?? 0) > 0 && (
           <Field label="Listens for">
             <EventChips events={data.events ?? []} />
-            <p className="text-xs text-muted-foreground">
-              Edited on the Webhooks page — the trigger follows along.
-            </p>
+            {ownerWebhook && (
+              <p className="text-xs text-muted-foreground">
+                Edited on the Webhooks page — the trigger follows along.
+              </p>
+            )}
           </Field>
         )}
         <TriggerFallbackFields data={data} onChange={onChange} />
@@ -771,6 +778,7 @@ export function NodeConfigPanel({ node, onChange, onClose, lockedTrigger }: Node
             <TriggerForm
               data={node.data as TriggerData}
               onChange={onChange}
+              lockedTrigger={lockedTrigger}
             />
           )}
           {node.type === "provider" && (

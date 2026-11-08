@@ -42,6 +42,17 @@ export function triggerKindOf(data: TriggerData): TriggerKind {
   return data.kind ?? "event";
 }
 
+/** A full-entropy inbound token matching the server's spec (exactly 32
+ * hex chars, `valid_trigger_token` in `inbound/entities`). The builder
+ * mints its own so hand-placed webhook triggers can fire through the
+ * same `/v1/hooks` door as owner-page ones — the token index is synced
+ * from the definition on every save either way. */
+export function mintWebhookToken(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export type ProviderData = {
   channelId: string;
   providerId: string;
