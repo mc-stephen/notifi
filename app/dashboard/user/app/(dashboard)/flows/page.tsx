@@ -21,6 +21,8 @@ import {
   DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { triggerKindOf, type TriggerData } from "@/components/custom/flows/flow-types";
 import { useProjectStore } from "@/store/project-store";
 import {
   adoptLegacyDrafts,
@@ -34,6 +36,35 @@ import {
 import { validateFlow } from "@/components/custom/flows/flow-validate";
 import { useTemplates } from "@/hooks/use-templates";
 
+// Row trigger classification — the same read the canvas does: find the
+// definition's trigger node and read its `kind` (legacy docs without one
+// fall back to "event"). Triggerless flows compare as "none" and only
+// ever show under the All filter.
+type RowTriggerKind = "schedule" | "webhook" | "event" | "none";
+
+function rowTriggerKind(flow: ServerFlow): RowTriggerKind {
+  const node = asFlowDoc(flow.definition)?.nodes.find((n) => n.type === "trigger");
+  if (!node) return "none";
+  return triggerKindOf((node.data ?? {}) as TriggerData);
+}
+
+const TRIGGER_FILTER_OPTIONS: { value: "all" | "schedule" | "webhook"; label: string }[] = [
+  { value: "all", label: "All triggers" },
+  { value: "schedule", label: "Schedule" },
+  { value: "webhook", label: "Webhook" },
+];
+
+function TriggerBadge({ kind }: { kind: RowTriggerKind }) {
+  if (kind === "none") return null;
+  const label =
+    kind === "schedule" ? "Schedule" : kind === "webhook" ? "Webhook" : "Event";
+  return (
+    <Badge variant="secondary" className="text-[10px] font-medium">
+      {label}
+    </Badge>
+  );
+}
+
 const columns: ColumnDef<ServerFlow>[] = [
   {
     accessorKey: "name",
@@ -41,6 +72,7 @@ const columns: ColumnDef<ServerFlow>[] = [
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium">{row.original.name}</span>
+        <TriggerBadge kind={rowTriggerKind(row.original)} />
         {handlesSendEvent(row.original.definition) && (
           <Badge variant="secondary" className="text-[10px] font-medium">
             Handles sends
@@ -146,6 +178,7 @@ export default function FlowsPage() {
   const [deleting, setDeleting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [triggerFilter, setTriggerFilter] = useState<"all" | "schedule" | "webhook">("all");
   const importedRef = useRef(false);
   const mounted = useSyncExternalStore(
     () => () => {},
@@ -198,6 +231,14 @@ export default function FlowsPage() {
   }, [flows, templates]);
 
   const statsLoading = loading || importing;
+
+  const filteredFlows = useMemo(
+    () =>
+      triggerFilter === "all"
+        ? flows
+        : flows.filter((flow) => rowTriggerKind(flow) === triggerFilter),
+    [flows, triggerFilter],
+  );
 
   const statItems = [
     {
@@ -303,9 +344,33 @@ export default function FlowsPage() {
               ))}
             </div>
           )}
+          {(flows.length > 0 || statsLoading) && (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {statsLoading ? "–" : `${filteredFlows.length} of ${flows.length} flows`}
+              </span>
+              <Select
+                value={triggerFilter}
+                onValueChange={(v) => {
+                  if (v === "all" || v === "schedule" || v === "webhook") setTriggerFilter(v);
+                }}
+              >
+                <SelectTrigger className="w-44" aria-label="Filter by trigger type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TRIGGER_FILTER_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <DataTable
             columns={tableColumns}
-            data={flows}
+            data={filteredFlows}
             isLoading={loading || importing}
             searchPlaceholder="Search flows..."
             emptyMessage={
