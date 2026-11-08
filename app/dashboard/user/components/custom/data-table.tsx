@@ -36,6 +36,10 @@ export type DataTableProps<TData, TValue> = {
   searchKey?: string;
   pageSize?: number;
   bulkActions?: React.ReactNode | ((selectedRows: TData[]) => React.ReactNode);
+  /** Always-visible controls (e.g. a type filter) rendered beside the
+   * Columns dropdown in the default toolbar — unlike bulkActions, which
+   * only appears when rows are selected. */
+  filterActions?: React.ReactNode;
   emptyMessage?: string;
   onRowClick?: (row: TData) => void;
   rowActions?: (row: TData) => React.ReactNode;
@@ -61,6 +65,7 @@ export function DataTable<TData, TValue>({
   searchKey,
   pageSize: initialPageSize = 20,
   bulkActions,
+  filterActions,
   emptyMessage = "No results found.",
   onRowClick,
   rowActions,
@@ -139,6 +144,7 @@ export function DataTable<TData, TValue>({
           </div>
 
           <div className="flex items-center gap-2">
+            {filterActions}
             {selectedCount > 0 &&
               (typeof bulkActions === "function"
                 ? bulkActions(

@@ -344,18 +344,19 @@ export default function FlowsPage() {
               ))}
             </div>
           )}
-          {(flows.length > 0 || statsLoading) && (
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-muted-foreground tabular-nums">
-                {statsLoading ? "–" : `${filteredFlows.length} of ${flows.length} flows`}
-              </span>
+          <DataTable
+            columns={tableColumns}
+            data={filteredFlows}
+            isLoading={loading || importing}
+            searchPlaceholder="Search flows..."
+            filterActions={
               <Select
                 value={triggerFilter}
                 onValueChange={(v) => {
                   if (v === "all" || v === "schedule" || v === "webhook") setTriggerFilter(v);
                 }}
               >
-                <SelectTrigger className="w-44" aria-label="Filter by trigger type">
+                <SelectTrigger size="sm" className="w-36" aria-label="Filter by trigger type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -366,13 +367,7 @@ export default function FlowsPage() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          )}
-          <DataTable
-            columns={tableColumns}
-            data={filteredFlows}
-            isLoading={loading || importing}
-            searchPlaceholder="Search flows..."
+            }
             emptyMessage={
               flows.length === 0
                 ? "No flows yet. Create one to start routing notifications."
