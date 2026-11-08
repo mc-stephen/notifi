@@ -13,6 +13,9 @@ Single-file dev-stage squash, applied automatically at server boot (`src/infra/d
   `audit_logs` (append-only audit trail), `event_outbox` (transactional outbox).
 - `0002_user_project_limit.sql` — per-user project ceiling (`auth_users.project_limit`,
   default 5, admin-raised; tombstones occupy the slot until purge).
+- `0003_project_limit_bigint.sql` — widens `auth_users.project_limit` to `BIGINT`
+  (INT8) to match the repository's `i64` reads/binds; the INT4 it was created as
+  refused to decode at runtime (ceiling, project creation, admin user view).
 - Plus: `project_invites` (team invites), `key_ip_allowlist` (per-key IP
   allowlists), `notification_sends` + `flows` (record-first sends; no `kind`
   column — "default" is emergent, not stored), `schedules` (once/recurring/
