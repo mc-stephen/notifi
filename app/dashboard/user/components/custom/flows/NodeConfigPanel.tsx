@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, CalendarClock, Copy, ExternalLink, Webhook, X } from "lucide-react";
+import { Check, CalendarClock, Copy, ExternalLink, Plus, Webhook, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,7 +27,9 @@ import {
   CONDITION_OPERATORS,
   HTTP_METHODS,
   TRIGGER_EVENTS,
+  mintWebhookSecret,
   triggerKindOf,
+  validIpRule,
   type AiTransformData,
   type ConditionData,
   type FlowNode,
@@ -139,7 +141,7 @@ function TriggerForm({
           <p className="mt-1 text-xs text-muted-foreground">
             {ownerWebhook
               ? "This flow belongs to a webhook and fires on its inbound HTTP call. The trigger itself is owned data — manage the webhook on the Webhooks page."
-              : "Fires whenever something POSTs to its inbound URL. Fill in the fallback channel and recipients below to route the call."}
+              : "Fires whenever something POSTs to its inbound URL. The POST body drives the message: channel + recipients, then title/body or a caller templateId. Secrets and IP rules keep the door picky."}
           </p>
         </div>
         <Field label="Inbound URL">
@@ -178,7 +180,7 @@ function TriggerForm({
             )}
           </Field>
         )}
-        <TriggerFallbackFields data={data} onChange={onChange} />
+        <WebhookDoorFields data={data} onChange={onChange} locked={ownerWebhook} />
       </div>
     );
   }
@@ -235,117 +237,146 @@ function TriggerForm({
   );
 }
 
-function TriggerFallbackFields({
+/** Webhook door auth: inbound secret keys (auto-generated `whsk_` keys,
+ * any listed key passes the `x-notifi-secret` header) + an IP
+ * allow-list (plain IP or CIDR entries). Both empty keeps the door
+ * open — the server's pre-auth default. Owner-born triggers render
+ * read-only. */
+function WebhookDoorFields({
   data,
   onChange,
+  locked,
 }: {
   data: TriggerData;
   onChange: (d: TriggerData) => void;
+  locked?: boolean;
 }) {
-  const { templates, loading } = useTemplates();
-  const { registry } = useProviderRegistry();
-  const channels = registry?.channels ?? [];
-  const recipientsText = (data.recipients ?? []).join("\n");
-  const picked = templates.find((t) => t.id === data.templateId);
-  const declared = picked ? getVariables(picked.content) : [];
+  const secrets = data.secrets ?? [];
+  const rules = data.allowedIps ?? [];
+  const [ruleDraft, setRuleDraft] = useState("");
+  const [ruleError, setRuleError] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Switching fallback templates prunes presets that no longer map to a
-  // declared ref; same-named refs keep their value (mirrors the
-  // template node's pick).
-  const pickTemplate = (v: string) => {
-    const chosen = templates.find((t) => t.id === v);
-    const keep = new Set(chosen ? getVariables(chosen.content).map((x) => x.key) : []);
-    const values = Object.fromEntries(
-      Object.entries(data.values ?? {}).filter(([key]) => keep.has(key)),
-    );
-    onChange({ ...data, templateId: v || undefined, values });
+  const copySecret = async (key: string) => {
+    try {
+      await navigator.clipboard.writeText(key);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 1500);
+    } catch {
+      // Clipboard unavailable — the key is visible for manual copy.
+    }
   };
 
-  const setVar = (key: string, value: string) => {
-    const next = { ...data.values };
-    if (value.trim() === "") {
-      delete next[key];
-    } else {
-      next[key] = value.trim();
+  const createSecret = () => {
+    // Full-entropy keys only — typed secrets can be weak.
+    onChange({ ...data, secrets: [...secrets, mintWebhookSecret()] });
+  };
+
+  const addRule = () => {
+    const rule = ruleDraft.trim();
+    if (!rule) return;
+    if (!validIpRule(rule)) {
+      setRuleError("Use an IP like 10.0.0.1 or a block like 10.0.0.0/8.");
+      return;
     }
-    onChange({ ...data, values: next });
+    if (rules.includes(rule)) {
+      setRuleDraft("");
+      setRuleError(null);
+      return;
+    }
+    setRuleError(null);
+    setRuleDraft("");
+    onChange({ ...data, allowedIps: [...rules, rule] });
   };
 
   return (
     <>
-      <Field label="Fallback template (optional)">
-        <Select
-          value={data.templateId || undefined}
-          onValueChange={(v) => {
-            if (!v) return;
-            pickTemplate(v);
-          }}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder={loading ? "Loading templates…" : "Select a template"} />
-          </SelectTrigger>
-          <SelectContent>
-            {templates.map((t) => (
-              <SelectItem key={t.id} value={t.id}>
-                {t.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">
-          Renders the message when the call omits title and body.
-        </p>
-      </Field>
-      {/* The trigger's presets fill its fallback template's declared
-          {{refs}} at fire time (see inbound services) — same doctrine
-          as the template node's dynamic data. */}
-      {declared.length > 0 && picked && (
-        <Field label="Dynamic data">
-          <DeclaredValues
-            declared={declared}
-            values={data.values}
-            onSet={setVar}
-          />
+      <Field label="Secret keys">
+        <div className="space-y-1.5">
+          {secrets.map((key) => (
+            <div key={key} className="flex items-center gap-1.5">
+              <Input readOnly value={key} aria-label="Inbound secret key" className="h-8 font-mono text-xs" />
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={`Copy secret ${key}`}
+                className="shrink-0"
+                onClick={() => void copySecret(key)}
+              >
+                {copiedKey === key ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Delete secret ${key}`}
+                className="shrink-0 text-muted-foreground hover:text-destructive"
+                disabled={locked}
+                onClick={() => onChange({ ...data, secrets: secrets.filter((s) => s !== key) })}
+              >
+                <X className="size-3.5" />
+              </Button>
+            </div>
+          ))}
+          {secrets.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              No keys — the door is open. Create one to reject callers without a valid key.
+            </p>
+          )}
+          <Button variant="outline" size="sm" className="mt-0.5" disabled={locked} onClick={createSecret}>
+            <Plus className="size-3.5" /> Create key
+          </Button>
           <p className="text-xs text-muted-foreground">
-            The call&apos;s own title and body win when provided.
+            {locked
+              ? "This trigger is owned data — keys read-only here."
+              : "Pass a key in the x-notifi-secret header; a wrong one is rejected (rotation: any listed key works)."}
           </p>
-        </Field>
-      )}
-      <Field label="Fallback channel (optional)">
-        <Select
-          value={data.channel || undefined}
-          onValueChange={(v) => onChange({ ...data, channel: v || undefined })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select channel" />
-          </SelectTrigger>
-          <SelectContent>
-            {channels.map((c) => (
-              <SelectItem key={c.channel_id} value={c.channel_id}>
-                {c.channel_name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        </div>
       </Field>
-      <Field label="Fallback recipients (optional)">
-        <Textarea
-          value={recipientsText}
-          onChange={(e) =>
-            onChange({
-              ...data,
-              recipients: e.target.value
-                .split("\n")
-                .map((r) => r.trim())
-                .filter(Boolean),
-            })
-          }
-          placeholder={"user-1\nuser-2"}
-          className="min-h-[64px] font-mono text-xs"
-        />
-        <p className="text-xs text-muted-foreground">
-          One per line. Used when the call omits recipients.
-        </p>
+      <Field label="IP allow-list">
+        <div className="space-y-1.5">
+          {rules.map((rule) => (
+            <div key={rule} className="flex items-center gap-1.5">
+              <Input readOnly value={rule} aria-label="Allowed address" className="h-8 font-mono text-xs" />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Remove ${rule}`}
+                className="shrink-0 text-muted-foreground hover:text-destructive"
+                disabled={locked}
+                onClick={() => onChange({ ...data, allowedIps: rules.filter((r) => r !== rule) })}
+              >
+                <X className="size-3.5" />
+              </Button>
+            </div>
+          ))}
+          {rules.length === 0 && (
+            <p className="text-xs text-muted-foreground">Empty — any address may call.</p>
+          )}
+          {!locked && (
+            <>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={ruleDraft}
+                  aria-label="New allowed address"
+                  placeholder="10.0.0.1 or 10.0.0.0/8"
+                  className="h-8 font-mono text-xs"
+                  onChange={(e) => setRuleDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addRule();
+                    }
+                  }}
+                />
+                <Button variant="outline" size="icon-sm" aria-label="Add address" className="shrink-0" onClick={addRule}>
+                  <Plus className="size-3.5" />
+                </Button>
+              </div>
+              {ruleError && <p className="text-xs text-destructive">{ruleError}</p>}
+            </>
+          )}
+          {locked && rules.length === 0 && <p className="text-xs text-muted-foreground">No rules.</p>}
+        </div>
       </Field>
     </>
   );

@@ -1,7 +1,7 @@
 import type { Edge } from "@xyflow/react";
 import { getVariables } from "@/lib/template-content";
 import type { Template } from "@/lib/types";
-import { HANDLE, type ConditionData, type FlowIssue, type FlowNode, type ProviderData, type TemplateData, type TriggerData } from "./flow-types";
+import { HANDLE, validIpRule, type ConditionData, type FlowIssue, type FlowNode, type ProviderData, type TemplateData, type TriggerData } from "./flow-types";
 
 function isProviderData(d: unknown): d is ProviderData {
   return typeof d === "object" && d !== null && "providerId" in d && "priority" in d;
@@ -109,6 +109,15 @@ export function validateFlow(
         }
         if (kind === "webhook" && !data.token) {
           issues.push({ severity: "error", nodeId: n.id, message: "No token on this webhook trigger — delete it and place a fresh webhook trigger from the palette." });
+        }
+        // IP allow-list entries are shape-checked here; the server's
+        // ipnet parser stays the real gate (a malformed rule never
+        // widens the door).
+        if (kind === "webhook" && data.allowedIps?.length) {
+          const bad = data.allowedIps.find((rule) => !validIpRule(rule));
+          if (bad) {
+            issues.push({ severity: "error", nodeId: n.id, message: `"${bad}" isn't a plain IP or CIDR block — fix the webhook's IP allow-list.` });
+          }
         }
         // The fallback template's declared refs ride the trigger's
         // values presets — the backend renders them at fire time,

@@ -24,7 +24,9 @@ export type TriggerData = {
   events?: string[];
   /** Webhook triggers only: operator note. */
   note?: string;
-  /** Webhook triggers only: fallback message template. */
+  /** Webhook triggers only: fallback message template. Legacy — the
+   * panel no longer edits it; the POST body drives content (caller
+   * fields + caller templateId). */
   templateId?: string;
   /** Webhook triggers only: presets for the fallback template's
    * declared refs (the backend renders them at fire time;
@@ -35,6 +37,13 @@ export type TriggerData = {
   channel?: string;
   /** Webhook triggers only: fallback recipients. */
   recipients?: string[];
+  /** Webhook triggers only: accepted inbound secrets (`whsk_` keys).
+   * Any listed key passes in the `x-notifi-secret` header. Empty =
+   * open door. */
+  secrets?: string[];
+  /** Webhook triggers only: caller IP allow-list (plain IP or CIDR).
+   * Empty = any address. */
+  allowedIps?: string[];
 };
 
 /** Normalizes trigger data: legacy `{event}` docs read as event-kind. */
@@ -51,6 +60,39 @@ export function mintWebhookToken(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** An inbound secret key (`whsk_` + 128-bit hex) for the builder panel —
+ * the caller echoes it back in the `x-notifi-secret` header on every
+ * fire call. */
+export function mintWebhookSecret(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `whsk_${hex}`;
+}
+
+/** Shape-checks an IP allow-list entry: a plain IPv4/IPv6 address or a
+ * CIDR block (`10.0.0.0/8`). Exact validity is the server's `ipnet`
+ * parser's truth (`entities::ip_allowed` — a malformed rule never
+ * widens the door); client-side this keeps obvious typos out. */
+export function validIpRule(rule: string): boolean {
+  const v = rule.trim();
+  if (!v) return false;
+  if (v.includes("/")) {
+    const [addr, mask] = v.split("/");
+    if (!/^\d{1,3}$/.test(mask)) return false;
+    const bits = Number(mask);
+    const maxBits = addr.includes(":") ? 128 : 32;
+    return bits <= maxBits && validIpRule(addr);
+  }
+  if (v.includes(":")) {
+    // Loose IPv6: hex digits and colons only.
+    return /^[0-9a-fA-F:]+$/.test(v);
+  }
+  return /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/.test(
+    v,
+  );
 }
 
 export type ProviderData = {
