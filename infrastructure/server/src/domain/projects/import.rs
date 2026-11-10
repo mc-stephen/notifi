@@ -9,14 +9,7 @@
 //!   appends a short random suffix. Tombstoned rows are never written
 //!   into — deletion runs unbothered, and a clone loses nothing critical
 //!   (exact-history recovery is the backup path, not the zip).
-//! * **Config/content only.** Templates (attachments metadata),
-//!   recipients, webhooks (fresh tokens — old URL rows keep theirs),
-//!   schedules (imported **paused** — nothing sends until someone arms
-//!   it), every definition (template ids remapped to the new rows,
-//!   webhook triggers re-pointed to the new tokens), flow-page flows,
-//!   api keys (fresh secrets; revoked keys stay dead records; disabled
-//!   keys restored disabled), and every exported project file re-keyed
-//!   under the new slug.
+
 //! * **Reference-only sections:** sends (the clone starts a clean
 //!   ledger), members (the `owner` field attributes the clone),
 //!   subscription (billing is per project — a clone starts with the
@@ -52,8 +45,6 @@ use crate::domain::schedules::ScheduleService;
 use crate::domain::schedules::entities::{ScheduleInput, ScheduleKind};
 use crate::domain::schedules::services::SchedulePatch;
 use crate::domain::templates::TemplateService;
-use crate::domain::webhooks::WebhookService;
-use crate::domain::webhooks::entities::{WebhookInput, WebhookPatch};
 use crate::ports::auth_store::AuthStore;
 use crate::ports::config_store::ConfigStore;
 use crate::ports::templates_store::AttachmentInput;
@@ -72,7 +63,6 @@ type VisibilitySeed = dyn Fn(&str, &str) + Send + Sync;
 pub struct ProjectImportService {
     projects: Arc<crate::domain::projects::ProjectService>,
     templates: Arc<TemplateService>,
-    webhooks: Arc<WebhookService>,
     schedules: Arc<ScheduleService>,
     flows: Arc<FlowService>,
     api_keys: Arc<ApiKeyService>,
@@ -90,7 +80,7 @@ pub struct ProjectImportService {
     /// this. The test fakes keep per-store registries instead, and an
     /// import creates the clone mid-run (id unknowable in advance), so
     /// a fixture injects the same hand-seeding the other suites do by
-    /// name (see `tests/webhooks_api.rs::setup_project`).
+    /// name (see the row-import suites' `setup_project` fixtures).
     seed_visibility: Option<Arc<VisibilitySeed>>,
 }
 
@@ -117,7 +107,6 @@ impl ProjectImportService {
     pub fn new(
         projects: Arc<crate::domain::projects::ProjectService>,
         templates: Arc<TemplateService>,
-        webhooks: Arc<WebhookService>,
         schedules: Arc<ScheduleService>,
         flows: Arc<FlowService>,
         api_keys: Arc<ApiKeyService>,
@@ -129,7 +118,6 @@ impl ProjectImportService {
         Self {
             projects,
             templates,
-            webhooks,
             schedules,
             flows,
             api_keys,
@@ -325,80 +313,7 @@ impl ProjectImportService {
             );
         }
 
-        // -- 6. webhooks (fresh tokens; trigger re-pointed before save) --
-        let exported_webhooks = bundle.rows("webhooks.json");
-        let mut webhooks = 0usize;
-        for w in &exported_webhooks {
-            let name = Self::row_name(w, "Restored webhook");
-            let old_flow = w["flowId"].as_str().unwrap_or("").to_string();
-            match self
-                .webhooks
-                .create(
-                    owner,
-                    &project_id,
-                    WebhookInput {
-                        name: name.to_string(),
-                        description: w["description"].as_str().unwrap_or("").to_string(),
-                        events: Self::string_list(&w["events"]),
-                    },
-                )
-                .await
-            {
-                Ok(webhook) => {
-                    let seed_token = self
-                        .flows
-                        .get(owner, &project_id, &webhook.flow_id)
-                        .await
-                        .ok()
-                        .and_then(|seed| Self::seed_webhook_token(&seed.definition));
-                    match self
-                        .apply_owned_definition(
-                            owner,
-                            &project_id,
-                            &old_flow,
-                            &webhook.flow_id,
-                            &definitions,
-                            &template_map,
-                            seed_token,
-                        )
-                        .await
-                    {
-                        (definition, Ok(())) => {
-                            if let Some(inbound) = &self.inbound {
-                                inbound
-                                    .sync_flow_tokens(&project_id, &webhook.flow_id, &definition)
-                                    .await;
-                            }
-                        }
-                        (_, Err(warning)) => warnings.push(warning),
-                    };
-                    // The clone honors the original's parked state.
-                    let mut patch = WebhookPatch::default();
-                    let mut repark = false;
-                    if !w["active"].as_bool().unwrap_or(true) {
-                        patch.active = Some(false);
-                        repark = true;
-                    }
-                    if w["archivedAt"].is_string() {
-                        patch.archived = Some(true);
-                        repark = true;
-                    }
-                    if repark
-                        && let Err(e) = self
-                            .webhooks
-                            .update(owner, &project_id, &webhook.id, patch)
-                            .await
-                    {
-                        warnings.push(format!("webhook '{name}' state: {e}"));
-                    }
-                    webhooks += 1;
-                }
-                Err(e) => warnings.push(format!("webhook '{name}': {e}")),
-            }
-        }
-        applied["webhooks"] = json!(webhooks);
-
-        // -- 7. schedules (imported paused; nothing sends until armed) --
+        // -- 6. schedules (imported paused; nothing sends until armed) --
         let exported_schedules = bundle.rows("schedules.json");
         let mut schedules = 0usize;
         for s in &exported_schedules {
@@ -437,7 +352,7 @@ impl ProjectImportService {
                 .await
             {
                 Ok(schedule) => {
-                    let (_, apply) = self
+                    let (definition, apply) = self
                         .apply_owned_definition(
                             owner,
                             &project_id,
@@ -445,11 +360,16 @@ impl ProjectImportService {
                             &schedule.flow_id,
                             &definitions,
                             &template_map,
-                            None, // schedule triggers carry no token
                         )
                         .await;
                     if let Err(warning) = apply {
                         warnings.push(warning);
+                    } else if let Some(inbound) = &self.inbound
+                        && definition.is_object()
+                    {
+                        inbound
+                            .sync_flow_tokens(&project_id, &schedule.flow_id, &definition)
+                            .await;
                     }
                     // Paused regardless of the export's flag: timing rows
                     // arm themselves deliberately, never by import.
@@ -482,9 +402,9 @@ impl ProjectImportService {
         }
         applied["schedules"] = json!(schedules);
 
-        // -- 8. flow-page flows (everything no owner claimed) -----------
+        // -- 7. flow-page flows (everything no owner claimed) -----------
         let mut claimed: HashMap<String, ()> = HashMap::new();
-        for rows in [&exported_webhooks, &exported_schedules] {
+        for rows in [&exported_schedules] {
             for row in rows {
                 if let Some(flow_id) = row["flowId"].as_str() {
                     claimed.insert(flow_id.to_string(), ());
@@ -500,16 +420,25 @@ impl ProjectImportService {
             Self::remap_templates(&mut definition, &template_map);
             match self
                 .flows
-                .create(owner, &project_id, name, Some(definition))
+                .create(owner, &project_id, name, Some(definition.clone()))
                 .await
             {
-                Ok(_) => flow_pages += 1,
+                Ok(flow) => {
+                    // Webhook tokens ride their definitions — a fresh
+                    // sync indexes them for the clone's /v1/hooks door.
+                    if let Some(inbound) = &self.inbound {
+                        inbound
+                            .sync_flow_tokens(&project_id, &flow.id, &definition)
+                            .await;
+                    }
+                    flow_pages += 1;
+                }
                 Err(e) => warnings.push(format!("flow '{name}': {e}")),
             }
         }
         applied["flows"] = json!(flow_pages);
 
-        // -- 9. api keys (fresh secrets; revoked stay dead records) -----
+        // -- 8. api keys (fresh secrets; revoked stay dead records) -----
         let mut keys = 0usize;
         let mut key_secrets = vec![];
         for k in bundle.rows("apiKeys.json") {
@@ -550,7 +479,7 @@ impl ProjectImportService {
         applied["apiKeys"] = json!(keys);
         applied["apiKeysRequested"] = json!(bundle.rows("apiKeys.json").len());
 
-        // -- 10. report + audit ------------------------------------------
+        // -- 9. report + audit ------------------------------------------
         let report = json!({
             "project": {
                 "id": project.id,
@@ -593,12 +522,11 @@ impl ProjectImportService {
     }
 
     /// Overwrites one owner-born flow's definition with its exported
-    /// twin: template ids remapped and — for webhook triggers — the
-    /// definition re-pointed at the clone's own token BEFORE saving, so
-    /// the old project's inbound URL can never resolve into the clone.
-    /// A definition the zip lacks (or a broken flow update) only warns:
-    /// the owner row is already healthy with its seed definition.
-    #[allow(clippy::too_many_arguments)]
+    /// twin: template ids remapped. Trigger tokens need no re-pointing —
+    /// webhook tokens ride inside the flow definitions themselves, so
+    /// the clone keeps its own URLs. A definition the zip lacks (or a
+    /// broken flow update) only warns: the owner row is already healthy
+    /// with its seed definition.
     async fn apply_owned_definition(
         &self,
         owner: UserId,
@@ -607,7 +535,6 @@ impl ProjectImportService {
         new_flow_id: &str,
         definitions: &HashMap<String, (String, Value)>,
         template_map: &HashMap<String, String>,
-        new_trigger_token: Option<String>,
     ) -> (Value, Result<(), String>) {
         let Some((name, exported)) = definitions.get(old_flow_id) else {
             return (
@@ -618,9 +545,6 @@ impl ProjectImportService {
             );
         };
         let mut definition = exported.clone();
-        if let Some(token) = &new_trigger_token {
-            Self::set_webhook_token(&mut definition, token);
-        }
         Self::remap_templates(&mut definition, template_map);
         if let Err(e) = self
             .flows
@@ -686,29 +610,6 @@ impl ProjectImportService {
                 }
             }
             _ => {}
-        }
-    }
-
-    /// The webhook trigger's token inside a (seeded or exported)
-    /// definition — `None` when the tree carries no webhook trigger.
-    fn seed_webhook_token(definition: &Value) -> Option<String> {
-        definition["nodes"].as_array()?.iter().find(|n| {
-            n["type"].as_str() == Some("trigger") && n["data"]["kind"].as_str() == Some("webhook")
-        })?["data"]["token"]
-            .as_str()
-            .map(str::to_owned)
-    }
-
-    /// Re-points every webhook-kind trigger node at `token`.
-    fn set_webhook_token(definition: &mut Value, token: &str) {
-        if let Some(nodes) = definition["nodes"].as_array_mut() {
-            for node in nodes.iter_mut() {
-                if node["type"].as_str() == Some("trigger")
-                    && node["data"]["kind"].as_str() == Some("webhook")
-                {
-                    node["data"]["token"] = json!(token);
-                }
-            }
         }
     }
 

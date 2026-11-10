@@ -78,7 +78,6 @@ mod tests {
                 flows: None,
                 sends: None,
                 schedules: None,
-                webhooks: None,
                 campaigns: None,
             },
             &AppConfig::default(),

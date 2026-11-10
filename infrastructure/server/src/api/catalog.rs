@@ -560,7 +560,7 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         path: "/app/flows",
         surface: Surface::App,
         feature: "flows",
-        description: "flows-page flows (?project_id=), oldest first — owner-managed flows (schedules/webhooks) excluded",
+        description: "flows-page flows (?project_id=), oldest first — schedule-owned flows excluded",
     },
     RouteInfo {
         method: "POST",
@@ -574,7 +574,7 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         path: "/app/flows/{id}",
         surface: Surface::App,
         feature: "flows",
-        description: "one flow by id (?project_id=) — works for owner-managed flows; tags source (flow_page/schedule/webhook)",
+        description: "one flow by id (?project_id=) — works for owner-managed flows; tags source (flow_page/schedule)",
     },
     RouteInfo {
         method: "PUT",
@@ -632,42 +632,6 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         surface: Surface::App,
         feature: "schedules",
         description: "fire the flow immediately (timing untouched; 409 when archived)",
-    },
-    // -- webhooks feature ---------------------------------------------------
-    RouteInfo {
-        method: "GET",
-        path: "/app/webhooks",
-        surface: Surface::App,
-        feature: "webhooks",
-        description: "project webhooks (?project_id=), oldest first",
-    },
-    RouteInfo {
-        method: "POST",
-        path: "/app/webhooks",
-        surface: Surface::App,
-        feature: "webhooks",
-        description: "create a webhook and its flow (trigger: webhook with a fresh token)",
-    },
-    RouteInfo {
-        method: "GET",
-        path: "/app/webhooks/{id}",
-        surface: Surface::App,
-        feature: "webhooks",
-        description: "one webhook with its config (?project_id=)",
-    },
-    RouteInfo {
-        method: "PATCH",
-        path: "/app/webhooks/{id}",
-        surface: Surface::App,
-        feature: "webhooks",
-        description: "edit name, description, events, pause/resume, or archive/restore (rename syncs to the flow)",
-    },
-    RouteInfo {
-        method: "DELETE",
-        path: "/app/webhooks/{id}",
-        surface: Surface::App,
-        feature: "webhooks",
-        description: "delete a webhook and its owned flow (archive instead to keep the flow)",
     },
     // -- campaigns feature --------------------------------------------------
     RouteInfo {
@@ -739,7 +703,7 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         path: "/v1/hooks/{token}",
         surface: Surface::External,
         feature: "inbound",
-        description: "fire a flow's webhook trigger (token auth; caller values win, flow fills gaps)",
+        description: "fire a flow's webhook trigger (token auth; the trigger's secrets + IP rules gate the door; caller values win, flow fills gaps)",
     },
     // -- sends feature ------------------------------------------------------
     RouteInfo {

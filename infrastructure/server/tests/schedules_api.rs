@@ -168,7 +168,6 @@ fn app_with_schedules() -> (Router, Fakes) {
             flows: Some(flows),
             sends: Some(sends),
             schedules: Some(schedules),
-            webhooks: None,
             campaigns: None,
             notifications: None,
             inbound: None,

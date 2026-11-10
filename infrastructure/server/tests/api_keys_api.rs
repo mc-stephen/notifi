@@ -59,7 +59,6 @@ fn app_with_api_keys() -> (Router, Arc<FakeApiKeysStore>) {
                 notifications: None,
                 billing: None,
                 schedules: None,
-                webhooks: None,
                 campaigns: None,
                 inbound: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new())

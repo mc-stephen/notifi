@@ -70,7 +70,6 @@ fn app() -> (Router, Arc<FakeAuthStore>, Arc<FakeMailer>) {
                 notifications: None,
                 billing: None,
                 schedules: None,
-                webhooks: None,
                 campaigns: None,
                 inbound: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new())

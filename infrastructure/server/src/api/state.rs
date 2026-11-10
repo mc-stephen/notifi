@@ -57,7 +57,6 @@ pub struct AppState {
     /// Flow schedules (timed runs of assigned flows) — wired alongside auth/db.
     pub schedules: Option<Arc<crate::domain::schedules::ScheduleService>>,
 
-    pub webhooks: Option<Arc<crate::domain::webhooks::WebhookService>>,
     /// Campaigns (flow-less message origins) — wired alongside auth/db.
     pub campaigns: Option<Arc<crate::domain::campaigns::CampaignService>>,
     /// In-app notifications (personal, per-user) — wired alongside auth/db.

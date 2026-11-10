@@ -42,7 +42,6 @@ pub struct ServiceGraph {
     pub sends: Arc<domain::sends::SendService>,
     pub schedules: Arc<domain::schedules::ScheduleService>,
     pub inbound: Arc<domain::inbound::InboundService>,
-    pub webhooks: Arc<domain::webhooks::WebhookService>,
     pub campaigns: Arc<domain::campaigns::CampaignService>,
 }
 
@@ -221,15 +220,6 @@ pub fn compose(
         Arc::new(infra::ReqwestHttpRequester::new()),
     ));
 
-    // Owner-managed webhooks: each creates + owns exactly one flow (seeded
-    // with a locked webhook trigger). Shares the flow store and the
-    // inbound token sync.
-    let webhooks = Arc::new(domain::webhooks::WebhookService::new(
-        Arc::new(infra::PgWebhookStore::new(pool.clone())),
-        Arc::new(infra::PgFlowStore::new(pool.clone())),
-        inbound.clone(),
-    ));
-
     // Data exports: the project-download service. Stores only — reads are
     // already tombstone-tolerant where needed; rate limiting and the audit
     // stay with ProjectService::guard_export. Schedules ride the zip and
@@ -241,7 +231,6 @@ pub fn compose(
             Arc::new(infra::PgApiKeysStore::new(pool.clone())),
             Arc::new(infra::PgSendStore::new(pool.clone())),
             Arc::new(infra::PgRecipientsStore::new(pool.clone())),
-            Arc::new(infra::PgWebhookStore::new(pool.clone())),
             Arc::new(infra::PgFlowStore::new(pool.clone())),
             Arc::new(infra::PgScheduleStore::new(pool.clone())),
         )
@@ -257,7 +246,6 @@ pub fn compose(
         domain::projects::ProjectImportService::new(
             projects.clone(),
             templates.clone(),
-            webhooks.clone(),
             schedules.clone(),
             flows.clone(),
             api_keys.clone(),
@@ -327,7 +315,6 @@ pub fn compose(
         sends,
         schedules,
         inbound,
-        webhooks,
         campaigns,
     }
 }

@@ -32,7 +32,6 @@ pub mod telemetry;
 pub mod templates_repository_pg;
 pub mod tickets_repository_pg;
 pub mod trigger_token_repository_pg;
-pub mod webhook_repository_pg;
 
 pub use admin_repository_pg::PgAdminStore;
 pub use api_keys_repository_pg::PgApiKeysStore;
@@ -58,4 +57,3 @@ pub use system_templates::StoreSystemTemplates;
 pub use templates_repository_pg::PgTemplatesStore;
 pub use tickets_repository_pg::PgTicketsStore;
 pub use trigger_token_repository_pg::PgTriggerTokenStore;
-pub use webhook_repository_pg::PgWebhookStore;

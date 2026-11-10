@@ -145,7 +145,6 @@ fn app_with_sends(fail: &[&str]) -> (Router, Fakes) {
             sends: Some(sends),
             notifications: None,
             schedules: None,
-            webhooks: None,
             campaigns: None,
             inbound: None,
             provider_tester: Arc::new(ConfigProviderTester::new())

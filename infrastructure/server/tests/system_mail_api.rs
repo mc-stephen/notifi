@@ -86,7 +86,6 @@ fn app_with_mail() -> (Router, Arc<FakeMailer>) {
                 notifications: None,
                 billing: None,
                 schedules: None,
-                webhooks: None,
                 campaigns: None,
                 inbound: None,
                 provider_tester: Arc::new(ConfigProviderTester::new())

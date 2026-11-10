@@ -3,7 +3,7 @@
 //! during the deletion countdown. Builds an in-memory ZIP: one JSON file
 //! per data section plus the project's files at their real storage
 //! paths. Config/content sections are complete (templates, flows,
-//! webhooks, schedules, members, apiKeys, recipients); only the sends
+//! schedules, members, apiKeys, recipients); only the sends
 //! history caps (`SENDS_CAP`) and the manifest records when it truncates.
 //! The manifest also carries an informational subscription snapshot —
 //! billing state never re-enters through an import.
@@ -36,7 +36,6 @@ use crate::ports::recipients_store::{RecipientRecord, RecipientsStore};
 use crate::ports::schedule_store::{ScheduleRecord, ScheduleStore};
 use crate::ports::send_store::{SendRecord, SendStore};
 use crate::ports::templates_store::{AttachmentRecord, TemplateRecord, TemplatesStore};
-use crate::ports::webhook_store::{WebhookRecord, WebhookStore};
 
 /// The one capped row section: a long-lived project accumulates sends
 /// without bound and the ZIP builds in memory, so the history snapshot
@@ -52,7 +51,6 @@ pub struct ProjectExportService {
     api_keys: Arc<dyn ApiKeysStore>,
     sends: Arc<dyn SendStore>,
     recipients: Arc<dyn RecipientsStore>,
-    webhooks: Arc<dyn WebhookStore>,
     flows: Arc<dyn FlowStore>,
     /// Schedule rows ride the zip (the family that fires flows on
     /// timing — absent from the export until manifest v2).
@@ -89,7 +87,6 @@ impl ProjectExportService {
         api_keys: Arc<dyn ApiKeysStore>,
         sends: Arc<dyn SendStore>,
         recipients: Arc<dyn RecipientsStore>,
-        webhooks: Arc<dyn WebhookStore>,
         flows: Arc<dyn FlowStore>,
         schedules: Arc<dyn ScheduleStore>,
     ) -> Self {
@@ -99,7 +96,6 @@ impl ProjectExportService {
             api_keys,
             sends,
             recipients,
-            webhooks,
             flows,
             schedules,
             billing: None,
@@ -194,15 +190,6 @@ impl ProjectExportService {
             .map(Self::schedule_json)
             .collect::<Vec<_>>();
 
-        let webhooks = self
-            .webhooks
-            .list_by_project(project_id)
-            .await
-            .map_err(AppError::from)?
-            .into_iter()
-            .map(Self::webhook_json)
-            .collect::<Vec<_>>();
-
         let flows = self
             .flows
             .list_by_project(project_id)
@@ -263,7 +250,6 @@ impl ProjectExportService {
                 "sends": Self::section(&sends, "sends"),
                 "recipients": Self::section(&recipients, "recipients"),
                 "schedules": Self::section(&schedules, "schedules"),
-                "webhooks": Self::section(&webhooks, "webhooks"),
                 "flows": Self::section(&flows, "flows"),
                 "projectFiles": {
                     "count": project_files.len(),
@@ -287,7 +273,6 @@ impl ProjectExportService {
         entries.push(section_bytes("sends.json", &json!(sends))?);
         entries.push(section_bytes("recipients.json", &json!(recipients))?);
         entries.push(section_bytes("schedules.json", &json!(schedules))?);
-        entries.push(section_bytes("webhooks.json", &json!(webhooks))?);
         entries.push(section_bytes("flows.json", &json!(flows))?);
         entries.extend(project_files);
 
@@ -411,20 +396,6 @@ impl ProjectExportService {
             "name": r.name,
             "contacts": r.contacts,
             "createdAt": r.created_at.to_rfc3339(),
-        })
-    }
-
-    fn webhook_json(w: WebhookRecord) -> Value {
-        json!({
-            "id": w.id,
-            "name": w.name,
-            "description": w.description,
-            "flowId": w.flow_id,
-            "flowName": w.flow_name,
-            "events": w.events,
-            "active": w.active,
-            "archivedAt": w.archived_at.map(|t| t.to_rfc3339()),
-            "createdAt": w.created_at.to_rfc3339(),
         })
     }
 

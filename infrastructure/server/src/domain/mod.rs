@@ -17,7 +17,6 @@ pub mod schedules;
 pub mod sends;
 pub mod support;
 pub mod templates;
-pub mod webhooks;
 
 /// Re-exported so the rest of the crate can `use crate::domain::AuthService`.
 pub use auth::AuthService;

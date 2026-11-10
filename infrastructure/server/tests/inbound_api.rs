@@ -153,7 +153,6 @@ fn app_with_inbound() -> (Router, Fakes) {
             flows: Some(flows),
             sends: Some(sends),
             schedules: None,
-            webhooks: None,
             campaigns: None,
             inbound: Some(inbound),
             notifications: None,

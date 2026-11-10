@@ -67,7 +67,6 @@ fn app_with_admin_users() -> Router {
             notifications: None,
             billing: None,
             schedules: None,
-            webhooks: None,
             campaigns: None,
             inbound: None,
             provider_tester: Arc::new(ConfigProviderTester::new())

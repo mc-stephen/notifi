@@ -17,7 +17,7 @@ use zip::write::SimpleFileOptions;
 use crate::common::{
     FakeApiKeysStore, FakeAuditStore, FakeAuthStore, FakeChannelProviderStore, FakeFlowStore,
     FakeHttpRequester, FakeRecipientsStore, FakeScheduleStore, FakeSendStore, FakeTemplatesStore,
-    FakeTriggerTokenStore, FakeWebhookStore,
+    FakeTriggerTokenStore,
 };
 use server::domain::admin::entities::{AdminStatus, AdminUser, AdminUserId};
 use server::domain::api_keys::ApiKeyService;
@@ -32,8 +32,6 @@ use server::domain::recipients::RecipientService;
 use server::domain::schedules::ScheduleService;
 use server::domain::schedules::entities::{ScheduleInput, ScheduleKind};
 use server::domain::templates::TemplateService;
-use server::domain::webhooks::WebhookService;
-use server::domain::webhooks::entities::WebhookInput;
 use server::infra::FileConfigStore;
 use server::ports::ProjectsStore;
 use server::ports::api_keys_store::ApiKeysStore;
@@ -50,7 +48,6 @@ struct Ctx {
     export: Arc<ProjectExportService>,
     import: Arc<ProjectImportService>,
     flows: Arc<FlowService>,
-    webhooks: Arc<WebhookService>,
     schedules: Arc<ScheduleService>,
     templates: Arc<TemplateService>,
     recipients: Arc<RecipientService>,
@@ -60,12 +57,12 @@ struct Ctx {
     // in-memory fakes keep per-store registries; real stores share one
     // membership table).
     flow_store: Arc<FakeFlowStore>,
-    webhook_store: Arc<FakeWebhookStore>,
     schedule_store: Arc<FakeScheduleStore>,
     template_store: Arc<FakeTemplatesStore>,
     recipients_store: Arc<FakeRecipientsStore>,
     api_keys_store: Arc<FakeApiKeysStore>,
     send_store: Arc<FakeSendStore>,
+    token_store: Arc<FakeTriggerTokenStore>,
 }
 
 impl Ctx {
@@ -74,7 +71,6 @@ impl Ctx {
     fn grant(&self, project_id: &str) {
         let user = self.owner.to_string();
         self.flow_store.seed_visible(&user, project_id);
-        self.webhook_store.seed_visible(&user, project_id);
         self.schedule_store.seed_visible(&user, project_id);
         self.template_store.seed_visible(&user, project_id);
         self.recipients_store.seed_visible(&user, project_id);
@@ -115,7 +111,6 @@ async fn fixture() -> Ctx {
     // import all share it (the shared instance is the Postgres
     // analogue: one backend, row-level shared state).
     let flow_store = Arc::new(FakeFlowStore::new());
-    let webhook_store = Arc::new(FakeWebhookStore::new(flow_store.clone()));
     let schedule_store = Arc::new(FakeScheduleStore::new(flow_store.clone()));
     let template_store = Arc::new(FakeTemplatesStore::new());
     let recipients_store = Arc::new(FakeRecipientsStore::new());
@@ -159,12 +154,6 @@ async fn fixture() -> Ctx {
         Arc::new(StubFactory::succeeding()),
         http.clone(),
     ));
-    let webhooks = Arc::new(WebhookService::new(
-        webhook_store.clone() as Arc<dyn server::ports::webhook_store::WebhookStore>,
-        flow_store.clone(),
-        inbound.clone(),
-    ));
-
     let export = Arc::new(
         ProjectExportService::new(
             auth_store.clone() as Arc<dyn ProjectsStore>,
@@ -172,7 +161,6 @@ async fn fixture() -> Ctx {
             api_keys_store.clone() as Arc<dyn ApiKeysStore>,
             send_store.clone() as Arc<dyn server::ports::send_store::SendStore>,
             recipients_store.clone() as Arc<dyn server::ports::recipients_store::RecipientsStore>,
-            webhook_store.clone() as Arc<dyn server::ports::webhook_store::WebhookStore>,
             flow_store.clone() as Arc<dyn server::ports::flow_store::FlowStore>,
             schedule_store.clone() as Arc<dyn server::ports::schedule_store::ScheduleStore>,
         )
@@ -187,7 +175,6 @@ async fn fixture() -> Ctx {
     type Seed = dyn Fn(&str, &str) + Send + Sync;
     let seed: Arc<Seed> = {
         let flow = flow_store.clone();
-        let webhook = webhook_store.clone();
         let schedule = schedule_store.clone();
         let templates = template_store.clone();
         let recipients = recipients_store.clone();
@@ -195,7 +182,6 @@ async fn fixture() -> Ctx {
         let sends = send_store.clone();
         Arc::new(move |user, project| {
             flow.seed_visible(user, project);
-            webhook.seed_visible(user, project);
             schedule.seed_visible(user, project);
             templates.seed_visible(user, project);
             recipients.seed_visible(user, project);
@@ -208,7 +194,6 @@ async fn fixture() -> Ctx {
         ProjectImportService::new(
             projects.clone(),
             templates.clone(),
-            webhooks.clone(),
             schedules.clone(),
             flows.clone(),
             api_keys.clone(),
@@ -229,19 +214,18 @@ async fn fixture() -> Ctx {
         export,
         import,
         flows,
-        webhooks,
         schedules,
         templates,
         recipients,
         api_keys,
         config_store,
         flow_store,
-        webhook_store,
         schedule_store,
         template_store,
         recipients_store,
         api_keys_store,
         send_store,
+        token_store,
     }
 }
 
@@ -268,49 +252,14 @@ fn admin() -> AdminUser {
     }
 }
 
-/// The webhook trigger's token inside a definition — mirrors the
-/// import's own seam so the suite can see what a clone re-pointed.
+/// The webhook trigger's token inside a definition — the token rides
+/// the tree, so tests read it back out.
 fn trigger_webhook_token(definition: &Value) -> Option<String> {
     definition["nodes"].as_array()?.iter().find(|n| {
         n["type"].as_str() == Some("trigger") && n["data"]["kind"].as_str() == Some("webhook")
     })?["data"]["token"]
         .as_str()
         .map(str::to_owned)
-}
-
-/// The webhook flow as the builder would save it: locked trigger (the
-/// seeded token) plus one template node bound to the template row.
-async fn wire_template_node(
-    ctx: &Ctx,
-    project_id: &str,
-    flow_id: &str,
-    token: &str,
-    template_id: &str,
-) {
-    let doc = json!({
-        "version": 1,
-        "nodes": [
-            {
-                "id": "trigger",
-                "type": "trigger",
-                "data": {
-                    "kind": "webhook",
-                    "token": token,
-                    "events": ["user.signed_up"],
-                },
-            },
-            {
-                "id": "node-1",
-                "type": "template",
-                "data": { "templateId": template_id, "channel": "email" },
-            },
-        ],
-        "edges": [],
-    });
-    ctx.flows
-        .update(ctx.owner, project_id, flow_id, "Hooks", &doc)
-        .await
-        .unwrap();
 }
 
 #[tokio::test]
@@ -338,34 +287,33 @@ async fn round_trip_clones_everything_and_regenerates_owners() {
         )
         .await
         .unwrap();
-    let webhook = ctx
-        .webhooks
+    // The webhook flow is definition-born now: one webhook trigger with
+    // the builder's minted token + a bound template node.
+    const WEBHOOK_TOKEN: &str = "aabbccddeeff00112233445566778899";
+    let webhook_flow = ctx
+        .flows
         .create(
             ctx.owner,
             &project.id,
-            WebhookInput {
-                name: "Hooks".into(),
-                description: "fires on signups".into(),
-                events: vec!["user.signed_up".into()],
-            },
+            "Hooks",
+            Some(json!({
+                "version": 1,
+                "nodes": [
+                    { "id": "trigger", "type": "trigger",
+                      "data": { "kind": "webhook", "token": WEBHOOK_TOKEN, "events": ["user.signed_up"] } },
+                    { "id": "node-1", "type": "template",
+                      "data": { "templateId": template.id, "channel": "email" } }
+                ],
+                "edges": [],
+            })),
         )
         .await
         .unwrap();
-    let webhook_flow = ctx
-        .flows
-        .get(ctx.owner, &project.id, &webhook.flow_id)
-        .await
-        .unwrap();
-    let old_token = trigger_webhook_token(&webhook_flow.definition)
-        .expect("seeded webhook trigger carries a token");
-    wire_template_node(
-        &ctx,
-        &project.id,
-        &webhook.flow_id,
-        &old_token,
-        &template.id,
-    )
-    .await;
+    // The token rides the definition (nothing mints server-side spins).
+    assert_eq!(
+        trigger_webhook_token(&webhook_flow.definition).as_deref(),
+        Some(WEBHOOK_TOKEN)
+    );
 
     // A recipient the schedule names.
     ctx.recipients
@@ -465,9 +413,10 @@ async fn round_trip_clones_everything_and_regenerates_owners() {
     // Section counts.
     assert_eq!(report["applied"]["templates"], 1);
     assert_eq!(report["applied"]["recipients"], 1);
-    assert_eq!(report["applied"]["webhooks"], 1);
     assert_eq!(report["applied"]["schedules"], 1);
-    assert_eq!(report["applied"]["flows"], 1);
+    // The webhook flow is definition-born now — it restores as a plain
+    // flow alongside the standalone one.
+    assert_eq!(report["applied"]["flows"], 2);
     assert_eq!(report["applied"]["apiKeys"], 1);
     assert_eq!(report["applied"]["projectFiles"], 1);
     // History and members are reference-only.
@@ -478,18 +427,19 @@ async fn round_trip_clones_everything_and_regenerates_owners() {
     );
 
     // -- the clone's shapes ---------------------------------------------
-    // The new webhook triggered with a NEW token; the old URL (old
-    // token) resolves nothing in the clone.
-    let new_webhooks = ctx.webhooks.list(ctx.owner, &new_project_id).await.unwrap();
-    assert_eq!(new_webhooks.len(), 1);
+    // Tokens ride their definitions — the clone keeps the ORIGINAL
+    // inbound token, so the webhook URL survives the project move.
     let new_flow = ctx
         .flows
-        .get(ctx.owner, &new_project_id, &new_webhooks[0].flow_id)
+        .list(ctx.owner, &new_project_id)
         .await
-        .unwrap();
+        .unwrap()
+        .into_iter()
+        .find(|f| f.name == "Hooks")
+        .expect("webhook flow restored");
     let new_token =
         trigger_webhook_token(&new_flow.definition).expect("clone's trigger carries a token");
-    assert_ne!(new_token, old_token, "webhook tokens regenerate");
+    assert_eq!(new_token, WEBHOOK_TOKEN, "webhook tokens are preserved");
 
     // Template nodes point at the NEW template row (old ids die with
     // the export).
@@ -519,6 +469,13 @@ async fn round_trip_clones_everything_and_regenerates_owners() {
         .unwrap();
     assert_eq!(new_schedules.len(), 1);
     assert!(!new_schedules[0].active, "imported schedules start paused");
+
+    // The token indexed for the clone's /v1/hooks door (the import
+    // syncs webhook-carrying definitions).
+    assert!(
+        ctx.token_store.all().iter().any(|t| t == &new_token),
+        "clone's webhook token indexed for inbound fire"
+    );
 
     // The flow-page flow crossed over too.
     let new_flows = ctx.flows.list(ctx.owner, &new_project_id).await.unwrap();
@@ -631,7 +588,6 @@ async fn partial_rows_warn_instead_of_failing_the_run() {
             json!([{ "name": "Keyless", "contacts": {} }]),
         ),
         ("flows.json", json!([])),
-        ("webhooks.json", json!([])),
         ("templates.json", json!([])),
         ("apiKeys.json", json!([])),
     ] {

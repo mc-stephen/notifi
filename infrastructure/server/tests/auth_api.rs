@@ -62,7 +62,6 @@ fn app() -> (Router, Arc<FakeAuthStore>) {
                 notifications: None,
                 billing: None,
                 schedules: None,
-                webhooks: None,
                 campaigns: None,
                 inbound: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
@@ -103,7 +102,6 @@ fn app_without_auth() -> Router {
             notifications: None,
             billing: None,
             schedules: None,
-            webhooks: None,
             campaigns: None,
             inbound: None,
             provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
@@ -153,7 +151,6 @@ fn app_with_oauth() -> (Router, Arc<FakeAuthStore>) {
                 notifications: None,
                 billing: None,
                 schedules: None,
-                webhooks: None,
                 campaigns: None,
                 inbound: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new())
@@ -1023,7 +1020,6 @@ fn app_with_projects() -> (Router, Arc<FakeAuthStore>) {
                 notifications: None,
                 billing: None,
                 schedules: None,
-                webhooks: None,
                 campaigns: None,
                 inbound: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new())

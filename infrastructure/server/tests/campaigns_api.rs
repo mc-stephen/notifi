@@ -175,7 +175,6 @@ fn app_with_campaigns() -> (Router, Fakes) {
             flows: Some(flows),
             sends: Some(sends),
             schedules: None,
-            webhooks: None,
             campaigns: Some(campaigns.clone()),
             notifications: None,
             inbound: None,

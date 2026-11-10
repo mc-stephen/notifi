@@ -29,7 +29,6 @@ pub mod send_store;
 pub mod templates_store;
 pub mod tickets_store;
 pub mod trigger_token_store;
-pub mod webhook_store;
 
 pub use audit_store::{AdminAuditFilters, AuditFilters, AuditStore};
 pub use auth_store::{AuthStore, BoxFut, StoreError};

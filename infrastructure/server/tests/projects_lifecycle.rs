@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use common::{
     FakeApiKeysStore, FakeAuditStore, FakeAuthStore, FakeFlowStore, FakeRecipientsStore,
-    FakeScheduleStore, FakeSendStore, FakeTemplatesStore, FakeWebhookStore,
+    FakeScheduleStore, FakeSendStore, FakeTemplatesStore,
 };
 use server::domain::auth::entities::{User, UserId, UserStatus};
 use server::domain::auth::value_objects::Email;
@@ -63,8 +63,6 @@ async fn export_service(
         Arc::new(FakeSendStore::new()) as Arc<dyn server::ports::send_store::SendStore>,
         Arc::new(FakeRecipientsStore::new())
             as Arc<dyn server::ports::recipients_store::RecipientsStore>,
-        Arc::new(FakeWebhookStore::new(Arc::new(FakeFlowStore::new())))
-            as Arc<dyn server::ports::webhook_store::WebhookStore>,
         Arc::new(FakeFlowStore::new()) as Arc<dyn server::ports::flow_store::FlowStore>,
         Arc::new(FakeScheduleStore::new(Arc::new(FakeFlowStore::new())))
             as Arc<dyn server::ports::schedule_store::ScheduleStore>,
@@ -314,7 +312,6 @@ async fn export_zip_carries_sections_and_project_files() {
         "sends.json",
         "recipients.json",
         "schedules.json",
-        "webhooks.json",
         "flows.json",
         project_key.as_str(),
     ] {

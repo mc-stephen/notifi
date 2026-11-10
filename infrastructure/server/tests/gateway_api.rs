@@ -46,7 +46,6 @@ fn app_with_gateway(store: Option<Arc<FakeGatewayStore>>) -> Router {
             flows: None,
             sends: None,
             schedules: None,
-            webhooks: None,
             campaigns: None,
             notifications: None,
             inbound: None,

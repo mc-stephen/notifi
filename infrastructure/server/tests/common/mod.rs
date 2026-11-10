@@ -4691,189 +4691,6 @@ impl server::ports::schedule_store::ScheduleStore for FakeScheduleStore {
     }
 }
 
-/// Thread-safe in-memory webhook store. The flow JOIN reads **live**
-/// from a shared [`FakeFlowStore`] (mirrors the Postgres JOIN, so
-/// owner-managed renames show up on read).
-pub struct FakeWebhookStore {
-    webhooks: RwLock<Vec<server::ports::webhook_store::WebhookRecord>>,
-    visible: RwLock<Vec<(String, String)>>,
-    /// Shared with the app wiring — the Postgres flow JOIN, in-memory.
-    flow_store: Arc<FakeFlowStore>,
-}
-
-impl FakeWebhookStore {
-    pub fn new(flow_store: Arc<FakeFlowStore>) -> Self {
-        Self {
-            webhooks: RwLock::new(Vec::new()),
-            visible: RwLock::new(Vec::new()),
-            flow_store,
-        }
-    }
-
-    /// Grants `user_id` access to `project_id`.
-    pub fn seed_visible(&self, user_id: &str, project_id: &str) {
-        self.visible
-            .write()
-            .unwrap()
-            .push((user_id.to_string(), project_id.to_string()));
-    }
-
-    fn is_visible(&self, user_id: &str, project_id: &str) -> bool {
-        self.visible
-            .read()
-            .unwrap()
-            .iter()
-            .any(|(u, p)| u == user_id && p == project_id)
-    }
-
-    /// Re-resolves the flow JOIN column (name) from the shared flow
-    /// store, mirroring the live Postgres JOIN.
-    async fn resolve_join(
-        &self,
-        mut record: server::ports::webhook_store::WebhookRecord,
-    ) -> server::ports::webhook_store::WebhookRecord {
-        if let Ok(Some(flow)) = self.flow_store.get(&record.flow_id).await {
-            record.flow_name = flow.name;
-        }
-        record
-    }
-}
-
-impl server::ports::webhook_store::WebhookStore for FakeWebhookStore {
-    fn project_visible(
-        &self,
-        actor: server::domain::auth::entities::UserId,
-        project_id: &str,
-    ) -> BoxFut<'_, Result<bool, StoreError>> {
-        let visible = self.is_visible(&actor.to_string(), project_id);
-        Box::pin(async move { Ok(visible) })
-    }
-
-    fn list_by_project(
-        &self,
-        project_id: &str,
-    ) -> BoxFut<'_, Result<Vec<server::ports::webhook_store::WebhookRecord>, StoreError>> {
-        let mut rows: Vec<_> = self
-            .webhooks
-            .read()
-            .unwrap()
-            .iter()
-            .filter(|w| w.project_id == project_id)
-            .cloned()
-            .collect();
-        rows.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
-        Box::pin(async move {
-            for row in rows.iter_mut() {
-                *row = self.resolve_join(row.clone()).await;
-            }
-            Ok(rows)
-        })
-    }
-
-    fn get(
-        &self,
-        id: &str,
-    ) -> BoxFut<'_, Result<Option<server::ports::webhook_store::WebhookRecord>, StoreError>> {
-        let row = self
-            .webhooks
-            .read()
-            .unwrap()
-            .iter()
-            .find(|w| w.id == id)
-            .cloned();
-        Box::pin(async move {
-            match row {
-                Some(record) => Ok(Some(self.resolve_join(record).await)),
-                None => Ok(None),
-            }
-        })
-    }
-
-    fn owned_flow_ids(&self, project_id: &str) -> BoxFut<'_, Result<Vec<String>, StoreError>> {
-        let mut ids: Vec<String> = self
-            .webhooks
-            .read()
-            .unwrap()
-            .iter()
-            .filter(|w| w.project_id == project_id)
-            .map(|w| w.flow_id.clone())
-            .collect();
-        ids.sort();
-        ids.dedup();
-        Box::pin(async move { Ok(ids) })
-    }
-
-    fn create(
-        &self,
-        draft: &server::ports::webhook_store::NewWebhook,
-    ) -> BoxFut<'_, Result<server::ports::webhook_store::WebhookRecord, StoreError>> {
-        use server::ports::webhook_store::WebhookRecord;
-        let now = chrono::Utc::now();
-        let flow_store = self.flow_store.clone();
-        let draft = draft.clone();
-        Box::pin(async move {
-            // Mirror the Postgres create: the flow JOIN resolves the name.
-            let flow_name = flow_store
-                .get(&draft.flow_id)
-                .await
-                .ok()
-                .flatten()
-                .map(|f| f.name)
-                .unwrap_or_default();
-            let record = WebhookRecord {
-                id: Ulid::new().to_string(),
-                project_id: draft.project_id.clone(),
-                name: draft.name.clone(),
-                description: draft.description.clone(),
-                flow_id: draft.flow_id.clone(),
-                flow_name,
-                events: draft.events.clone(),
-                active: draft.active,
-                archived_at: None,
-                created_at: now,
-                updated_at: now,
-            };
-            self.webhooks.write().unwrap().push(record.clone());
-            Ok(record)
-        })
-    }
-
-    fn update(
-        &self,
-        id: &str,
-        patch: &server::ports::webhook_store::WebhookUpdate,
-    ) -> BoxFut<'_, Result<Option<server::ports::webhook_store::WebhookRecord>, StoreError>> {
-        let mut webhooks = self.webhooks.write().unwrap();
-        let updated = webhooks.iter_mut().find(|w| w.id == id).map(|w| {
-            w.name = patch.name.clone();
-            w.description = patch.description.clone();
-            w.events = patch.events.clone();
-            w.active = patch.active;
-            w.archived_at = patch.archived_at;
-            w.updated_at = chrono::Utc::now();
-            w.clone()
-        });
-        drop(webhooks);
-        // Mirror the Postgres UPDATE ... JOIN flows: the joined flow name
-        // resolves live (so service-side flow renames show through).
-        Box::pin(async move {
-            match updated {
-                Some(record) => Ok(Some(self.resolve_join(record).await)),
-                None => Ok(None),
-            }
-        })
-    }
-
-    fn delete(&self, id: &str) -> BoxFut<'_, Result<bool, StoreError>> {
-        let mut webhooks = self.webhooks.write().unwrap();
-        let before = webhooks.len();
-        webhooks.retain(|w| w.id != id);
-        let deleted = webhooks.len() < before;
-        drop(webhooks);
-        Box::pin(async move { Ok(deleted) })
-    }
-}
-
 /// In-memory campaigns store: plain CRUD + lifecycle transitions +
 /// claim-due mechanics, mirroring the Postgres semantics.
 #[derive(Default)]
@@ -5150,6 +4967,16 @@ pub struct FakeTriggerTokenStore {
 impl FakeTriggerTokenStore {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The indexed token strings (for test assertions).
+    pub fn all(&self) -> Vec<String> {
+        self.tokens
+            .read()
+            .unwrap()
+            .iter()
+            .map(|t| t.token.clone())
+            .collect()
     }
 }
 

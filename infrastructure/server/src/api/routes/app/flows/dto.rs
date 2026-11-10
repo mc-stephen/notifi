@@ -26,7 +26,6 @@ pub struct FlowDto {
 /// Owner tag for [`FlowDto::source`].
 pub const SOURCE_FLOW_PAGE: &str = "flow_page";
 pub const SOURCE_SCHEDULE: &str = "schedule";
-pub const SOURCE_WEBHOOK: &str = "webhook";
 
 impl From<Flow> for FlowDto {
     fn from(f: Flow) -> Self {
