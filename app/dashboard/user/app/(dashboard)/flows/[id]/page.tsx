@@ -22,10 +22,10 @@ import type { FlowDoc } from "@/components/custom/flows/flow-types";
 type LoadStatus = "missing" | "error";
 
 /**
- * By-id builder: owner-managed flows (schedules, webhooks) never appear
- * on the /flows list, so the load path is `GET /app/flows/{id}` — the
- * same door the owner pages deep-link through. Per-id states derive
- * from what's loaded; no synchronous setState inside effects.
+ * By-id builder: schedule-owned flows never appear on the /flows list,
+ * so the load path is `GET /app/flows/{id}` — the same door deep links
+ * use. Per-id states derive from what's loaded; no synchronous setState
+ * inside effects.
  */
 export default function FlowBuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -112,18 +112,8 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   );
 
   const backTarget = "/flows";
-  const backLabel =
-    meta?.source === "schedule"
-      ? "Back to schedules"
-      : meta?.source === "webhook"
-        ? "Back to webhooks"
-        : "Back to flows";
-  const backHref =
-    meta?.source === "schedule"
-      ? "/schedules"
-      : meta?.source === "webhook"
-        ? "/webhooks"
-        : backTarget;
+  const backLabel = meta?.source === "schedule" ? "Back to schedules" : "Back to flows";
+  const backHref = meta?.source === "schedule" ? "/schedules" : backTarget;
 
   if (!projectId) {
     return (
@@ -238,7 +228,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           />
           {ownerManaged ? (
             <Badge className="shrink-0 border-primary/20 bg-primary/10 text-[10px] font-medium text-primary">
-              {meta.source === "schedule" ? "Schedule flow" : "Webhook flow"}
+              Schedule flow
             </Badge>
           ) : (
             handlesSendEvent(meta.definition) && (

@@ -79,12 +79,9 @@ function EventChips({ events }: { events: string[] }) {
 function TriggerForm({
   data,
   onChange,
-  lockedTrigger,
 }: {
   data: TriggerData;
   onChange: (d: TriggerData) => void;
-  /** Owner flows: the trigger is owned data (schedule/webhook page). */
-  lockedTrigger?: boolean;
 }) {
   const kind = triggerKindOf(data);
   const [copied, setCopied] = useState(false);
@@ -125,13 +122,12 @@ function TriggerForm({
     );
   }
 
-  // Webhook triggers come in two flavors: owner-born (the Webhooks page
-  // mints the token and picks the events — this panel only inspects
-  // those) and hand-placed from the palette (the builder minted its own
-  // full-entropy token at drop time, so it fires through the same
-  // /v1/hooks door; the fallback fields below are its whole config).
+  // Webhook triggers are builder-born: the palette mints the token at
+  // drop time (full-entropy, the server's spec) and the definition is
+  // the source of truth — the token index syncs on every save and the
+  // same /v1/hooks door fires it. The fallback fields are gone: the
+  // POST body drives the message. Legacy tokens stay deletable.
   if (kind === "webhook") {
-    const ownerWebhook = lockedTrigger === true;
     return (
       <div className="space-y-4">
         <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-3">
@@ -139,9 +135,9 @@ function TriggerForm({
             <Webhook className="size-4 text-primary" /> Webhook trigger
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {ownerWebhook
-              ? "This flow belongs to a webhook and fires on its inbound HTTP call. The trigger itself is owned data — manage the webhook on the Webhooks page."
-              : "Fires whenever something POSTs to its inbound URL. The POST body drives the message: channel + recipients, then title/body or a caller templateId. Secrets and IP rules keep the door picky."}
+            Fires whenever something POSTs to its inbound URL. The POST body
+            drives the message: channel + recipients, then title/body or a
+            caller templateId. Secrets and IP rules keep the door picky.
           </p>
         </div>
         <Field label="Inbound URL">
@@ -173,14 +169,9 @@ function TriggerForm({
         {(data.events?.length ?? 0) > 0 && (
           <Field label="Listens for">
             <EventChips events={data.events ?? []} />
-            {ownerWebhook && (
-              <p className="text-xs text-muted-foreground">
-                Edited on the Webhooks page — the trigger follows along.
-              </p>
-            )}
           </Field>
         )}
-        <WebhookDoorFields data={data} onChange={onChange} locked={ownerWebhook} />
+        <WebhookDoorFields data={data} onChange={onChange} />
       </div>
     );
   }
@@ -806,11 +797,7 @@ export function NodeConfigPanel({ node, onChange, onClose, lockedTrigger }: Node
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-4 px-5 py-4">
           {node.type === "trigger" && (
-            <TriggerForm
-              data={node.data as TriggerData}
-              onChange={onChange}
-              lockedTrigger={lockedTrigger}
-            />
+            <TriggerForm data={node.data as TriggerData} onChange={onChange} />
           )}
           {node.type === "provider" && (
             <ProviderForm data={node.data as ProviderData} onChange={onChange} />

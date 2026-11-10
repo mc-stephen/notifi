@@ -13,10 +13,10 @@ export type ServerFlow = {
   version: number;
   /**
    * Who manages the flow: plain `flow_page` flows live on /flows;
-   * `schedule`/`webhook` flows are owned by their schedule/webhook and
-   * never appear there (their trigger is seeded and locked).
+   * `schedule` flows are owned by their schedule and never appear
+   * there (their trigger is seeded and locked).
    */
-  source: "flow_page" | "schedule" | "webhook";
+  source: "flow_page" | "schedule";
   createdAt: string;
   updatedAt: string;
 };
@@ -150,9 +150,8 @@ export async function putFlow(
 }
 
 /**
- * One flow by id — the builder's load path. Works for owner-managed
- * flows too (schedules/webhooks own theirs), which never show up on
- * the /flows list.
+ * One flow by id — the builder's load path. Works for schedule-owned
+ * flows too (they never show up on the /flows list).
  */
 export async function getFlow(projectId: string, id: string): Promise<ServerFlow> {
   const res = await api<{ flow: ServerFlow }>(

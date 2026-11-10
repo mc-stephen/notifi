@@ -205,7 +205,7 @@ export default function SettingsPage() {
                 </CardTitle>
                 <CardDescription>
                   Download everything this project holds in one ZIP — members, templates,
-                  API keys, sends, recipients, webhooks, flows, and the project&apos;s
+                  API keys, sends, recipients, flows, and the project&apos;s
                   files. Limited to 3 downloads per project per day.
                 </CardDescription>
               </CardHeader>
