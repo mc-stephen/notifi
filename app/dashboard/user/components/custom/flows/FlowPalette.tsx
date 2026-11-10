@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, FileText, Hash, Inbox, KeyRound, Mail, Megaphone, MessageSquare, OctagonX, Phone, Plug, Search, Send, Smartphone, Sparkles, Split, Globe, UserRound, Users, Webhook, Zap } from "lucide-react";
+import { ArrowLeft, FileText, Hash, Inbox, KeyRound, Mail, Megaphone, MessageSquare, OctagonX, Phone, Plug, Search, Send, Smartphone, Sparkles, Split, Globe, UserRound, Users, Webhook, Workflow, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -72,6 +72,39 @@ const TRIGGER_PARTS: {
   },
 ];
 
+/** The panel's drill-down categories: home shows one tile per category,
+ * picking one swaps the body to that category's children only. */
+type CategoryId = "trigger" | "actions" | "providers";
+
+const CATEGORIES: { id: CategoryId; title: string; icon: typeof Zap }[] = [
+  { id: "trigger", title: "Trigger", icon: Zap },
+  { id: "actions", title: "Actions", icon: Workflow },
+  { id: "providers", title: "Send via provider", icon: Send },
+];
+
+const CATEGORY_TITLES: Record<CategoryId, string> = {
+  trigger: "Trigger",
+  actions: "Actions",
+  providers: "Send via provider",
+};
+
+/** A draggable palette row's full spec — shared by the drill-down body
+ * and the flat search results. */
+type RowSpec = {
+  key: string;
+  title: string;
+  blurb: string;
+  icon: typeof Zap;
+  kind: FlowNodeKind;
+  preset?: TriggerPreset;
+  triggerKind?: "webhook";
+  channel?: string;
+};
+
+function plural(n: number, word: string): string {
+  return n === 1 ? `1 ${word}` : `${n} ${word}s`;
+}
+
 /** Word-prefix match so stray substrings (e.g. "art" in "start") don't hit. */
 function matchesWords(haystack: string, q: string): boolean {
   if (!q) return true;
@@ -89,7 +122,7 @@ function DraggableRow({
   preset,
   triggerKind,
   channel,
-  indent,
+  categoryLabel,
 }: {
   title: string;
   blurb: string;
@@ -98,7 +131,8 @@ function DraggableRow({
   preset?: TriggerPreset;
   triggerKind?: "webhook";
   channel?: string;
-  indent?: boolean;
+  /** Search results carry their category for context; drill-down rows don't. */
+  categoryLabel?: string;
 }) {
   return (
     <div
@@ -113,7 +147,6 @@ function DraggableRow({
       className={cn(
         "flex cursor-grab items-center gap-2.5 rounded-lg border border-transparent p-2.5",
         "transition-colors hover:border-border hover:bg-muted active:cursor-grabbing dark:hover:border-white/10 dark:hover:bg-white/5",
-        indent && "ml-4",
       )}
     >
       <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -121,7 +154,9 @@ function DraggableRow({
       </span>
       <span className="min-w-0">
         <span className="block truncate text-sm font-medium text-foreground dark:text-zinc-100">{title}</span>
-        <span className="block truncate text-xs text-muted-foreground dark:text-zinc-500">{blurb}</span>
+        <span className="block truncate text-xs text-muted-foreground dark:text-zinc-500">
+          {categoryLabel ? `${categoryLabel} · ${blurb}` : blurb}
+        </span>
       </span>
     </div>
   );
@@ -129,154 +164,170 @@ function DraggableRow({
 
 export function FlowPalette({ hideTriggers = false }: { hideTriggers?: boolean }) {
   const [query, setQuery] = useState("");
-  const [triggersOpen, setTriggersOpen] = useState(true);
-  const [providersOpen, setProvidersOpen] = useState(true);
+  const [view, setView] = useState<{ type: "home" } | { type: "category"; id: CategoryId }>({
+    type: "home",
+  });
   const { registry, loading: providersLoading, error: providersError } = useProviderRegistry();
   const providerChannels = registry?.channels ?? [];
 
   const q = query.toLowerCase();
-  const visible = ITEMS.filter((item) =>
-    `${item.title} ${item.blurb}`.toLowerCase().includes(q),
-  );
-  const triggerMatch =
-    matchesWords("trigger start the flow", q) ||
-    TRIGGER_PARTS.some((p) => matchesWords(`${p.title} ${p.blurb}`, q));
-  const visibleParts = TRIGGER_PARTS.filter((p) =>
-    matchesWords(`${p.title} ${p.blurb}`, q),
-  );
-  const providerMatch =
-    matchesWords("send via provider deliver", q) ||
-    providerChannels.some((c) =>
-      matchesWords(`${c.channel_name} send via providers`, q),
-    );
-  const visibleChannels = providerChannels.filter((c) =>
-    matchesWords(`${c.channel_name} send via providers`, q),
-  );
+
+  const triggerRows: RowSpec[] =
+    hideTriggers ? [] : TRIGGER_PARTS.map((p) => ({
+      key: p.triggerKind ?? p.preset ?? p.title,
+      title: p.title,
+      blurb: p.blurb,
+      icon: p.icon,
+      kind: "trigger",
+      preset: p.preset,
+      triggerKind: p.triggerKind,
+    }));
+  const actionRows: RowSpec[] = ITEMS.map((item) => ({
+    key: item.kind,
+    title: item.title,
+    blurb: item.blurb,
+    icon: item.icon,
+    kind: item.kind,
+  }));
+  const providerRows: RowSpec[] = providerChannels.map((c) => ({
+    key: c.channel_id,
+    title: c.channel_name,
+    blurb: plural(c.providers.length, "provider"),
+    icon: CHANNEL_ICONS[c.channel_id] ?? Send,
+    kind: "provider",
+    channel: c.channel_id,
+  }));
+
+  // The category counts the tiles show.
+  const counts: Record<CategoryId, string> = {
+    trigger: plural(triggerRows.length, "item"),
+    actions: plural(actionRows.length, "item"),
+    providers: providersLoading ? "…" : plural(providerRows.length, "channel"),
+  };
+
+  // Search outranks the drill-down: typing anywhere flips the panel to a
+  // flat results list across every category (each row names its own).
+  const providerMatch = matchesWords(CATEGORY_TITLES.providers, q);
+  const searchIndex: (RowSpec & { category: string })[] = [
+    ...triggerRows.map((r) => ({ ...r, category: CATEGORY_TITLES.trigger })),
+    ...actionRows.map((r) => ({ ...r, category: CATEGORY_TITLES.actions })),
+    ...providerRows.map((r) => ({ ...r, category: CATEGORY_TITLES.providers })),
+  ];
+  const results = query
+    ? searchIndex.filter(({ category, ...row }) =>
+        matchesWords(`${category} ${row.title} ${row.blurb}`, q),
+      )
+    : [];
+
+  const tiles = CATEGORIES.filter((c) => c.id !== "trigger" || !hideTriggers);
+  const openCategory = !query && view.type === "category" ? view.id : null;
 
   return (
     <div className="flex w-60 shrink-0 flex-col self-stretch border-r border-border bg-card dark:border-white/10 dark:bg-[#0b0b0e]">
       <div className="border-b border-border p-3 dark:border-white/10">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground dark:text-zinc-500">
-          Components
-        </p>
+        {openCategory ? (
+          <button
+            type="button"
+            onClick={() => setView({ type: "home" })}
+            className={cn(
+              "mb-1 flex w-full cursor-pointer items-center gap-2 rounded-lg border border-transparent p-1.5",
+              "transition-colors hover:border-border hover:bg-muted dark:hover:border-white/10 dark:hover:bg-white/5",
+            )}
+          >
+            <ArrowLeft className="size-4 shrink-0 text-muted-foreground dark:text-zinc-500" />
+            <span className="min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground dark:text-zinc-100">
+              {CATEGORY_TITLES[openCategory]}
+            </span>
+            <span className="shrink-0 text-xs text-muted-foreground dark:text-zinc-500">
+              {counts[openCategory]}
+            </span>
+          </button>
+        ) : (
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground dark:text-zinc-500">
+            Components
+          </p>
+        )}
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground dark:text-zinc-500" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Escape") return;
+              e.stopPropagation();
+              if (query) setQuery("");
+              else setView({ type: "home" });
+            }}
             placeholder="Search components"
             className="h-8 border-input bg-popover pl-8 text-sm text-foreground placeholder:text-muted-foreground dark:border-white/10 dark:bg-white/5 dark:text-zinc-100 dark:placeholder:text-zinc-500"
           />
         </div>
       </div>
       <div className="flex-1 space-y-1 overflow-y-auto p-2">
-        {!hideTriggers && (!query || triggerMatch) && (
-          <div>
-            <button
-              type="button"
-              onClick={() => setTriggersOpen((o) => !o)}
-              aria-expanded={triggersOpen}
-              className={cn(
-                "flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-transparent p-2.5",
-                "transition-colors hover:border-border hover:bg-muted dark:hover:border-white/10 dark:hover:bg-white/5",
-              )}
-            >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Zap className="size-4" />
-              </span>
-              <span className="min-w-0 flex-1 text-left">
-                <span className="block truncate text-sm font-medium text-foreground dark:text-zinc-100">Trigger</span>
-                <span className="block truncate text-xs text-muted-foreground dark:text-zinc-500">Start the flow</span>
-              </span>
-              <ChevronDown
-                className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform dark:text-zinc-500", !triggersOpen && "-rotate-90")}
-              />
-            </button>
-            {triggersOpen &&
-              (query ? visibleParts : TRIGGER_PARTS).map((p) => (
-                <DraggableRow
-                  key={p.triggerKind ?? p.preset}
-                  title={p.title}
-                  blurb={p.blurb}
-                  icon={p.icon}
-                  kind="trigger"
-                  preset={p.preset}
-                  triggerKind={p.triggerKind}
-                  indent
-                />
-              ))}
+        {/* Search results — flat across all categories. */}
+        {query &&
+          results.map(({ category, key, ...row }) => (
+            <DraggableRow key={key} {...row} categoryLabel={category} />
+          ))}
+        {query && providersLoading && providerMatch && (
+          <div className="space-y-1">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-[52px] rounded-lg bg-muted dark:bg-white/5" />
+            ))}
           </div>
         )}
-        {(!hideTriggers || visible.length > 0 || providerMatch) &&
-          visible.map((item) => (
-          <DraggableRow
-            key={item.kind}
-            title={item.title}
-            blurb={item.blurb}
-            icon={item.icon}
-            kind={item.kind}
-          />
-        ))}
-        {(!query || providerMatch) && (
-          <div>
-            <button
-              type="button"
-              onClick={() => setProvidersOpen((o) => !o)}
-              aria-expanded={providersOpen}
-              className={cn(
-                "flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-transparent p-2.5",
-                "transition-colors hover:border-border hover:bg-muted dark:hover:border-white/10 dark:hover:bg-white/5",
-              )}
-            >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Send className="size-4" />
-              </span>
-              <span className="min-w-0 flex-1 text-left">
-                <span className="block truncate text-sm font-medium text-foreground dark:text-zinc-100">Send via provider</span>
-                <span className="block truncate text-xs text-muted-foreground dark:text-zinc-500">Deliver with priority + fallback</span>
-              </span>
-              <ChevronDown
-                className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform dark:text-zinc-500", !providersOpen && "-rotate-90")}
-              />
-            </button>
-            {providersOpen && (
-              providersLoading ? (
-                <div className="ml-4 space-y-1">
-                  {[0, 1, 2].map((i) => (
-                    <Skeleton key={i} className="h-[52px] rounded-lg bg-muted dark:bg-white/5" />
-                  ))}
-                </div>
-              ) : providersError || providerChannels.length === 0 ? (
-                <p className="ml-4 px-2 py-3 text-xs text-zinc-500">
-                  {providersError ? "Couldn't load channels." : "No channels configured."}
-                </p>
-              ) : (
-                (query ? visibleChannels : providerChannels).map((c) => {
-                  const Icon = CHANNEL_ICONS[c.channel_id] ?? Send;
-                  const count = c.providers.length;
-                  return (
-                    <DraggableRow
-                      key={c.channel_id}
-                      title={c.channel_name}
-                      blurb={count === 1 ? "1 provider" : `${count} providers`}
-                      icon={Icon}
-                      kind="provider"
-                      channel={c.channel_id}
-                      indent
-                    />
-                  );
-                })
-              )
-            )}
-          </div>
-        )}
-        {visible.length === 0 &&
-          !providerMatch &&
-          (hideTriggers || !triggerMatch) && (
+        {query &&
+          results.length === 0 &&
+          !(providersLoading && providerMatch) && (
           <p className="px-2 py-6 text-center text-sm text-zinc-500">
             No components match.
           </p>
         )}
+        {/* Home — one tile per category. */}
+        {!query && !openCategory && (
+          <div className="grid grid-cols-2 gap-2">
+            {tiles.map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setView({ type: "category", id: cat.id })}
+                className={cn(
+                  "flex h-full cursor-pointer flex-col items-start gap-1.5 rounded-xl border p-2.5",
+                  "transition-colors hover:border-border hover:bg-muted dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/5",
+                )}
+              >
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <cat.icon className="size-4" />
+                </span>
+                <span className="w-full truncate text-sm font-medium text-foreground dark:text-zinc-100">
+                  {cat.title}
+                </span>
+                <span className="text-xs text-muted-foreground dark:text-zinc-500">
+                  {counts[cat.id]}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        {/* Drill-down — only the open category's children. */}
+        {openCategory === "trigger" &&
+          triggerRows.map(({ key, ...row }) => <DraggableRow key={key} {...row} />)}
+        {openCategory === "actions" &&
+          actionRows.map(({ key, ...row }) => <DraggableRow key={key} {...row} />)}
+        {openCategory === "providers" &&
+          (providersLoading ? (
+            <div className="space-y-1">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-[52px] rounded-lg bg-muted dark:bg-white/5" />
+              ))}
+            </div>
+          ) : providersError || providerChannels.length === 0 ? (
+            <p className="px-2 py-3 text-xs text-zinc-500">
+              {providersError ? "Couldn't load channels." : "No channels configured."}
+            </p>
+          ) : (
+            providerRows.map(({ key, ...row }) => <DraggableRow key={key} {...row} />)
+          ))}
       </div>
     </div>
   );
