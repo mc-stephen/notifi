@@ -17,7 +17,6 @@ import {
   Megaphone,
   Clock,
   Workflow,
-  Webhook,
   BarChart3,
   KeyRound,
   Package,
@@ -63,7 +62,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Flows",
     items: [
       { label: "Flows", href: "/flows", icon: Workflow },
-      { label: "Webhooks", href: "/webhooks", icon: Webhook },
       { label: "Providers", href: "/providers", icon: Link },
     ],
   },

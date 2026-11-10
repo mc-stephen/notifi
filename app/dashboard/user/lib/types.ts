@@ -340,18 +340,6 @@ export type Channel = {
 
 export type HealthStatus = "healthy" | "degraded" | "down" | "unknown";
 
-export type Webhook = {
-  id: string;
-  projectId: string;
-  url: string;
-  events: string[];
-  signingSecret: string;
-  enabled: boolean;
-  lastTriggeredAt?: string;
-  successRate: number;
-  createdAt: string;
-};
-
 export type ApiKey = {
   id: string;
   projectId: string;
