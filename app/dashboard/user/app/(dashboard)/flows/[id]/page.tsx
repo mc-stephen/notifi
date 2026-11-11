@@ -214,7 +214,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
             </Button>
           }
           topRight={
-            <div className="absolute top-3 right-3 z-10 flex max-w-xs items-center gap-2 rounded-lg border border-border bg-popover/95 px-3 py-1.5 shadow-xl backdrop-blur dark:border-white/10 dark:bg-[#17171c]/95">
+            <div className="absolute top-3 right-3 z-10 flex max-w-xs items-center gap-2 rounded-lg border border-border bg-popover/95 px-3 py-1.5 backdrop-blur dark:border-white/10 dark:bg-[#17171c]/95">
               <Input
                 value={draft?.id === id ? draft.name : meta.name}
                 onChange={(e) => setDraft({ id, name: e.target.value })}
