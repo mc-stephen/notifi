@@ -94,6 +94,8 @@ export function FlowCanvas({
   actions,
   topRight,
   ownerManaged = false,
+  projectId,
+  flowId,
 }: {
   initialDoc: FlowDoc;
   onSave: (doc: FlowDoc) => Promise<void>;
@@ -104,6 +106,9 @@ export function FlowCanvas({
   topRight?: React.ReactNode;
   /** Schedule/webhook flows: trigger is owned data. */
   ownerManaged?: boolean;
+  /** Flow identity for the node panel's last-ping probe fetch. */
+  projectId?: string;
+  flowId?: string;
 }) {
   return (
     <ReactFlowProvider>
@@ -113,6 +118,8 @@ export function FlowCanvas({
         actions={actions}
         topRight={topRight}
         ownerManaged={ownerManaged}
+        projectId={projectId}
+        flowId={flowId}
       />
     </ReactFlowProvider>
   );
@@ -124,12 +131,16 @@ function FlowEditor({
   actions,
   topRight,
   ownerManaged,
+  projectId,
+  flowId,
 }: {
   initialDoc: FlowDoc;
   onSave: (doc: FlowDoc) => Promise<void>;
   actions?: React.ReactNode;
   topRight?: React.ReactNode;
   ownerManaged: boolean;
+  projectId?: string;
+  flowId?: string;
 }) {
   const [nodes, setNodes, onNodesChangeBase] = useNodesState(initialDoc.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialDoc.edges);
@@ -293,6 +304,12 @@ function FlowEditor({
   );
 
   const openNode = nodes.find((n) => n.id === openId) ?? null;
+  // The first upstream node: its output is the open node's incoming data.
+  const openUpstream = useMemo(() => {
+    if (!openId) return null;
+    const edge = edges.find((e) => e.target === openId);
+    return nodes.find((n) => n.id === edge?.source) ?? null;
+  }, [openId, edges, nodes]);
 
   const updateNodeData = useCallback(
     (data: FlowNode["data"]) => {
@@ -454,6 +471,9 @@ function FlowEditor({
             onChange={updateNodeData}
             onClose={closePanel}
             lockedTrigger={ownerManaged}
+            upstream={openUpstream}
+            projectId={projectId}
+            flowId={flowId}
           />
         )}
       </div>

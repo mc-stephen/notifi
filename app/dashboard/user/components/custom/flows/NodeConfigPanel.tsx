@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, CalendarClock, Copy, ExternalLink, Plus, Webhook, X } from "lucide-react";
+import { ArrowRightLeft, Check, CalendarClock, Copy, ExternalLink, Inbox, Plus, Webhook, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,13 @@ import { DetailPanel } from "@/components/custom/detail-panel";
 import { ProviderIcon } from "@/components/custom/providers/provider-icon";
 import { useProviderRegistry } from "@/hooks/use-provider-registry";
 import { useTemplates } from "@/hooks/use-templates";
+import { useInboundProbe } from "@/hooks/use-inbound-probe";
+import {
+  incomingShapeOf,
+  outgoingShapeOf,
+  probeShapeOf,
+  type DataShape,
+} from "./flow-data";
 import { getVariables } from "@/lib/template-content";
 import {
   AI_MODELS,
@@ -49,6 +56,12 @@ type NodeConfigPanelProps = {
   onClose: () => void;
   /** Owner flows: the trigger is owned data (schedule/webhook page). */
   lockedTrigger?: boolean;
+  /** The node feeding this one (first incoming edge) — its output is
+   * this node's incoming data. */
+  upstream?: FlowNode | null;
+  /** Flow identity for the webhook door's last-ping probe. */
+  projectId?: string;
+  flowId?: string;
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -777,7 +790,146 @@ const TITLES: Record<string, string> = {
   stop: "Stop",
 };
 
-export function NodeConfigPanel({ node, onChange, onClose, lockedTrigger }: NodeConfigPanelProps) {
+type PanelTab = "config" | "in" | "out";
+
+const TABS: { id: PanelTab; label: string }[] = [
+  { id: "config", label: "Config" },
+  { id: "in", label: "Incoming" },
+  { id: "out", label: "Outgoing" },
+];
+
+/** One key/value row of a data shape. */
+function ShapeRow({ row }: { row: DataShape["rows"][number] }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-1.5">
+      <span className="shrink-0 font-mono text-xs text-muted-foreground dark:text-zinc-400">
+        {row.key}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-right font-mono text-xs text-foreground dark:text-zinc-200">
+        {row.value}
+      </span>
+    </div>
+  );
+}
+
+function DataTabBody({ shape }: { shape: DataShape }) {
+  return (
+    <div className="space-y-3">
+      {!shape.real && (
+        <p className="rounded-lg bg-muted px-3 py-2 text-[11px] text-muted-foreground dark:bg-white/5 dark:text-zinc-400">
+          Sample — derived from the graph, not a real run.
+        </p>
+      )}
+      <div className="divide-y rounded-lg border border-border dark:border-white/10">
+        {shape.rows.map((row) => (
+          <div key={row.key} className="px-3">
+            <ShapeRow row={row} />
+            {row.note && (
+              <p className="pb-1.5 text-[11px] leading-snug text-muted-foreground dark:text-zinc-500">
+                {row.note}
+              </p>
+            )}
+          </div>
+        ))}
+        {shape.rows.length === 0 && (
+          <p className="px-3 py-3 text-xs text-muted-foreground">No data.</p>
+        )}
+      </div>
+      <pre className="max-h-56 overflow-auto rounded-lg bg-muted p-3 font-mono text-[11px] leading-relaxed text-foreground dark:bg-white/5 dark:text-zinc-200">
+        {shape.json}
+      </pre>
+    </div>
+  );
+}
+
+function IncomingTab({
+  node,
+  upstream,
+  projectId,
+  flowId,
+  active,
+}: {
+  node: FlowNode;
+  upstream: FlowNode | null;
+  projectId?: string;
+  flowId?: string;
+  active: boolean;
+}) {
+  const trigger = node.type === "trigger" ? (node.data as TriggerData) : null;
+  const isWebhookDoor = trigger !== null && triggerKindOf(trigger) === "webhook";
+  const probe = useInboundProbe(
+    active && isWebhookDoor && Boolean(projectId && flowId),
+    projectId,
+    flowId,
+    trigger?.token,
+  );
+
+  if (isWebhookDoor) {
+    const heading = (
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground dark:text-zinc-400">
+        <Webhook className="size-3.5" /> Last ping at the door
+      </p>
+    );
+    if (probe.loading) {
+      return (
+        <div>
+          {heading}
+          <div className="h-32 animate-pulse rounded-lg bg-muted dark:bg-white/5" />
+        </div>
+      );
+    }
+    if (probe.probe) {
+      return (
+        <div>
+          {heading}
+          <DataTabBody shape={probeShapeOf(probe.probe)} />
+        </div>
+      );
+    }
+    return (
+      <div>
+        {heading}
+        <p className="mb-3 rounded-lg bg-muted px-3 py-2 text-[11px] text-muted-foreground dark:bg-white/5 dark:text-zinc-400">
+          No pings yet — POST to this flow&apos;s URL (Config tab). Below is the
+          shape of what arrives when one lands.
+        </p>
+        <DataTabBody shape={incomingShapeOf(node, null)!} />
+      </div>
+    );
+  }
+
+  if (!upstream) {
+    return (
+      <div className="py-10 text-center">
+        <Inbox className="mx-auto size-6 text-muted-foreground dark:text-zinc-500" />
+        <p className="mt-2 text-sm text-muted-foreground dark:text-zinc-400">
+          Connect an upstream node to see what arrives here.
+        </p>
+      </div>
+    );
+  }
+
+  const shape = incomingShapeOf(node, upstream);
+  return (
+    <div>
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground dark:text-zinc-400">
+        <ArrowRightLeft className="size-3.5" /> From {upstream.data && "templateName" in upstream.data && upstream.data.templateName ? upstream.data.templateName : upstream.type}
+      </p>
+      {shape && <DataTabBody shape={shape} />}
+    </div>
+  );
+}
+
+export function NodeConfigPanel({
+  node,
+  onChange,
+  onClose,
+  lockedTrigger,
+  upstream,
+  projectId,
+  flowId,
+}: NodeConfigPanelProps) {
+  const [tab, setTab] = useState<PanelTab>("config");
   return (
     <DetailPanel
       onClose={onClose}
@@ -794,30 +946,73 @@ export function NodeConfigPanel({ node, onChange, onClose, lockedTrigger }: Node
         </div>
       }
     >
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="space-y-4 px-5 py-4">
-          {node.type === "trigger" && (
-            <TriggerForm data={node.data as TriggerData} onChange={onChange} />
-          )}
-          {node.type === "provider" && (
-            <ProviderForm data={node.data as ProviderData} onChange={onChange} />
-          )}
-          {node.type === "template" && (
-            <TemplateForm data={node.data as TemplateData} onChange={onChange} />
-          )}
-          {node.type === "http-request" && (
-            <HttpRequestForm data={node.data as HttpRequestData} onChange={onChange} />
-          )}
-          {node.type === "condition" && (
-            <ConditionForm data={node.data as ConditionData} onChange={onChange} />
-          )}
-          {node.type === "ai-transform" && (
-            <AiTransformForm data={node.data as AiTransformData} onChange={onChange} />
-          )}
-          {node.type === "stop" && (
-            <StopForm data={node.data as StopData} onChange={onChange} />
-          )}
+      {/* Tab bar — Config, Incoming (what arrives), Outgoing (what this
+          node passes downstream). */}
+      <div className="border-b px-5 py-2.5 dark:border-white/10">
+        <div className="flex gap-1 rounded-lg bg-muted p-1 dark:bg-white/5">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              aria-pressed={tab === t.id}
+              className={cn(
+                "flex-1 cursor-pointer rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                tab === t.id
+                  ? "bg-popover text-foreground shadow-sm dark:bg-white/10 dark:text-zinc-100"
+                  : "text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300",
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {tab === "config" && (
+          <div className="space-y-4 px-5 py-4">
+            {node.type === "trigger" && (
+              <TriggerForm data={node.data as TriggerData} onChange={onChange} />
+            )}
+            {node.type === "provider" && (
+              <ProviderForm data={node.data as ProviderData} onChange={onChange} />
+            )}
+            {node.type === "template" && (
+              <TemplateForm data={node.data as TemplateData} onChange={onChange} />
+            )}
+            {node.type === "http-request" && (
+              <HttpRequestForm data={node.data as HttpRequestData} onChange={onChange} />
+            )}
+            {node.type === "condition" && (
+              <ConditionForm data={node.data as ConditionData} onChange={onChange} />
+            )}
+            {node.type === "ai-transform" && (
+              <AiTransformForm data={node.data as AiTransformData} onChange={onChange} />
+            )}
+            {node.type === "stop" && (
+              <StopForm data={node.data as StopData} onChange={onChange} />
+            )}
+          </div>
+        )}
+        {tab === "in" && (
+          <div className="px-5 py-4">
+            <IncomingTab
+              node={node}
+              upstream={upstream ?? null}
+              projectId={projectId}
+              flowId={flowId}
+              active={tab === "in"}
+            />
+          </div>
+        )}
+        {tab === "out" && (
+          <div className="px-5 py-4">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground dark:text-zinc-400">
+              <ArrowRightLeft className="size-3.5" /> Passed downstream
+            </p>
+            <DataTabBody shape={outgoingShapeOf(node)} />
+          </div>
+        )}
       </div>
     </DetailPanel>
   );

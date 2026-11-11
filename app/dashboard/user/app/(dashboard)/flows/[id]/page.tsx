@@ -201,6 +201,8 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           initialDoc={doc}
           onSave={handleServerSave}
           ownerManaged={ownerManaged}
+          projectId={projectId}
+          flowId={id}
           actions={
             <Button
               size="sm"
