@@ -92,12 +92,16 @@ export function FlowCanvas({
   initialDoc,
   onSave,
   actions,
+  topRight,
   ownerManaged = false,
 }: {
   initialDoc: FlowDoc;
   onSave: (doc: FlowDoc) => Promise<void>;
   /** Optional controls pinned to the canvas top-left panel (e.g. back). */
   actions?: React.ReactNode;
+  /** Optional content anchored to the canvas's own top-right corner —
+   * it stays clear of the components panel on the right. */
+  topRight?: React.ReactNode;
   /** Schedule/webhook flows: trigger is owned data. */
   ownerManaged?: boolean;
 }) {
@@ -107,6 +111,7 @@ export function FlowCanvas({
         initialDoc={initialDoc}
         onSave={onSave}
         actions={actions}
+        topRight={topRight}
         ownerManaged={ownerManaged}
       />
     </ReactFlowProvider>
@@ -117,11 +122,13 @@ function FlowEditor({
   initialDoc,
   onSave,
   actions,
+  topRight,
   ownerManaged,
 }: {
   initialDoc: FlowDoc;
   onSave: (doc: FlowDoc) => Promise<void>;
   actions?: React.ReactNode;
+  topRight?: React.ReactNode;
   ownerManaged: boolean;
 }) {
   const [nodes, setNodes, onNodesChangeBase] = useNodesState(initialDoc.nodes);
@@ -424,6 +431,7 @@ function FlowEditor({
           )}
         </ReactFlow>
 
+        {topRight}
         {openNode && (
           <NodeConfigPanel
             key={openNode.id}

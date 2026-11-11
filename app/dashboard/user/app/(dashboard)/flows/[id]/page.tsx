@@ -213,31 +213,33 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
               <ArrowLeft className="size-3.5" />
             </Button>
           }
+          topRight={
+            <div className="absolute top-3 right-3 z-10 flex max-w-xs items-center gap-2 rounded-lg border border-border bg-popover/95 px-3 py-1.5 shadow-xl backdrop-blur dark:border-white/10 dark:bg-[#17171c]/95">
+              <Input
+                value={draft?.id === id ? draft.name : meta.name}
+                onChange={(e) => setDraft({ id, name: e.target.value })}
+                onBlur={() => void handleRenameCommit()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  if (e.key === "Escape") setDraft(null);
+                }}
+                aria-label="Flow name"
+                className="h-7 border-transparent bg-transparent font-semibold hover:border-input focus-visible:border-ring dark:text-zinc-100 dark:hover:border-white/15 dark:focus-visible:border-white/25"
+              />
+              {ownerManaged ? (
+                <Badge className="shrink-0 border-primary/20 bg-primary/10 text-[10px] font-medium text-primary">
+                  Schedule flow
+                </Badge>
+              ) : (
+                handlesSendEvent(meta.definition) && (
+                  <Badge variant="secondary" className="shrink-0 text-[10px] font-medium">
+                    Handles sends
+                  </Badge>
+                )
+              )}
+            </div>
+          }
         />
-        <div className="absolute top-3 right-3 z-10 flex max-w-xs items-center gap-2 rounded-lg border border-border bg-popover/95 px-3 py-1.5 shadow-xl backdrop-blur dark:border-white/10 dark:bg-[#17171c]/95">
-          <Input
-            value={draft?.id === id ? draft.name : meta.name}
-            onChange={(e) => setDraft({ id, name: e.target.value })}
-            onBlur={() => void handleRenameCommit()}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              if (e.key === "Escape") setDraft(null);
-            }}
-            aria-label="Flow name"
-            className="h-7 border-transparent bg-transparent font-semibold hover:border-input focus-visible:border-ring dark:text-zinc-100 dark:hover:border-white/15 dark:focus-visible:border-white/25"
-          />
-          {ownerManaged ? (
-            <Badge className="shrink-0 border-primary/20 bg-primary/10 text-[10px] font-medium text-primary">
-              Schedule flow
-            </Badge>
-          ) : (
-            handlesSendEvent(meta.definition) && (
-              <Badge variant="secondary" className="shrink-0 text-[10px] font-medium">
-                Handles sends
-              </Badge>
-            )
-          )}
-        </div>
       </div>
     </div>
   );
