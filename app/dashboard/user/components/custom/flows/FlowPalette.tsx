@@ -283,31 +283,31 @@ export function FlowPalette({ hideTriggers = false }: { hideTriggers?: boolean }
             No components match.
           </p>
         )}
-        {/* Home — one tile per category. */}
+        {/* Home — one plain row per category; picking one drills in. */}
         {!query && !openCategory && (
-          <div className="grid grid-cols-2 gap-2">
+          <>
             {tiles.map((cat) => (
               <button
                 key={cat.id}
                 type="button"
                 onClick={() => setView({ type: "category", id: cat.id })}
                 className={cn(
-                  "flex h-full cursor-pointer flex-col items-start gap-1.5 rounded-xl border p-2.5",
-                  "transition-colors hover:border-border hover:bg-muted dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/5",
+                  "flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-transparent p-2.5",
+                  "transition-colors hover:border-border hover:bg-muted dark:hover:border-white/10 dark:hover:bg-white/5",
                 )}
               >
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <cat.icon className="size-4" />
                 </span>
-                <span className="w-full truncate text-sm font-medium text-foreground dark:text-zinc-100">
+                <span className="min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground dark:text-zinc-100">
                   {cat.title}
                 </span>
-                <span className="text-xs text-muted-foreground dark:text-zinc-500">
+                <span className="shrink-0 text-xs text-muted-foreground dark:text-zinc-500">
                   {counts[cat.id]}
                 </span>
               </button>
             ))}
-          </div>
+          </>
         )}
         {/* Drill-down — only the open category's children. */}
         {openCategory === "trigger" &&
