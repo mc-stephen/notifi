@@ -364,14 +364,19 @@ function FlowEditor({
           onPaneClick={closePanel}
           nodeTypes={FLOW_NODE_TYPES}
           deleteKeyCode={["Backspace", "Delete"]}
-          // Fit with breathing room — nodes load ~20% smaller than a
-          // tight fit so the default view doesn't feel oversized.
+          // Fit with breathing room, capped at 1:1 — small flows would
+          // otherwise saturate at maxZoom (1.5) and render huge. The
+          // padding then lands typical flows ~20% below a tight fit.
           fitView
-          fitViewOptions={{ padding: 0.25 }}
+          fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
           defaultEdgeOptions={{ style: { stroke: "#71717a", strokeWidth: 2 } }}
           connectionLineStyle={{ stroke: "#a78bfa", strokeWidth: 2 }}
           minZoom={0.4}
           maxZoom={1.5}
+          // RF's built-in dark scheme drives the chrome vars (controls,
+          // minimap, handles) — our stylesheet overrides never beat its
+          // unlayered CSS, so flip its variables instead of fighting them.
+          colorMode={dark ? "dark" : "light"}
         >
           <Background
             variant={BackgroundVariant.Dots}
@@ -396,15 +401,11 @@ function FlowEditor({
             position="bottom-left"
             className={cn(
               "overflow-hidden rounded-lg border border-border bg-popover",
-              // RF's own stylesheet is unlayered, so tie-level utilities
-              // lose — scope the container by its RF class to win.
-              "[&.react-flow__controls]:shadow-none [&.react-flow__controls]:rounded-lg",
-              "[&_button]:border-border [&_button]:bg-transparent",
-              "[&_button:hover]:bg-muted",
-              "[&_svg]:fill-zinc-600",
+              // Dark chrome rides RF's colorMode vars; we only style the
+              // container (its buttons stay RF-native). The box shadow is
+              // a var override — class-based shadows lose RF's stylesheet.
+              "[--xy-controls-box-shadow-default:none]",
               "dark:border-white/10 dark:bg-[#17171c]",
-              "dark:[&_button]:border-white/10 dark:[&_button:hover]:bg-white/10",
-              "dark:[&_svg]:fill-zinc-200",
             )}
           />
           <MiniMap
