@@ -17,6 +17,7 @@ pub mod event_bus;
 pub mod flow_store;
 pub mod gateway;
 pub mod http_requester;
+pub mod inbound_probe_store;
 pub mod mailer;
 pub mod notifications_store;
 pub mod oauth;

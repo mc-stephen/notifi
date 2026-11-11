@@ -65,7 +65,9 @@ fn require_inbound(extension: MaybeInboundService) -> Result<Arc<InboundService>
 /// The node can also demand door auth: a matching `x-notifi-secret`
 /// header (401 when wrong/missing) and caller IP inside its allow-list
 /// (403) — proof in `webhook_fire_secret_*` / `webhook_fire_ip_*`
-/// integration tests, open door otherwise.
+/// integration tests, open door otherwise. Authorized pings are
+/// recorded (best-effort) as the door's last-ping probe — the
+/// builder's "Incoming data" tab reads it back.
 pub async fn fire_webhook(
     service: MaybeInboundService,
     Path(token): Path<String>,
@@ -74,13 +76,27 @@ pub async fn fire_webhook(
     Json(body): Json<InboundFireRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
     let service = require_inbound(service)?;
+    // The probe captures what an authorized caller actually sent: caller
+    // IP, whitelisted headers, and the parsed body re-serialized (the
+    // request dto is Deserialize-only, so rebuild the JSON explicitly).
+    // The service records it after the door's checks pass (best-effort).
+    let header_str = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+    };
+    let body_json = serde_json::json!({
+        "channel": body.channel,
+        "recipients": body.recipients,
+        "title": body.title,
+        "body": body.body,
+        "templateId": body.template_id,
+    });
     let send = service
         .fire(
             &token,
-            headers
-                .get("x-notifi-secret")
-                .and_then(|v| v.to_str().ok())
-                .map(str::to_string),
+            header_str("x-notifi-secret"),
             Some(peer.ip()),
             InboundPayload {
                 channel: body.channel,
@@ -88,6 +104,15 @@ pub async fn fire_webhook(
                 title: body.title,
                 body: body.body,
                 template_id: body.template_id,
+            },
+            crate::domain::inbound::InboundProbe {
+                client_ip: Some(peer.ip().to_string()),
+                content_type: header_str("content-type"),
+                user_agent: header_str("user-agent"),
+                forwarded_for: header_str("x-forwarded-for"),
+                body: crate::domain::inbound::entities::cap_probe_body(
+                    serde_json::to_string(&body_json).ok(),
+                ),
             },
         )
         .await?;

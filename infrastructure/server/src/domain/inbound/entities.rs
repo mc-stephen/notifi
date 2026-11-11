@@ -38,6 +38,34 @@ pub fn valid_trigger_token(token: &str) -> bool {
     token.len() == 32 && token.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+/// What an authorized ping left at the door, captured by the fire: the
+/// caller's address, whitelisted headers, and the (parsed, re-serialized)
+/// body. Stored per trigger token as the builder's "Incoming data" view.
+#[derive(Debug, Clone, Default)]
+pub struct InboundProbe {
+    pub client_ip: Option<String>,
+    pub content_type: Option<String>,
+    pub user_agent: Option<String>,
+    pub forwarded_for: Option<String>,
+    pub body: Option<String>,
+}
+
+/// Body cap for probes — debug data, not a ledger.
+pub const PROBE_BODY_CAP: usize = 16 * 1024;
+
+/// Trim a probe body to [`PROBE_BODY_CAP`] bytes (char-boundary safe).
+pub fn cap_probe_body(body: Option<String>) -> Option<String> {
+    let body = body?;
+    if body.len() <= PROBE_BODY_CAP {
+        return Some(body);
+    }
+    let mut cut = PROBE_BODY_CAP;
+    while !body.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    Some(body[..cut].to_string())
+}
+
 /// All `(token, node_id)` pairs for webhook trigger nodes in a flow
 /// definition. Malformed nodes are skipped (validation flags them in
 /// the builder).
@@ -212,5 +240,19 @@ mod inbound_entities_tests {
         assert_eq!(config.values["code"], "4420", "presets are trimmed");
         assert!(!config.values.contains_key("gone"));
         assert!(!config.values.contains_key("bad"));
+    }
+
+    #[test]
+    fn caps_probe_bodies_on_char_boundaries() {
+        assert!(cap_probe_body(None).is_none());
+        assert_eq!(
+            cap_probe_body(Some("small".into())).as_deref(),
+            Some("small")
+        );
+        let big = "é".repeat(PROBE_BODY_CAP); // 2 bytes each — over the cap
+        let cut = cap_probe_body(Some(big)).unwrap();
+        assert!(cut.len() <= PROBE_BODY_CAP, "cut inside the cap");
+        assert!(cut.is_char_boundary(cut.len()), "no torn character");
+        assert_eq!(cut.chars().count(), PROBE_BODY_CAP / 2);
     }
 }

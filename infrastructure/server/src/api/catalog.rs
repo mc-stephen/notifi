@@ -590,6 +590,13 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         feature: "flows",
         description: "delete a flow (sends fail closed once none qualify)",
     },
+    RouteInfo {
+        method: "GET",
+        path: "/app/flows/{id}/inbound/last",
+        surface: Surface::App,
+        feature: "flows",
+        description: "the last authorized ping a webhook door received (?token= scopes to one door) — the builder's Incoming data tab",
+    },
     // -- schedules feature --------------------------------------------------
     RouteInfo {
         method: "GET",

@@ -12,4 +12,5 @@ where
         .route("/{id}", get(handlers::get_flow))
         .route("/{id}", put(handlers::update_flow))
         .route("/{id}", delete(handlers::delete_flow))
+        .route("/{id}/inbound/last", get(handlers::last_inbound_probe))
 }

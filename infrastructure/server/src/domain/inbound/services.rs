@@ -25,6 +25,7 @@ use crate::domain::inbound::entities::{
 use crate::domain::schedules::entities::render_template_content;
 use crate::domain::sends::entities::Send;
 use crate::ports::auth_store::StoreError;
+use crate::ports::inbound_probe_store::{InboundProbeRecord, InboundProbeStore};
 use crate::ports::send_store::SendStore;
 use crate::ports::templates_store::TemplatesStore;
 use crate::ports::trigger_token_store::TriggerTokenStore;
@@ -34,6 +35,7 @@ const MAX_RECIPIENTS: usize = 25;
 
 pub struct InboundService {
     tokens: Arc<dyn TriggerTokenStore>,
+    probes: Arc<dyn InboundProbeStore>,
     sends: Arc<dyn SendStore>,
     templates: Arc<dyn TemplatesStore>,
     providers: Arc<dyn crate::ports::ChannelProviderStore>,
@@ -44,6 +46,7 @@ pub struct InboundService {
 impl InboundService {
     pub fn new(
         tokens: Arc<dyn TriggerTokenStore>,
+        probes: Arc<dyn InboundProbeStore>,
         sends: Arc<dyn SendStore>,
         templates: Arc<dyn TemplatesStore>,
         providers: Arc<dyn crate::ports::ChannelProviderStore>,
@@ -52,6 +55,7 @@ impl InboundService {
     ) -> Self {
         Self {
             tokens,
+            probes,
             sends,
             templates,
             providers,
@@ -93,6 +97,37 @@ impl InboundService {
         count
     }
 
+    /// The builder's "Incoming data": the last authorized ping a webhook
+    /// door received. A `token` scopes to that door (verified to belong
+    /// to the flow); without one, the flow's most recent ping across its
+    /// doors.
+    pub async fn last_probe(
+        &self,
+        project_id: &str,
+        flow_id: &str,
+        token: Option<&str>,
+    ) -> Result<Option<InboundProbeRecord>, AppError> {
+        let probe = match token {
+            Some(token) => {
+                let probe = self
+                    .probes
+                    .last_for_token(token)
+                    .await
+                    .map_err(Self::map_store_error)?;
+                match probe {
+                    Some(p) if p.flow_id == flow_id && p.project_id == project_id => Some(p),
+                    _ => None,
+                }
+            }
+            None => self
+                .probes
+                .last_for_flow(project_id, flow_id)
+                .await
+                .map_err(Self::map_store_error)?,
+        };
+        Ok(probe)
+    }
+
     /// Fires the flow owning `token` with caller-wins/fallback resolution.
     /// Unknown tokens read as missing; delivery failures still return the
     /// recorded (failed) send, mirroring ad-hoc sends.
@@ -110,6 +145,7 @@ impl InboundService {
         secret: Option<String>,
         client_ip: Option<std::net::IpAddr>,
         payload: InboundPayload,
+        probe: crate::domain::inbound::entities::InboundProbe,
     ) -> Result<Send, AppError> {
         let record = self
             .tokens
@@ -142,6 +178,24 @@ impl InboundService {
                 ));
             }
         }
+
+        // The door's checks passed — capture what the caller sent for
+        // the builder's "Incoming data" tab. Best-effort: a probe-store
+        // failure never fails the fire (this is debug data, not the
+        // delivery). Door-auth failures never get here, so rejected
+        // pings aren't probed.
+        let probe_record = InboundProbeRecord {
+            token: token.to_string(),
+            flow_id: record.flow_id.clone(),
+            project_id: record.project_id.clone(),
+            fired_at: chrono::Utc::now(),
+            client_ip: probe.client_ip,
+            content_type: probe.content_type,
+            user_agent: probe.user_agent,
+            forwarded_for: probe.forwarded_for,
+            body: probe.body,
+        };
+        let _ = self.probes.record(probe_record).await;
 
         let project_id = record.project_id.clone();
 

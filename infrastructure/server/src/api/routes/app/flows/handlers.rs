@@ -147,11 +147,6 @@ pub async fn create_flow(
 /// Webhook trigger tokens sync best-effort (a failed sync retries).
 /// The response tags `source` exactly like GET: the builder replaces
 /// its loaded flow with this response, so an untagged save would make
-/// an owner-managed flow forget its owner after the first edit.
-/// `PUT /app/flows/:id` — replace name/definition (builder save path).
-/// Webhook trigger tokens sync best-effort (a failed sync retries).
-/// The response tags `source` exactly like GET: the builder replaces
-/// its loaded flow with this response, so an untagged save would make
 /// a schedule-owned flow forget its owner after the first edit.
 pub async fn update_flow(
     CurrentUser(user): CurrentUser,
@@ -188,5 +183,43 @@ pub async fn delete_flow(
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({ "deleted": deleted })),
+    ))
+}
+
+/// `GET /app/flows/:id/inbound/last?project_id=&token=` — the last
+/// authorized ping a webhook door received: the builder's "Incoming
+/// data" tab. Membership is checked by the flow read; a `token` scopes
+/// to that door (verified to belong to this flow), no token reads the
+/// flow's most recent ping across its doors. Read-only — a probe is
+/// never a fire.
+pub async fn last_inbound_probe(
+    CurrentUser(user): CurrentUser,
+    service: MaybeFlowService,
+    inbound: MaybeInboundService,
+    Path(id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
+    let service = require_service(service)?;
+    let project = project_id(&query)?;
+    // Membership + existence ride the same check the builder's GET uses.
+    service.get(user.id, project, &id).await?;
+    let token = query.get("token").map(String::as_str);
+    let inbound = inbound
+        .map(|Extension(service)| service)
+        .ok_or(AppError::NotConfigured)?;
+    let probe = inbound.last_probe(project, &id, token).await?;
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "probe": probe.map(|p| serde_json::json!({
+                "token": p.token,
+                "clientIp": p.client_ip,
+                "contentType": p.content_type,
+                "userAgent": p.user_agent,
+                "forwardedFor": p.forwarded_for,
+                "body": p.body,
+                "firedAt": p.fired_at.to_rfc3339(),
+            })),
+        })),
     ))
 }

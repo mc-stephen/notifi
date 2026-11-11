@@ -14,7 +14,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::common::{
     FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeBillingStore, FakeChannelProviderStore,
-    FakeFlowStore, FakeHttpRequester, FakeSendStore, FakeTemplatesStore, FakeTriggerTokenStore,
+    FakeFlowStore, FakeHttpRequester, FakeInboundProbeStore, FakeSendStore, FakeTemplatesStore,
+    FakeTriggerTokenStore,
 };
 use axum::Router;
 use axum::body::Body;
@@ -85,6 +86,7 @@ struct Fakes {
     sends: Arc<FakeSendStore>,
     channels: Arc<FakeChannelProviderStore>,
     templates: Arc<FakeTemplatesStore>,
+    probes: Arc<FakeInboundProbeStore>,
 }
 
 fn app_with_inbound() -> (Router, Fakes) {
@@ -108,6 +110,7 @@ fn app_with_inbound() -> (Router, Fakes) {
     let template_store = Arc::new(FakeTemplatesStore::new());
     let templates = Arc::new(TemplateService::new(template_store.clone(), audit.clone()));
     let token_store = Arc::new(FakeTriggerTokenStore::new());
+    let probe_store = Arc::new(FakeInboundProbeStore::new());
     let http = Arc::new(FakeHttpRequester::new());
     let sends = Arc::new(SendService::new(
         send_store.clone(),
@@ -120,6 +123,7 @@ fn app_with_inbound() -> (Router, Fakes) {
     ));
     let inbound = Arc::new(InboundService::new(
         token_store.clone(),
+        probe_store.clone(),
         send_store.clone(),
         template_store.clone(),
         channel_providers.clone(),
@@ -169,6 +173,7 @@ fn app_with_inbound() -> (Router, Fakes) {
             sends: send_store,
             channels: channel_providers,
             templates: template_store,
+            probes: probe_store,
         },
     )
 }
@@ -233,6 +238,16 @@ async fn put_json(app: Router, uri: &str, body: Value, cookie: &str) -> axum::re
         builder = builder.header("cookie", format!("session_token={cookie}"));
     }
     app.oneshot(builder.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap()
+}
+
+async fn get_json(app: Router, uri: &str, cookie: &str) -> axum::response::Response {
+    let mut builder = Request::builder().method("GET").uri(uri);
+    if !cookie.is_empty() {
+        builder = builder.header("cookie", format!("session_token={cookie}"));
+    }
+    app.oneshot(builder.body(Body::empty()).unwrap())
         .await
         .unwrap()
 }
@@ -597,4 +612,138 @@ async fn token_rotates_on_flow_update() {
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn webhook_fire_records_the_last_ping_probe() {
+    let (app, fakes) = app_with_inbound();
+    let (token, project) = setup_project(app.clone(), &fakes, "probe@x.com", "P").await;
+    let flow = create_flow(
+        app.clone(),
+        &token,
+        &project,
+        webhook_flow_definition(TOKEN_A),
+    )
+    .await;
+
+    // An authorized fire — the probe captures who called and what they
+    // sent (IP from the connection, whitelisted headers, parsed body).
+    let fire = Request::builder()
+        .method("POST")
+        .uri(format!("/v1/hooks/{TOKEN_A}"))
+        .header("content-type", "application/json")
+        .header("user-agent", "probe-test/1.0")
+        .header("x-forwarded-for", "203.0.113.9")
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 41234))))
+        .body(Body::from(
+            json!({"channel": "email", "recipients": ["u"], "title": "Ping one"}).to_string(),
+        ))
+        .unwrap();
+    let res = app.clone().oneshot(fire).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let res = get_json(
+        app.clone(),
+        &format!("/app/flows/{flow}/inbound/last?project_id={project}&token={TOKEN_A}"),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let probe = body_json(res).await["probe"].clone();
+    assert_eq!(probe["clientIp"], "127.0.0.1", "the connection's address");
+    assert_eq!(probe["userAgent"], "probe-test/1.0");
+    assert_eq!(probe["forwardedFor"], "203.0.113.9");
+    assert_eq!(probe["contentType"], "application/json");
+    assert!(
+        probe["body"].as_str().unwrap().contains("Ping one"),
+        "the parsed body rides the probe"
+    );
+    assert!(probe["firedAt"].as_str().is_some());
+
+    // The probe is per-door: the latest fire wins.
+    let res = post_json(
+        app.clone(),
+        &format!("/v1/hooks/{TOKEN_A}"),
+        Some(json!({"channel": "email", "recipients": ["u"], "title": "Ping two"})),
+        "",
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let res = get_json(
+        app.clone(),
+        &format!("/app/flows/{flow}/inbound/last?project_id={project}&token={TOKEN_A}"),
+        &token,
+    )
+    .await;
+    let probe = body_json(res).await["probe"].clone();
+    assert!(
+        probe["body"].as_str().unwrap().contains("Ping two"),
+        "the newest ping replaces the old one"
+    );
+
+    // Without a token: the flow's most recent ping across its doors.
+    let res = get_json(
+        app.clone(),
+        &format!("/app/flows/{flow}/inbound/last?project_id={project}"),
+        &token,
+    )
+    .await;
+    let probe = body_json(res).await["probe"].clone();
+    assert!(probe["body"].as_str().unwrap().contains("Ping two"));
+}
+
+#[tokio::test]
+async fn webhook_probe_skips_door_auth_failures() {
+    let (app, fakes) = app_with_inbound();
+    let (token, project) = setup_project(app.clone(), &fakes, "door@x.com", "P").await;
+    let mut definition = webhook_flow_definition(TOKEN_A);
+    definition["nodes"][0]["data"]["secrets"] = json!(["whsk_probe"]);
+    let flow = create_flow(app.clone(), &token, &project, definition).await;
+    let uri = format!("/app/flows/{flow}/inbound/last?project_id={project}");
+
+    // A rejected ping never reaches the flow — no probe recorded.
+    let res = post_fire(
+        app.clone(),
+        TOKEN_A,
+        json!({"channel": "email", "recipients": ["u"], "title": "nope"}),
+        Some("whsk_wrong"),
+        [127, 0, 0, 1],
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    assert!(fakes.probes.all().is_empty(), "no probe for rejected pings");
+    let res = get_json(app.clone(), &uri, &token).await;
+    assert!(
+        body_json(res).await["probe"].is_null(),
+        "no probe for rejected pings"
+    );
+
+    // An authorized ping records the probe.
+    let res = post_fire(
+        app.clone(),
+        TOKEN_A,
+        json!({"channel": "email", "recipients": ["u"], "title": "inside"}),
+        Some("whsk_probe"),
+        [127, 0, 0, 1],
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let res = get_json(app.clone(), &uri, &token).await;
+    let probe = body_json(res).await["probe"].clone();
+    assert!(
+        probe["body"].as_str().unwrap().contains("inside"),
+        "the authorized ping's probe is recorded"
+    );
+
+    // A door's probe is private to its flow: a foreign token reads as none.
+    let res = get_json(
+        app.clone(),
+        &format!("/app/flows/{flow}/inbound/last?project_id={project}&token={TOKEN_B}"),
+        &token,
+    )
+    .await;
+    assert!(
+        body_json(res).await["probe"].is_null(),
+        "other doors read as none"
+    );
 }

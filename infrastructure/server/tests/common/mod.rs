@@ -5020,6 +5020,72 @@ impl server::ports::trigger_token_store::TriggerTokenStore for FakeTriggerTokenS
     }
 }
 
+/// In-memory last-ping probe store for inbound webhook tests (upsert by
+/// token, exactly like the Postgres repo's semantics).
+#[derive(Default)]
+pub struct FakeInboundProbeStore {
+    probes: RwLock<Vec<server::ports::inbound_probe_store::InboundProbeRecord>>,
+}
+
+impl FakeInboundProbeStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Every recorded probe (for test assertions).
+    pub fn all(&self) -> Vec<server::ports::inbound_probe_store::InboundProbeRecord> {
+        self.probes.read().unwrap().clone()
+    }
+}
+
+impl server::ports::inbound_probe_store::InboundProbeStore for FakeInboundProbeStore {
+    fn record(
+        &self,
+        record: server::ports::inbound_probe_store::InboundProbeRecord,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        let mut probes = self.probes.write().unwrap();
+        probes.retain(|p| p.token != record.token);
+        probes.push(record);
+        Box::pin(async move { Ok(()) })
+    }
+
+    fn last_for_token(
+        &self,
+        token: &str,
+    ) -> BoxFut<
+        '_,
+        Result<Option<server::ports::inbound_probe_store::InboundProbeRecord>, StoreError>,
+    > {
+        let row = self
+            .probes
+            .read()
+            .unwrap()
+            .iter()
+            .find(|p| p.token == token)
+            .cloned();
+        Box::pin(async move { Ok(row) })
+    }
+
+    fn last_for_flow(
+        &self,
+        project_id: &str,
+        flow_id: &str,
+    ) -> BoxFut<
+        '_,
+        Result<Option<server::ports::inbound_probe_store::InboundProbeRecord>, StoreError>,
+    > {
+        let row = self
+            .probes
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|p| p.project_id == project_id && p.flow_id == flow_id)
+            .max_by_key(|p| p.fired_at)
+            .cloned();
+        Box::pin(async move { Ok(row) })
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Gateway queue (device fetch surface)
 // ---------------------------------------------------------------------------

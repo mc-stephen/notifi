@@ -208,9 +208,11 @@ pub fn compose(
     ));
 
     // Inbound webhook fires: token-authenticated, sessionless. Shares the
-    // send records, templates, and provider wiring.
+    // send records, templates, and provider wiring. Authorized pings
+    // record a last-ping probe (the builder's "Incoming data" tab).
     let inbound = Arc::new(domain::inbound::InboundService::new(
         Arc::new(infra::PgTriggerTokenStore::new(pool.clone())),
+        Arc::new(infra::PgInboundProbeStore::new(pool.clone())),
         Arc::new(infra::PgSendStore::new(pool.clone())),
         Arc::new(infra::PgTemplatesStore::new(pool.clone())),
         channel_providers.clone(),

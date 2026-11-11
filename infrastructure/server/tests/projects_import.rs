@@ -16,8 +16,8 @@ use zip::write::SimpleFileOptions;
 
 use crate::common::{
     FakeApiKeysStore, FakeAuditStore, FakeAuthStore, FakeChannelProviderStore, FakeFlowStore,
-    FakeHttpRequester, FakeRecipientsStore, FakeScheduleStore, FakeSendStore, FakeTemplatesStore,
-    FakeTriggerTokenStore,
+    FakeHttpRequester, FakeInboundProbeStore, FakeRecipientsStore, FakeScheduleStore,
+    FakeSendStore, FakeTemplatesStore, FakeTriggerTokenStore,
 };
 use server::domain::admin::entities::{AdminStatus, AdminUser, AdminUserId};
 use server::domain::api_keys::ApiKeyService;
@@ -121,6 +121,7 @@ async fn fixture() -> Ctx {
     let token_store = Arc::new(FakeTriggerTokenStore::new());
     let inbound = Arc::new(InboundService::new(
         token_store.clone(),
+        Arc::new(FakeInboundProbeStore::new()),
         send_store.clone(),
         template_store.clone() as Arc<dyn server::ports::templates_store::TemplatesStore>,
         channel_providers.clone(),

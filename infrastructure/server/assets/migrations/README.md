@@ -15,6 +15,7 @@ Single-file dev-stage squash, applied automatically at server boot (`src/infra/d
   default 5, admin-raised; tombstones occupy the slot until purge).
 - `0003_project_limit_bigint.sql` — widens `auth_users.project_limit` to `BIGINT`
 - `0004_drop_webhooks_table.sql` — drops the Webhooks page's ownership rows (webhook triggers are definition-born now; flows + `flow_trigger_tokens` survive)
+- `0005_flow_inbound_probes.sql` — adds `flow_inbound_probes`: the last authorized ping per webhook door (IP, whitelisted headers, capped body) for the builder's "Incoming data" tab
   (INT8) to match the repository's `i64` reads/binds; the INT4 it was created as
   refused to decode at runtime (ceiling, project creation, admin user view).
 - Plus: `project_invites` (team invites), `key_ip_allowlist` (per-key IP

@@ -16,6 +16,7 @@ pub mod file_config_store;
 pub mod flow_repository_pg;
 pub mod gateway_store;
 pub mod http_requester;
+pub mod inbound_probe_repository_pg;
 pub mod notifications_repository_pg;
 pub mod oauth_provider_http;
 pub mod provider_tester;
@@ -47,6 +48,7 @@ pub use notifications_repository_pg::PgNotificationsStore;
 pub use provider_tester::ConfigProviderTester;
 pub use r2_config_store::R2ConfigStore;
 
+pub use inbound_probe_repository_pg::PgInboundProbeStore;
 pub use oauth_provider_http::{ProviderCredentials, http_oauth_provider};
 pub use recipients_repository_pg::PgRecipientsStore;
 pub use repository_pg::PgAuthStore;
