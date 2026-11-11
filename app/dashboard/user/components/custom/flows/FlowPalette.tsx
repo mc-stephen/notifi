@@ -223,7 +223,7 @@ export function FlowPalette({ hideTriggers = false }: { hideTriggers?: boolean }
   const openCategory = !query && view.type === "category" ? view.id : null;
 
   return (
-    <div className="flex w-60 shrink-0 flex-col self-stretch border-r border-border bg-card dark:border-white/10 dark:bg-[#0b0b0e]">
+    <div className="flex w-60 shrink-0 flex-col self-stretch border-l border-border bg-card dark:border-white/10 dark:bg-[#0b0b0e]">
       <div className="border-b border-border p-3 dark:border-white/10">
         {openCategory ? (
           <button
