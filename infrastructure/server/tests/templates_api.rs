@@ -58,6 +58,7 @@ fn app_with_templates() -> (Router, Arc<FakeTemplatesStore>) {
                 notifications: None,
                 billing: None,
                 schedules: None,
+                runs: None,
                 campaigns: None,
                 inbound: None,
                 provider_tester: std::sync::Arc::new(ConfigProviderTester::new())

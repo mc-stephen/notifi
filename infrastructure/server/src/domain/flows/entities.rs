@@ -21,6 +21,7 @@ pub struct Flow {
 /// A provider step extracted from a flow definition for execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderStep {
+    pub node_id: String,
     pub channel_id: String,
     pub provider_id: String,
     pub priority: i64,
@@ -104,6 +105,24 @@ pub fn template_node_values(
         .unwrap_or_default()
 }
 
+/// The first node of a type's id in a definition. Run traces attribute
+/// their steps to these; malformed definitions read as none.
+pub fn first_node_id(definition: &serde_json::Value, node_type: &str) -> Option<String> {
+    definition
+        .get("nodes")
+        .and_then(|n| n.as_array())?
+        .iter()
+        .find(|n| n.get("type").and_then(|t| t.as_str()) == Some(node_type))?
+        .get("id")
+        .and_then(|i| i.as_str())
+        .map(str::to_string)
+}
+
+/// The first trigger node's id (any kind).
+pub fn trigger_node_id(definition: &serde_json::Value) -> Option<String> {
+    first_node_id(definition, "trigger")
+}
+
 /// Collects provider steps for one channel, ordered by priority ascending.
 /// Malformed nodes are skipped (the UI validator flags them separately).
 pub fn provider_chain(definition: &serde_json::Value, channel: &str) -> Vec<ProviderStep> {
@@ -120,6 +139,11 @@ pub fn provider_chain(definition: &serde_json::Value, channel: &str) -> Vec<Prov
                 return None;
             }
             Some(ProviderStep {
+                node_id: n
+                    .get("id")
+                    .and_then(|i| i.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
                 channel_id: node_channel.to_string(),
                 provider_id: data
                     .get("providerId")

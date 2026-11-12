@@ -56,6 +56,8 @@ pub struct AppState {
     pub inbound: Option<Arc<crate::domain::inbound::InboundService>>,
     /// Flow schedules (timed runs of assigned flows) — wired alongside auth/db.
     pub schedules: Option<Arc<crate::domain::schedules::ScheduleService>>,
+    /// Run-history recorder + reads (the builder's History tab).
+    pub runs: Option<Arc<crate::domain::flows::runs::RunRecorder>>,
 
     /// Campaigns (flow-less message origins) — wired alongside auth/db.
     pub campaigns: Option<Arc<crate::domain::campaigns::CampaignService>>,

@@ -11,19 +11,24 @@
 //! `template_fallback_presets_render_declared_refs` in
 //! `server/tests/inbound_api.rs`). Anything still missing fails closed.
 //! Runs record send rows, so deliveries show inbound fires like any
-//! other send.
+//! other send — and every authorized fire records a run row (mode
+//! `webhook`) in `flow_runs` for the builder's History tab (see
+//! `domain::flows::runs`); recording is best-effort, and door-rejected
+//! pings (401/403) record no run.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::domain::error::AppError;
+use crate::domain::flows::runs::{MODE_WEBHOOK, RUN_FAILED, RUN_SUCCEEDED, RunRecorder, RunStep};
 use crate::domain::flows::{
     collect_http_steps, deliver_through_chain, fire_http_steps, provider_chain,
 };
 use crate::domain::inbound::entities::{
-    InboundPayload, extract_trigger_tokens, ip_allowed, webhook_node_data,
+    InboundPayload, WebhookNodeConfig, extract_trigger_tokens, ip_allowed, webhook_node_data,
 };
 use crate::domain::schedules::entities::render_template_content;
-use crate::domain::sends::entities::Send;
+use crate::domain::sends::entities::{Send, SendStatus};
 use crate::ports::auth_store::StoreError;
 use crate::ports::inbound_probe_store::{InboundProbeRecord, InboundProbeStore};
 use crate::ports::send_store::SendStore;
@@ -41,6 +46,8 @@ pub struct InboundService {
     providers: Arc<dyn crate::ports::ChannelProviderStore>,
     adapters: Arc<dyn crate::ports::AdapterFactory>,
     http: Arc<dyn crate::ports::HttpRequester>,
+    /// Optional run-history recorder (unset by fakes; compose wires it).
+    runs: Option<Arc<RunRecorder>>,
 }
 
 impl InboundService {
@@ -61,7 +68,14 @@ impl InboundService {
             providers,
             adapters,
             http,
+            runs: None,
         }
+    }
+
+    /// Attaches the run-history recorder (builder History tab).
+    pub fn with_run_recorder(mut self, runs: Arc<RunRecorder>) -> Self {
+        self.runs = Some(runs);
+        self
     }
 
     fn map_store_error(e: StoreError) -> AppError {
@@ -147,6 +161,8 @@ impl InboundService {
         payload: InboundPayload,
         probe: crate::domain::inbound::entities::InboundProbe,
     ) -> Result<Send, AppError> {
+        let started = Instant::now();
+        let started_at = chrono::Utc::now();
         let record = self
             .tokens
             .lookup(token)
@@ -183,7 +199,7 @@ impl InboundService {
         // the builder's "Incoming data" tab. Best-effort: a probe-store
         // failure never fails the fire (this is debug data, not the
         // delivery). Door-auth failures never get here, so rejected
-        // pings aren't probed.
+        // pings aren't probed — and they never record a run either.
         let probe_record = InboundProbeRecord {
             token: token.to_string(),
             flow_id: record.flow_id.clone(),
@@ -198,56 +214,168 @@ impl InboundService {
         let _ = self.probes.record(probe_record).await;
 
         let project_id = record.project_id.clone();
+        let flow_id = record.flow_id.clone();
+        let node_id = record.node_id.clone();
+        let definition = record.flow_definition.clone();
+        let (result, steps) = self
+            .run_flow(&project_id, &node_id, &definition, node, payload, started)
+            .await;
+
+        // Run history — the delivery already happened (or failed
+        // closed); the history write itself never fails the fire.
+        if let Some(runs) = self.runs.as_ref() {
+            let send_id = result.as_ref().ok().map(|s| s.id.clone());
+            let (status, error) = match &result {
+                Ok(send) => match send.status {
+                    SendStatus::Completed => (RUN_SUCCEEDED, None),
+                    _ => (RUN_FAILED, send.last_error.clone()),
+                },
+                Err(e) => (RUN_FAILED, Some(e.to_string())),
+            };
+            runs.record(
+                MODE_WEBHOOK,
+                &project_id,
+                &flow_id,
+                status,
+                error,
+                &steps,
+                send_id.as_deref(),
+                started_at,
+            )
+            .await;
+        }
+        result
+    }
+
+    /// The delivery half of a fire: template render → fallback
+    /// resolution → provider chain → HTTP side steps → send record.
+    /// Returns the send (or the closed validation failure) plus the run
+    /// trace; steps ride graph node ids so the History tab can pin
+    /// outcomes.
+    #[allow(clippy::too_many_arguments)]
+    async fn run_flow(
+        &self,
+        project_id: &str,
+        node_id: &str,
+        definition: &serde_json::Value,
+        node: WebhookNodeConfig,
+        payload: InboundPayload,
+        started: Instant,
+    ) -> (Result<Send, AppError>, Vec<RunStep>) {
+        let mut steps: Vec<RunStep> = Vec::new();
+        steps.push(RunStep {
+            node_id: node_id.to_string(),
+            kind: "trigger".into(),
+            label: "webhook door".into(),
+            status: "ok".into(),
+            detail: None,
+            ms: started.elapsed().as_millis() as u64,
+        });
 
         // Template: caller pick wins, else the node's pick, then render.
         let template_id = payload.template_id.or(node.template_id);
         let mut rendered: Option<(String, String, String)> = None;
         if let Some(tid) = template_id.as_deref() {
-            let template = self
-                .templates
-                .get_by_id(tid)
-                .await
-                .map_err(Self::map_store_error)?
-                .filter(|t| t.project_id == project_id)
-                .ok_or_else(|| AppError::Validation("template not found in this project".into()))?;
-            // Declared refs render from the trigger's stored presets
-            // (the node's `values` map — one entry per declared ref, see
-            // the webhook fallback panel). Caller-side variable plumbing
-            // is still on the road: a payload `data` map will override
-            // these the day inbound carries it (proven by
-            // `template_fallback_presets_render_declared_refs` in
-            // `server/tests/inbound_api.rs`).
-            let content =
-                render_template_content(&template.content, &node.values).ok_or_else(|| {
-                    AppError::Validation("template covers no renderable channels".into())
-                })?;
-            rendered = Some((content.channel, content.title, content.body));
+            let template = match self.templates.get_by_id(tid).await {
+                Ok(Some(t)) if t.project_id == project_id => t,
+                Ok(_) => {
+                    steps.push(RunStep {
+                        node_id: node_id.to_string(),
+                        kind: "template".into(),
+                        label: tid.to_string(),
+                        status: "failed".into(),
+                        detail: Some("template not found in this project".into()),
+                        ms: started.elapsed().as_millis() as u64,
+                    });
+                    return (
+                        Err(AppError::Validation(
+                            "template not found in this project".into(),
+                        )),
+                        steps,
+                    );
+                }
+                Err(e) => return (Err(Self::map_store_error(e)), steps),
+            };
+            match render_template_content(&template.content, &node.values) {
+                Some(content) => {
+                    steps.push(RunStep {
+                        node_id: node_id.to_string(),
+                        kind: "template".into(),
+                        label: template.name.clone(),
+                        status: "ok".into(),
+                        detail: None,
+                        ms: started.elapsed().as_millis() as u64,
+                    });
+                    rendered = Some((content.channel, content.title, content.body));
+                }
+                None => {
+                    steps.push(RunStep {
+                        node_id: node_id.to_string(),
+                        kind: "template".into(),
+                        label: template.name.clone(),
+                        status: "failed".into(),
+                        detail: Some("template covers no renderable channels".into()),
+                        ms: started.elapsed().as_millis() as u64,
+                    });
+                    return (
+                        Err(AppError::Validation(
+                            "template covers no renderable channels".into(),
+                        )),
+                        steps,
+                    );
+                }
+            }
         }
 
-        let channel = payload
+        // Fallback resolution — anything still missing fails closed.
+        let resolve_failed = |steps: &mut Vec<RunStep>, detail: String, started: Instant| {
+            steps.push(RunStep {
+                node_id: node_id.to_string(),
+                kind: "resolve".into(),
+                label: "resolve".into(),
+                status: "failed".into(),
+                detail: Some(detail),
+                ms: started.elapsed().as_millis() as u64,
+            });
+        };
+        let channel = match payload
             .channel
             .map(|c| c.trim().to_string())
             .filter(|c| !c.is_empty())
             .or(node.channel)
             .or_else(|| rendered.as_ref().map(|r| r.0.clone()))
-            .ok_or_else(|| AppError::Validation("channel is required".into()))?;
+        {
+            Some(c) => c,
+            None => {
+                let e = "channel is required".to_string();
+                resolve_failed(&mut steps, e.clone(), started);
+                return (Err(AppError::Validation(e)), steps);
+            }
+        };
         let recipients = payload.recipients.unwrap_or(node.recipients);
         if recipients.is_empty() {
-            return Err(AppError::Validation(
-                "at least one recipient is required".into(),
-            ));
+            let e = "at least one recipient is required".to_string();
+            resolve_failed(&mut steps, e.clone(), started);
+            return (Err(AppError::Validation(e)), steps);
         }
         if recipients.len() > MAX_RECIPIENTS {
-            return Err(AppError::Validation(format!(
-                "at most {MAX_RECIPIENTS} recipients per request"
-            )));
+            let e = format!("at most {MAX_RECIPIENTS} recipients per request");
+            resolve_failed(&mut steps, e.clone(), started);
+            return (Err(AppError::Validation(e)), steps);
         }
-        let title = payload
+        let title = match payload
             .title
             .map(|t| t.trim().to_string())
             .filter(|t| !t.is_empty())
             .or_else(|| rendered.as_ref().map(|r| r.1.clone()))
-            .ok_or_else(|| AppError::Validation("title is required".into()))?;
+        {
+            Some(t) => t,
+            None => {
+                let e = "title is required".to_string();
+                resolve_failed(&mut steps, e.clone(), started);
+                return (Err(AppError::Validation(e)), steps);
+            }
+        };
         let body = payload.body.unwrap_or_default().trim().to_string();
         let body = if body.is_empty() {
             rendered.as_ref().map(|r| r.2.clone()).unwrap_or_default()
@@ -256,72 +384,99 @@ impl InboundService {
         };
 
         let now = chrono::Utc::now();
-        let definition = record.flow_definition.clone();
-        let flow_id = record.flow_id.clone();
-        let chain = provider_chain(&definition, &channel);
         let recipients_json = serde_json::Value::Array(
             recipients
                 .iter()
                 .map(|r| serde_json::Value::String(r.clone()))
                 .collect(),
         );
-        let record = self
+        let send_row = match self
             .sends
-            .create(&project_id, &channel, &recipients_json, &title, &body, now)
+            .create(project_id, &channel, &recipients_json, &title, &body, now)
             .await
-            .map_err(Self::map_store_error)?;
+        {
+            Ok(row) => row,
+            Err(e) => return (Err(Self::map_store_error(e)), steps),
+        };
 
-        let mut delivered: Option<(String, Option<String>)> = None;
-        let mut last_error = format!("no provider route for channel '{channel}'");
-        if !chain.is_empty() {
-            match deliver_through_chain(
-                &self.providers,
-                &self.adapters,
-                &project_id,
-                &chain,
-                &channel,
-                &recipients,
-                &title,
-                &body,
-            )
-            .await
-            {
-                Ok(done) => delivered = Some(done),
-                Err(e) => last_error = e,
-            }
+        // The provider chain walk (empty chain fails with the terminal
+        // message from the walker itself) + the HTTP side steps.
+        let chain = provider_chain(definition, &channel);
+        let (delivery, attempts) = deliver_through_chain(
+            &self.providers,
+            &self.adapters,
+            project_id,
+            &chain,
+            &channel,
+            &recipients,
+            &title,
+            &body,
+        )
+        .await;
+        for a in attempts {
+            steps.push(RunStep {
+                node_id: a.node_id,
+                kind: "provider".into(),
+                label: a.provider_id,
+                status: if a.ok { "ok" } else { "failed" }.into(),
+                detail: a.error,
+                ms: a.ms,
+            });
         }
-        for outcome in fire_http_steps(&self.http, &collect_http_steps(&definition)).await {
-            if !outcome.ok {
+        let http_steps = collect_http_steps(definition);
+        for outcome in fire_http_steps(&self.http, &http_steps).await {
+            let label = http_steps
+                .iter()
+                .find(|s| s.node_id == outcome.node_id)
+                .map(|s| format!("{} {}", s.method, s.url))
+                .unwrap_or_else(|| "http step".into());
+            let detail = if !outcome.ok {
                 tracing::warn!(
-                    flow_id = %flow_id,
                     node_id = %outcome.node_id,
                     status = ?outcome.status,
                     error = ?outcome.error,
                     "inbound HTTP step failed"
                 );
-            }
+                outcome
+                    .error
+                    .or_else(|| outcome.status.map(|s| format!("status {s}")))
+            } else {
+                outcome.status.map(|s| format!("status {s}"))
+            };
+            steps.push(RunStep {
+                node_id: outcome.node_id,
+                kind: "http-request".into(),
+                label,
+                status: if outcome.ok { "ok" } else { "failed" }.into(),
+                detail,
+                ms: 0,
+            });
         }
-        match delivered {
-            Some((provider, external_id)) => {
-                let done = self
+        match delivery {
+            Ok((provider, external_id)) => {
+                match self
                     .sends
-                    .mark_completed(&record.id, &provider, external_id.as_deref())
+                    .mark_completed(&send_row.id, &provider, external_id.as_deref())
                     .await
-                    .map_err(Self::map_store_error)?;
-                Ok(crate::domain::sends::services::to_send(
-                    done.unwrap_or(record),
-                ))
+                {
+                    Ok(done) => (
+                        Ok(crate::domain::sends::services::to_send(
+                            done.unwrap_or(send_row),
+                        )),
+                        steps,
+                    ),
+                    Err(e) => (Err(Self::map_store_error(e)), steps),
+                }
             }
-            None => {
-                let failed = self
-                    .sends
-                    .mark_failed(&record.id, &last_error)
-                    .await
-                    .map_err(Self::map_store_error)?;
-                Ok(crate::domain::sends::services::to_send(
-                    failed.unwrap_or(record),
-                ))
-            }
+            Err(last_error) => match self.sends.mark_failed(&send_row.id, &last_error).await {
+                Ok(failed) => (
+                    Ok(crate::domain::sends::services::to_send(
+                        failed.unwrap_or(send_row),
+                    )),
+                    steps,
+                ),
+                Err(e) => (Err(Self::map_store_error(e)), steps),
+            },
         }
     }
 }

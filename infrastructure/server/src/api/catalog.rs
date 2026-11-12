@@ -597,6 +597,20 @@ pub const APP_ROUTES: &[RouteInfo] = &[
         feature: "flows",
         description: "the last authorized ping a webhook door received (?token= scopes to one door) — the builder's Incoming data tab",
     },
+    RouteInfo {
+        method: "GET",
+        path: "/app/flows/{id}/runs",
+        surface: Surface::App,
+        feature: "flows",
+        description: "the flow's run history, newest first (?limit=) — status, mode, timing, error per run",
+    },
+    RouteInfo {
+        method: "GET",
+        path: "/app/flows/{id}/runs/{run_id}",
+        surface: Surface::App,
+        feature: "flows",
+        description: "one run's full record with the steps trace (per-node outcomes) — the builder's History detail",
+    },
     // -- schedules feature --------------------------------------------------
     RouteInfo {
         method: "GET",

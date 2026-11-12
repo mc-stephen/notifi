@@ -4,12 +4,18 @@
 //! default flow, walks its provider chain by priority with fallback, and
 //! marks the row completed/failed — all inside the request. Scheduled
 //! sends, retries, and per-attempt history arrive in Phase B.
+//!
+//! Every candidate flow that runs records a run row (mode `event`) in
+//! `flow_runs` — the builder's History tab replays it (see
+//! `domain::flows::runs`); recording is best-effort and never fails the
+//! send.
 
 use std::sync::Arc;
 
 use crate::domain::auth::entities::UserId;
 use crate::domain::error::AppError;
 use crate::domain::flows::entities::ProviderStep;
+use crate::domain::flows::runs::{MODE_EVENT, RUN_FAILED, RUN_SUCCEEDED};
 use crate::domain::flows::{FlowService, handles_event, provider_chain};
 use crate::domain::sends::entities::{Send, SendInput, SendStatus};
 use crate::ports::auth_store::StoreError;
@@ -64,6 +70,8 @@ pub struct SendService {
     providers: Arc<dyn ChannelProviderStore>,
     adapters: Arc<dyn crate::ports::AdapterFactory>,
     http: Arc<dyn crate::ports::HttpRequester>,
+    /// Optional run-history recorder (unset by fakes; compose wires it).
+    runs: Option<Arc<crate::domain::flows::runs::RunRecorder>>,
 }
 
 impl SendService {
@@ -80,7 +88,14 @@ impl SendService {
             providers,
             adapters,
             http,
+            runs: None,
         }
+    }
+
+    /// Attaches the run-history recorder (builder History tab).
+    pub fn with_run_recorder(mut self, runs: Arc<crate::domain::flows::runs::RunRecorder>) -> Self {
+        self.runs = Some(runs);
+        self
     }
 
     fn map_store_error(e: StoreError) -> AppError {
@@ -197,7 +212,9 @@ impl SendService {
             title: input.title.trim(),
             body: &input.body,
         };
-        let (provider, external_id) = self.walk_candidates(&candidates, &delivery, false).await;
+        let (provider, external_id) = self
+            .walk_candidates(&candidates, &delivery, false, &record.id)
+            .await;
 
         match provider {
             Some((provider, external_id)) => {
@@ -280,6 +297,7 @@ impl SendService {
                 .enumerate()
                 .filter(|(_, c)| c.channel_id == row.channel && c.enabled)
                 .map(|(priority, c)| ProviderStep {
+                    node_id: String::new(),
                     channel_id: row.channel.clone(),
                     provider_id: c.provider_id.clone(),
                     priority: priority as i64,
@@ -320,13 +338,13 @@ impl SendService {
             )
             .await
             {
-                Ok((provider, external_id)) => {
+                (Ok((provider, external_id)), _) => {
                     let _ = self
                         .store
                         .mark_completed(&row.id, &provider, external_id.as_deref())
                         .await;
                 }
-                Err(e) => {
+                (Err(e), _) => {
                     let _ = self.store.mark_failed(&row.id, &e).await;
                 }
             }
@@ -342,6 +360,10 @@ impl SendService {
     /// `Some((provider, external id))` of the first flow that delivered
     /// fully, else `None` plus the last error message.
     ///
+    /// Every flow that actually runs records a run row (mode `event`,
+    /// traced steps — trigger, provider attempts, HTTP steps) against
+    /// the send row the caller created; recording is best-effort.
+    ///
     /// `stop_on_first` short-circuits after the first flow delivers —
     /// used by campaign rows where one row is one message. Direct sends
     /// keep walking every candidate flow (pre-campaign behavior).
@@ -350,15 +372,27 @@ impl SendService {
         flows: &[crate::domain::flows::Flow],
         delivery: &Delivery<'_>,
         stop_on_first: bool,
+        send_row_id: &str,
     ) -> (Option<(String, Option<String>)>, Option<String>) {
         let mut delivered: Option<(String, Option<String>)> = None;
         let mut last_error = format!("no provider route for channel '{}'", delivery.channel);
         for flow in flows {
+            let started_at = chrono::Utc::now();
+            let mut steps: Vec<crate::domain::flows::runs::RunStep> = Vec::new();
+            steps.push(crate::domain::flows::runs::RunStep {
+                node_id: crate::domain::flows::trigger_node_id(&flow.definition)
+                    .unwrap_or_default(),
+                kind: "trigger".into(),
+                label: "notification.created".into(),
+                status: "ok".into(),
+                detail: None,
+                ms: 0,
+            });
             let chain = provider_chain(&flow.definition, delivery.channel);
             if chain.is_empty() {
                 continue;
             }
-            match crate::domain::flows::deliver_through_chain(
+            let (outcome, attempts) = crate::domain::flows::deliver_through_chain(
                 &self.providers,
                 &self.adapters,
                 delivery.project_id,
@@ -368,27 +402,28 @@ impl SendService {
                 delivery.title,
                 delivery.body,
             )
-            .await
-            {
-                Ok(done) => {
-                    if delivered.is_none() {
-                        delivered = Some(done);
-                    }
-                }
-                Err(e) => {
-                    last_error = e;
-                }
+            .await;
+            for attempt in attempts {
+                steps.push(crate::domain::flows::runs::RunStep {
+                    node_id: attempt.node_id,
+                    kind: "provider".into(),
+                    label: attempt.provider_id,
+                    status: if attempt.ok { "ok" } else { "failed" }.into(),
+                    detail: attempt.error,
+                    ms: attempt.ms,
+                });
             }
             // HTTP Request steps fire once per flow run, whatever the
             // delivery outcome. Failures log server-side only: they never
             // fail the send and never appear in deliveries.
-            for outcome in crate::domain::flows::fire_http_steps(
-                &self.http,
-                &crate::domain::flows::collect_http_steps(&flow.definition),
-            )
-            .await
-            {
-                if !outcome.ok {
+            let http_steps = crate::domain::flows::collect_http_steps(&flow.definition);
+            for outcome in crate::domain::flows::fire_http_steps(&self.http, &http_steps).await {
+                let label = http_steps
+                    .iter()
+                    .find(|s| s.node_id == outcome.node_id)
+                    .map(|s| format!("{} {}", s.method, s.url))
+                    .unwrap_or_else(|| "http step".into());
+                let detail = if !outcome.ok {
                     tracing::warn!(
                         flow_id = %flow.id,
                         node_id = %outcome.node_id,
@@ -396,6 +431,47 @@ impl SendService {
                         error = ?outcome.error,
                         "flow HTTP step failed"
                     );
+                    outcome
+                        .error
+                        .or_else(|| outcome.status.map(|s| format!("status {s}")))
+                } else {
+                    outcome.status.map(|s| format!("status {s}"))
+                };
+                steps.push(crate::domain::flows::runs::RunStep {
+                    node_id: outcome.node_id,
+                    kind: "http-request".into(),
+                    label,
+                    status: if outcome.ok { "ok" } else { "failed" }.into(),
+                    detail,
+                    ms: 0,
+                });
+            }
+            // Run history — one row per flow that ran; never fatal.
+            if let Some(runs) = self.runs.as_ref() {
+                let (status, error) = match &outcome {
+                    Ok(_) => (RUN_SUCCEEDED, None),
+                    Err(e) => (RUN_FAILED, Some(e.clone())),
+                };
+                runs.record(
+                    MODE_EVENT,
+                    delivery.project_id,
+                    &flow.id,
+                    status,
+                    error,
+                    &steps,
+                    Some(send_row_id),
+                    started_at,
+                )
+                .await;
+            }
+            match outcome {
+                Ok(done) => {
+                    if delivered.is_none() {
+                        delivered = Some(done);
+                    }
+                }
+                Err(e) => {
+                    last_error = e;
                 }
             }
             if stop_on_first && delivered.is_some() {

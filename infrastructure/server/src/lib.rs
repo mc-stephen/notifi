@@ -268,6 +268,7 @@ fn run_inner() -> Result<(), String> {
                 sends: services.map(|s| s.sends.clone()),
                 inbound: services.map(|s| s.inbound.clone()),
                 schedules: services.map(|s| s.schedules.clone()),
+                runs: services.map(|s| s.runs.clone()),
                 campaigns: services.map(|s| s.campaigns.clone()),
                 notifications: services.map(|s| s.notifications.clone()),
                 gateway,

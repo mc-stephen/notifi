@@ -63,6 +63,7 @@ fn app_with_billing() -> (Router, Arc<FakeBillingStore>) {
                 notifications: None,
                 billing: Some(billing),
                 schedules: None,
+                runs: None,
                 campaigns: None,
                 inbound: None,
                 provider_tester: Arc::new(ConfigProviderTester::new())

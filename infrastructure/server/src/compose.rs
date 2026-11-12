@@ -42,6 +42,7 @@ pub struct ServiceGraph {
     pub sends: Arc<domain::sends::SendService>,
     pub schedules: Arc<domain::schedules::ScheduleService>,
     pub inbound: Arc<domain::inbound::InboundService>,
+    pub runs: Arc<domain::flows::runs::RunRecorder>,
     pub campaigns: Arc<domain::campaigns::CampaignService>,
 }
 
@@ -182,45 +183,61 @@ pub fn compose(
     let gateway_queue = Arc::new(infra::gateway_store::PgGatewayStore::new(pool.clone()))
         as Arc<dyn ports::GatewayStore + Send + Sync>;
 
+    // Run history: one row per completed flow run (webhook fire, schedule
+    // run, event-triggered send) — the builder's History tab. All three
+    // run paths share the recorder; writes are best-effort.
+    let run_recorder = Arc::new(domain::flows::runs::RunRecorder::new(Arc::new(
+        infra::PgFlowRunStore::new(pool.clone()),
+    )));
+
     // Sends: record-first product sends executed through default flows.
-    let sends = Arc::new(domain::sends::SendService::new(
-        Arc::new(infra::PgSendStore::new(pool.clone())),
-        flows.clone(),
-        channel_providers.clone(),
-        Arc::new(infra::delivery_adapters::DefaultAdapterFactory::new(
-            gateway_queue.clone(),
-        )),
-        Arc::new(infra::ReqwestHttpRequester::new()),
-    ));
+    let sends = Arc::new(
+        domain::sends::SendService::new(
+            Arc::new(infra::PgSendStore::new(pool.clone())),
+            flows.clone(),
+            channel_providers.clone(),
+            Arc::new(infra::delivery_adapters::DefaultAdapterFactory::new(
+                gateway_queue.clone(),
+            )),
+            Arc::new(infra::ReqwestHttpRequester::new()),
+        )
+        .with_run_recorder(run_recorder.clone()),
+    );
 
     // Flow schedules: timed runs of assigned flows. Built after sends
     // (execution records send rows) with the same provider wiring.
-    let schedules = Arc::new(domain::schedules::ScheduleService::new(
-        Arc::new(infra::PgScheduleStore::new(pool.clone())),
-        Arc::new(infra::PgFlowStore::new(pool.clone())),
-        Arc::new(infra::PgSendStore::new(pool.clone())),
-        Arc::new(infra::PgTemplatesStore::new(pool.clone())),
-        channel_providers.clone(),
-        Arc::new(infra::delivery_adapters::DefaultAdapterFactory::new(
-            gateway_queue.clone(),
-        )),
-        Arc::new(infra::ReqwestHttpRequester::new()),
-    ));
+    let schedules = Arc::new(
+        domain::schedules::ScheduleService::new(
+            Arc::new(infra::PgScheduleStore::new(pool.clone())),
+            Arc::new(infra::PgFlowStore::new(pool.clone())),
+            Arc::new(infra::PgSendStore::new(pool.clone())),
+            Arc::new(infra::PgTemplatesStore::new(pool.clone())),
+            channel_providers.clone(),
+            Arc::new(infra::delivery_adapters::DefaultAdapterFactory::new(
+                gateway_queue.clone(),
+            )),
+            Arc::new(infra::ReqwestHttpRequester::new()),
+        )
+        .with_run_recorder(run_recorder.clone()),
+    );
 
     // Inbound webhook fires: token-authenticated, sessionless. Shares the
     // send records, templates, and provider wiring. Authorized pings
     // record a last-ping probe (the builder's "Incoming data" tab).
-    let inbound = Arc::new(domain::inbound::InboundService::new(
-        Arc::new(infra::PgTriggerTokenStore::new(pool.clone())),
-        Arc::new(infra::PgInboundProbeStore::new(pool.clone())),
-        Arc::new(infra::PgSendStore::new(pool.clone())),
-        Arc::new(infra::PgTemplatesStore::new(pool.clone())),
-        channel_providers.clone(),
-        Arc::new(infra::delivery_adapters::DefaultAdapterFactory::new(
-            gateway_queue,
-        )),
-        Arc::new(infra::ReqwestHttpRequester::new()),
-    ));
+    let inbound = Arc::new(
+        domain::inbound::InboundService::new(
+            Arc::new(infra::PgTriggerTokenStore::new(pool.clone())),
+            Arc::new(infra::PgInboundProbeStore::new(pool.clone())),
+            Arc::new(infra::PgSendStore::new(pool.clone())),
+            Arc::new(infra::PgTemplatesStore::new(pool.clone())),
+            channel_providers.clone(),
+            Arc::new(infra::delivery_adapters::DefaultAdapterFactory::new(
+                gateway_queue,
+            )),
+            Arc::new(infra::ReqwestHttpRequester::new()),
+        )
+        .with_run_recorder(run_recorder.clone()),
+    );
 
     // Data exports: the project-download service. Stores only — reads are
     // already tombstone-tolerant where needed; rate limiting and the audit
@@ -317,6 +334,7 @@ pub fn compose(
         sends,
         schedules,
         inbound,
+        runs: run_recorder.clone(),
         campaigns,
     }
 }

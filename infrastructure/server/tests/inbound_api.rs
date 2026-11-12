@@ -14,8 +14,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::common::{
     FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeBillingStore, FakeChannelProviderStore,
-    FakeFlowStore, FakeHttpRequester, FakeInboundProbeStore, FakeSendStore, FakeTemplatesStore,
-    FakeTriggerTokenStore,
+    FakeFlowRunStore, FakeFlowStore, FakeHttpRequester, FakeInboundProbeStore, FakeSendStore,
+    FakeTemplatesStore, FakeTriggerTokenStore,
 };
 use axum::Router;
 use axum::body::Body;
@@ -63,7 +63,7 @@ impl DeliveryProvider for StubAdapter {
 }
 
 struct StubFactory {
-    fail: Mutex<HashSet<String>>,
+    fail: Arc<Mutex<HashSet<String>>>,
 }
 
 impl AdapterFactory for StubFactory {
@@ -87,6 +87,9 @@ struct Fakes {
     channels: Arc<FakeChannelProviderStore>,
     templates: Arc<FakeTemplatesStore>,
     probes: Arc<FakeInboundProbeStore>,
+    run_rows: Arc<FakeFlowRunStore>,
+    /// Provider ids the stub adapters fail for (test-controlled).
+    fail: Arc<Mutex<HashSet<String>>>,
 }
 
 fn app_with_inbound() -> (Router, Fakes) {
@@ -111,27 +114,31 @@ fn app_with_inbound() -> (Router, Fakes) {
     let templates = Arc::new(TemplateService::new(template_store.clone(), audit.clone()));
     let token_store = Arc::new(FakeTriggerTokenStore::new());
     let probe_store = Arc::new(FakeInboundProbeStore::new());
+    let run_rows = Arc::new(FakeFlowRunStore::new());
+    let fail = Arc::new(Mutex::new(HashSet::new()));
     let http = Arc::new(FakeHttpRequester::new());
     let sends = Arc::new(SendService::new(
         send_store.clone(),
         flows.clone(),
         channel_providers.clone(),
-        Arc::new(StubFactory {
-            fail: Mutex::new(HashSet::new()),
-        }),
+        Arc::new(StubFactory { fail: fail.clone() }),
         http.clone(),
     ));
-    let inbound = Arc::new(InboundService::new(
-        token_store.clone(),
-        probe_store.clone(),
-        send_store.clone(),
-        template_store.clone(),
-        channel_providers.clone(),
-        Arc::new(StubFactory {
-            fail: Mutex::new(HashSet::new()),
-        }),
-        http.clone(),
+    let run_recorder = Arc::new(server::domain::flows::runs::RunRecorder::new(
+        run_rows.clone(),
     ));
+    let inbound = Arc::new(
+        InboundService::new(
+            token_store.clone(),
+            probe_store.clone(),
+            send_store.clone(),
+            template_store.clone(),
+            channel_providers.clone(),
+            Arc::new(StubFactory { fail: fail.clone() }),
+            http.clone(),
+        )
+        .with_run_recorder(run_recorder.clone()),
+    );
     let app = build_router(
         AppState {
             db: None,
@@ -157,6 +164,7 @@ fn app_with_inbound() -> (Router, Fakes) {
             flows: Some(flows),
             sends: Some(sends),
             schedules: None,
+            runs: Some(run_recorder),
             campaigns: None,
             inbound: Some(inbound),
             notifications: None,
@@ -174,6 +182,8 @@ fn app_with_inbound() -> (Router, Fakes) {
             channels: channel_providers,
             templates: template_store,
             probes: probe_store,
+            run_rows,
+            fail,
         },
     )
 }
@@ -745,5 +755,132 @@ async fn webhook_probe_skips_door_auth_failures() {
     assert!(
         body_json(res).await["probe"].is_null(),
         "other doors read as none"
+    );
+}
+
+#[tokio::test]
+async fn webhook_fire_records_run_history() {
+    let (app, fakes) = app_with_inbound();
+    let (token, project) = setup_project(app.clone(), &fakes, "history@x.com", "P").await;
+    let flow = create_flow(
+        app.clone(),
+        &token,
+        &project,
+        webhook_flow_definition(TOKEN_A),
+    )
+    .await;
+
+    // A delivered fire: one run row, mode webhook, succeeded, traced.
+    let res = post_json(
+        app.clone(),
+        &format!("/v1/hooks/{TOKEN_A}"),
+        Some(json!({"channel": "email", "recipients": ["u"], "title": "hello"})),
+        "",
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let send_id = body_json(res).await["notification"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = get_json(
+        app.clone(),
+        &format!("/app/flows/{flow}/runs?project_id={project}"),
+        &token,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let runs = body_json(res).await["runs"].as_array().unwrap().clone();
+    assert_eq!(runs.len(), 1, "one delivered fire = one run");
+    assert_eq!(runs[0]["mode"], "webhook");
+    assert_eq!(runs[0]["status"], "succeeded");
+    assert_eq!(runs[0]["sendId"], send_id.as_str());
+    assert!(runs[0]["error"].is_null());
+
+    // The detail view carries the steps trace: trigger + provider hop.
+    let run_id = runs[0]["id"].as_str().unwrap().to_string();
+    let res = get_json(
+        app.clone(),
+        &format!("/app/flows/{flow}/runs/{run_id}?project_id={project}"),
+        &token,
+    )
+    .await;
+    let run = body_json(res).await["run"].clone();
+    let steps = run["steps"].as_array().unwrap();
+    assert_eq!(steps[0]["nodeId"], "t", "the door node opens the trace");
+    assert_eq!(steps[0]["kind"], "trigger");
+    assert!(
+        steps
+            .iter()
+            .any(|s| s["nodeId"] == "p1" && s["kind"] == "provider" && s["status"] == "ok"),
+        "the provider attempt rides the trace"
+    );
+
+    // A fire whose provider fails records a failed run — the terminal
+    // error and the failed provider hop are both kept.
+    fakes.fail.lock().unwrap().insert("smtp".into());
+    let res = post_json(
+        app.clone(),
+        &format!("/v1/hooks/{TOKEN_A}"),
+        Some(json!({"channel": "email", "recipients": ["u"], "title": "bye"})),
+        "",
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        body_json(res).await["notification"]["status"],
+        json!("failed")
+    );
+
+    let res = get_json(
+        app.clone(),
+        &format!("/app/flows/{flow}/runs?project_id={project}"),
+        &token,
+    )
+    .await;
+    let runs = body_json(res).await["runs"].as_array().unwrap().clone();
+    assert_eq!(runs.len(), 2, "both fires recorded");
+    assert_eq!(runs[0]["status"], "failed", "newest first");
+    assert!(
+        runs[0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("provider 'smtp' has no sender yet"),
+        "the terminal error is kept: {}",
+        runs[0]["error"]
+    );
+
+    // The failed run's trace carries the failed provider hop.
+    let failed_run_id = runs[0]["id"].as_str().unwrap().to_string();
+    let res = get_json(
+        app.clone(),
+        &format!("/app/flows/{flow}/runs/{failed_run_id}?project_id={project}"),
+        &token,
+    )
+    .await;
+    let steps = body_json(res).await["run"]["steps"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert!(
+        steps
+            .iter()
+            .any(|s| s["nodeId"] == "p1" && s["kind"] == "provider" && s["status"] == "failed"),
+        "the failed hop rides the trace"
+    );
+
+    // A foreign flow's id reads no runs; an unknown run id reads null.
+    let res = get_json(
+        app.clone(),
+        &format!("/app/flows/{flow}/runs/nope?project_id={project}"),
+        &token,
+    )
+    .await;
+    assert!(body_json(res).await["run"].is_null());
+    assert_eq!(
+        fakes.run_rows.all().len(),
+        2,
+        "the fake store holds both rows"
     );
 }

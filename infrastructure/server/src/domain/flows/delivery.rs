@@ -3,18 +3,35 @@
 //! One implementation serves ad-hoc sends, schedule runs, and inbound
 //! webhook fires: walk the steps by priority with fallback, delivering
 //! the same content to every recipient through the winning provider.
+//! Alongside the outcome it reports a per-step [`ChainAttempt`] trace —
+//! the flow run history folds it into the run's `steps` (node ids ride
+//! the chain when the walk came from graph nodes).
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::domain::flows::entities::ProviderStep;
 
 /// Per-attempt network budget before the chain falls through.
 pub const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// One chain step's outcome — success, provider failure, timeout, or a
+/// configuration miss that made the chain fall through. The flow run
+/// history turns these into the run's `steps` trace entries.
+#[derive(Debug, Clone)]
+pub struct ChainAttempt {
+    pub node_id: String,
+    pub channel_id: String,
+    pub provider_id: String,
+    pub ok: bool,
+    pub error: Option<String>,
+    pub ms: u64,
+}
+
 /// Walks one flow's provider chain by priority with fallback. `Ok`
 /// carries (provider, external id) on full delivery; `Err` carries the
-/// terminal error otherwise.
+/// terminal error otherwise. Both arms carry the per-step attempts so
+/// callers can record what happened at each hop.
 #[allow(clippy::too_many_arguments)]
 pub async fn deliver_through_chain(
     providers: &Arc<dyn crate::ports::ChannelProviderStore>,
@@ -25,9 +42,19 @@ pub async fn deliver_through_chain(
     recipients: &[String],
     title: &str,
     body: &str,
-) -> Result<(String, Option<String>), String> {
+) -> (Result<(String, Option<String>), String>, Vec<ChainAttempt>) {
+    let mut attempts: Vec<ChainAttempt> = Vec::new();
     let mut last_error = format!("no provider route for channel '{channel}'");
     for step in chain {
+        let started = Instant::now();
+        let attempt = |ok: bool, error: Option<String>| ChainAttempt {
+            node_id: step.node_id.clone(),
+            channel_id: step.channel_id.clone(),
+            provider_id: step.provider_id.clone(),
+            ok,
+            error,
+            ms: started.elapsed().as_millis() as u64,
+        };
         let config = match providers
             .get_by_project_channel_provider(project_id, &step.channel_id, &step.provider_id)
             .await
@@ -38,10 +65,12 @@ pub async fn deliver_through_chain(
                     "provider '{}' is not configured for channel '{}'",
                     step.provider_id, step.channel_id
                 );
+                attempts.push(attempt(false, Some(last_error.clone())));
                 continue;
             }
             Err(e) => {
                 last_error = format!("provider lookup failed: {e}");
+                attempts.push(attempt(false, Some(last_error.clone())));
                 continue;
             }
         };
@@ -52,6 +81,7 @@ pub async fn deliver_through_chain(
                 "provider '{}' has no sender yet (channel '{}')",
                 step.provider_id, step.channel_id
             );
+            attempts.push(attempt(false, Some(last_error.clone())));
             continue;
         };
         let mut step_ok = true;
@@ -81,8 +111,13 @@ pub async fn deliver_through_chain(
             }
         }
         if step_ok {
-            return Ok((step.provider_id.clone(), step_receipt_external));
+            attempts.push(attempt(true, None));
+            return (
+                Ok((step.provider_id.clone(), step_receipt_external)),
+                attempts,
+            );
         }
+        attempts.push(attempt(false, Some(last_error.clone())));
     }
-    Err(last_error)
+    (Err(last_error), attempts)
 }

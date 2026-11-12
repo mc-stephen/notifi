@@ -22,6 +22,7 @@ use crate::domain::schedules::ScheduleService;
 type MaybeFlowService = Option<Extension<Arc<FlowService>>>;
 type MaybeScheduleService = Option<Extension<Arc<ScheduleService>>>;
 type MaybeInboundService = Option<Extension<Arc<InboundService>>>;
+type MaybeRunRecorder = Option<Extension<Arc<crate::domain::flows::runs::RunRecorder>>>;
 
 fn require_service(extension: MaybeFlowService) -> Result<Arc<FlowService>, Problem> {
     extension
@@ -219,6 +220,82 @@ pub async fn last_inbound_probe(
                 "forwardedFor": p.forwarded_for,
                 "body": p.body,
                 "firedAt": p.fired_at.to_rfc3339(),
+            })),
+        })),
+    ))
+}
+
+/// `GET /app/flows/:id/runs?project_id=&limit=` — the flow's run history,
+/// newest first: one entry per completed execution (webhook fire,
+/// schedule run, event-triggered send) with status, trigger mode,
+/// timing, and the terminal error. The builder's History tab list.
+pub async fn list_flow_runs(
+    CurrentUser(user): CurrentUser,
+    service: MaybeFlowService,
+    runs: MaybeRunRecorder,
+    Path(id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
+    let service = require_service(service)?;
+    let project = project_id(&query)?;
+    // Membership + existence ride the same check the builder's GET uses.
+    service.get(user.id, project, &id).await?;
+    let runs = runs
+        .map(|Extension(runs)| runs)
+        .ok_or(AppError::NotConfigured)?;
+    let limit: i64 = query
+        .get("limit")
+        .and_then(|l| l.parse().ok())
+        .unwrap_or(50)
+        .clamp(1, 100);
+    let rows = runs.list(project, &id, limit).await?;
+    let dtos: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.id,
+                "mode": r.mode,
+                "status": r.status,
+                "error": r.error,
+                "startedAt": r.started_at.to_rfc3339(),
+                "finishedAt": r.finished_at.map(|t| t.to_rfc3339()),
+                "sendId": r.send_id,
+            })
+        })
+        .collect();
+    Ok((StatusCode::OK, Json(serde_json::json!({ "runs": dtos }))))
+}
+
+/// `GET /app/flows/:id/runs/{run_id}?project_id=` — one run's full
+/// record, `steps` trace included: one entry per node outcome
+/// (trigger, template, provider attempt, HTTP step) with its duration
+/// and detail. Read-only — a run read never re-executes anything.
+pub async fn get_flow_run(
+    CurrentUser(user): CurrentUser,
+    service: MaybeFlowService,
+    runs: MaybeRunRecorder,
+    Path((id, run_id)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Result<(StatusCode, Json<serde_json::Value>), Problem> {
+    let service = require_service(service)?;
+    let project = project_id(&query)?;
+    service.get(user.id, project, &id).await?;
+    let runs = runs
+        .map(|Extension(runs)| runs)
+        .ok_or(AppError::NotConfigured)?;
+    let run = runs.get(project, &id, &run_id).await?;
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "run": run.map(|r| serde_json::json!({
+                "id": r.id,
+                "mode": r.mode,
+                "status": r.status,
+                "error": r.error,
+                "startedAt": r.started_at.to_rfc3339(),
+                "finishedAt": r.finished_at.map(|t| t.to_rfc3339()),
+                "sendId": r.send_id,
+                "steps": r.steps,
             })),
         })),
     ))

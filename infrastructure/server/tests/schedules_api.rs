@@ -14,7 +14,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::common::{
     FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeBillingStore, FakeChannelProviderStore,
-    FakeFlowStore, FakeHttpRequester, FakeScheduleStore, FakeSendStore, FakeTemplatesStore,
+    FakeFlowRunStore, FakeFlowStore, FakeHttpRequester, FakeScheduleStore, FakeSendStore,
+    FakeTemplatesStore,
 };
 use axum::Router;
 use axum::body::Body;
@@ -103,6 +104,7 @@ struct Fakes {
     channels: Arc<FakeChannelProviderStore>,
     templates: Arc<FakeTemplatesStore>,
     http: Arc<FakeHttpRequester>,
+    run_rows: Arc<FakeFlowRunStore>,
 }
 
 fn app_with_schedules() -> (Router, Fakes) {
@@ -133,16 +135,23 @@ fn app_with_schedules() -> (Router, Fakes) {
     ));
     let schedule_store = Arc::new(FakeScheduleStore::new(flow_store.clone()));
     let template_store = Arc::new(FakeTemplatesStore::new());
-    let templates = Arc::new(TemplateService::new(template_store.clone(), audit.clone()));
-    let schedules = Arc::new(ScheduleService::new(
-        schedule_store.clone(),
-        flow_store.clone(),
-        send_store.clone(),
-        template_store.clone(),
-        channel_providers.clone(),
-        Arc::new(StubFactory::succeeding()),
-        http.clone(),
+    let run_rows = Arc::new(FakeFlowRunStore::new());
+    let run_recorder = Arc::new(server::domain::flows::runs::RunRecorder::new(
+        run_rows.clone(),
     ));
+    let templates = Arc::new(TemplateService::new(template_store.clone(), audit.clone()));
+    let schedules = Arc::new(
+        ScheduleService::new(
+            schedule_store.clone(),
+            flow_store.clone(),
+            send_store.clone(),
+            template_store.clone(),
+            channel_providers.clone(),
+            Arc::new(StubFactory::succeeding()),
+            http.clone(),
+        )
+        .with_run_recorder(run_recorder.clone()),
+    );
     let app = build_router(
         AppState {
             db: None,
@@ -168,6 +177,7 @@ fn app_with_schedules() -> (Router, Fakes) {
             flows: Some(flows),
             sends: Some(sends),
             schedules: Some(schedules),
+            runs: Some(run_recorder),
             campaigns: None,
             notifications: None,
             inbound: None,
@@ -186,6 +196,7 @@ fn app_with_schedules() -> (Router, Fakes) {
             channels: channel_providers,
             templates: template_store,
             http,
+            run_rows,
         },
     )
 }
@@ -569,6 +580,25 @@ async fn run_now_executes_owned_flow() {
     assert_eq!(sends.as_array().unwrap().len(), 1);
     assert_eq!(sends[0]["status"], "completed");
     assert_eq!(sends[0]["title"], "Good morning");
+
+    // The run rides the flow's history: mode schedule, succeeded, traced.
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        &format!("/app/flows/{flow}/runs?project_id={project}"),
+        None,
+        &token,
+    )
+    .await;
+    let runs = body_json(res).await["runs"].as_array().unwrap().clone();
+    assert_eq!(runs.len(), 1, "one schedule execution = one run");
+    assert_eq!(runs[0]["mode"], "schedule");
+    assert_eq!(runs[0]["status"], "succeeded");
+    assert_eq!(
+        fakes.run_rows.all().len(),
+        1,
+        "the fake store holds the row"
+    );
 }
 
 #[tokio::test]

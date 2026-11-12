@@ -26,6 +26,10 @@
 //! `template_node_presets_render_on_schedule_runs`,
 //! `legacy_template_rows_still_render_snapshot`, and
 //! `bare_schedules_fail_closed_with_a_directive` in `schedules_api.rs`).
+//!
+//! Every execution records a run row (mode `schedule`) in `flow_runs` —
+//! the builder's History tab replays it (see `domain::flows::runs`);
+//! recording is best-effort and never fails the run.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -76,6 +80,8 @@ pub struct ScheduleService {
     providers: Arc<dyn crate::ports::ChannelProviderStore>,
     adapters: Arc<dyn crate::ports::AdapterFactory>,
     http: Arc<dyn crate::ports::HttpRequester>,
+    /// Optional run-history recorder (unset by fakes; compose wires it).
+    runs: Option<Arc<crate::domain::flows::runs::RunRecorder>>,
 }
 
 impl ScheduleService {
@@ -96,7 +102,14 @@ impl ScheduleService {
             providers,
             adapters,
             http,
+            runs: None,
         }
+    }
+
+    /// Attaches the run-history recorder (builder History tab).
+    pub fn with_run_recorder(mut self, runs: Arc<crate::domain::flows::runs::RunRecorder>) -> Self {
+        self.runs = Some(runs);
+        self
     }
 
     fn map_store_error(e: StoreError) -> AppError {
@@ -578,9 +591,62 @@ impl ScheduleService {
         Option<chrono::DateTime<chrono::Utc>>,
         bool,
     ) {
+        let started_at = chrono::Utc::now();
+        let (status, error, next_run_at, active, steps) = self.execute_inner(schedule).await;
+        // Run history — the schedule run already settled; the history
+        // write itself never fails the run.
+        if let Some(runs) = self.runs.as_ref() {
+            let run_status = if status == "completed" {
+                crate::domain::flows::runs::RUN_SUCCEEDED
+            } else {
+                crate::domain::flows::runs::RUN_FAILED
+            };
+            runs.record(
+                crate::domain::flows::runs::MODE_SCHEDULE,
+                &schedule.project_id,
+                &schedule.flow_id,
+                run_status,
+                error.clone(),
+                &steps,
+                None,
+                started_at,
+            )
+            .await;
+        }
+        (status, error, next_run_at, active)
+    }
+
+    /// The run itself: content resolution, send record, provider chain,
+    /// HTTP side steps. Returns the settle tuple plus the run trace.
+    async fn execute_inner(
+        &self,
+        schedule: &Schedule,
+    ) -> (
+        String,
+        Option<String>,
+        Option<chrono::DateTime<chrono::Utc>>,
+        bool,
+        Vec<crate::domain::flows::runs::RunStep>,
+    ) {
+        use crate::domain::flows::runs::RunStep;
+        let mut steps: Vec<RunStep> = Vec::new();
+        let started = std::time::Instant::now();
+        let stamp_ms = |started: std::time::Instant| started.elapsed().as_millis() as u64;
+        let trigger_node = crate::domain::flows::trigger_node_id(&schedule.flow_definition);
+        steps.push(RunStep {
+            node_id: trigger_node.unwrap_or_else(|| "schedule".into()),
+            kind: "trigger".into(),
+            label: "schedule".into(),
+            status: "ok".into(),
+            detail: None,
+            ms: 0,
+        });
+        let template_node =
+            crate::domain::flows::first_node_id(&schedule.flow_definition, "template");
         let now = chrono::Utc::now();
         // One-shot schedules stop after firing; the rest keep going.
-        let settle = |status: &str, error: Option<String>| {
+        // Every exit funnels through `settle`, which closes the trace.
+        let settle = |status: &str, error: Option<String>, steps: Vec<RunStep>| {
             let next = advance_next_run(
                 &schedule.kind,
                 schedule.interval_secs,
@@ -591,7 +657,7 @@ impl ScheduleService {
                 now,
             );
             let active = schedule.kind != ScheduleKind::Once && schedule.active;
-            (status.to_string(), error, next, active)
+            (status.to_string(), error, next, active, steps)
         };
 
         // Content resolves in three tiers (see module doc + execute docs):
@@ -601,15 +667,40 @@ impl ScheduleService {
             Some(node_template_id) => {
                 let template = match self.templates.get_by_id(&node_template_id).await {
                     Ok(t) => t.filter(|t| t.project_id == schedule.project_id),
-                    Err(e) => return settle("failed", Some(format!("template read failed: {e}"))),
+                    Err(e) => {
+                        steps.push(RunStep {
+                            node_id: template_node
+                                .clone()
+                                .unwrap_or_else(|| node_template_id.clone()),
+                            kind: "template".into(),
+                            label: node_template_id.clone(),
+                            status: "failed".into(),
+                            detail: Some(format!("template read failed: {e}")),
+                            ms: stamp_ms(started),
+                        });
+                        return settle("failed", Some(format!("template read failed: {e}")), steps);
+                    }
                 };
                 let Some(template) = template else {
+                    steps.push(RunStep {
+                        node_id: template_node
+                            .clone()
+                            .unwrap_or_else(|| node_template_id.clone()),
+                        kind: "template".into(),
+                        label: node_template_id.clone(),
+                        status: "failed".into(),
+                        detail: Some(
+                            "the template node's template was deleted — pick another one".into(),
+                        ),
+                        ms: stamp_ms(started),
+                    });
                     return settle(
                         "failed",
                         Some(
                             "the template node's template was deleted — pick another one"
                                 .to_string(),
                         ),
+                        steps,
                     );
                 };
                 // Declared refs render from the template node's stored
@@ -624,11 +715,34 @@ impl ScheduleService {
                     &template.content,
                     &template_node_values(&schedule.flow_definition),
                 ) {
-                    Some(rendered) => (rendered.channel, rendered.title, rendered.body),
+                    Some(rendered) => {
+                        steps.push(RunStep {
+                            node_id: template_node
+                                .clone()
+                                .unwrap_or_else(|| node_template_id.clone()),
+                            kind: "template".into(),
+                            label: template.name.clone(),
+                            status: "ok".into(),
+                            detail: None,
+                            ms: stamp_ms(started),
+                        });
+                        (rendered.channel, rendered.title, rendered.body)
+                    }
                     None => {
+                        steps.push(RunStep {
+                            node_id: template_node
+                                .clone()
+                                .unwrap_or_else(|| node_template_id.clone()),
+                            kind: "template".into(),
+                            label: template.name.clone(),
+                            status: "failed".into(),
+                            detail: Some("template covers no renderable channels".into()),
+                            ms: stamp_ms(started),
+                        });
                         return settle(
                             "failed",
                             Some("template covers no renderable channels".to_string()),
+                            steps,
                         );
                     }
                 }
@@ -640,27 +754,54 @@ impl ScheduleService {
                     match render_template_content(content, &std::collections::HashMap::new()) {
                         Some(rendered) => (rendered.channel, rendered.title, rendered.body),
                         None => {
+                            steps.push(RunStep {
+                                node_id: String::new(),
+                                kind: "template".into(),
+                                label: "assigned template".into(),
+                                status: "failed".into(),
+                                detail: Some("template covers no renderable channels".into()),
+                                ms: stamp_ms(started),
+                            });
                             return settle(
                                 "failed",
                                 Some("template covers no renderable channels".to_string()),
+                                steps,
                             );
                         }
                     }
                 }
                 (Some(_), None) => {
+                    steps.push(RunStep {
+                        node_id: String::new(),
+                        kind: "template".into(),
+                        label: "assigned template".into(),
+                        status: "failed".into(),
+                        detail: Some("the assigned template was deleted — pick another one".into()),
+                        ms: stamp_ms(started),
+                    });
                     return settle(
                         "failed",
                         Some("the assigned template was deleted — pick another one".to_string()),
+                        steps,
                     );
                 }
                 (None, _) => {
                     if schedule.title.is_empty() && schedule.body.is_empty() {
+                        steps.push(RunStep {
+                            node_id: String::new(),
+                            kind: "resolve".into(),
+                            label: "resolve".into(),
+                            status: "failed".into(),
+                            detail: Some("the schedule has no message yet".into()),
+                            ms: stamp_ms(started),
+                        });
                         return settle(
                             "failed",
                             Some(
                                 "the schedule has no message yet — add a template node to its flow"
                                     .to_string(),
                             ),
+                            steps,
                         );
                     }
                     (
@@ -672,14 +813,35 @@ impl ScheduleService {
             },
         };
         if schedule.recipients.is_empty() {
-            return settle("failed", Some("schedule has no recipients yet".to_string()));
+            steps.push(RunStep {
+                node_id: String::new(),
+                kind: "resolve".into(),
+                label: "resolve".into(),
+                status: "failed".into(),
+                detail: Some("schedule has no recipients yet".into()),
+                ms: stamp_ms(started),
+            });
+            return settle(
+                "failed",
+                Some("schedule has no recipients yet".to_string()),
+                steps,
+            );
         }
 
         let chain = provider_chain(&schedule.flow_definition, &channel);
         if chain.is_empty() {
+            steps.push(RunStep {
+                node_id: String::new(),
+                kind: "resolve".into(),
+                label: "provider chain".into(),
+                status: "failed".into(),
+                detail: Some(format!("no provider route for channel '{channel}'")),
+                ms: stamp_ms(started),
+            });
             return settle(
                 "failed",
                 Some(format!("no provider route for channel '{channel}'")),
+                steps,
             );
         }
         let record = match self
@@ -696,11 +858,19 @@ impl ScheduleService {
         {
             Ok(r) => r,
             Err(e) => {
-                return settle("failed", Some(format!("send record failed: {e}")));
+                steps.push(RunStep {
+                    node_id: String::new(),
+                    kind: "resolve".into(),
+                    label: "resolve".into(),
+                    status: "failed".into(),
+                    detail: Some(format!("send record failed: {e}")),
+                    ms: stamp_ms(started),
+                });
+                return settle("failed", Some(format!("send record failed: {e}")), steps);
             }
         };
 
-        let outcome = crate::domain::flows::deliver_through_chain(
+        let (outcome, attempts) = crate::domain::flows::deliver_through_chain(
             &self.providers,
             &self.adapters,
             &schedule.project_id,
@@ -711,15 +881,26 @@ impl ScheduleService {
             &body,
         )
         .await;
+        for attempt in attempts {
+            steps.push(RunStep {
+                node_id: attempt.node_id,
+                kind: "provider".into(),
+                label: attempt.provider_id,
+                status: if attempt.ok { "ok" } else { "failed" }.into(),
+                detail: attempt.error,
+                ms: attempt.ms,
+            });
+        }
         // HTTP Request steps fire once per run whatever the outcome.
         // Failures log server-side only: never fatal, never in deliveries.
-        for step_outcome in crate::domain::flows::fire_http_steps(
-            &self.http,
-            &crate::domain::flows::collect_http_steps(&schedule.flow_definition),
-        )
-        .await
-        {
-            if !step_outcome.ok {
+        let http_steps = crate::domain::flows::collect_http_steps(&schedule.flow_definition);
+        for step_outcome in crate::domain::flows::fire_http_steps(&self.http, &http_steps).await {
+            let label = http_steps
+                .iter()
+                .find(|s| s.node_id == step_outcome.node_id)
+                .map(|s| format!("{} {}", s.method, s.url))
+                .unwrap_or_else(|| "http step".into());
+            let detail = if !step_outcome.ok {
                 tracing::warn!(
                     schedule_id = %schedule.id,
                     node_id = %step_outcome.node_id,
@@ -727,7 +908,20 @@ impl ScheduleService {
                     error = ?step_outcome.error,
                     "schedule HTTP step failed"
                 );
-            }
+                step_outcome
+                    .error
+                    .or_else(|| step_outcome.status.map(|s| format!("status {s}")))
+            } else {
+                step_outcome.status.map(|s| format!("status {s}"))
+            };
+            steps.push(RunStep {
+                node_id: step_outcome.node_id,
+                kind: "http-request".into(),
+                label,
+                status: if step_outcome.ok { "ok" } else { "failed" }.into(),
+                detail,
+                ms: 0,
+            });
         }
         match outcome {
             Ok((provider, external_id)) => {
@@ -735,11 +929,11 @@ impl ScheduleService {
                     .sends
                     .mark_completed(&record.id, &provider, external_id.as_deref())
                     .await;
-                settle("completed", None)
+                settle("completed", None, steps)
             }
             Err(error) => {
                 let _ = self.sends.mark_failed(&record.id, &error).await;
-                settle("failed", Some(error))
+                settle("failed", Some(error), steps)
             }
         }
     }

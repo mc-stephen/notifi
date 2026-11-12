@@ -14,6 +14,7 @@ pub mod channel_provider_store;
 pub mod config_store;
 pub mod delivery;
 pub mod event_bus;
+pub mod flow_run_store;
 pub mod flow_store;
 pub mod gateway;
 pub mod http_requester;

@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::common::{
     FakeAdminStore, FakeAuditStore, FakeAuthStore, FakeBillingStore, FakeChannelProviderStore,
-    FakeFlowStore, FakeHttpRequester, FakeSendStore,
+    FakeFlowRunStore, FakeFlowStore, FakeHttpRequester, FakeSendStore,
 };
 use axum::Router;
 use axum::body::Body;
@@ -112,13 +112,20 @@ fn app_with_sends(fail: &[&str]) -> (Router, Fakes) {
     let channel_providers = Arc::new(FakeChannelProviderStore::new());
     let send_store = Arc::new(FakeSendStore::new());
     let http = Arc::new(FakeHttpRequester::new());
-    let sends = Arc::new(SendService::new(
-        send_store.clone(),
-        flows.clone(),
-        channel_providers.clone(),
-        Arc::new(StubFactory::failing(fail)),
-        http.clone(),
+    let run_rows = Arc::new(FakeFlowRunStore::new());
+    let run_recorder = Arc::new(server::domain::flows::runs::RunRecorder::new(
+        run_rows.clone(),
     ));
+    let sends = Arc::new(
+        SendService::new(
+            send_store.clone(),
+            flows.clone(),
+            channel_providers.clone(),
+            Arc::new(StubFactory::failing(fail)),
+            http.clone(),
+        )
+        .with_run_recorder(run_recorder.clone()),
+    );
     let app = build_router(
         AppState {
             db: None,
@@ -145,6 +152,7 @@ fn app_with_sends(fail: &[&str]) -> (Router, Fakes) {
             sends: Some(sends),
             notifications: None,
             schedules: None,
+            runs: Some(run_recorder),
             campaigns: None,
             inbound: None,
             provider_tester: Arc::new(ConfigProviderTester::new())
@@ -160,6 +168,7 @@ fn app_with_sends(fail: &[&str]) -> (Router, Fakes) {
             sends: send_store,
             channels: channel_providers,
             http,
+            run_rows,
         },
     )
 }
@@ -169,6 +178,7 @@ struct Fakes {
     sends: Arc<FakeSendStore>,
     channels: Arc<FakeChannelProviderStore>,
     http: Arc<FakeHttpRequester>,
+    run_rows: Arc<FakeFlowRunStore>,
 }
 
 async fn body_json(response: axum::response::Response) -> Value {
@@ -321,7 +331,7 @@ async fn instant_send_falls_back_by_priority() {
 async fn exhausted_chain_marks_failed() {
     let (app, fakes) = app_with_sends(&["smtp", "sendgrid"]);
     let (token, project) = setup_project(app.clone(), &fakes, "b@x.dev", "Shop").await;
-    put_flow(app.clone(), &token, &project).await;
+    let flow = put_flow(app.clone(), &token, &project).await;
 
     let res = request_with_cookie(
         app.clone(),
@@ -336,6 +346,48 @@ async fn exhausted_chain_marks_failed() {
     let n = &body_json(res).await["notification"];
     assert_eq!(n["status"], "failed");
     assert!(n["lastError"].as_str().unwrap().contains("boom"));
+
+    // The exhausted run is in the flow's history: mode event, failed,
+    // terminal error kept, both chain hops traced.
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        &format!("/app/flows/{flow}/runs?project_id={project}"),
+        None,
+        "session_token",
+        &token,
+    )
+    .await;
+    let runs = body_json(res).await["runs"].as_array().unwrap().clone();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0]["mode"], "event");
+    assert_eq!(runs[0]["status"], "failed");
+    assert!(runs[0]["error"].as_str().unwrap().contains("boom"));
+    let run_id = runs[0]["id"].as_str().unwrap().to_string();
+    let res = request_with_cookie(
+        app.clone(),
+        "GET",
+        &format!("/app/flows/{flow}/runs/{run_id}?project_id={project}"),
+        None,
+        "session_token",
+        &token,
+    )
+    .await;
+    let steps = body_json(res).await["run"]["steps"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert!(
+        steps
+            .iter()
+            .any(|s| s["kind"] == "provider" && s["status"] == "failed"),
+        "failed hops ride the trace"
+    );
+    assert_eq!(
+        fakes.run_rows.all().len(),
+        1,
+        "the fake store holds the row"
+    );
 }
 
 #[tokio::test]

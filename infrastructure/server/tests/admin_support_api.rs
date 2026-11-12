@@ -62,6 +62,7 @@ fn app_with_admin_support() -> (Router, Arc<FakeTicketsStore>) {
                 notifications: None,
                 billing: None,
                 schedules: None,
+                runs: None,
                 campaigns: None,
                 inbound: None,
                 provider_tester: Arc::new(ConfigProviderTester::new())

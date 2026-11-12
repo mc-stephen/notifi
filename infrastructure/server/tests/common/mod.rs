@@ -5026,7 +5026,6 @@ impl server::ports::trigger_token_store::TriggerTokenStore for FakeTriggerTokenS
 pub struct FakeInboundProbeStore {
     probes: RwLock<Vec<server::ports::inbound_probe_store::InboundProbeRecord>>,
 }
-
 impl FakeInboundProbeStore {
     pub fn new() -> Self {
         Self::default()
@@ -5081,6 +5080,69 @@ impl server::ports::inbound_probe_store::InboundProbeStore for FakeInboundProbeS
             .iter()
             .filter(|p| p.project_id == project_id && p.flow_id == flow_id)
             .max_by_key(|p| p.fired_at)
+            .cloned();
+        Box::pin(async move { Ok(row) })
+    }
+}
+
+/// In-memory run-history store (rows written at run end, listed newest
+/// first — mirrors the Postgres repo's semantics).
+#[derive(Default)]
+pub struct FakeFlowRunStore {
+    runs: RwLock<Vec<server::ports::flow_run_store::FlowRunRecord>>,
+}
+
+impl FakeFlowRunStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Every recorded run (for test assertions).
+    pub fn all(&self) -> Vec<server::ports::flow_run_store::FlowRunRecord> {
+        self.runs.read().unwrap().clone()
+    }
+}
+
+impl server::ports::flow_run_store::FlowRunStore for FakeFlowRunStore {
+    fn insert(
+        &self,
+        record: server::ports::flow_run_store::FlowRunRecord,
+    ) -> BoxFut<'_, Result<(), StoreError>> {
+        self.runs.write().unwrap().push(record);
+        Box::pin(async move { Ok(()) })
+    }
+
+    fn list(
+        &self,
+        project_id: &str,
+        flow_id: &str,
+        limit: i64,
+    ) -> BoxFut<'_, Result<Vec<server::ports::flow_run_store::FlowRunRecord>, StoreError>> {
+        let mut rows: Vec<server::ports::flow_run_store::FlowRunRecord> = self
+            .runs
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|r| r.project_id == project_id && r.flow_id == flow_id)
+            .cloned()
+            .collect();
+        rows.reverse();
+        rows.truncate(limit.max(0) as usize);
+        Box::pin(async move { Ok(rows) })
+    }
+
+    fn get(
+        &self,
+        project_id: &str,
+        flow_id: &str,
+        run_id: &str,
+    ) -> BoxFut<'_, Result<Option<server::ports::flow_run_store::FlowRunRecord>, StoreError>> {
+        let row = self
+            .runs
+            .read()
+            .unwrap()
+            .iter()
+            .find(|r| r.project_id == project_id && r.flow_id == flow_id && r.id == run_id)
             .cloned();
         Box::pin(async move { Ok(row) })
     }

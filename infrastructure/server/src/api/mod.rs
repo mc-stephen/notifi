@@ -78,6 +78,7 @@ mod tests {
                 flows: None,
                 sends: None,
                 schedules: None,
+                runs: None,
                 campaigns: None,
             },
             &AppConfig::default(),

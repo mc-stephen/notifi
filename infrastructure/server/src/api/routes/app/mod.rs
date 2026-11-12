@@ -145,6 +145,9 @@ pub fn app_router(state: &AppState) -> Router<AppState> {
     if let Some(service) = state.inbound.clone() {
         flows_routes = flows_routes.layer(axum::Extension(service));
     }
+    if let Some(service) = state.runs.clone() {
+        flows_routes = flows_routes.layer(axum::Extension(service));
+    }
 
     let mut sends_routes = sends::routes::router();
     if let Some(auth_service) = state.auth.clone() {
