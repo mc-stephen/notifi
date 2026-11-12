@@ -17,7 +17,7 @@ import {
   type Edge,
 } from "@xyflow/react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, FlaskConical, ListX, ShieldCheck, X } from "lucide-react";
+import { CheckCircle2, FlaskConical, ListX, Map, ShieldCheck, X } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -178,6 +178,7 @@ function FlowEditor({
   const [openId, setOpenId] = useState<string | null>(null);
   const [issues, setIssues] = useState<FlowIssue[]>([]);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [showMinimap, setShowMinimap] = useState(false);
   const idCounter = useRef(0);
   const { screenToFlowPosition } = useReactFlow();
   // JS-driven canvas colors (dots, minimap) follow the dashboard theme.
@@ -425,14 +426,40 @@ function FlowEditor({
               "dark:border-white/10 dark:bg-[#17171c]",
             )}
           />
-          <MiniMap
-            position="bottom-right"
-            pannable
-            nodeColor={dark ? "#27272a" : "#e4e4e7"}
-            maskColor={dark ? "rgba(0, 0, 0, 0.65)" : "rgba(255, 255, 255, 0.7)"}
-            bgColor={dark ? "#0b0b0e" : "#f4f4f5"}
-            className="rounded-lg border border-border dark:border-white/10"
-          />
+          {showMinimap ? (
+            <Panel position="bottom-right">
+              <div className="relative">
+                <MiniMap
+                  pannable
+                  nodeColor={dark ? "#27272a" : "#e4e4e7"}
+                  maskColor={dark ? "rgba(0, 0, 0, 0.65)" : "rgba(255, 255, 255, 0.7)"}
+                  bgColor={dark ? "#0b0b0e" : "#f4f4f5"}
+                  className="rounded-lg border border-border dark:border-white/10"
+                />
+                <Button
+                  variant="outline"
+                  size="icon-xs"
+                  aria-label="Hide mini-map"
+                  onClick={() => setShowMinimap(false)}
+                  className="absolute top-1 right-1 h-5 w-5 rounded-md border-border bg-popover text-muted-foreground hover:bg-muted hover:text-foreground dark:border-white/15 dark:bg-[#17171c] dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-100"
+                >
+                  <X className="size-3" />
+                </Button>
+              </div>
+            </Panel>
+          ) : (
+            <Panel position="bottom-right">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 border-border bg-popover hover:bg-muted dark:border-white/15 dark:bg-[#17171c] dark:text-zinc-100 dark:hover:bg-white/10 dark:hover:text-white"
+                aria-pressed={false}
+                onClick={() => setShowMinimap(true)}
+              >
+                <Map className="size-3.5" /> Show mini-map
+              </Button>
+            </Panel>
+          )}
           {issues.length > 0 && (
             <Panel position="bottom-center">
               <div className="w-[min(28rem,90vw)] rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl">
