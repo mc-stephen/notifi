@@ -2,12 +2,13 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, GitBranch, History } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { FlowCanvas } from "@/components/custom/flows/FlowCanvas";
+import { FlowHistory } from "@/components/custom/flows/FlowHistory";
 import { useProjectStore } from "@/store/project-store";
 import { ApiError } from "@/lib/api";
 import {
@@ -20,6 +21,7 @@ import {
 import type { FlowDoc } from "@/components/custom/flows/flow-types";
 
 type LoadStatus = "missing" | "error";
+type BuilderView = "board" | "history";
 
 /**
  * By-id builder: schedule-owned flows never appear on the /flows list,
@@ -48,6 +50,9 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   // committed. Carries its flow id so stale typing never leaks between
   // two navigated builders.
   const [draft, setDraft] = useState<{ id: string; name: string } | null>(null);
+
+  /** Board (builder) vs History (run list) — the top-center tab pill. */
+  const [view, setView] = useState<BuilderView>("board");
 
   useEffect(() => {
     if (!projectId) return;
@@ -196,7 +201,39 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <div className="relative flex min-h-[560px] min-w-0 flex-1 flex-col">
-        <FlowCanvas
+        {/* Top-center tab pill (n8n's Editor | Executions): Board keeps
+            its full-bleed canvas; History swaps the content area while
+            the board stays mounted underneath — unsaved edits, zoom,
+            and open panels all survive the round-trip. */}
+        <div className="absolute top-3 left-1/2 z-20 -translate-x-1/2">
+          <div className="flex items-center gap-0.5 rounded-lg border border-border bg-popover/95 p-1 shadow-sm backdrop-blur dark:border-white/10 dark:bg-[#17171c]/95">
+            {(
+              [
+                { id: "board", label: "Board", icon: GitBranch },
+                { id: "history", label: "History", icon: History },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                aria-pressed={view === t.id}
+                onClick={() => setView(t.id)}
+                className={
+                  "flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors " +
+                  (view === t.id
+                    ? "bg-muted text-foreground dark:bg-white/10 dark:text-zinc-100"
+                    : "text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300")
+                }
+              >
+                <t.icon className="size-3.5" /> {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* The board stays mounted while History is open (display:none
+            keeps React Flow's state alive). */}
+        <div className={view === "history" ? "hidden" : "min-h-0 flex-1"}>
+          <FlowCanvas
           key={`${projectId}:${id}`}
           initialDoc={doc}
           onSave={handleServerSave}
@@ -241,7 +278,9 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
               )}
             </div>
           }
-        />
+          />
+        </div>
+        {view === "history" && <FlowHistory projectId={projectId} flowId={id} />}
       </div>
     </div>
   );
