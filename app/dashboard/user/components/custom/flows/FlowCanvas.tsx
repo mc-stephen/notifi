@@ -434,7 +434,7 @@ function FlowEditor({
             className="rounded-lg border border-border dark:border-white/10"
           />
           {issues.length > 0 && (
-            <Panel position="top-center">
+            <Panel position="bottom-center">
               <div className="w-[min(28rem,90vw)] rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl">
                 <div className="mb-2 flex items-center justify-between">
                   <p className="flex items-center gap-1.5 text-sm font-semibold">
