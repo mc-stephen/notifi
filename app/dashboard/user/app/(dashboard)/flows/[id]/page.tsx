@@ -231,8 +231,10 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
         {/* The board stays mounted while History is open (display:none
-            keeps React Flow's state alive). */}
-        <div className={view === "history" ? "hidden" : "min-h-0 flex-1"}>
+            keeps React Flow's state alive). The wrapper is a flex
+            container so the canvas root's own flex-1 keeps filling the
+            full page height. */}
+        <div className={view === "history" ? "hidden" : "flex min-h-0 flex-1"}>
           <FlowCanvas
           key={`${projectId}:${id}`}
           initialDoc={doc}
